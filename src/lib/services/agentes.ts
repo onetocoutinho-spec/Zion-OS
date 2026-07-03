@@ -84,9 +84,19 @@ export async function registrarExecucao(
   });
 }
 
+export interface TarefaSugerida {
+  tarefa: string;
+  prioridade: "Baixa" | "Média" | "Alta" | "Urgente";
+  proximaAcao: string;
+}
+
 export interface ResultadoExecucaoIA {
   resultado: string;
   tipo: "IA" | "Simulada";
+  /** Título de anúncio otimizado, quando a entrega incluir um. */
+  tituloOtimizado?: string | null;
+  /** Tarefas acionáveis sugeridas pelo agente a partir da entrega. */
+  tarefasSugeridas?: TarefaSugerida[];
   /** Preenchido quando a execução caiu para o modo simulado. */
   aviso?: string;
 }
@@ -96,6 +106,8 @@ export interface OpcoesExecucaoIA {
   contexto?: string;
   /** Resumo curto do contexto (ex.: "TechSound · Fone TWS Pro") para o histórico. */
   resumoContexto?: string;
+  /** Há um anúncio no contexto (habilita o extra de título no modo simulado). */
+  contemAnuncio?: boolean;
 }
 
 /**
@@ -120,17 +132,33 @@ export async function executarAgenteIA(
   });
 
   if (resposta.status === 503) {
-    // API Claude não configurada: mantém o comportamento simulado das versões anteriores
+    // API Claude não configurada: mantém o comportamento simulado das versões
+    // anteriores, com ações de exemplo para demonstrar o fluxo completo.
     const simulada = await registrarExecucao(agente, registroContexto);
     return {
       resultado: simulada.resultado,
       tipo: "Simulada",
+      tituloOtimizado: opcoes.contemAnuncio
+        ? `[SIMULAÇÃO] Título otimizado gerado pelo ${agente.nome}`
+        : null,
+      tarefasSugeridas: [
+        {
+          tarefa: `[SIMULAÇÃO] Revisar a entrega do ${agente.nome}`,
+          prioridade: "Média",
+          proximaAcao: "Configurar a ANTHROPIC_API_KEY para execuções reais",
+        },
+      ],
       aviso:
-        "ANTHROPIC_API_KEY não configurada — execução registrada como simulada. Configure a chave no .env.local para execuções reais.",
+        "ANTHROPIC_API_KEY não configurada — execução registrada como simulada (as ações abaixo são exemplos). Configure a chave no .env.local para execuções reais.",
     };
   }
 
-  const dados = (await resposta.json()) as { resultado?: string; erro?: string };
+  const dados = (await resposta.json()) as {
+    resultado?: string;
+    tituloOtimizado?: string | null;
+    tarefasSugeridas?: TarefaSugerida[];
+    erro?: string;
+  };
 
   if (!resposta.ok || !dados.resultado) {
     throw new Error(dados.erro ?? "Falha ao executar o agente.");
@@ -145,5 +173,10 @@ export async function executarAgenteIA(
     tipo: "IA",
   });
 
-  return { resultado: dados.resultado, tipo: "IA" };
+  return {
+    resultado: dados.resultado,
+    tipo: "IA",
+    tituloOtimizado: dados.tituloOtimizado ?? null,
+    tarefasSugeridas: dados.tarefasSugeridas ?? [],
+  };
 }

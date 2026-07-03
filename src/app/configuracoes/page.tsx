@@ -62,7 +62,7 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-zinc-500">Versão do sistema</dt>
-              <dd className="text-zinc-200">Zion OS v1.5 (Agentes com contexto)</dd>
+              <dd className="text-zinc-200">Zion OS v1.6 (IA aplica no sistema)</dd>
             </div>
           </dl>
         </Card>

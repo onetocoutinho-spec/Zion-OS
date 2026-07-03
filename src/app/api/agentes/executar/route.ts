@@ -10,6 +10,52 @@ export const maxDuration = 120; // execuções com thinking podem demorar
 
 const MODELO = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
 
+// Envelope estruturado comum a todos os agentes: a entrega principal continua
+// livre (Markdown), e dois extras opcionais alimentam os botões de ação do
+// Zion OS ("Aplicar no anúncio" e "Criar tarefa").
+const ESQUEMA_RESULTADO = {
+  type: "object",
+  properties: {
+    resultado_markdown: {
+      type: "string",
+      description:
+        "A entrega completa do agente em Markdown, pronta para a equipe usar. É o conteúdo principal.",
+    },
+    titulo_otimizado: {
+      type: ["string", "null"],
+      description:
+        "Somente quando a entrega incluir um título de anúncio otimizado: o título final (máximo 60 caracteres), sem aspas. Caso contrário, null.",
+    },
+    tarefas_sugeridas: {
+      type: "array",
+      description:
+        "Até 5 tarefas acionáveis que a equipe da agência deveria executar a partir desta entrega. Lista vazia se não houver.",
+      items: {
+        type: "object",
+        properties: {
+          tarefa: { type: "string", description: "Descrição curta e objetiva da tarefa" },
+          prioridade: { type: "string", enum: ["Baixa", "Média", "Alta", "Urgente"] },
+          proximaAcao: { type: "string", description: "Primeiro passo concreto para executá-la" },
+        },
+        required: ["tarefa", "prioridade", "proximaAcao"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["resultado_markdown", "titulo_otimizado", "tarefas_sugeridas"],
+  additionalProperties: false,
+};
+
+interface ResultadoEstruturado {
+  resultado_markdown: string;
+  titulo_otimizado: string | null;
+  tarefas_sugeridas: {
+    tarefa: string;
+    prioridade: "Baixa" | "Média" | "Alta" | "Urgente";
+    proximaAcao: string;
+  }[];
+}
+
 interface CorpoExecucao {
   agente: {
     nome: string;
@@ -95,6 +141,7 @@ export async function POST(request: Request) {
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       system: montarSystemPrompt(corpo.agente),
+      output_config: { format: { type: "json_schema", schema: ESQUEMA_RESULTADO } },
       messages: [{ role: "user", content: montarMensagem(entrada, contexto) }],
     });
 
@@ -111,7 +158,19 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({ resultado: texto, modelo: resposta.model });
+    // Com output_config o texto é JSON válido; o try é defesa extra
+    // (ex.: resposta truncada por max_tokens).
+    try {
+      const estruturado = JSON.parse(texto) as ResultadoEstruturado;
+      return Response.json({
+        resultado: estruturado.resultado_markdown,
+        tituloOtimizado: estruturado.titulo_otimizado,
+        tarefasSugeridas: estruturado.tarefas_sugeridas ?? [],
+        modelo: resposta.model,
+      });
+    } catch {
+      return Response.json({ resultado: texto, modelo: resposta.model });
+    }
   } catch (erro) {
     if (erro instanceof Anthropic.AuthenticationError) {
       return Response.json(

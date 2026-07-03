@@ -1,6 +1,15 @@
-# Zion OS v1.5
+# Zion OS v1.6
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
+
+## O que mudou na v1.6
+
+O ciclo **dados → IA → ação** fechou: os resultados dos agentes agora podem ser aplicados de volta no sistema com um clique.
+
+- **Saída estruturada**: além da entrega em Markdown, o Claude retorna (via JSON Schema, `output_config`) dois extras opcionais — um **título otimizado** e até 5 **tarefas sugeridas**.
+- **"Aplicar no anúncio"**: quando há um anúncio no contexto e o agente gera um título otimizado, um clique salva direto no campo "Título otimizado" do anúncio.
+- **"Criar tarefa"**: cada tarefa sugerida vira tarefa real com um clique — já vinculada ao cliente/produto/anúncio do contexto e ao agente, com prioridade sugerida e prazo de 7 dias.
+- No **modo simulado** (sem `ANTHROPIC_API_KEY`), as ações vêm com dados de exemplo marcados como `[SIMULAÇÃO]` — para experimentar o fluxo completo.
 
 ## O que mudou na v1.5
 
@@ -118,10 +127,10 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 - A proteção de rota é client-side (adequada para ferramenta interna; os dados em si já são protegidos pelo RLS no servidor).
 - No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local (a execução via IA funciona normalmente, desde que a `ANTHROPIC_API_KEY` esteja configurada).
 
-## O que falta para a v1.6 (recomendado)
+## O que falta para a v1.7 (recomendado)
 
-1. **Aplicar resultados dos agentes**: botão para salvar o título otimizado gerado direto no anúncio, criar tarefa a partir do diagnóstico etc.
-2. **Permissões por função/cliente** nas políticas RLS
-3. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia)
-4. Portal do cliente (visão externa read-only)
-5. Integrações com marketplaces (começando pelo Mercado Livre)
+1. **Permissões por função/cliente** nas políticas RLS
+2. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia)
+3. Portal do cliente (visão externa read-only)
+4. Integrações com marketplaces (começando pelo Mercado Livre)
+5. Renderização Markdown dos resultados dos agentes

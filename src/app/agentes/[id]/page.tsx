@@ -2,7 +2,18 @@
 
 import { useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { AlertTriangle, Bot, History, Link2, Pencil, Play, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  Check,
+  History,
+  Link2,
+  ListPlus,
+  Pencil,
+  Play,
+  Sparkles,
+  Wand2,
+} from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -15,10 +26,12 @@ import {
   buscarAgente,
   executarAgenteIA,
   listarExecucoesDoAgente,
+  type TarefaSugerida,
 } from "@/lib/services/agentes";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
-import { listarAnuncios } from "@/lib/services/anuncios";
+import { atualizarAnuncio, listarAnuncios } from "@/lib/services/anuncios";
+import { criarTarefa } from "@/lib/services/tarefas";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { formatDateTime } from "@/lib/format";
 
@@ -73,6 +86,10 @@ export default function AgenteDetalhePage() {
   const [tipoResultado, setTipoResultado] = useState<"IA" | "Simulada" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [tituloSugerido, setTituloSugerido] = useState<string | null>(null);
+  const [tituloAplicado, setTituloAplicado] = useState(false);
+  const [tarefasSugeridas, setTarefasSugeridas] = useState<TarefaSugerida[]>([]);
+  const [tarefasCriadas, setTarefasCriadas] = useState<number[]>([]);
 
   const { data: agente, carregando } = useLiveQuery(() => buscarAgente(id), [id]);
   const { data: execucoes } = useLiveQuery(() => listarExecucoesDoAgente(id), [id]);
@@ -121,19 +138,61 @@ export default function AgenteDetalhePage() {
     setAviso(null);
     setResultado(null);
     setTipoResultado(null);
+    setTituloSugerido(null);
+    setTituloAplicado(false);
+    setTarefasSugeridas([]);
+    setTarefasCriadas([]);
     try {
       const retorno = await executarAgenteIA(agente, entrada.trim(), {
         contexto: contexto || undefined,
         resumoContexto: resumoContexto || undefined,
+        contemAnuncio: Boolean(anuncio),
       });
       setResultado(retorno.resultado);
       setTipoResultado(retorno.tipo);
       setAviso(retorno.aviso ?? null);
+      setTituloSugerido(retorno.tituloOtimizado ?? null);
+      setTarefasSugeridas(retorno.tarefasSugeridas ?? []);
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Falha ao executar o agente.");
     } finally {
       setExecutando(false);
     }
+  }
+
+  // Cliente para vincular as tarefas criadas (direto ou derivado do contexto)
+  const clienteVinculo = cliente ?? null;
+  const clienteVinculoId = clienteVinculo?.id ?? produto?.clienteId ?? anuncio?.clienteId ?? "";
+  const clienteVinculoNome = clienteVinculo?.empresa ?? produto?.cliente ?? anuncio?.cliente ?? "";
+
+  async function aplicarTitulo() {
+    if (!anuncio || !tituloSugerido) return;
+    await atualizarAnuncio(anuncio.id, { tituloOtimizado: tituloSugerido });
+    setTituloAplicado(true);
+  }
+
+  async function criarTarefaSugerida(sugestao: TarefaSugerida, indice: number) {
+    if (!agente || !clienteVinculoId || tarefasCriadas.includes(indice)) return;
+    const prazo = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await criarTarefa({
+      clienteId: clienteVinculoId,
+      cliente: clienteVinculoNome,
+      produtoId: produto?.id ?? null,
+      produto: produto?.nome ?? null,
+      anuncioId: anuncio?.id ?? null,
+      anuncio: anuncio?.produto ?? null,
+      agenteId: agente.id,
+      agenteRelacionado: agente.nome,
+      area: agente.area,
+      tarefa: sugestao.tarefa,
+      responsavel: "Informação necessária",
+      prioridade: sugestao.prioridade,
+      status: "Não iniciado",
+      prazo,
+      proximaAcao: sugestao.proximaAcao,
+      observacoes: `Criada a partir de execução do agente ${agente.nome}.`,
+    });
+    setTarefasCriadas((atuais) => [...atuais, indice]);
   }
 
   return (
@@ -270,6 +329,83 @@ export default function AgenteDetalhePage() {
             <div className="max-h-96 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-zinc-200">
               {resultado}
             </div>
+
+            {/* Ações: aplicar o resultado de volta no sistema */}
+            {(tituloSugerido || tarefasSugeridas.length > 0) && (
+              <div className="mt-4 space-y-3 border-t border-white/5 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  Aplicar no sistema
+                </p>
+
+                {tituloSugerido && anuncio && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white/[0.03] p-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-zinc-500">
+                        Título otimizado para “{anuncio.produto}”
+                      </p>
+                      <p className="truncate text-sm text-zinc-200">{tituloSugerido}</p>
+                    </div>
+                    <Button
+                      variant={tituloAplicado ? "success" : "primary"}
+                      onClick={aplicarTitulo}
+                      disabled={tituloAplicado}
+                    >
+                      {tituloAplicado ? (
+                        <>
+                          <Check size={14} /> Aplicado no anúncio
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 size={14} /> Aplicar no anúncio
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {tarefasSugeridas.length > 0 && (
+                  <div className="space-y-2">
+                    {tarefasSugeridas.map((sugestao, indice) => (
+                      <div
+                        key={indice}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white/[0.03] p-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Badge>{sugestao.prioridade}</Badge>
+                            <p className="truncate text-sm text-zinc-200">{sugestao.tarefa}</p>
+                          </div>
+                          <p className="mt-1 truncate text-xs text-zinc-500">
+                            {sugestao.proximaAcao}
+                          </p>
+                        </div>
+                        {clienteVinculoId ? (
+                          <Button
+                            variant={tarefasCriadas.includes(indice) ? "success" : "ghost"}
+                            onClick={() => criarTarefaSugerida(sugestao, indice)}
+                            disabled={tarefasCriadas.includes(indice)}
+                          >
+                            {tarefasCriadas.includes(indice) ? (
+                              <>
+                                <Check size={14} /> Tarefa criada
+                              </>
+                            ) : (
+                              <>
+                                <ListPlus size={14} /> Criar tarefa
+                              </>
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="text-[11px] text-zinc-600">
+                            Selecione um cliente no contexto para criar
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </Card>
