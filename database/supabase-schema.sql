@@ -268,6 +268,7 @@ create table if not exists public.execucoes_agentes (
   data_hora timestamptz not null default now(),
   contexto text default '',
   resultado text default '',
+  tipo text not null default 'Simulada', -- 'IA' quando executada via API Claude (v1.4)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -1,6 +1,25 @@
-# Zion OS v1.3
+# Zion OS v1.4
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
+
+## O que mudou na v1.4
+
+- **Execução real dos Agentes IA via API Claude**: na página de cada agente (`/agentes/[id]`), informe a entrada e clique em "Executar agente" — o sistema monta o prompt a partir da definição do agente (objetivo, instruções, saída esperada) e chama o Claude (`claude-opus-4-8`, com adaptive thinking). O resultado aparece na tela e fica salvo no histórico.
+- **Histórico tipado**: cada execução agora é marcada como **IA** (real) ou **Simulada**.
+- **Segurança**: a `ANTHROPIC_API_KEY` fica somente no servidor (rota `/api/agentes/executar`) — nunca vai para o navegador.
+- **Fallback preservado**: sem a chave configurada, o botão continua funcionando em modo simulado, com aviso.
+
+### Como ativar a execução real
+
+1. Crie uma chave de API em [platform.claude.com](https://platform.claude.com) (Console → API Keys).
+2. Adicione ao `.env.local`:
+   ```env
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+3. Reinicie o `npm run dev`.
+4. **Bancos criados na v1.2/v1.3**: rode `database/supabase-migracao-v1.4.sql` no SQL Editor (adiciona a coluna `tipo` ao histórico). Instalações novas já vêm com ela.
+
+> 🔴 A chave da API Claude é cobrada por uso. Não a commite e não a exponha em variáveis `NEXT_PUBLIC_*`.
 
 ## O que mudou na v1.3
 
@@ -88,14 +107,14 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 
 ## Limitações conhecidas
 
-- Autenticação é por e-mail/senha, sem papéis/permissões por função (todas as contas veem tudo — RLS granular fica para a v1.4).
+- Autenticação é por e-mail/senha, sem papéis/permissões por função (todas as contas veem tudo — RLS granular fica para versões futuras).
 - A proteção de rota é client-side (adequada para ferramenta interna; os dados em si já são protegidos pelo RLS no servidor).
-- Execução de agentes continua simulada.
-- No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local.
+- A execução via IA usa apenas a entrada digitada — o agente ainda não busca dados dos clientes/produtos do sistema automaticamente.
+- No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local (a execução via IA funciona normalmente, desde que a `ANTHROPIC_API_KEY` esteja configurada).
 
-## O que falta para a v1.4 (recomendado)
+## O que falta para a v1.5 (recomendado)
 
-1. **Execução real dos agentes** via API Claude, usando o prompt de cada agente
+1. **Agentes com contexto do sistema**: injetar automaticamente os dados do cliente/produto/anúncio selecionado na execução
 2. **Permissões por função/cliente** nas políticas RLS
 3. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia)
 4. Portal do cliente (visão externa read-only)

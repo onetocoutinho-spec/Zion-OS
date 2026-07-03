@@ -222,7 +222,7 @@ export interface Pendencia {
   resolvida: boolean;
 }
 
-/** Registro do histórico simulado de execuções de agentes. */
+/** Registro do histórico de execuções de agentes (reais via IA ou simuladas). */
 export interface ExecucaoAgente {
   id: string;
   agenteId: string;
@@ -230,6 +230,7 @@ export interface ExecucaoAgente {
   dataHora: string; // ISO datetime
   contexto: string;
   resultado: string;
+  tipo: "IA" | "Simulada";
 }
 
 export interface RegistroFinanceiro {

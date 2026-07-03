@@ -312,6 +312,7 @@ export function execucaoParaApp(row: ExecucaoRow): ExecucaoAgente {
     dataHora: row.data_hora,
     contexto: row.contexto ?? "",
     resultado: row.resultado ?? "",
+    tipo: row.tipo === "IA" ? "IA" : "Simulada",
   };
 }
 
@@ -321,6 +322,7 @@ export function execucaoParaBanco(d: Partial<ExecucaoAgente>): Record<string, un
   if (d.dataHora !== undefined) r.data_hora = d.dataHora;
   if (d.contexto !== undefined) r.contexto = d.contexto;
   if (d.resultado !== undefined) r.resultado = d.resultado;
+  if (d.tipo !== undefined) r.tipo = d.tipo;
   return r;
 }
 

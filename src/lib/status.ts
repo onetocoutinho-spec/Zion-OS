@@ -36,6 +36,8 @@ const TONE_MAP: Record<string, Tone> = {
   // Agentes
   "Em teste": "yellow",
   Planejado: "gray",
+  IA: "violet",
+  Simulada: "gray",
   // Relatórios
   "Em elaboração": "blue",
   Enviado: "cyan",

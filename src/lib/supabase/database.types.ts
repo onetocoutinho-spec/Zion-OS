@@ -149,6 +149,8 @@ export interface ExecucaoRow {
   data_hora: string;
   contexto: string | null;
   resultado: string | null;
+  /** Ausente em bancos criados antes da v1.4 (rodar a migração). */
+  tipo?: string | null;
   agentes?: { nome: string } | null;
 }
 

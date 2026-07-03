@@ -57,7 +57,7 @@ export async function excluirAgente(id: string): Promise<void> {
   return repo.excluir(id);
 }
 
-// ---- Histórico simulado de execuções ----
+// ---- Histórico de execuções (reais via IA ou simuladas) ----
 
 export async function listarExecucoesDoAgente(
   agenteId: string
@@ -69,13 +69,68 @@ export async function listarExecucoesDoAgente(
   });
 }
 
-/** Registra uma execução simulada (o botão "Executar agente" ainda é visual). */
-export async function registrarExecucao(agente: AgenteIA): Promise<ExecucaoAgente> {
+/** Registra uma execução simulada (fallback quando a API Claude não está configurada). */
+export async function registrarExecucao(
+  agente: AgenteIA,
+  contexto = "Execução manual pelo Zion OS"
+): Promise<ExecucaoAgente> {
   return repoExecucoes.criar({
     agenteId: agente.id,
     agente: agente.nome,
     dataHora: new Date().toISOString(),
-    contexto: "Execução manual pelo Zion OS",
+    contexto,
     resultado: `${agente.saidaEsperada} (execução simulada)`,
+    tipo: "Simulada",
   });
+}
+
+export interface ResultadoExecucaoIA {
+  resultado: string;
+  tipo: "IA" | "Simulada";
+  /** Preenchido quando a execução caiu para o modo simulado. */
+  aviso?: string;
+}
+
+/**
+ * Executa o agente de verdade via API Claude (rota /api/agentes/executar).
+ * Sem ANTHROPIC_API_KEY no servidor, registra uma execução simulada e avisa.
+ * Outros erros são lançados para a tela exibir.
+ */
+export async function executarAgenteIA(
+  agente: AgenteIA,
+  entrada: string
+): Promise<ResultadoExecucaoIA> {
+  const resposta = await fetch("/api/agentes/executar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agente, entrada }),
+  });
+
+  if (resposta.status === 503) {
+    // API Claude não configurada: mantém o comportamento simulado das versões anteriores
+    const simulada = await registrarExecucao(agente, entrada);
+    return {
+      resultado: simulada.resultado,
+      tipo: "Simulada",
+      aviso:
+        "ANTHROPIC_API_KEY não configurada — execução registrada como simulada. Configure a chave no .env.local para execuções reais.",
+    };
+  }
+
+  const dados = (await resposta.json()) as { resultado?: string; erro?: string };
+
+  if (!resposta.ok || !dados.resultado) {
+    throw new Error(dados.erro ?? "Falha ao executar o agente.");
+  }
+
+  await repoExecucoes.criar({
+    agenteId: agente.id,
+    agente: agente.nome,
+    dataHora: new Date().toISOString(),
+    contexto: entrada,
+    resultado: dados.resultado,
+    tipo: "IA",
+  });
+
+  return { resultado: dados.resultado, tipo: "IA" };
 }

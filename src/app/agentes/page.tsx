@@ -10,13 +10,11 @@ import { LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AREAS_AGENTE, IMPLANTACAO_STATUS } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarAgentes, registrarExecucao } from "@/lib/services/agentes";
-import type { AgenteIA } from "@/lib/types";
+import { listarAgentes } from "@/lib/services/agentes";
 
 export default function AgentesPage() {
   const [area, setArea] = useState("Todos");
   const [status, setStatus] = useState("Todos");
-  const [executado, setExecutado] = useState<string | null>(null);
   const { data: agentes } = useLiveQuery(listarAgentes);
 
   const filtrados = (agentes ?? []).filter(
@@ -24,13 +22,6 @@ export default function AgentesPage() {
       (area === "Todos" || a.area === area) &&
       (status === "Todos" || a.statusImplantacao === status)
   );
-
-  // Registra a execução simulada no histórico do agente
-  async function executar(agente: AgenteIA) {
-    await registrarExecucao(agente);
-    setExecutado(agente.id);
-    setTimeout(() => setExecutado(null), 2000);
-  }
 
   return (
     <div>
@@ -82,23 +73,13 @@ export default function AgentesPage() {
               )}
             </div>
 
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => executar(a)}
-                className={`flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  executado === a.id
-                    ? "bg-emerald-500/15 text-emerald-400"
-                    : "bg-violet-600 text-white hover:bg-violet-500"
-                }`}
-              >
-                <Play size={14} />
-                {executado === a.id ? "Registrado no histórico ✓" : "Executar agente"}
-              </button>
+            <div className="mt-4">
               <Link
                 href={`/agentes/${a.id}`}
-                className="inline-flex items-center justify-center rounded-lg border border-white/10 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-white/20 hover:text-white"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500"
               >
-                Detalhes
+                <Play size={14} />
+                Executar agente
               </Link>
             </div>
           </div>
