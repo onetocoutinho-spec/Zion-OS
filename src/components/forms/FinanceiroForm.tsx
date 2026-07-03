@@ -46,7 +46,8 @@ export function FinanceiroForm({ inicial, clientePadrao }: FinanceiroFormProps) 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
-    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
+    const clienteSelecionado = (clientes ?? []).find((c) => c.empresa === form.cliente);
+    if (!clienteSelecionado) novosErros.cliente = "Selecione o cliente.";
     if (!form.valorMensal || !isFinite(numero(form.valorMensal)) || numero(form.valorMensal) < 0)
       novosErros.valorMensal = "Informe um valor mensal válido.";
     if (!form.dataVencimento) novosErros.dataVencimento = "Informe a data de vencimento.";
@@ -64,6 +65,7 @@ export function FinanceiroForm({ inicial, clientePadrao }: FinanceiroFormProps) 
 
     const dados = {
       ...form,
+      clienteId: clienteSelecionado!.id,
       valorMensal,
       custoOperacional,
       lucroEstimado,

@@ -24,9 +24,16 @@ export function useLiveQuery<T>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const run = useCallback(() => {
     let ativo = true;
-    query().then((result) => {
-      if (ativo) setEstado({ data: result, carregando: false });
-    });
+    query()
+      .then((result) => {
+        if (ativo) setEstado({ data: result, carregando: false });
+      })
+      .catch((erro) => {
+        // Erros do Supabase (rede, RLS, schema ausente) não podem travar a
+        // tela em "carregando" — loga e entrega estado vazio.
+        console.error("[Zion OS] Falha ao consultar dados:", erro);
+        if (ativo) setEstado({ data: null, carregando: false });
+      });
     return () => {
       ativo = false;
     };

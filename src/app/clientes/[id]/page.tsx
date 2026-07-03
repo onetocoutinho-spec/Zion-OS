@@ -31,13 +31,12 @@ export default function ClienteDetalhePage() {
   const router = useRouter();
 
   const { data: cliente, carregando } = useLiveQuery(() => buscarCliente(id), [id]);
-  const empresa = cliente?.empresa ?? "";
-  const { data: produtos } = useLiveQuery(() => listarProdutosDoCliente(empresa), [empresa]);
-  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoCliente(empresa), [empresa]);
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoCliente(empresa), [empresa]);
-  const { data: relatorios } = useLiveQuery(() => listarRelatoriosDoCliente(empresa), [empresa]);
-  const { data: financeiro } = useLiveQuery(() => listarFinanceiroDoCliente(empresa), [empresa]);
-  const { data: onboarding } = useLiveQuery(() => buscarOnboardingDoCliente(empresa), [empresa]);
+  const { data: produtos } = useLiveQuery(() => listarProdutosDoCliente(id), [id]);
+  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoCliente(id), [id]);
+  const { data: tarefas } = useLiveQuery(() => listarTarefasDoCliente(id), [id]);
+  const { data: relatorios } = useLiveQuery(() => listarRelatoriosDoCliente(id), [id]);
+  const { data: financeiro } = useLiveQuery(() => listarFinanceiroDoCliente(id), [id]);
+  const { data: onboarding } = useLiveQuery(() => buscarOnboardingDoCliente(id), [id]);
 
   if (carregando) return null;
   if (!cliente)

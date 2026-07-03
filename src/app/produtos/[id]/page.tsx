@@ -27,9 +27,8 @@ export default function ProdutoDetalhePage() {
   const router = useRouter();
 
   const { data: produto, carregando } = useLiveQuery(() => buscarProduto(id), [id]);
-  const nome = produto?.nome ?? "";
-  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoProduto(nome), [nome]);
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoProduto(nome), [nome]);
+  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoProduto(id), [id]);
+  const { data: tarefas } = useLiveQuery(() => listarTarefasDoProduto(id), [id]);
 
   if (carregando) return null;
   if (!produto)

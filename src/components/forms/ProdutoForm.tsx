@@ -54,7 +54,8 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
-    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
+    const clienteSelecionado = (clientes ?? []).find((c) => c.empresa === form.cliente);
+    if (!clienteSelecionado) novosErros.cliente = "Selecione o cliente.";
     if (!form.nome.trim()) novosErros.nome = "Informe o nome do produto.";
     if (form.custo && (!isFinite(numero(form.custo)) || numero(form.custo) < 0))
       novosErros.custo = "Custo deve ser um número válido.";
@@ -67,6 +68,7 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
 
     const dados = {
       ...form,
+      clienteId: clienteSelecionado!.id,
       nome: form.nome.trim(),
       marca: ouInfoNecessaria(form.marca),
       modelo: ouInfoNecessaria(form.modelo),

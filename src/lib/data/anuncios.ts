@@ -3,7 +3,9 @@ import { Anuncio } from "../types";
 export const anuncios: Anuncio[] = [
   {
     id: "anu-01",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
+    produtoId: "prd-01",
     produto: "Fone Bluetooth TWS Pro",
     marketplace: "Mercado Livre",
     link: "https://produto.mercadolivre.com.br/MLB-fone-tws-pro",
@@ -21,7 +23,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-02",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
+    produtoId: "prd-02",
     produto: "Caixa de Som Portátil 30W",
     marketplace: "Shopee",
     link: "https://shopee.com.br/caixa-som-30w",
@@ -39,7 +43,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-03",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
+    produtoId: "prd-03",
     produto: "Luminária de Mesa Minimalista",
     marketplace: "Amazon",
     link: "https://amazon.com.br/dp/luminaria-minimalista",
@@ -57,7 +63,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-04",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
+    produtoId: "prd-04",
     produto: "Kit 3 Vasos Cerâmica Escandinavos",
     marketplace: "Mercado Livre",
     link: "—",
@@ -75,7 +83,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-05",
+    clienteId: "cli-05",
     cliente: "AutoPeças Silva",
+    produtoId: "prd-08",
     produto: "Farol de Milha Universal LED",
     marketplace: "Mercado Livre",
     link: "https://produto.mercadolivre.com.br/MLB-farol-milha-led",
@@ -93,7 +103,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-06",
+    clienteId: "cli-04",
     cliente: "Kids Mundo Brinquedos",
+    produtoId: "prd-07",
     produto: "Blocos de Montar 250 Peças",
     marketplace: "Shopee",
     link: "—",
@@ -111,7 +123,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-07",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
+    produtoId: "prd-09",
     produto: "Kit Facas Inox Profissional 6 Peças",
     marketplace: "Shopee",
     link: "https://shopee.com.br/kit-facas-inox-6p",
@@ -129,7 +143,9 @@ export const anuncios: Anuncio[] = [
   },
   {
     id: "anu-08",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
+    produtoId: "prd-10",
     produto: "Panela de Ferro Fundido 28cm",
     marketplace: "Amazon",
     link: "https://amazon.com.br/dp/panela-ferro-28",

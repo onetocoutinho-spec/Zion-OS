@@ -3,6 +3,7 @@ import { Produto } from "../types";
 export const produtos: Produto[] = [
   {
     id: "prd-01",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
     nome: "Fone Bluetooth TWS Pro",
     marca: "TechSound",
@@ -25,6 +26,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-02",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
     nome: "Caixa de Som Portátil 30W",
     marca: "TechSound",
@@ -47,6 +49,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-03",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
     nome: "Luminária de Mesa Minimalista",
     marca: "Bella Casa",
@@ -69,6 +72,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-04",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
     nome: "Kit 3 Vasos Cerâmica Escandinavos",
     marca: "Bella Casa",
@@ -91,6 +95,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-05",
+    clienteId: "cli-03",
     cliente: "FitPro Suplementos",
     nome: "Whey Protein Concentrado 900g",
     marca: "FitPro",
@@ -113,6 +118,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-06",
+    clienteId: "cli-03",
     cliente: "FitPro Suplementos",
     nome: "Creatina Monohidratada 300g",
     marca: "FitPro",
@@ -135,6 +141,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-07",
+    clienteId: "cli-04",
     cliente: "Kids Mundo Brinquedos",
     nome: "Blocos de Montar 250 Peças",
     marca: "KidsMundo",
@@ -157,6 +164,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-08",
+    clienteId: "cli-05",
     cliente: "AutoPeças Silva",
     nome: "Farol de Milha Universal LED",
     marca: "SilvaParts",
@@ -179,6 +187,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-09",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     nome: "Kit Facas Inox Profissional 6 Peças",
     marca: "Casa do Chef",
@@ -201,6 +210,7 @@ export const produtos: Produto[] = [
   },
   {
     id: "prd-10",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     nome: "Panela de Ferro Fundido 28cm",
     marca: "Casa do Chef",

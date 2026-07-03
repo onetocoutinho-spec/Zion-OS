@@ -3,6 +3,7 @@ import { Relatorio } from "../types";
 export const relatorios: Relatorio[] = [
   {
     id: "rel-01",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
     periodo: "Junho/2026",
     oQueFoiFeito: "Otimização de 8 anúncios no ML, lançamento de 2 produtos na Shopee, ajuste de campanha de ads",
@@ -16,6 +17,7 @@ export const relatorios: Relatorio[] = [
   },
   {
     id: "rel-02",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
     periodo: "Junho/2026",
     oQueFoiFeito: "SEO da linha de luminárias, preparação do lançamento da linha de kits",
@@ -29,6 +31,7 @@ export const relatorios: Relatorio[] = [
   },
   {
     id: "rel-03",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     periodo: "Junho/2026",
     oQueFoiFeito: "Revisão completa dos anúncios Amazon, reprecificação parcial Shopee",
@@ -42,6 +45,7 @@ export const relatorios: Relatorio[] = [
   },
   {
     id: "rel-04",
+    clienteId: "cli-05",
     cliente: "AutoPeças Silva",
     periodo: "Junho/2026",
     oQueFoiFeito: "Diagnóstico de reputação, correção de 4 anúncios, plano de recuperação",
@@ -55,6 +59,7 @@ export const relatorios: Relatorio[] = [
   },
   {
     id: "rel-05",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     periodo: "Maio/2026",
     oQueFoiFeito: "Onboarding Amazon concluído, 5 produtos publicados",

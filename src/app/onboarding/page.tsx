@@ -48,12 +48,13 @@ export default function OnboardingPage() {
 
   // Clientes que ainda não têm onboarding (para o seletor de criação)
   const semOnboarding = (clientes ?? [])
-    .map((c) => c.empresa)
-    .filter((nome) => !lista.some((o) => o.cliente === nome));
+    .filter((c) => !lista.some((o) => o.clienteId === c.id))
+    .map((c) => c.empresa);
 
   async function iniciarOnboarding() {
-    if (!novoCliente) return;
-    await criarOnboarding(novoCliente);
+    const cliente = (clientes ?? []).find((c) => c.empresa === novoCliente);
+    if (!cliente) return;
+    await criarOnboarding(cliente.id, cliente.empresa);
     setNovoCliente("");
   }
 

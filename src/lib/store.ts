@@ -28,7 +28,8 @@ export type CollectionName =
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
-const VERSAO = "v1.1";
+// v1.2: registros ganharam campos de ID (clienteId, produtoId, …).
+const VERSAO = "v1.2";
 const storageKey = (c: CollectionName) => `zion-os:${VERSAO}:${c}`;
 
 const SEEDS: Record<CollectionName, { id: string }[]> = {
@@ -53,9 +54,16 @@ export function subscribe(fn: Listener): () => void {
   return () => listeners.delete(fn);
 }
 
-function notify() {
+/**
+ * Notifica as telas (via useLiveQuery) de que algum dado mudou.
+ * Exportado para que a camada de repositório dispare o mesmo evento
+ * após escritas no Supabase.
+ */
+export function notificarMudanca() {
   listeners.forEach((fn) => fn());
 }
+
+const notify = notificarMudanca;
 
 // ---- Leitura e escrita ----
 

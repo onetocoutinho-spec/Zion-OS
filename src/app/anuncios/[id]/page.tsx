@@ -42,8 +42,7 @@ export default function AnuncioDetalhePage() {
   const router = useRouter();
 
   const { data: anuncio, carregando } = useLiveQuery(() => buscarAnuncio(id), [id]);
-  const produto = anuncio?.produto ?? "";
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoAnuncio(produto), [produto]);
+  const { data: tarefas } = useLiveQuery(() => listarTarefasDoAnuncio(id), [id]);
 
   if (carregando) return null;
   if (!anuncio)

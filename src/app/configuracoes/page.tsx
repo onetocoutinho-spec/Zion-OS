@@ -6,13 +6,14 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { resetStore } from "@/lib/store";
+import { supabaseConfigurado } from "@/lib/supabase/client";
 
 const INTEGRACOES = [
   { nome: "Mercado Livre", descricao: "Sincronizar anúncios, perguntas e métricas" },
   { nome: "TikTok Shop", descricao: "Sincronizar catálogo e pedidos" },
   { nome: "Shopee", descricao: "Sincronizar anúncios e campanhas" },
   { nome: "Amazon", descricao: "Sincronizar listings e buy box" },
-  { nome: "Supabase", descricao: "Banco de dados real no lugar dos mocks" },
+  { nome: "Autenticação (Supabase Auth)", descricao: "Login da equipe — v1.3" },
   { nome: "API Claude", descricao: "Execução real dos agentes de IA" },
 ];
 
@@ -63,7 +64,7 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-zinc-500">Versão do sistema</dt>
-              <dd className="text-zinc-200">Zion OS v1.1 (MVP operacional)</dd>
+              <dd className="text-zinc-200">Zion OS v1.2 (Supabase)</dd>
             </div>
           </dl>
         </Card>
@@ -85,22 +86,38 @@ export default function ConfiguracoesPage() {
         </Card>
 
         <Card title="Dados do sistema" className="xl:col-span-2">
-          <p className="text-xs text-zinc-500">
-            Os dados desta versão ficam salvos no navegador (localStorage). Tudo que você
-            criar ou editar permanece entre sessões neste computador. Se quiser voltar ao
-            estado inicial de demonstração:
-          </p>
-          <Button
-            variant="danger"
-            className="mt-3"
-            onClick={() => {
-              if (window.confirm("Apagar todas as alterações e restaurar os dados de demonstração?")) {
-                resetStore();
-              }
-            }}
-          >
-            <RotateCcw size={14} /> Restaurar dados de demonstração
-          </Button>
+          {supabaseConfigurado ? (
+            <>
+              <p className="text-xs text-zinc-500">
+                <span className="font-medium text-emerald-400">Conectado ao Supabase.</span>{" "}
+                Os dados são compartilhados por toda a equipe. Para recriar os dados de
+                demonstração, rode o <span className="font-mono">database/seed.sql</span> no
+                SQL Editor do Supabase (instruções no README) — por segurança, o sistema não
+                apaga nem recria dados do banco pela interface.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-zinc-500">
+                <span className="font-medium text-amber-400">Modo demonstração (local).</span>{" "}
+                O Supabase não está configurado, então os dados vivem no navegador
+                (localStorage) e não são compartilhados. Configure o{" "}
+                <span className="font-mono">.env.local</span> para conectar ao banco real.
+                Para voltar ao estado inicial de demonstração:
+              </p>
+              <Button
+                variant="danger"
+                className="mt-3"
+                onClick={() => {
+                  if (window.confirm("Apagar todas as alterações e restaurar os dados de demonstração?")) {
+                    resetStore();
+                  }
+                }}
+              >
+                <RotateCcw size={14} /> Restaurar dados de demonstração
+              </Button>
+            </>
+          )}
         </Card>
 
         <Card title="Integrações" className="xl:col-span-2">

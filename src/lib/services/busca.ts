@@ -1,7 +1,12 @@
 // Busca global simples: varre clientes, produtos, anúncios, tarefas e agentes.
+// Usa os próprios serviços de listagem, então funciona igualmente com
+// Supabase ou com o modo demonstração local.
 
-import { listAll } from "../store";
-import type { AgenteIA, Anuncio, Cliente, Produto, Tarefa } from "../types";
+import { listarClientes } from "./clientes";
+import { listarProdutos } from "./produtos";
+import { listarAnuncios } from "./anuncios";
+import { listarTarefas } from "./tarefas";
+import { listarAgentes } from "./agentes";
 
 export interface ResultadoBusca {
   tipo: "Cliente" | "Produto" | "Anúncio" | "Tarefa" | "Agente";
@@ -18,9 +23,17 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
   const termo = consulta.trim().toLowerCase();
   if (termo.length < 2) return [];
 
+  const [clientes, produtos, anuncios, tarefas, agentes] = await Promise.all([
+    listarClientes(),
+    listarProdutos(),
+    listarAnuncios(),
+    listarTarefas(),
+    listarAgentes(),
+  ]);
+
   const resultados: ResultadoBusca[] = [];
 
-  listAll<Cliente>("clientes").forEach((c) => {
+  clientes.forEach((c) => {
     if (contem(c.empresa, termo) || contem(c.responsavel, termo) || contem(c.segmento, termo)) {
       resultados.push({
         tipo: "Cliente",
@@ -31,7 +44,7 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
     }
   });
 
-  listAll<Produto>("produtos").forEach((p) => {
+  produtos.forEach((p) => {
     if (contem(p.nome, termo) || contem(p.sku, termo) || contem(p.marca, termo) || contem(p.cliente, termo)) {
       resultados.push({
         tipo: "Produto",
@@ -42,7 +55,7 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
     }
   });
 
-  listAll<Anuncio>("anuncios").forEach((a) => {
+  anuncios.forEach((a) => {
     if (contem(a.produto, termo) || contem(a.tituloAtual, termo) || contem(a.tituloOtimizado, termo) || contem(a.cliente, termo)) {
       resultados.push({
         tipo: "Anúncio",
@@ -53,7 +66,7 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
     }
   });
 
-  listAll<Tarefa>("tarefas").forEach((t) => {
+  tarefas.forEach((t) => {
     if (contem(t.tarefa, termo) || contem(t.cliente, termo) || contem(t.responsavel, termo)) {
       resultados.push({
         tipo: "Tarefa",
@@ -64,7 +77,7 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
     }
   });
 
-  listAll<AgenteIA>("agentes").forEach((a) => {
+  agentes.forEach((a) => {
     if (contem(a.nome, termo) || contem(a.area, termo) || contem(a.objetivo, termo)) {
       resultados.push({
         tipo: "Agente",

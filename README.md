@@ -1,29 +1,63 @@
-# Zion OS v1.1
+# Zion OS v1.2
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
 
-## O que mudou na v1.1
+## O que mudou na v1.2
 
-A v1.0 era somente leitura. A v1.1 transforma o Zion OS em uma **ferramenta operacional**:
+A v1.2 migra a persistência do localStorage para o **Supabase (PostgreSQL)**, transformando o Zion OS em um sistema **compartilhado pela equipe**:
 
-- **CRUD funcional** em todos os módulos (criar, editar, excluir), com persistência em localStorage
-- **Páginas de detalhe**: `/clientes/[id]` (visão 360° com produtos, anúncios, tarefas, relatórios e financeiro vinculados), `/produtos/[id]`, `/anuncios/[id]` (com melhorias sugeridas) e `/agentes/[id]` (com histórico de execuções)
-- **Formulários** com validação básica para todas as entidades; campos importantes vazios são salvos como "Informação necessária"
-- **Onboarding operacional**: checklist de 14 itens por cliente, cada item com status Pendente / Em andamento / Concluído / Travado — o status geral reflete automaticamente no cadastro do cliente
-- **Tarefas vinculadas** a cliente, produto, anúncio e agente, com botão "Criar tarefa relacionada" nas páginas de detalhe
-- **Busca global** no header (clientes, produtos, anúncios, tarefas e agentes) com página `/busca`
-- **Estados vazios** com mensagens úteis e botões de criação
-- **Ações rápidas**: concluir tarefa na lista, marcar pagamento como pago/atrasado, marcar cliente em risco/ativo, alterar implantação de agente
+- **Banco real**: schema com 12 tabelas, foreign keys, índices e triggers de `updated_at` (`database/supabase-schema.sql`)
+- **Segurança básica**: RLS ativo em todas as tabelas; acesso apenas para usuários autenticados (`database/supabase-rls.sql`)
+- **Seed SQL** com os dados de demonstração (`database/seed.sql`)
+- **Vínculos por ID**: produtos, anúncios, tarefas, relatórios, financeiro e onboarding agora se relacionam por `cliente_id`/`produto_id`/`anuncio_id`/`agente_id` (as telas continuam exibindo nomes, resolvidos por join)
+- **Modo demonstração preservado**: sem `.env.local`, o sistema roda 100% local (localStorage), como na v1.1 — útil para testar sem banco
+- **Nenhuma tela foi reescrita**: a troca aconteceu na camada de serviços, como planejado na arquitetura da v1.1
 
 ## Stack
 
-- [Next.js](https://nextjs.org/) (App Router) + TypeScript
-- Tailwind CSS v4 + lucide-react
-- Persistência local: **localStorage**, com seed a partir de `src/lib/data/`
+- Next.js (App Router) + TypeScript + Tailwind CSS v4
+- Supabase (PostgreSQL + supabase-js)
+- lucide-react
 
-## Como rodar
+## Configuração do Supabase (passo a passo)
 
-Pré-requisito: Node.js 18+.
+### 1. Criar o projeto
+
+1. Acesse [supabase.com](https://supabase.com) e crie uma conta/organização.
+2. **New project** → escolha nome (ex.: `zion-os`), senha do banco e região (São Paulo, se disponível).
+3. Aguarde o provisionamento (~2 min).
+
+### 2. Rodar o schema
+
+1. No dashboard do projeto, abra **SQL Editor**.
+2. Cole o conteúdo de `database/supabase-schema.sql` e clique **Run**.
+
+### 3. Rodar o RLS
+
+1. Ainda no SQL Editor, cole `database/supabase-rls.sql` e **Run**.
+2. ⚠️ **Atenção**: as políticas padrão só liberam usuários **autenticados**. Como a tela de login chega na v1.3, para testar agora você tem duas opções:
+   - descomentar o bloco `dev_anon_temporario` no final do arquivo (acesso anônimo **temporário** — remova antes de colocar dados reais), ou
+   - aguardar a v1.3 com autenticação.
+
+### 4. Rodar o seed (dados de demonstração)
+
+1. No SQL Editor, cole `database/seed.sql` e **Run** (uma única vez).
+
+### 5. Configurar variáveis de ambiente
+
+1. No dashboard: **Project Settings → API**.
+2. Copie `.env.example` para `.env.local` e preencha:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=chave-anon-public
+```
+
+3. Reinicie o `npm run dev` (as variáveis são lidas no start).
+
+> 🔴 **Segurança**: use somente a chave **anon public** no frontend. A chave **service_role ignora o RLS e nunca pode ir para o navegador**, para o código do frontend nem para variáveis `NEXT_PUBLIC_*`. O `.env.local` está no `.gitignore` — não commite chaves.
+
+## Como rodar o projeto
 
 ```bash
 cd zion-os
@@ -31,65 +65,56 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
+- **Com** `.env.local` configurado → dados no Supabase, compartilhados pela equipe (sidebar mostra "Conectado ao Supabase").
+- **Sem** `.env.local` → modo demonstração local, com botão "Restaurar dados de demonstração" em Configurações.
+
 Build de produção: `npm run build && npm start`.
 
-## Como usar o sistema
-
-- **Criar cliente** — botão "Novo cliente" em `/clientes` (ou pelo estado vazio da tabela). Preencha ao menos o nome da empresa; o restante pode ficar como "Informação necessária". Clicar num cliente abre a visão 360° com tudo que está vinculado a ele.
-- **Criar produto** — "Novo produto" em `/produtos`, ou o botão "Produto" dentro da página do cliente (já vem com o cliente selecionado).
-- **Criar tarefa** — "Nova tarefa" em `/tarefas`, ou "Criar tarefa relacionada" dentro de cliente/produto/anúncio (chega pré-vinculada). Tarefas podem apontar para produto, anúncio e agente. O ✓ na lista conclui a tarefa direto.
-- **Onboarding** — em `/onboarding`, cada cliente tem um checklist de 14 itens; altere o status de cada item direto no card. Quando tudo estiver concluído, o cliente vira "Ativo" automaticamente; enquanto estiver em andamento, fica como "Onboarding". Use "Iniciar onboarding de…" para abrir o fluxo de um cliente novo.
-- **Agentes IA** — "Executar agente" registra uma execução simulada no histórico do agente (visível em `/agentes/[id]`).
-- **Financeiro** — registre mensalidades e use os botões de ação para marcar pago/atrasado.
-- **Busca** — digite no campo do header e pressione Enter.
-- **Restaurar demonstração** — em `/configuracoes`, o botão "Restaurar dados de demonstração" volta tudo ao estado inicial.
-
-## Arquitetura de dados (pronta para Supabase)
+## Como a migração foi estruturada
 
 ```
-Telas (src/app)  →  Serviços (src/lib/services)  →  Store (src/lib/store.ts → localStorage)
-                        ↑ funções assíncronas          ↑ seed: src/lib/data/*.ts
+Telas (src/app)
+   ↓  (inalteradas — só chamam serviços)
+Serviços (src/lib/services/*)          ← assinaturas mantidas
+   ↓
+Repositório (src/lib/repositorio.ts)   ← decide a fonte de dados
+   ├── Supabase (src/lib/supabase/)    quando .env.local configurado
+   │     ├── client.ts                 cliente com anon key
+   │     ├── database.types.ts         tipos das linhas (snake_case)
+   │     └── mappers.ts                linha do banco ↔ tipo do app
+   └── localStorage (src/lib/store.ts) fallback de demonstração
 ```
 
-- As telas **nunca** acessam o store diretamente — só chamam os serviços (`listarClientes()`, `criarTarefa()`, …), todos assíncronos.
-- Para migrar para Supabase: crie as tabelas espelhando `src/lib/types.ts` e reimplemente o corpo das funções em `src/lib/services/*` com queries reais. **Nenhuma tela precisa mudar.** O arquivo `store.ts` é descartado.
-- O hook `useLiveQuery` (`src/lib/hooks.ts`) re-renderiza as telas quando os dados mudam; pode ser substituído por React Query/realtime na migração.
-- Observação: os vínculos entre entidades usam o **nome** do cliente/produto (herança dos mocks). Na migração para Supabase, troque por chaves estrangeiras por id.
+- Cada serviço cria um repositório apontando para a **tabela** (com o `select` de joins, ex.: `*, clientes(empresa)`) e a **coleção local** equivalente.
+- Inserts/updates usam `.select().single()` para devolver o registro atualizado com os nomes de exibição já resolvidos.
+- Após cada escrita, `notificarMudanca()` faz o `useLiveQuery` re-executar as consultas das telas abertas — a UI atualiza sem reload (sem Realtime nesta versão; a arquitetura aceita `supabase.channel()` futuramente).
+- O onboarding é o único serviço com lógica própria: o checklist vive em `onboarding_items` (uma linha por item, upsert em `onboarding_id + chave`) e o status geral é refletido no cliente.
+- Tipos do banco são manuais (`database.types.ts`). Futuramente podem ser gerados: `npx supabase gen types typescript --project-id SEU_ID > src/lib/supabase/database.types.ts` (exigirá adaptar os nomes).
 
-## Estrutura de pastas
+## Módulos
 
-```
-src/
-├── app/                       # Rotas — lista, detalhe ([id]), criação (novo) e edição ([id]/editar)
-│   ├── busca/                 # Busca global
-│   └── <módulo>/…
-├── components/
-│   ├── layout/                # AppShell (sidebar + header com busca)
-│   ├── forms/                 # Um formulário por entidade (criar + editar)
-│   └── ui/                    # Badge, Button, Card, EmptyState, FilterSelect,
-│                              # form (Field/Input/Select), PageHeader, StatCard, Table
-└── lib/
-    ├── types.ts               # Tipos de todos os módulos
-    ├── constantes.ts          # Listas de status/áreas/equipe válidas
-    ├── status.ts              # Mapa status → cor dos badges
-    ├── onboarding.ts          # Checklist de onboarding + status geral derivado
-    ├── format.ts              # Moeda, data, atraso
-    ├── store.ts               # Persistência localStorage (descartável na migração)
-    ├── hooks.ts               # useLiveQuery
-    ├── services/              # Camada de serviço — a API interna do sistema
-    └── data/                  # Seeds de demonstração
-```
+| Rota | Módulo |
+| --- | --- |
+| `/` | Dashboard com indicadores em tempo real |
+| `/clientes` (+ detalhe, novo, editar) | Carteira de clientes — visão 360° |
+| `/onboarding` | Checklist operacional de 14 itens por cliente |
+| `/produtos` (+ detalhe, novo, editar) | Base de produtos |
+| `/anuncios` (+ detalhe, novo, editar) | Esteira de otimização com melhorias sugeridas |
+| `/agentes` (+ detalhe, novo, editar) | Agentes IA com histórico de execuções |
+| `/tarefas` (+ nova, editar) | Tarefas vinculadas a cliente/produto/anúncio/agente |
+| `/relatorios`, `/financeiro`, `/configuracoes`, `/busca` | Demais módulos |
 
 ## Limitações conhecidas
 
-- Dados vivem no navegador: cada máquina/navegador tem seu próprio estado, sem sincronização entre pessoas.
-- Execução de agentes é simulada (registra histórico, não chama IA real).
-- Sem autenticação e sem integrações externas (por decisão de escopo da v1.1).
+- **Sem login ainda** — o RLS exige usuário autenticado; para testar antes da v1.3 é preciso o bloco temporário de acesso anônimo (documentado no `supabase-rls.sql`).
+- Execução de agentes continua simulada (registra histórico, não chama IA).
+- Sem Realtime: outra pessoa editando só aparece ao recarregar/navegar (a sua própria edição atualiza na hora).
+- Tabelas `reunioes` e `pendencias` já existem no banco, mas ainda não têm telas (v1.3).
 
-## Próximos passos recomendados (v1.2)
+## O que falta para a v1.3 (recomendado)
 
-1. **Supabase**: tabelas + reimplementação dos serviços (a arquitetura já está pronta)
-2. **Autenticação** da equipe (Supabase Auth)
-3. **Execução real dos agentes** via API Claude, usando o prompt de cada agente
-4. Vínculos por **id** em vez de nome (junto com a migração)
-5. Integrações com os marketplaces (começando por Mercado Livre)
+1. **Autenticação** (Supabase Auth): tela de login, sessão, e remoção do bloco anônimo do RLS
+2. **Realtime** nas listas principais (`supabase.channel`) para colaboração ao vivo
+3. Módulos de **reuniões** e **pendências** (tabelas já criadas)
+4. **Execução real dos agentes** via API Claude
+5. Permissões por função/cliente nas políticas RLS

@@ -40,7 +40,8 @@ export function RelatorioForm({ inicial, clientePadrao }: RelatorioFormProps) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
-    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
+    const clienteSelecionado = (clientes ?? []).find((c) => c.empresa === form.cliente);
+    if (!clienteSelecionado) novosErros.cliente = "Selecione o cliente.";
     if (!form.periodo.trim()) novosErros.periodo = "Informe o período (ex.: Julho/2026).";
     if (!isFinite(Number(form.produtosTrabalhados)) || Number(form.produtosTrabalhados) < 0)
       novosErros.produtosTrabalhados = "Informe um número válido.";
@@ -51,6 +52,7 @@ export function RelatorioForm({ inicial, clientePadrao }: RelatorioFormProps) {
 
     const dados = {
       ...form,
+      clienteId: clienteSelecionado!.id,
       periodo: form.periodo.trim(),
       oQueFoiFeito: ouInfoNecessaria(form.oQueFoiFeito),
       produtosTrabalhados: Number(form.produtosTrabalhados),

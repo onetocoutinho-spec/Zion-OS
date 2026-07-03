@@ -1,45 +1,54 @@
-import { createItem, getById, listAll, removeItem, updateItem } from "../store";
+import { criarRepositorio } from "../repositorio";
+import { financeiroParaApp, financeiroParaBanco } from "../supabase/mappers";
+import type { FinanceiroRow } from "../supabase/database.types";
 import type { RegistroFinanceiro } from "../types";
 
+const repo = criarRepositorio<RegistroFinanceiro, FinanceiroRow>({
+  tabela: "financeiro",
+  colecao: "financeiro",
+  prefixoIdLocal: "fin",
+  selecao: "*, clientes(empresa)",
+  paraApp: financeiroParaApp,
+  paraBanco: financeiroParaBanco,
+});
+
 export async function listarFinanceiro(): Promise<RegistroFinanceiro[]> {
-  return listAll<RegistroFinanceiro>("financeiro");
+  return repo.listar();
 }
 
 export async function buscarRegistroFinanceiro(
   id: string
 ): Promise<RegistroFinanceiro | null> {
-  return getById<RegistroFinanceiro>("financeiro", id) ?? null;
+  return repo.buscar(id);
 }
 
 export async function listarFinanceiroDoCliente(
-  cliente: string
+  clienteId: string
 ): Promise<RegistroFinanceiro[]> {
-  return listAll<RegistroFinanceiro>("financeiro").filter((f) => f.cliente === cliente);
+  return repo.listar({ coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" });
 }
 
 export async function criarRegistroFinanceiro(
   dados: Omit<RegistroFinanceiro, "id">
 ): Promise<RegistroFinanceiro> {
-  return createItem<RegistroFinanceiro>("financeiro", dados, "fin");
+  return repo.criar(dados);
 }
 
 export async function atualizarRegistroFinanceiro(
   id: string,
   dados: Partial<RegistroFinanceiro>
 ): Promise<RegistroFinanceiro | null> {
-  return updateItem<RegistroFinanceiro>("financeiro", id, dados);
+  return repo.atualizar(id, dados);
 }
 
 export async function marcarComoPago(id: string): Promise<RegistroFinanceiro | null> {
-  return updateItem<RegistroFinanceiro>("financeiro", id, { statusPagamento: "Pago" });
+  return repo.atualizar(id, { statusPagamento: "Pago" });
 }
 
 export async function marcarComoAtrasado(id: string): Promise<RegistroFinanceiro | null> {
-  return updateItem<RegistroFinanceiro>("financeiro", id, {
-    statusPagamento: "Atrasado",
-  });
+  return repo.atualizar(id, { statusPagamento: "Atrasado" });
 }
 
 export async function excluirRegistroFinanceiro(id: string): Promise<void> {
-  removeItem("financeiro", id);
+  return repo.excluir(id);
 }

@@ -62,19 +62,28 @@ export function TarefaForm({
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
-    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
+    const clienteSelecionado = (clientes ?? []).find((c) => c.empresa === form.cliente);
+    if (!clienteSelecionado) novosErros.cliente = "Selecione o cliente.";
     if (!form.tarefa.trim()) novosErros.tarefa = "Descreva a tarefa.";
     if (!form.prazo) novosErros.prazo = "Informe o prazo.";
     setErros(novosErros);
     if (Object.keys(novosErros).length > 0) return;
 
+    const produtoSelecionado = produtosDoCliente.find((p) => p.nome === form.produto);
+    const anuncioSelecionado = anunciosDoCliente.find((a) => a.produto === form.anuncio);
+    const agenteSelecionado = (agentes ?? []).find((a) => a.nome === form.agenteRelacionado);
+
     const dados = {
       ...form,
+      clienteId: clienteSelecionado!.id,
       tarefa: form.tarefa.trim(),
-      produto: form.produto || null,
-      anuncio: form.anuncio || null,
+      produtoId: produtoSelecionado?.id ?? null,
+      produto: produtoSelecionado?.nome ?? null,
+      anuncioId: anuncioSelecionado?.id ?? null,
+      anuncio: anuncioSelecionado?.produto ?? null,
+      agenteId: agenteSelecionado?.id ?? null,
+      agenteRelacionado: agenteSelecionado?.nome ?? null,
       responsavel: ouInfoNecessaria(form.responsavel),
-      agenteRelacionado: form.agenteRelacionado || null,
       proximaAcao: ouInfoNecessaria(form.proximaAcao),
     } as Omit<Tarefa, "id">;
 

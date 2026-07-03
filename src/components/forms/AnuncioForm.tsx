@@ -53,13 +53,17 @@ export function AnuncioForm({ inicial, clientePadrao, produtoPadrao }: AnuncioFo
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
-    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
-    if (!form.produto) novosErros.produto = "Selecione o produto.";
+    const clienteSelecionado = (clientes ?? []).find((c) => c.empresa === form.cliente);
+    const produtoSelecionado = produtosDoCliente.find((p) => p.nome === form.produto);
+    if (!clienteSelecionado) novosErros.cliente = "Selecione o cliente.";
+    if (!produtoSelecionado) novosErros.produto = "Selecione o produto.";
     setErros(novosErros);
     if (Object.keys(novosErros).length > 0) return;
 
     const dados = {
       ...form,
+      clienteId: clienteSelecionado!.id,
+      produtoId: produtoSelecionado!.id,
       link: form.link.trim() || "—",
       tituloAtual: form.tituloAtual.trim() || "—",
       tituloOtimizado: ouInfoNecessaria(form.tituloOtimizado),

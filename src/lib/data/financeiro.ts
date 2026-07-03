@@ -3,6 +3,7 @@ import { RegistroFinanceiro } from "../types";
 export const financeiro: RegistroFinanceiro[] = [
   {
     id: "fin-01",
+    clienteId: "cli-01",
     cliente: "TechSound Brasil",
     plano: "Escala",
     valorMensal: 3500,
@@ -15,6 +16,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-02",
+    clienteId: "cli-02",
     cliente: "Bella Casa Decor",
     plano: "Escala",
     valorMensal: 3500,
@@ -27,6 +29,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-03",
+    clienteId: "cli-03",
     cliente: "FitPro Suplementos",
     plano: "Início",
     valorMensal: 1800,
@@ -39,6 +42,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-04",
+    clienteId: "cli-04",
     cliente: "Kids Mundo Brinquedos",
     plano: "Início",
     valorMensal: 1800,
@@ -51,6 +55,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-05",
+    clienteId: "cli-05",
     cliente: "AutoPeças Silva",
     plano: "Organiza",
     valorMensal: 2500,
@@ -63,6 +68,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-06",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     plano: "Escala",
     valorMensal: 3500,
@@ -75,6 +81,7 @@ export const financeiro: RegistroFinanceiro[] = [
   },
   {
     id: "fin-07",
+    clienteId: "cli-09",
     cliente: "GlowUp Cosméticos",
     plano: "Início",
     valorMensal: 0,

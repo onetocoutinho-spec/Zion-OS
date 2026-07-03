@@ -3,6 +3,7 @@ import { Onboarding } from "../types";
 export const onboardings: Onboarding[] = [
   {
     id: "onb-01",
+    clienteId: "cli-03",
     cliente: "FitPro Suplementos",
     itens: {
       contratoFechado: "Concluído",
@@ -28,6 +29,7 @@ export const onboardings: Onboarding[] = [
   },
   {
     id: "onb-02",
+    clienteId: "cli-04",
     cliente: "Kids Mundo Brinquedos",
     itens: {
       contratoFechado: "Concluído",
@@ -53,6 +55,7 @@ export const onboardings: Onboarding[] = [
   },
   {
     id: "onb-03",
+    clienteId: "cli-08",
     cliente: "Casa do Chef",
     itens: {
       contratoFechado: "Concluído",
@@ -75,6 +78,7 @@ export const onboardings: Onboarding[] = [
   },
   {
     id: "onb-04",
+    clienteId: "cli-06",
     cliente: "Moda Urbana SP",
     itens: {
       contratoFechado: "Pendente",

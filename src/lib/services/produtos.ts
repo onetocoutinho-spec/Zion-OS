@@ -1,29 +1,40 @@
-import { createItem, getById, listAll, removeItem, updateItem } from "../store";
+import { criarRepositorio } from "../repositorio";
+import { produtoParaApp, produtoParaBanco } from "../supabase/mappers";
+import type { ProdutoRow } from "../supabase/database.types";
 import type { Produto } from "../types";
 
+const repo = criarRepositorio<Produto, ProdutoRow>({
+  tabela: "produtos",
+  colecao: "produtos",
+  prefixoIdLocal: "prd",
+  selecao: "*, clientes(empresa)",
+  paraApp: produtoParaApp,
+  paraBanco: produtoParaBanco,
+});
+
 export async function listarProdutos(): Promise<Produto[]> {
-  return listAll<Produto>("produtos");
+  return repo.listar();
 }
 
 export async function buscarProduto(id: string): Promise<Produto | null> {
-  return getById<Produto>("produtos", id) ?? null;
+  return repo.buscar(id);
 }
 
-export async function listarProdutosDoCliente(cliente: string): Promise<Produto[]> {
-  return listAll<Produto>("produtos").filter((p) => p.cliente === cliente);
+export async function listarProdutosDoCliente(clienteId: string): Promise<Produto[]> {
+  return repo.listar({ coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" });
 }
 
 export async function criarProduto(dados: Omit<Produto, "id">): Promise<Produto> {
-  return createItem<Produto>("produtos", dados, "prd");
+  return repo.criar(dados);
 }
 
 export async function atualizarProduto(
   id: string,
   dados: Partial<Produto>
 ): Promise<Produto | null> {
-  return updateItem<Produto>("produtos", id, dados);
+  return repo.atualizar(id, dados);
 }
 
 export async function excluirProduto(id: string): Promise<void> {
-  removeItem("produtos", id);
+  return repo.excluir(id);
 }

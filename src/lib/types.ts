@@ -59,6 +59,8 @@ export type OnboardingItemKey =
 
 export interface Onboarding {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
   itens: Record<OnboardingItemKey, ChecklistStatus>;
   pendenciasCliente: string[];
@@ -69,6 +71,8 @@ export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Co
 
 export interface Produto {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
   nome: string;
   marca: string;
@@ -92,7 +96,11 @@ export interface Produto {
 
 export interface Anuncio {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
+  produtoId: string;
+  /** Nome de exibição (join com produtos). */
   produto: string;
   marketplace: Marketplace;
   link: string;
@@ -148,11 +156,16 @@ export type TarefaStatus =
 
 export interface Tarefa {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
-  /** Produto vinculado (nome), quando fizer sentido. */
+  produtoId: string | null;
+  /** Produto vinculado (nome de exibição), quando fizer sentido. */
   produto: string | null;
-  /** Anúncio vinculado (produto do anúncio), quando fizer sentido. */
+  anuncioId: string | null;
+  /** Anúncio vinculado (nome do produto do anúncio), quando fizer sentido. */
   anuncio: string | null;
+  agenteId: string | null;
   area: string;
   tarefa: string;
   responsavel: string;
@@ -168,6 +181,8 @@ export type RelatorioStatus = "Pendente" | "Em elaboração" | "Enviado" | "Apro
 
 export interface Relatorio {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
   periodo: string;
   oQueFoiFeito: string;
@@ -194,6 +209,8 @@ export interface ExecucaoAgente {
 
 export interface RegistroFinanceiro {
   id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
   cliente: string;
   plano: string;
   valorMensal: number;

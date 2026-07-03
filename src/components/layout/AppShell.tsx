@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
+import { supabaseConfigurado } from "@/lib/supabase/client";
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -46,8 +47,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="border-t border-white/5 p-4">
         <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3">
-          <p className="text-xs font-medium text-zinc-300">Zion OS v1.0</p>
-          <p className="mt-0.5 text-[11px] text-zinc-500">MVP interno — dados mockados</p>
+          <p className="text-xs font-medium text-zinc-300">Zion OS v1.2</p>
+          <p className="mt-0.5 text-[11px] text-zinc-500">
+            {supabaseConfigurado ? "Conectado ao Supabase" : "Modo demonstração (local)"}
+          </p>
         </div>
       </div>
     </div>
