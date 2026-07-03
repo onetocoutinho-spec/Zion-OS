@@ -8,9 +8,11 @@ import type {
   Anuncio,
   Cliente,
   ExecucaoAgente,
+  Pendencia,
   Produto,
   RegistroFinanceiro,
   Relatorio,
+  Reuniao,
   Tarefa,
 } from "../types";
 import type {
@@ -19,8 +21,10 @@ import type {
   ClienteRow,
   ExecucaoRow,
   FinanceiroRow,
+  PendenciaRow,
   ProdutoRow,
   RelatorioRow,
+  ReuniaoRow,
   TarefaRow,
 } from "./database.types";
 
@@ -317,5 +321,52 @@ export function execucaoParaBanco(d: Partial<ExecucaoAgente>): Record<string, un
   if (d.dataHora !== undefined) r.data_hora = d.dataHora;
   if (d.contexto !== undefined) r.contexto = d.contexto;
   if (d.resultado !== undefined) r.resultado = d.resultado;
+  return r;
+}
+
+// ---- Reuniões ----
+
+export function reuniaoParaApp(row: ReuniaoRow): Reuniao {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    titulo: row.titulo,
+    dataHora: row.data_hora,
+    pauta: row.pauta ?? "",
+    status: row.status as Reuniao["status"],
+  };
+}
+
+export function reuniaoParaBanco(d: Partial<Reuniao>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.titulo !== undefined) r.titulo = d.titulo;
+  if (d.dataHora !== undefined) r.data_hora = d.dataHora || null;
+  if (d.pauta !== undefined) r.pauta = d.pauta;
+  if (d.status !== undefined) r.status = d.status;
+  return r;
+}
+
+// ---- Pendências ----
+
+export function pendenciaParaApp(row: PendenciaRow): Pendencia {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    tarefaId: row.tarefa_id,
+    tarefa: row.tarefas?.tarefa ?? null,
+    descricao: row.descricao,
+    resolvida: row.resolvida,
+  };
+}
+
+export function pendenciaParaBanco(d: Partial<Pendencia>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.tarefaId !== undefined) r.tarefa_id = d.tarefaId;
+  if (d.descricao !== undefined) r.descricao = d.descricao;
+  if (d.resolvida !== undefined) r.resolvida = d.resolvida;
   return r;
 }

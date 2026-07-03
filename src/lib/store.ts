@@ -14,6 +14,8 @@ import { tarefas as seedTarefas } from "./data/tarefas";
 import { relatorios as seedRelatorios } from "./data/relatorios";
 import { financeiro as seedFinanceiro } from "./data/financeiro";
 import { execucoes as seedExecucoes } from "./data/execucoes";
+import { reunioes as seedReunioes } from "./data/reunioes";
+import { pendencias as seedPendencias } from "./data/pendencias";
 
 export type CollectionName =
   | "clientes"
@@ -24,7 +26,9 @@ export type CollectionName =
   | "tarefas"
   | "relatorios"
   | "financeiro"
-  | "execucoes";
+  | "execucoes"
+  | "reunioes"
+  | "pendencias";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -42,6 +46,8 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   relatorios: seedRelatorios,
   financeiro: seedFinanceiro,
   execucoes: seedExecucoes,
+  reunioes: seedReunioes,
+  pendencias: seedPendencias,
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

@@ -101,3 +101,5 @@ export const PLANOS = ["Início", "Organiza", "Escala", "—"] as const;
 export const IMPLANTACAO_STATUS = ["Ativo", "Em teste", "Planejado"] as const;
 
 export const FREQUENCIAS_USO = ["Diário", "Semanal", "Quinzenal", "Sob demanda"] as const;
+
+export const REUNIAO_STATUS = ["Agendada", "Realizada", "Cancelada"] as const;

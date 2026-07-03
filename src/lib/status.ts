@@ -43,6 +43,13 @@ const TONE_MAP: Record<string, Tone> = {
   // Financeiro
   Pago: "green",
   Atrasado: "red",
+  // Reuniões
+  Agendada: "cyan",
+  Realizada: "green",
+  Cancelada: "gray",
+  // Pendências
+  Aberta: "yellow",
+  Resolvida: "green",
   // Prioridade
   Baixa: "gray",
   Média: "blue",

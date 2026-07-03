@@ -56,13 +56,13 @@ create policy "equipe_autenticada" on public.pendencias
 -- ============================================================
 -- ⚠️ BLOCO TEMPORÁRIO DE DESENVOLVIMENTO (OPCIONAL) ⚠️
 --
--- O Zion OS v1.2 ainda NÃO tem tela de login (chega na v1.3).
--- Com as políticas acima, o app conectado só via anon key não
--- enxerga dados até existir autenticação.
+-- Desde a v1.3 o Zion OS TEM tela de login (Supabase Auth).
+-- O fluxo recomendado é: criar os usuários da equipe no
+-- dashboard (Authentication → Users → Add user) e entrar pelo
+-- login — sem precisar deste bloco.
 --
--- Se você quiser testar o banco AGORA, descomente o bloco
--- abaixo para liberar acesso anônimo TEMPORARIAMENTE.
--- Remova essas políticas assim que o login existir:
+-- Use as políticas anônimas abaixo SOMENTE se quiser testar o
+-- banco sem criar usuários. Remova depois com:
 --   drop policy "dev_anon_temporario" on public.<tabela>;
 --
 -- NÃO use isso em produção com dados reais de clientes.

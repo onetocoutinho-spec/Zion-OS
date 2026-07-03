@@ -151,3 +151,23 @@ export interface ExecucaoRow {
   resultado: string | null;
   agentes?: { nome: string } | null;
 }
+
+export interface ReuniaoRow {
+  id: string;
+  cliente_id: string;
+  titulo: string;
+  data_hora: string | null;
+  pauta: string | null;
+  status: string;
+  clientes?: { empresa: string } | null;
+}
+
+export interface PendenciaRow {
+  id: string;
+  cliente_id: string;
+  tarefa_id: string | null;
+  descricao: string;
+  resolvida: boolean;
+  clientes?: { empresa: string } | null;
+  tarefas?: { tarefa: string } | null;
+}

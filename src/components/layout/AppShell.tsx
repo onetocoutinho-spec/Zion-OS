@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Search, Zap } from "lucide-react";
+import { LogOut, Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
-import { supabaseConfigurado } from "@/lib/supabase/client";
+import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -47,7 +47,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="border-t border-white/5 p-4">
         <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3">
-          <p className="text-xs font-medium text-zinc-300">Zion OS v1.2</p>
+          <p className="text-xs font-medium text-zinc-300">Zion OS v1.3</p>
           <p className="mt-0.5 text-[11px] text-zinc-500">
             {supabaseConfigurado ? "Conectado ao Supabase" : "Modo demonstração (local)"}
           </p>
@@ -60,8 +60,21 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [busca, setBusca] = useState("");
+  const [emailUsuario, setEmailUsuario] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    if (!supabaseConfigurado) return;
+    getSupabase()
+      .auth.getUser()
+      .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
+  }, []);
+
+  async function sair() {
+    await getSupabase().auth.signOut();
+    // O AuthGate detecta o fim da sessão e volta para a tela de login.
+  }
 
   function onBuscar(e: React.FormEvent) {
     e.preventDefault();
@@ -118,9 +131,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="w-40 bg-transparent text-xs text-zinc-200 outline-none placeholder:text-zinc-500 lg:w-56"
               />
             </form>
+            {emailUsuario && (
+              <span className="hidden md:block max-w-44 truncate text-xs text-zinc-500">
+                {emailUsuario}
+              </span>
+            )}
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xs font-semibold text-white">
-              ZC
+              {emailUsuario ? emailUsuario[0].toUpperCase() : "ZC"}
             </div>
+            {supabaseConfigurado && (
+              <button
+                onClick={sair}
+                title="Sair do Zion OS"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/5 hover:text-red-400"
+              >
+                <LogOut size={16} />
+              </button>
+            )}
           </div>
         </header>
 

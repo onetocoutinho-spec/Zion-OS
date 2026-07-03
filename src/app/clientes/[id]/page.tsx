@@ -15,7 +15,8 @@ import { listarTarefasDoCliente } from "@/lib/services/tarefas";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
 import { listarFinanceiroDoCliente } from "@/lib/services/financeiro";
 import { buscarOnboardingDoCliente } from "@/lib/services/onboardings";
-import { formatBRL, formatDate } from "@/lib/format";
+import { listarReunioesDoCliente } from "@/lib/services/reunioes";
+import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -37,6 +38,7 @@ export default function ClienteDetalhePage() {
   const { data: relatorios } = useLiveQuery(() => listarRelatoriosDoCliente(id), [id]);
   const { data: financeiro } = useLiveQuery(() => listarFinanceiroDoCliente(id), [id]);
   const { data: onboarding } = useLiveQuery(() => buscarOnboardingDoCliente(id), [id]);
+  const { data: reunioes } = useLiveQuery(() => listarReunioesDoCliente(id), [id]);
 
   if (carregando) return null;
   if (!cliente)
@@ -224,6 +226,35 @@ export default function ClienteDetalhePage() {
             </ul>
           ) : (
             <EmptyState compacto mensagem="Nenhum relatório criado ainda." acaoLabel="Criar relatório" acaoHref={`/relatorios/novo${qs}`} />
+          )}
+        </Card>
+
+        {/* Reuniões */}
+        <Card
+          title={`Reuniões (${reunioes?.length ?? 0})`}
+          action={
+            <Link
+              href={`/reunioes/nova${qs}`}
+              className="text-xs text-violet-400 hover:text-violet-300"
+            >
+              + Agendar reunião
+            </Link>
+          }
+        >
+          {reunioes && reunioes.length > 0 ? (
+            <ul className="divide-y divide-white/[0.04]">
+              {reunioes.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <Link href={`/reunioes/${r.id}/editar`} className="min-w-0">
+                    <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{r.titulo}</p>
+                    <p className="text-xs text-zinc-500">{formatDateTime(r.dataHora)}</p>
+                  </Link>
+                  <Badge>{r.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState compacto mensagem="Nenhuma reunião com este cliente." acaoLabel="Agendar reunião" acaoHref={`/reunioes/nova${qs}`} />
           )}
         </Card>
 

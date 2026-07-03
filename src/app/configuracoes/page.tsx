@@ -13,7 +13,6 @@ const INTEGRACOES = [
   { nome: "TikTok Shop", descricao: "Sincronizar catálogo e pedidos" },
   { nome: "Shopee", descricao: "Sincronizar anúncios e campanhas" },
   { nome: "Amazon", descricao: "Sincronizar listings e buy box" },
-  { nome: "Autenticação (Supabase Auth)", descricao: "Login da equipe — v1.3" },
   { nome: "API Claude", descricao: "Execução real dos agentes de IA" },
 ];
 
@@ -64,7 +63,7 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-zinc-500">Versão do sistema</dt>
-              <dd className="text-zinc-200">Zion OS v1.2 (Supabase)</dd>
+              <dd className="text-zinc-200">Zion OS v1.3 (Auth + Realtime)</dd>
             </div>
           </dl>
         </Card>

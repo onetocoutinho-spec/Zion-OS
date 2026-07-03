@@ -197,6 +197,31 @@ export interface Relatorio {
 
 export type PagamentoStatus = "Pago" | "Pendente" | "Atrasado";
 
+export type ReuniaoStatus = "Agendada" | "Realizada" | "Cancelada";
+
+export interface Reuniao {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  titulo: string;
+  dataHora: string | null; // ISO datetime
+  pauta: string;
+  status: ReuniaoStatus;
+}
+
+export interface Pendencia {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  tarefaId: string | null;
+  /** Descrição da tarefa vinculada (join com tarefas), se houver. */
+  tarefa: string | null;
+  descricao: string;
+  resolvida: boolean;
+}
+
 /** Registro do histórico simulado de execuções de agentes. */
 export interface ExecucaoAgente {
   id: string;
