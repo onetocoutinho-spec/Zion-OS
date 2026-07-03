@@ -1,6 +1,13 @@
-# Zion OS v1.4
+# Zion OS v1.5
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
+
+## O que mudou na v1.5
+
+- **Agentes com contexto do sistema**: o painel de execução (`/agentes/[id]`) ganhou seletores de **Cliente / Produto / Anúncio**. Ao selecionar, o Zion OS monta automaticamente um bloco com os dados já cadastrados (custo, preço, títulos, status da esteira, observações da equipe…) e envia junto para o Claude — com preview do que será enviado.
+- **Atalho "✦ Executar agente IA…"** nas páginas de detalhe de cliente, produto e anúncio: escolha o agente e chegue ao painel com o contexto pré-selecionado. Ex.: da página de um anúncio, execute o Zion SEO ML com título, categoria e esteira já preenchidos.
+- Com contexto selecionado, a instrução digitada vira **opcional** — vazio, o agente executa sua função direto sobre os dados.
+- Histórico registra o contexto usado (ex.: `[TechSound Brasil · Fone TWS Pro] …`).
 
 ## O que mudou na v1.4
 
@@ -109,12 +116,11 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 
 - Autenticação é por e-mail/senha, sem papéis/permissões por função (todas as contas veem tudo — RLS granular fica para versões futuras).
 - A proteção de rota é client-side (adequada para ferramenta interna; os dados em si já são protegidos pelo RLS no servidor).
-- A execução via IA usa apenas a entrada digitada — o agente ainda não busca dados dos clientes/produtos do sistema automaticamente.
 - No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local (a execução via IA funciona normalmente, desde que a `ANTHROPIC_API_KEY` esteja configurada).
 
-## O que falta para a v1.5 (recomendado)
+## O que falta para a v1.6 (recomendado)
 
-1. **Agentes com contexto do sistema**: injetar automaticamente os dados do cliente/produto/anúncio selecionado na execução
+1. **Aplicar resultados dos agentes**: botão para salvar o título otimizado gerado direto no anúncio, criar tarefa a partir do diagnóstico etc.
 2. **Permissões por função/cliente** nas políticas RLS
 3. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia)
 4. Portal do cliente (visão externa read-only)

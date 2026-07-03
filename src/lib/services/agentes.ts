@@ -91,6 +91,13 @@ export interface ResultadoExecucaoIA {
   aviso?: string;
 }
 
+export interface OpcoesExecucaoIA {
+  /** Bloco de dados do sistema montado por lib/contexto.ts (opcional). */
+  contexto?: string;
+  /** Resumo curto do contexto (ex.: "TechSound · Fone TWS Pro") para o histórico. */
+  resumoContexto?: string;
+}
+
 /**
  * Executa o agente de verdade via API Claude (rota /api/agentes/executar).
  * Sem ANTHROPIC_API_KEY no servidor, registra uma execução simulada e avisa.
@@ -98,17 +105,23 @@ export interface ResultadoExecucaoIA {
  */
 export async function executarAgenteIA(
   agente: AgenteIA,
-  entrada: string
+  entrada: string,
+  opcoes: OpcoesExecucaoIA = {}
 ): Promise<ResultadoExecucaoIA> {
+  // O que fica gravado no histórico como "contexto" da execução
+  const registroContexto = opcoes.resumoContexto
+    ? `[${opcoes.resumoContexto}] ${entrada || "Execução com contexto do sistema"}`
+    : entrada;
+
   const resposta = await fetch("/api/agentes/executar", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agente, entrada }),
+    body: JSON.stringify({ agente, entrada, contexto: opcoes.contexto }),
   });
 
   if (resposta.status === 503) {
     // API Claude não configurada: mantém o comportamento simulado das versões anteriores
-    const simulada = await registrarExecucao(agente, entrada);
+    const simulada = await registrarExecucao(agente, registroContexto);
     return {
       resultado: simulada.resultado,
       tipo: "Simulada",
@@ -127,7 +140,7 @@ export async function executarAgenteIA(
     agenteId: agente.id,
     agente: agente.nome,
     dataHora: new Date().toISOString(),
-    contexto: entrada,
+    contexto: registroContexto,
     resultado: dados.resultado,
     tipo: "IA",
   });

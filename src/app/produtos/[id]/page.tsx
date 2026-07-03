@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarProduto, excluirProduto } from "@/lib/services/produtos";
 import { listarAnunciosDoProduto } from "@/lib/services/anuncios";
@@ -70,6 +71,7 @@ export default function ProdutoDetalhePage() {
           <LinkButton href={`/anuncios/novo${qs}`} variant="ghost">
             <Plus size={14} /> Criar anúncio
           </LinkButton>
+          <ExecutarComAgente clienteId={produto.clienteId} produtoId={id} />
           <Button variant="danger" onClick={excluir} title="Excluir produto">
             <Trash2 size={14} />
           </Button>

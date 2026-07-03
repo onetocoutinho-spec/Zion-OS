@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
 import { useLiveQuery } from "@/lib/hooks";
 import { alterarStatusCliente, buscarCliente, excluirCliente } from "@/lib/services/clientes";
 import { listarProdutosDoCliente } from "@/lib/services/produtos";
@@ -80,6 +81,7 @@ export default function ClienteDetalhePage() {
           <LinkButton href={`/relatorios/novo${qs}`} variant="ghost">
             <Plus size={14} /> Relatório
           </LinkButton>
+          <ExecutarComAgente clienteId={id} />
           {emRisco ? (
             <Button variant="success" onClick={() => alterarStatusCliente(id, "Ativo")}>
               <ShieldCheck size={14} /> Marcar como ativo

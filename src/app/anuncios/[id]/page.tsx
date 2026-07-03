@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarAnuncio, excluirAnuncio } from "@/lib/services/anuncios";
 import { listarTarefasDoAnuncio } from "@/lib/services/tarefas";
@@ -77,6 +78,11 @@ export default function AnuncioDetalhePage() {
           <LinkButton href={`/tarefas/nova${qs}`} variant="ghost">
             <Plus size={14} /> Criar tarefa relacionada
           </LinkButton>
+          <ExecutarComAgente
+            clienteId={anuncio.clienteId}
+            produtoId={anuncio.produtoId}
+            anuncioId={id}
+          />
           {anuncio.link !== "—" && (
             <a
               href={anuncio.link}

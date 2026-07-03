@@ -20,7 +20,23 @@ interface CorpoExecucao {
     saidaEsperada: string;
     promptResumido: string;
   };
-  entrada: string;
+  entrada?: string;
+  /** Bloco de dados do sistema (cliente/produto/anúncio) montado pelo frontend. */
+  contexto?: string;
+}
+
+function montarMensagem(entrada: string, contexto: string): string {
+  if (!contexto) return entrada;
+  return [
+    `Dados cadastrados no Zion OS para esta execução:`,
+    ``,
+    contexto,
+    ``,
+    `---`,
+    ``,
+    `Solicitação:`,
+    entrada || "Execute sua função com base nos dados acima e entregue a saída esperada.",
+  ].join("\n");
 }
 
 function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
@@ -61,9 +77,12 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  if (!corpo?.agente?.nome || !corpo?.agente?.promptResumido || !corpo?.entrada?.trim()) {
+  const entrada = corpo?.entrada?.trim() ?? "";
+  const contexto = corpo?.contexto?.trim() ?? "";
+
+  if (!corpo?.agente?.nome || !corpo?.agente?.promptResumido || (!entrada && !contexto)) {
     return Response.json(
-      { erro: "Informe o agente e a entrada para a execução." },
+      { erro: "Informe o agente e uma entrada ou um contexto para a execução." },
       { status: 400 }
     );
   }
@@ -76,7 +95,7 @@ export async function POST(request: Request) {
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       system: montarSystemPrompt(corpo.agente),
-      messages: [{ role: "user", content: corpo.entrada.trim() }],
+      messages: [{ role: "user", content: montarMensagem(entrada, contexto) }],
     });
 
     const texto = resposta.content

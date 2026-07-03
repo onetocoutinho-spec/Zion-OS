@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { AlertTriangle, Bot, History, Link2, Pencil, Play, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -16,6 +16,10 @@ import {
   executarAgenteIA,
   listarExecucoesDoAgente,
 } from "@/lib/services/agentes";
+import { listarClientes } from "@/lib/services/clientes";
+import { listarProdutos } from "@/lib/services/produtos";
+import { listarAnuncios } from "@/lib/services/anuncios";
+import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { formatDateTime } from "@/lib/format";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
@@ -27,9 +31,43 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+const SELECT_CLASSES =
+  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/50";
+
+function SelectContexto({
+  label,
+  valor,
+  opcoes,
+  onChange,
+}: {
+  label: string;
+  valor: string;
+  opcoes: { id: string; nome: string }[];
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-zinc-500">{label}</span>
+      <select value={valor} onChange={(e) => onChange(e.target.value)} className={SELECT_CLASSES}>
+        <option value="">Nenhum</option>
+        {opcoes.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.nome}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export default function AgenteDetalhePage() {
   const { id } = useParams<{ id: string }>();
+  const params = useSearchParams();
+
   const [entrada, setEntrada] = useState("");
+  const [clienteId, setClienteId] = useState(params.get("cliente") ?? "");
+  const [produtoId, setProdutoId] = useState(params.get("produto") ?? "");
+  const [anuncioId, setAnuncioId] = useState(params.get("anuncio") ?? "");
   const [executando, setExecutando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
   const [tipoResultado, setTipoResultado] = useState<"IA" | "Simulada" | null>(null);
@@ -38,21 +76,56 @@ export default function AgenteDetalhePage() {
 
   const { data: agente, carregando } = useLiveQuery(() => buscarAgente(id), [id]);
   const { data: execucoes } = useLiveQuery(() => listarExecucoesDoAgente(id), [id]);
+  const { data: clientes } = useLiveQuery(listarClientes);
+  const { data: produtos } = useLiveQuery(listarProdutos);
+  const { data: anuncios } = useLiveQuery(listarAnuncios);
 
   if (carregando) return null;
   if (!agente)
     return <EmptyState mensagem="Agente não encontrado." acaoLabel="Voltar para agentes" acaoHref="/agentes" />;
 
+  // Entidades selecionadas para o contexto
+  const cliente = (clientes ?? []).find((c) => c.id === clienteId) ?? null;
+  const produtosFiltrados = (produtos ?? []).filter((p) => !clienteId || p.clienteId === clienteId);
+  const anunciosFiltrados = (anuncios ?? []).filter((a) => !clienteId || a.clienteId === clienteId);
+  const produto = produtosFiltrados.find((p) => p.id === produtoId) ?? null;
+  const anuncio = anunciosFiltrados.find((a) => a.id === anuncioId) ?? null;
+
+  const contexto = montarContexto({ cliente, produto, anuncio });
+  const resumoContexto = resumoDoContexto({ cliente, produto, anuncio });
+  const podeExecutar = Boolean(entrada.trim() || contexto);
+
+  function selecionarProduto(idSel: string) {
+    setProdutoId(idSel);
+    const p = (produtos ?? []).find((x) => x.id === idSel);
+    if (p && !clienteId) setClienteId(p.clienteId);
+  }
+
+  function selecionarAnuncio(idSel: string) {
+    setAnuncioId(idSel);
+    const a = (anuncios ?? []).find((x) => x.id === idSel);
+    if (a && !clienteId) setClienteId(a.clienteId);
+  }
+
+  function selecionarCliente(idSel: string) {
+    setClienteId(idSel);
+    setProdutoId("");
+    setAnuncioId("");
+  }
+
   async function executar(e: React.FormEvent) {
     e.preventDefault();
-    if (!agente || !entrada.trim() || executando) return;
+    if (!agente || !podeExecutar || executando) return;
     setExecutando(true);
     setErro(null);
     setAviso(null);
     setResultado(null);
     setTipoResultado(null);
     try {
-      const retorno = await executarAgenteIA(agente, entrada.trim());
+      const retorno = await executarAgenteIA(agente, entrada.trim(), {
+        contexto: contexto || undefined,
+        resumoContexto: resumoContexto || undefined,
+      });
       setResultado(retorno.resultado);
       setTipoResultado(retorno.tipo);
       setAviso(retorno.aviso ?? null);
@@ -101,14 +174,63 @@ export default function AgenteDetalhePage() {
       {/* Painel de execução via API Claude */}
       <Card title="Executar agente">
         <form onSubmit={executar}>
+          {/* Contexto do sistema (opcional) */}
+          <div className="mb-4 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Contexto do sistema (opcional)
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <SelectContexto
+                label="Cliente"
+                valor={clienteId}
+                opcoes={(clientes ?? []).map((c) => ({ id: c.id, nome: c.empresa }))}
+                onChange={selecionarCliente}
+              />
+              <SelectContexto
+                label="Produto"
+                valor={produtoId}
+                opcoes={produtosFiltrados.map((p) => ({
+                  id: p.id,
+                  nome: clienteId ? p.nome : `${p.nome} (${p.cliente})`,
+                }))}
+                onChange={selecionarProduto}
+              />
+              <SelectContexto
+                label="Anúncio"
+                valor={anuncioId}
+                opcoes={anunciosFiltrados.map((a) => ({
+                  id: a.id,
+                  nome: clienteId
+                    ? `${a.produto} · ${a.marketplace}`
+                    : `${a.produto} · ${a.marketplace} (${a.cliente})`,
+                }))}
+                onChange={selecionarAnuncio}
+              />
+            </div>
+            {contexto && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs text-violet-400 hover:text-violet-300">
+                  Contexto selecionado: {resumoContexto} — ver dados que serão enviados
+                </summary>
+                <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">
+                  {contexto}
+                </pre>
+              </details>
+            )}
+          </div>
+
           <TextArea
             value={entrada}
             onChange={(e) => setEntrada(e.target.value)}
             rows={4}
-            placeholder={`Entrada para o agente — ${agente.entradaNecessaria}`}
+            placeholder={
+              contexto
+                ? "Instrução adicional (opcional) — se vazio, o agente executa sua função com base no contexto acima."
+                : `Entrada para o agente — ${agente.entradaNecessaria}`
+            }
           />
           <div className="mt-3 flex items-center gap-3">
-            <Button type="submit" disabled={executando || !entrada.trim()}>
+            <Button type="submit" disabled={executando || !podeExecutar}>
               {executando ? (
                 <>
                   <Sparkles size={14} className="animate-pulse" /> Executando com IA…
