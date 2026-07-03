@@ -4,6 +4,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-01",
     cliente: "AutoPeças Silva",
+    produto: "Farol de Milha Universal LED",
+    anuncio: "Farol de Milha Universal LED",
     area: "Mercado Livre",
     tarefa: "Corrigir ficha técnica do farol de milha (anúncio bloqueado)",
     responsavel: "Lucas",
@@ -17,6 +19,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-02",
     cliente: "AutoPeças Silva",
+    produto: null,
+    anuncio: null,
     area: "Agência",
     tarefa: "Preparar plano de recuperação para reunião de realinhamento",
     responsavel: "Camila",
@@ -30,6 +34,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-03",
     cliente: "FitPro Suplementos",
+    produto: null,
+    anuncio: null,
     area: "Onboarding",
     tarefa: "Cobrar acessos do TikTok Shop e planilha de custos",
     responsavel: "Camila",
@@ -43,6 +49,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-04",
     cliente: "TechSound Brasil",
+    produto: "Fone Bluetooth TWS Pro",
+    anuncio: "Fone Bluetooth TWS Pro",
     area: "Imagens",
     tarefa: "Produzir novas imagens lifestyle do Fone TWS Pro",
     responsavel: "Amanda",
@@ -56,6 +64,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-05",
     cliente: "Bella Casa Decor",
+    produto: "Luminária de Mesa Minimalista",
+    anuncio: "Luminária de Mesa Minimalista",
     area: "Precificação",
     tarefa: "Reprecificar luminária após queda de preço do concorrente",
     responsavel: "Rafael",
@@ -69,6 +79,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-06",
     cliente: "Bella Casa Decor",
+    produto: "Kit 3 Vasos Cerâmica Escandinavos",
+    anuncio: "Kit 3 Vasos Cerâmica Escandinavos",
     area: "Anúncios",
     tarefa: "Publicar anúncio do Kit 3 Vasos no Mercado Livre",
     responsavel: "Amanda",
@@ -82,6 +94,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-07",
     cliente: "Kids Mundo Brinquedos",
+    produto: null,
+    anuncio: null,
     area: "Onboarding",
     tarefa: "Rodar diagnóstico inicial da conta Shopee",
     responsavel: "Lucas",
@@ -95,6 +109,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-08",
     cliente: "Casa do Chef",
+    produto: null,
+    anuncio: null,
     area: "Relatórios",
     tarefa: "Montar relatório mensal de junho",
     responsavel: "Camila",
@@ -108,6 +124,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-09",
     cliente: "Casa do Chef",
+    produto: "Kit Facas Inox Profissional 6 Peças",
+    anuncio: "Kit Facas Inox Profissional 6 Peças",
     area: "Precificação",
     tarefa: "Reprecificar kit de facas considerando frete grátis Shopee",
     responsavel: "Rafael",
@@ -121,6 +139,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-10",
     cliente: "Moda Urbana SP",
+    produto: null,
+    anuncio: null,
     area: "Comercial",
     tarefa: "Enviar proposta ajustada com foco em TikTok Shop",
     responsavel: "Camila",
@@ -134,6 +154,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-11",
     cliente: "TechSound Brasil",
+    produto: "Caixa de Som Portátil 30W",
+    anuncio: "Caixa de Som Portátil 30W",
     area: "Anúncios",
     tarefa: "Finalizar cadastro da caixa de som na Shopee",
     responsavel: "Lucas",
@@ -147,6 +169,8 @@ export const tarefas: Tarefa[] = [
   {
     id: "tar-12",
     cliente: "PetLove Acessórios",
+    produto: null,
+    anuncio: null,
     area: "Comercial",
     tarefa: "Agendar call de diagnóstico gratuito",
     responsavel: "Camila",

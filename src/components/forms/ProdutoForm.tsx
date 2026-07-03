@@ -1,0 +1,172 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Field, FormGrid, Input, Select, TextArea, ouInfoNecessaria } from "@/components/ui/form";
+import { CADASTRO_STATUS, ETAPA_STATUS, MARKETPLACES, PRIORIDADES } from "@/lib/constantes";
+import { useLiveQuery } from "@/lib/hooks";
+import { listarClientes } from "@/lib/services/clientes";
+import { atualizarProduto, criarProduto } from "@/lib/services/produtos";
+import type { Produto } from "@/lib/types";
+
+interface ProdutoFormProps {
+  inicial?: Produto;
+  /** Pré-seleciona o cliente (ex.: botão "Criar produto" na página do cliente). */
+  clientePadrao?: string;
+}
+
+export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
+  const router = useRouter();
+  const { data: clientes } = useLiveQuery(listarClientes);
+  const [erros, setErros] = useState<Record<string, string>>({});
+  const [form, setForm] = useState({
+    cliente: inicial?.cliente ?? clientePadrao ?? "",
+    nome: inicial?.nome ?? "",
+    marca: inicial?.marca ?? "",
+    modelo: inicial?.modelo ?? "",
+    categoria: inicial?.categoria ?? "",
+    sku: inicial?.sku ?? "",
+    cor: inicial?.cor ?? "",
+    tamanho: inicial?.tamanho ?? "",
+    custo: inicial ? String(inicial.custo) : "",
+    precoVenda: inicial ? String(inicial.precoVenda) : "",
+    estoque: inicial ? String(inicial.estoque) : "0",
+    marketplace: inicial?.marketplace ?? "Mercado Livre",
+    statusCadastro: inicial?.statusCadastro ?? "Não iniciado",
+    statusSeo: inicial?.statusSeo ?? "Pendente",
+    statusDescricao: inicial?.statusDescricao ?? "Pendente",
+    statusImagens: inicial?.statusImagens ?? "Pendente",
+    statusPrecificacao: inicial?.statusPrecificacao ?? "Pendente",
+    prioridade: inicial?.prioridade ?? "Média",
+    observacoes: inicial?.observacoes ?? "",
+  });
+
+  function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
+    setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  function numero(texto: string): number {
+    return Number(texto.replace(",", "."));
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const novosErros: Record<string, string> = {};
+    if (!form.cliente) novosErros.cliente = "Selecione o cliente.";
+    if (!form.nome.trim()) novosErros.nome = "Informe o nome do produto.";
+    if (form.custo && (!isFinite(numero(form.custo)) || numero(form.custo) < 0))
+      novosErros.custo = "Custo deve ser um número válido.";
+    if (form.precoVenda && (!isFinite(numero(form.precoVenda)) || numero(form.precoVenda) < 0))
+      novosErros.precoVenda = "Preço deve ser um número válido.";
+    if (!isFinite(numero(form.estoque)) || numero(form.estoque) < 0)
+      novosErros.estoque = "Estoque deve ser um número válido.";
+    setErros(novosErros);
+    if (Object.keys(novosErros).length > 0) return;
+
+    const dados = {
+      ...form,
+      nome: form.nome.trim(),
+      marca: ouInfoNecessaria(form.marca),
+      modelo: ouInfoNecessaria(form.modelo),
+      categoria: ouInfoNecessaria(form.categoria),
+      sku: ouInfoNecessaria(form.sku),
+      cor: form.cor.trim() || "—",
+      tamanho: form.tamanho.trim() || "—",
+      custo: form.custo ? numero(form.custo) : 0,
+      precoVenda: form.precoVenda ? numero(form.precoVenda) : 0,
+      estoque: numero(form.estoque),
+      observacoes: form.observacoes,
+    } as Omit<Produto, "id">;
+
+    if (inicial) {
+      await atualizarProduto(inicial.id, dados);
+      router.push(`/produtos/${inicial.id}`);
+    } else {
+      const criado = await criarProduto(dados);
+      router.push(`/produtos/${criado.id}`);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <Card>
+        <FormGrid>
+          <Field label="Cliente" required error={erros.cliente}>
+            <Select
+              options={(clientes ?? []).map((c) => c.empresa)}
+              placeholder="Selecione o cliente…"
+              value={form.cliente}
+              onChange={(e) => set("cliente", e.target.value)}
+            />
+          </Field>
+          <Field label="Nome do produto" required error={erros.nome}>
+            <Input value={form.nome} onChange={(e) => set("nome", e.target.value)} />
+          </Field>
+          <Field label="Marca">
+            <Input value={form.marca} onChange={(e) => set("marca", e.target.value)} />
+          </Field>
+          <Field label="Modelo">
+            <Input value={form.modelo} onChange={(e) => set("modelo", e.target.value)} />
+          </Field>
+          <Field label="Categoria">
+            <Input value={form.categoria} onChange={(e) => set("categoria", e.target.value)} placeholder="Ex.: Áudio > Fones" />
+          </Field>
+          <Field label="SKU">
+            <Input value={form.sku} onChange={(e) => set("sku", e.target.value)} />
+          </Field>
+          <Field label="Cor">
+            <Input value={form.cor} onChange={(e) => set("cor", e.target.value)} />
+          </Field>
+          <Field label="Tamanho">
+            <Input value={form.tamanho} onChange={(e) => set("tamanho", e.target.value)} />
+          </Field>
+          <Field label="Custo (R$)" error={erros.custo}>
+            <Input inputMode="decimal" value={form.custo} onChange={(e) => set("custo", e.target.value)} placeholder="0,00" />
+          </Field>
+          <Field label="Preço de venda (R$)" error={erros.precoVenda}>
+            <Input inputMode="decimal" value={form.precoVenda} onChange={(e) => set("precoVenda", e.target.value)} placeholder="0,00" />
+          </Field>
+          <Field label="Estoque" error={erros.estoque}>
+            <Input inputMode="numeric" value={form.estoque} onChange={(e) => set("estoque", e.target.value)} />
+          </Field>
+          <Field label="Marketplace">
+            <Select options={MARKETPLACES} value={form.marketplace} onChange={(e) => set("marketplace", e.target.value as Produto["marketplace"])} />
+          </Field>
+          <Field label="Status do cadastro">
+            <Select options={CADASTRO_STATUS} value={form.statusCadastro} onChange={(e) => set("statusCadastro", e.target.value as Produto["statusCadastro"])} />
+          </Field>
+          <Field label="Prioridade">
+            <Select options={PRIORIDADES} value={form.prioridade} onChange={(e) => set("prioridade", e.target.value as Produto["prioridade"])} />
+          </Field>
+          <Field label="Status SEO">
+            <Select options={ETAPA_STATUS} value={form.statusSeo} onChange={(e) => set("statusSeo", e.target.value as Produto["statusSeo"])} />
+          </Field>
+          <Field label="Status descrição">
+            <Select options={ETAPA_STATUS} value={form.statusDescricao} onChange={(e) => set("statusDescricao", e.target.value as Produto["statusDescricao"])} />
+          </Field>
+          <Field label="Status imagens">
+            <Select options={ETAPA_STATUS} value={form.statusImagens} onChange={(e) => set("statusImagens", e.target.value as Produto["statusImagens"])} />
+          </Field>
+          <Field label="Status precificação">
+            <Select options={ETAPA_STATUS} value={form.statusPrecificacao} onChange={(e) => set("statusPrecificacao", e.target.value as Produto["statusPrecificacao"])} />
+          </Field>
+        </FormGrid>
+
+        <div className="mt-4">
+          <Field label="Observações">
+            <TextArea value={form.observacoes} onChange={(e) => set("observacoes", e.target.value)} />
+          </Field>
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <Button type="submit">{inicial ? "Salvar alterações" : "Criar produto"}</Button>
+          <Button type="button" variant="ghost" onClick={() => router.back()}>
+            Cancelar
+          </Button>
+        </div>
+      </Card>
+    </form>
+  );
+}

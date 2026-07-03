@@ -1,6 +1,11 @@
+"use client";
+
+import { RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { resetStore } from "@/lib/store";
 
 const INTEGRACOES = [
   { nome: "Mercado Livre", descricao: "Sincronizar anúncios, perguntas e métricas" },
@@ -58,7 +63,7 @@ export default function ConfiguracoesPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-zinc-500">Versão do sistema</dt>
-              <dd className="text-zinc-200">Zion OS v1.0 (MVP)</dd>
+              <dd className="text-zinc-200">Zion OS v1.1 (MVP operacional)</dd>
             </div>
           </dl>
         </Card>
@@ -77,6 +82,25 @@ export default function ConfiguracoesPage() {
               </li>
             ))}
           </ul>
+        </Card>
+
+        <Card title="Dados do sistema" className="xl:col-span-2">
+          <p className="text-xs text-zinc-500">
+            Os dados desta versão ficam salvos no navegador (localStorage). Tudo que você
+            criar ou editar permanece entre sessões neste computador. Se quiser voltar ao
+            estado inicial de demonstração:
+          </p>
+          <Button
+            variant="danger"
+            className="mt-3"
+            onClick={() => {
+              if (window.confirm("Apagar todas as alterações e restaurar os dados de demonstração?")) {
+                resetStore();
+              }
+            }}
+          >
+            <RotateCcw size={14} /> Restaurar dados de demonstração
+          </Button>
         </Card>
 
         <Card title="Integrações" className="xl:col-span-2">

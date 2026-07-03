@@ -1,6 +1,8 @@
 // Primitivas de tabela com o estilo padrão do Zion OS.
 // Uso: <Table headers={["Cliente", "Status"]}><tr>...<Td>...</Td></tr></Table>
 
+import { EmptyState } from "./EmptyState";
+
 interface TableProps {
   headers: string[];
   children: React.ReactNode;
@@ -58,11 +60,23 @@ export function TdMain({
   );
 }
 
-export function EmptyRow({ colSpan }: { colSpan: number }) {
+interface EmptyRowProps {
+  colSpan: number;
+  mensagem?: string;
+  acaoLabel?: string;
+  acaoHref?: string;
+}
+
+export function EmptyRow({
+  colSpan,
+  mensagem = "Nenhum registro encontrado com os filtros atuais.",
+  acaoLabel,
+  acaoHref,
+}: EmptyRowProps) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-4 py-10 text-center text-sm text-zinc-500">
-        Nenhum registro encontrado com os filtros atuais.
+      <td colSpan={colSpan}>
+        <EmptyState mensagem={mensagem} acaoLabel={acaoLabel} acaoHref={acaoHref} />
       </td>
     </tr>
   );

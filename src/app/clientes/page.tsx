@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
-import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
+import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
-import { clientes } from "@/lib/data/clientes";
+import { LinkButton } from "@/components/ui/Button";
+import { CLIENTE_STATUS, RISCOS } from "@/lib/constantes";
+import { useLiveQuery } from "@/lib/hooks";
+import { listarClientes } from "@/lib/services/clientes";
 import { formatDate } from "@/lib/format";
-
-const STATUS = ["Lead", "Em proposta", "Onboarding", "Ativo", "Em risco", "Pausado", "Cancelado"];
-const RISCOS = ["Baixo", "Médio", "Alto"];
 
 const HEADERS = [
   "Empresa",
@@ -21,14 +23,14 @@ const HEADERS = [
   "Entrada",
   "Próxima reunião",
   "Próxima ação",
-  "Observações",
 ];
 
 export default function ClientesPage() {
   const [status, setStatus] = useState("Todos");
   const [risco, setRisco] = useState("Todos");
+  const { data: clientes } = useLiveQuery(listarClientes);
 
-  const filtrados = clientes.filter(
+  const filtrados = (clientes ?? []).filter(
     (c) =>
       (status === "Todos" || c.status === status) &&
       (risco === "Todos" || c.risco === risco)
@@ -38,21 +40,40 @@ export default function ClientesPage() {
     <div>
       <PageHeader
         title="Clientes"
-        description="Carteira completa da agência, do lead ao cliente ativo."
+        description="Carteira completa da agência, do lead ao cliente ativo. Clique em um cliente para abrir a visão 360°."
         count={filtrados.length}
         countLabel="clientes"
       />
 
-      <div className="mb-4 flex flex-wrap gap-4">
-        <FilterSelect label="Status" value={status} options={STATUS} onChange={setStatus} />
-        <FilterSelect label="Risco" value={risco} options={RISCOS} onChange={setRisco} />
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4">
+          <FilterSelect label="Status" value={status} options={CLIENTE_STATUS} onChange={setStatus} />
+          <FilterSelect label="Risco" value={risco} options={RISCOS} onChange={setRisco} />
+        </div>
+        <LinkButton href="/clientes/novo">
+          <Plus size={14} /> Novo cliente
+        </LinkButton>
       </div>
 
       <Table headers={HEADERS}>
-        {filtrados.length === 0 && <EmptyRow colSpan={HEADERS.length} />}
+        {clientes && filtrados.length === 0 && (
+          <EmptyRow
+            colSpan={HEADERS.length}
+            mensagem="Nenhum cliente encontrado."
+            acaoLabel="Criar cliente"
+            acaoHref="/clientes/novo"
+          />
+        )}
         {filtrados.map((c) => (
           <tr key={c.id} className="hover:bg-white/[0.02]">
-            <TdMain sub={c.responsavel}>{c.empresa}</TdMain>
+            <td className="px-4 py-3 align-top">
+              <Link href={`/clientes/${c.id}`}>
+                <p className="whitespace-nowrap font-medium text-zinc-200 hover:text-violet-300">
+                  {c.empresa}
+                </p>
+                <p className="mt-0.5 text-xs text-zinc-500">{c.responsavel}</p>
+              </Link>
+            </td>
             <Td className="whitespace-nowrap">{c.segmento}</Td>
             <Td>
               <div className="flex max-w-45 flex-wrap gap-1">
@@ -68,7 +89,6 @@ export default function ClientesPage() {
             <Td className="whitespace-nowrap">{formatDate(c.dataEntrada)}</Td>
             <Td className="whitespace-nowrap">{formatDate(c.proximaReuniao)}</Td>
             <Td className="min-w-56 text-zinc-300">{c.proximaAcao}</Td>
-            <Td className="min-w-56 text-xs">{c.observacoes || "—"}</Td>
           </tr>
         ))}
       </Table>

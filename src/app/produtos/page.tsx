@@ -1,23 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
-import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
+import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
-import { produtos } from "@/lib/data/produtos";
+import { LinkButton } from "@/components/ui/Button";
+import { CADASTRO_STATUS, PRIORIDADES } from "@/lib/constantes";
+import { useLiveQuery } from "@/lib/hooks";
+import { listarProdutos } from "@/lib/services/produtos";
 import { formatBRL } from "@/lib/format";
-
-const STATUS_CADASTRO = ["Não iniciado", "Em cadastro", "Publicado", "Com erro"];
-const PRIORIDADES = ["Baixa", "Média", "Alta", "Urgente"];
-const CLIENTES = [...new Set(produtos.map((p) => p.cliente))];
 
 const HEADERS = [
   "Produto",
   "Cliente",
   "SKU",
-  "Categoria",
-  "Variação",
   "Custo",
   "Preço",
   "Estoque",
@@ -28,15 +27,17 @@ const HEADERS = [
   "Imagens",
   "Preço OK",
   "Prioridade",
-  "Observações",
 ];
 
 export default function ProdutosPage() {
   const [status, setStatus] = useState("Todos");
   const [prioridade, setPrioridade] = useState("Todos");
   const [cliente, setCliente] = useState("Todos");
+  const { data: produtos } = useLiveQuery(listarProdutos);
 
-  const filtrados = produtos.filter(
+  const clientesComProduto = [...new Set((produtos ?? []).map((p) => p.cliente))];
+
+  const filtrados = (produtos ?? []).filter(
     (p) =>
       (status === "Todos" || p.statusCadastro === status) &&
       (prioridade === "Todos" || p.prioridade === prioridade) &&
@@ -52,21 +53,36 @@ export default function ProdutosPage() {
         countLabel="produtos"
       />
 
-      <div className="mb-4 flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={CLIENTES} onChange={setCliente} />
-        <FilterSelect label="Cadastro" value={status} options={STATUS_CADASTRO} onChange={setStatus} />
-        <FilterSelect label="Prioridade" value={prioridade} options={PRIORIDADES} onChange={setPrioridade} />
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4">
+          <FilterSelect label="Cliente" value={cliente} options={clientesComProduto} onChange={setCliente} />
+          <FilterSelect label="Cadastro" value={status} options={CADASTRO_STATUS} onChange={setStatus} />
+          <FilterSelect label="Prioridade" value={prioridade} options={PRIORIDADES} onChange={setPrioridade} />
+        </div>
+        <LinkButton href="/produtos/novo">
+          <Plus size={14} /> Novo produto
+        </LinkButton>
       </div>
 
       <Table headers={HEADERS}>
-        {filtrados.length === 0 && <EmptyRow colSpan={HEADERS.length} />}
+        {produtos && filtrados.length === 0 && (
+          <EmptyRow
+            colSpan={HEADERS.length}
+            mensagem="Nenhum produto encontrado."
+            acaoLabel="Criar produto"
+            acaoHref="/produtos/novo"
+          />
+        )}
         {filtrados.map((p) => (
           <tr key={p.id} className="hover:bg-white/[0.02]">
-            <TdMain sub={`${p.marca} · ${p.modelo}`}>{p.nome}</TdMain>
+            <td className="px-4 py-3 align-top">
+              <Link href={`/produtos/${p.id}`}>
+                <p className="whitespace-nowrap font-medium text-zinc-200 hover:text-violet-300">{p.nome}</p>
+                <p className="mt-0.5 text-xs text-zinc-500">{p.marca} · {p.modelo}</p>
+              </Link>
+            </td>
             <Td className="whitespace-nowrap">{p.cliente}</Td>
             <Td className="whitespace-nowrap font-mono text-xs">{p.sku}</Td>
-            <Td className="whitespace-nowrap text-xs">{p.categoria}</Td>
-            <Td className="whitespace-nowrap text-xs">{p.cor} / {p.tamanho}</Td>
             <Td className="whitespace-nowrap">{formatBRL(p.custo)}</Td>
             <Td className="whitespace-nowrap text-zinc-200">{formatBRL(p.precoVenda)}</Td>
             <Td>{p.estoque}</Td>
@@ -77,7 +93,6 @@ export default function ProdutosPage() {
             <Td><Badge>{p.statusImagens}</Badge></Td>
             <Td><Badge>{p.statusPrecificacao}</Badge></Td>
             <Td><Badge>{p.prioridade}</Badge></Td>
-            <Td className="min-w-56 text-xs">{p.observacoes || "—"}</Td>
           </tr>
         ))}
       </Table>

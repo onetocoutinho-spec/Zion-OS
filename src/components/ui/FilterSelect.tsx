@@ -3,7 +3,7 @@
 interface FilterSelectProps {
   label: string;
   value: string;
-  options: string[];
+  options: readonly string[];
   onChange: (value: string) => void;
 }
 

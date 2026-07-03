@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Pencil, Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { relatorios } from "@/lib/data/relatorios";
-
-const STATUS = ["Pendente", "Em elaboração", "Enviado", "Aprovado"];
-const CLIENTES = [...new Set(relatorios.map((r) => r.cliente))];
+import { LinkButton } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RELATORIO_STATUS } from "@/lib/constantes";
+import { useLiveQuery } from "@/lib/hooks";
+import { listarRelatorios } from "@/lib/services/relatorios";
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,8 +25,11 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
 export default function RelatoriosPage() {
   const [status, setStatus] = useState("Todos");
   const [cliente, setCliente] = useState("Todos");
+  const { data: relatorios } = useLiveQuery(listarRelatorios);
 
-  const filtrados = relatorios.filter(
+  const clientesComRelatorio = [...new Set((relatorios ?? []).map((r) => r.cliente))];
+
+  const filtrados = (relatorios ?? []).filter(
     (r) =>
       (status === "Todos" || r.status === status) &&
       (cliente === "Todos" || r.cliente === cliente)
@@ -38,9 +44,14 @@ export default function RelatoriosPage() {
         countLabel="relatórios"
       />
 
-      <div className="mb-4 flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={CLIENTES} onChange={setCliente} />
-        <FilterSelect label="Status" value={status} options={STATUS} onChange={setStatus} />
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4">
+          <FilterSelect label="Cliente" value={cliente} options={clientesComRelatorio} onChange={setCliente} />
+          <FilterSelect label="Status" value={status} options={RELATORIO_STATUS} onChange={setStatus} />
+        </div>
+        <LinkButton href="/relatorios/novo">
+          <Plus size={14} /> Novo relatório
+        </LinkButton>
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -48,7 +59,18 @@ export default function RelatoriosPage() {
           <Card
             key={r.id}
             title={`${r.cliente} — ${r.periodo}`}
-            action={<Badge>{r.status}</Badge>}
+            action={
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/relatorios/${r.id}/editar`}
+                  className="text-zinc-500 transition-colors hover:text-violet-300"
+                  title="Editar relatório"
+                >
+                  <Pencil size={14} />
+                </Link>
+                <Badge>{r.status}</Badge>
+              </div>
+            }
           >
             <div className="mb-4 flex gap-3">
               <div className="rounded-lg bg-white/[0.03] px-3 py-2 text-center">
@@ -72,10 +94,12 @@ export default function RelatoriosPage() {
         ))}
       </div>
 
-      {filtrados.length === 0 && (
-        <p className="py-10 text-center text-sm text-zinc-500">
-          Nenhum relatório encontrado com os filtros atuais.
-        </p>
+      {relatorios && filtrados.length === 0 && (
+        <EmptyState
+          mensagem="Nenhum relatório criado ainda."
+          acaoLabel="Criar relatório"
+          acaoHref="/relatorios/novo"
+        />
       )}
     </div>
   );

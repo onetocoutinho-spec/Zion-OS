@@ -20,6 +20,9 @@ export type Prioridade = "Baixa" | "Média" | "Alta" | "Urgente";
 /** Status de uma etapa de trabalho (SEO, descrição, imagens etc.) */
 export type EtapaStatus = "Pendente" | "Em andamento" | "Concluído";
 
+/** Status de um item do checklist de onboarding. */
+export type ChecklistStatus = "Pendente" | "Em andamento" | "Concluído" | "Travado";
+
 export interface Cliente {
   id: string;
   empresa: string;
@@ -37,19 +40,29 @@ export interface Cliente {
 
 export type OnboardingStatus = "Não iniciado" | "Em andamento" | "Concluído" | "Travado";
 
+/** Chaves dos 14 itens do checklist de onboarding (rótulos em lib/onboarding.ts). */
+export type OnboardingItemKey =
+  | "contratoFechado"
+  | "boasVindas"
+  | "acessosML"
+  | "acessosTikTok"
+  | "acessosShopee"
+  | "acessoERP"
+  | "baseProdutos"
+  | "pastaCriada"
+  | "diagnosticoIniciado"
+  | "diagnosticoConcluido"
+  | "reuniaoInicial"
+  | "plano30Dias"
+  | "primeirasTarefas"
+  | "clienteLiberado";
+
 export interface Onboarding {
   id: string;
   cliente: string;
-  statusGeral: OnboardingStatus;
-  contratoFechado: boolean;
-  acessosRecebidos: string[];
-  acessosPendentes: string[];
-  baseProdutosRecebida: boolean;
-  diagnosticoInicial: EtapaStatus;
-  reuniaoInicial: EtapaStatus;
-  pastasCriadas: boolean;
-  planoTrintaDias: EtapaStatus;
+  itens: Record<OnboardingItemKey, ChecklistStatus>;
   pendenciasCliente: string[];
+  observacoes: string;
 }
 
 export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Com erro";
@@ -136,6 +149,10 @@ export type TarefaStatus =
 export interface Tarefa {
   id: string;
   cliente: string;
+  /** Produto vinculado (nome), quando fizer sentido. */
+  produto: string | null;
+  /** Anúncio vinculado (produto do anúncio), quando fizer sentido. */
+  anuncio: string | null;
   area: string;
   tarefa: string;
   responsavel: string;
@@ -164,6 +181,16 @@ export interface Relatorio {
 }
 
 export type PagamentoStatus = "Pago" | "Pendente" | "Atrasado";
+
+/** Registro do histórico simulado de execuções de agentes. */
+export interface ExecucaoAgente {
+  id: string;
+  agenteId: string;
+  agente: string;
+  dataHora: string; // ISO datetime
+  contexto: string;
+  resultado: string;
+}
 
 export interface RegistroFinanceiro {
   id: string;

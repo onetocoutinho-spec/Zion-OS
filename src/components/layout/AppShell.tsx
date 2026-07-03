@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 
@@ -56,7 +56,15 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [busca, setBusca] = useState("");
+  const router = useRouter();
   const pathname = usePathname();
+
+  function onBuscar(e: React.FormEvent) {
+    e.preventDefault();
+    if (busca.trim().length < 2) return;
+    router.push(`/busca?q=${encodeURIComponent(busca.trim())}`);
+  }
   const current =
     NAV_ITEMS.find((i) =>
       i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
@@ -95,10 +103,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <h1 className="text-sm font-medium text-zinc-200">{current.label}</h1>
 
           <div className="ml-auto flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-1.5 text-zinc-500">
+            <form
+              onSubmit={onBuscar}
+              className="hidden sm:flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-3 py-1.5 text-zinc-500 focus-within:border-violet-500/40"
+            >
               <Search size={14} />
-              <span className="text-xs">Buscar no Zion OS…</span>
-            </div>
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar no Zion OS…"
+                className="w-40 bg-transparent text-xs text-zinc-200 outline-none placeholder:text-zinc-500 lg:w-56"
+              />
+            </form>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 text-xs font-semibold text-white">
               ZC
             </div>

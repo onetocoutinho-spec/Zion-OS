@@ -1,3 +1,6 @@
+"use client";
+
+import Link from "next/link";
 import {
   Users,
   Rocket,
@@ -11,17 +14,34 @@ import {
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { clientes } from "@/lib/data/clientes";
-import { onboardings } from "@/lib/data/onboardings";
-import { produtos } from "@/lib/data/produtos";
-import { anuncios } from "@/lib/data/anuncios";
-import { tarefas } from "@/lib/data/tarefas";
-import { relatorios } from "@/lib/data/relatorios";
-import { financeiro } from "@/lib/data/financeiro";
+import { useLiveQuery } from "@/lib/hooks";
+import { listarClientes } from "@/lib/services/clientes";
+import { listarOnboardings } from "@/lib/services/onboardings";
+import { listarProdutos } from "@/lib/services/produtos";
+import { listarAnuncios } from "@/lib/services/anuncios";
+import { listarTarefas } from "@/lib/services/tarefas";
+import { listarRelatorios } from "@/lib/services/relatorios";
+import { listarFinanceiro } from "@/lib/services/financeiro";
 import { formatBRL, formatDate, isOverdue } from "@/lib/format";
 
 export default function DashboardPage() {
-  // Indicadores calculados a partir dos dados mockados
+  const { data: clientesData } = useLiveQuery(listarClientes);
+  const { data: onboardingsData } = useLiveQuery(listarOnboardings);
+  const { data: produtosData } = useLiveQuery(listarProdutos);
+  const { data: anunciosData } = useLiveQuery(listarAnuncios);
+  const { data: tarefasData } = useLiveQuery(listarTarefas);
+  const { data: relatoriosData } = useLiveQuery(listarRelatorios);
+  const { data: financeiroData } = useLiveQuery(listarFinanceiro);
+
+  const clientes = clientesData ?? [];
+  const onboardings = onboardingsData ?? [];
+  const produtos = produtosData ?? [];
+  const anuncios = anunciosData ?? [];
+  const tarefas = tarefasData ?? [];
+  const relatorios = relatoriosData ?? [];
+  const financeiro = financeiroData ?? [];
+
+  // Indicadores calculados em tempo real a partir do store
   const clientesAtivos = clientes.filter((c) => c.status === "Ativo").length;
   const emOnboarding = clientes.filter((c) => c.status === "Onboarding").length;
   const produtosEmCadastro = produtos.filter(
@@ -93,15 +113,18 @@ export default function DashboardPage() {
           <ul className="space-y-3">
             {proximasAcoes.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm text-zinc-200">{t.proximaAcao}</p>
+                <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
+                  <p className="text-sm text-zinc-200 hover:text-violet-300">{t.proximaAcao}</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {t.cliente} · {t.responsavel} · prazo {formatDate(t.prazo)}
                   </p>
-                </div>
+                </Link>
                 <Badge>{t.prioridade}</Badge>
               </li>
             ))}
+            {proximasAcoes.length === 0 && (
+              <p className="text-sm text-zinc-500">Nenhuma ação pendente. 🎉</p>
+            )}
           </ul>
         </Card>
 
@@ -110,15 +133,18 @@ export default function DashboardPage() {
           <ul className="space-y-3">
             {tarefasRecentes.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-zinc-200">{t.tarefa}</p>
+                <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
+                  <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {t.cliente} · {t.area}
                   </p>
-                </div>
+                </Link>
                 <Badge>{t.status}</Badge>
               </li>
             ))}
+            {tarefasRecentes.length === 0 && (
+              <p className="text-sm text-zinc-500">Nenhuma tarefa criada ainda.</p>
+            )}
           </ul>
         </Card>
 
@@ -127,16 +153,19 @@ export default function DashboardPage() {
           <ul className="space-y-3">
             {clientesAtencao.map((c) => (
               <li key={c.id} className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-zinc-200">{c.empresa}</p>
+                <Link href={`/clientes/${c.id}`} className="min-w-0">
+                  <p className="text-sm font-medium text-zinc-200 hover:text-violet-300">{c.empresa}</p>
                   <p className="mt-0.5 text-xs text-zinc-500">{c.proximaAcao}</p>
-                </div>
+                </Link>
                 <div className="flex shrink-0 gap-1.5">
                   <Badge>{c.status}</Badge>
                   <Badge>{c.risco}</Badge>
                 </div>
               </li>
             ))}
+            {clientesAtencao.length === 0 && (
+              <p className="text-sm text-zinc-500">Nenhum cliente em risco. ✓</p>
+            )}
           </ul>
         </Card>
 
@@ -161,8 +190,8 @@ export default function DashboardPage() {
             </div>
           </div>
           <p className="mt-4 text-xs leading-relaxed text-zinc-500">
-            Foco da semana: destravar o anúncio da AutoPeças Silva, concluir os
-            onboardings da FitPro e Kids Mundo e fechar os relatórios de junho.
+            Priorize as tarefas urgentes e atrasadas, destrave os onboardings com
+            pendências de cliente e feche os relatórios do período.
           </p>
         </Card>
       </div>
