@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
@@ -59,9 +59,14 @@ export default function ProdutosPage() {
           <FilterSelect label="Cadastro" value={status} options={CADASTRO_STATUS} onChange={setStatus} />
           <FilterSelect label="Prioridade" value={prioridade} options={PRIORIDADES} onChange={setPrioridade} />
         </div>
-        <LinkButton href="/produtos/novo">
-          <Plus size={14} /> Novo produto
-        </LinkButton>
+        <div className="flex gap-2">
+          <LinkButton href="/produtos/importar" variant="ghost">
+            <Upload size={14} /> Importar base
+          </LinkButton>
+          <LinkButton href="/produtos/novo">
+            <Plus size={14} /> Novo produto
+          </LinkButton>
+        </div>
       </div>
 
       <Table headers={HEADERS}>

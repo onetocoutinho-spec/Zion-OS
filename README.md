@@ -65,6 +65,16 @@ Sem Supabase (modo demonstração), o seed local já traz o cliente **MegaShop B
 3. **Distribui a execução**: a fila vira o quadro de trabalho da equipe (quem faz o quê, com qual agente, até quando).
 4. **Fecha o loop**: cada item concluído sobe o score; o relatório de base grande resume o antes/depois para o cliente.
 
+## v1.9 (em construção) — Esteira de Anúncio automatizada
+
+Objetivo: **você deixa os dados do produto → sai o anúncio pronto**, com trava de aprovação antes de publicar. Construído em fases.
+
+**Fase 1 (em andamento):**
+- **Esteira de Anúncio** (`/esteira`): roda A1→A2→A9→A4(A3,A5,A6,A7,A8,A12)→A10 **numa passada só** (via API Claude, com as regras-mãe da Zion embutidas: margem ≥5%, título ≤60 sem cor/tamanho, custo, defaults). Devolve o anúncio pronto (título, keywords, descrição, ficha, medidas, variações, prompts de imagem, FAQ) + pendências + **veredito A10**. A **trava**: só dá pra "Aprovar para publicação" se o A10 aprovou e não há pendências. Sem `ANTHROPIC_API_KEY`, roda em modo simulado.
+- **Importar base de produtos** (`/produtos/importar`): sobe a planilha da base + custos → vira produto no Zion OS, pronto pra rodar a esteira. Mostra a **Margem Zion** (piso 5%) por linha na prévia e sinaliza os que estão no vermelho.
+
+**Próximo:** rodar a esteira em lote (nos priorizados da Auditoria em Massa) e **Fase 2** — publicar via API do Mercado Livre só o que passou na trava.
+
 ## O que mudou na v1.7 — Modelagem de produtos para marketplace
 
 A modelagem de produtos passou de "produto simples" para uma estrutura **universal**, que atende calçados, roupas, cosméticos, eletrônicos, casa e utilidades — e produtos simples também.

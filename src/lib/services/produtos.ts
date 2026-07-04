@@ -28,6 +28,11 @@ export async function criarProduto(dados: Omit<Produto, "id">): Promise<Produto>
   return repo.criar(dados);
 }
 
+/** Cria muitos produtos de uma vez (importação da base). */
+export async function criarProdutos(dados: Omit<Produto, "id">[]): Promise<Produto[]> {
+  return repo.criarVarios(dados);
+}
+
 export async function atualizarProduto(
   id: string,
   dados: Partial<Produto>

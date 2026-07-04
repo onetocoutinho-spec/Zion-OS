@@ -1,0 +1,179 @@
+// Importação da BASE DE PRODUTOS (CSV/planilha) → tabela produtos.
+//
+// Mesmo motor do importador de auditorias: parser próprio, reconhecimento de
+// colunas tolerante a acento/caixa, prévia e gravação em lote. Alimenta a
+// Esteira de Anúncio (Fase 1).
+
+import { parseCsv, normalizarHeader } from "../csv";
+import { MARKETPLACES } from "../constantes";
+import type { Marketplace, Produto } from "../types";
+import { criarProdutos } from "./produtos";
+
+// ---- Colunas canônicas e aliases ----
+
+const ALIASES: Record<string, string> = {
+  nome: "nome", produto: "nome", titulo: "nome", nome_do_produto: "nome", descricao_produto: "nome", item: "nome",
+  marca: "marca", brand: "marca", fabricante: "marca",
+  modelo: "modelo", model: "modelo", ref: "modelo", referencia: "modelo", codigo_modelo: "modelo",
+  categoria: "categoria", category: "categoria", departamento: "categoria",
+  sku: "sku", codigo: "sku", cod: "sku", codigo_interno: "sku", mlb: "sku", id: "sku",
+  cor: "cor", color: "cor",
+  tamanho: "tamanho", size: "tamanho", numeracao: "tamanho", numero: "tamanho", grade: "tamanho",
+  custo: "custo", custo_unitario: "custo", preco_custo: "custo", custo_linx: "custo", custo_compra: "custo",
+  preco: "precoVenda", preco_venda: "precoVenda", preco_de_venda: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
+  estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", estoque_disponivel: "estoque",
+  marketplace: "marketplace", canal: "marketplace", plataforma: "marketplace",
+};
+
+const COLUNAS = [
+  "nome", "marca", "modelo", "categoria", "sku", "cor", "tamanho",
+  "custo", "precoVenda", "estoque", "marketplace",
+];
+
+// ---- Parsers ----
+
+function parseNumero(s: string): number {
+  if (!s) return 0;
+  let t = s.replace(/[^\d,.-]/g, "").trim();
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
+}
+const parseInteiro = (s: string): number => Math.max(0, Math.round(parseNumero(s)));
+
+function resolverMarketplace(valor: string, padrao: Marketplace): Marketplace {
+  const v = (valor ?? "").trim().toLowerCase();
+  return MARKETPLACES.find((m) => m.toLowerCase() === v) ?? padrao;
+}
+
+/** Margem % pelo modelo Zion: preço − custo − preço×0,30 − 1,15 − frete. */
+export function margemZion(custo: number, preco: number): number {
+  if (preco <= 0) return 0;
+  const frete = preco >= 79 ? 14.15 : 0; // assume item leve; pesado é ajustado no B2
+  const margem = preco - custo - preco * 0.3 - 1.15 - frete;
+  return Math.round((margem / preco) * 1000) / 10;
+}
+
+// ---- Tipos ----
+
+export type BaseProduto = Omit<Produto, "id" | "clienteId" | "cliente">;
+
+export interface LinhaProduto {
+  base: BaseProduto;
+  margem: number;
+}
+
+export interface AnaliseProdutos {
+  total: number;
+  colunasReconhecidas: string[];
+  colunasIgnoradas: string[];
+  faltandoObrigatorias: string[];
+  amostra: LinhaProduto[];
+  linhas: LinhaProduto[];
+  erro?: string;
+}
+
+function mapearColunas(headers: string[]): Record<string, string> {
+  const achado: Record<string, string> = {};
+  for (const h of headers) {
+    const canon = ALIASES[normalizarHeader(h)];
+    if (canon && !achado[canon]) achado[canon] = h;
+  }
+  return achado;
+}
+
+function mapearLinha(
+  rec: Record<string, string>,
+  cols: Record<string, string>,
+  marketplacePadrao: Marketplace
+): LinhaProduto {
+  const val = (canon: string) => (cols[canon] ? (rec[cols[canon]] ?? "") : "");
+
+  const custo = parseNumero(val("custo"));
+  const precoVenda = parseNumero(val("precoVenda"));
+
+  const base: BaseProduto = {
+    nome: val("nome") || "Produto sem nome",
+    marca: val("marca"),
+    modelo: val("modelo"),
+    categoria: val("categoria"),
+    sku: val("sku"),
+    cor: val("cor"),
+    tamanho: val("tamanho"),
+    custo,
+    precoVenda,
+    estoque: parseInteiro(val("estoque")),
+    marketplace: resolverMarketplace(val("marketplace"), marketplacePadrao),
+    statusCadastro: "Não iniciado",
+    statusSeo: "Pendente",
+    statusDescricao: "Pendente",
+    statusImagens: "Pendente",
+    statusPrecificacao: "Pendente",
+    prioridade: "Média",
+    observacoes: "Importado da base de produtos.",
+  };
+
+  return { base, margem: margemZion(custo, precoVenda) };
+}
+
+export function analisarProdutosCsv(texto: string, marketplacePadrao: Marketplace): AnaliseProdutos {
+  const vazio: AnaliseProdutos = {
+    total: 0,
+    colunasReconhecidas: [],
+    colunasIgnoradas: [],
+    faltandoObrigatorias: ["nome"],
+    amostra: [],
+    linhas: [],
+  };
+  const { headers, linhas: registros } = parseCsv(texto);
+  if (headers.length === 0 || registros.length === 0) {
+    return { ...vazio, erro: "Arquivo vazio ou sem linhas de dados." };
+  }
+
+  const cols = mapearColunas(headers);
+  const colunasIgnoradas = headers.filter((h) => !ALIASES[normalizarHeader(h)]);
+  const faltandoObrigatorias = ["nome"].filter((c) => !cols[c]);
+  const linhas = registros.map((r) => mapearLinha(r, cols, marketplacePadrao));
+
+  return {
+    total: linhas.length,
+    colunasReconhecidas: Object.keys(cols),
+    colunasIgnoradas,
+    faltandoObrigatorias,
+    amostra: linhas.slice(0, 8),
+    linhas,
+  };
+}
+
+export interface ResumoImportacaoProdutos {
+  total: number;
+  comMargemBaixa: number;
+}
+
+export async function confirmarImportacaoProdutos(params: {
+  clienteId: string;
+  cliente: string;
+  linhas: LinhaProduto[];
+}): Promise<ResumoImportacaoProdutos> {
+  const { clienteId, cliente, linhas } = params;
+  const produtos = linhas.map((l) => ({ ...l.base, clienteId, cliente }));
+  await criarProdutos(produtos);
+  return {
+    total: produtos.length,
+    comMargemBaixa: linhas.filter((l) => l.margem < 5).length,
+  };
+}
+
+// ---- Template de exemplo ----
+
+function campoCsv(v: string): string {
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+export function gerarTemplateProdutosCsv(): string {
+  const ex1 = ["Chinelo Slide Feminino Conforto", "Beira Rio", "8360", "Calçados > Chinelos", "MLB2001", "Preto", "34-39", "18,00", "59,90", "120", "Mercado Livre"];
+  const ex2 = ["Fone Bluetooth TWS", "TechSound", "TWS-Pro", "Áudio > Fones", "MLB2002", "Preto", "Único", "45,00", "199,90", "40", "Mercado Livre"];
+  return [COLUNAS, ex1, ex2].map((l) => l.map(campoCsv).join(",")).join("\r\n");
+}
+
+export const COLUNAS_PRODUTOS = COLUNAS;

@@ -14,6 +14,7 @@ import {
   Layers,
   ClipboardList,
   ListFilter,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Templates", href: "/templates", icon: Layers },
   { label: "Anúncios", href: "/anuncios", icon: Megaphone },
+  { label: "Esteira de Anúncio", href: "/esteira", icon: Workflow },
   { label: "Auditoria em Massa", href: "/auditoria-massa", icon: ClipboardList },
   { label: "Fila de Otimização", href: "/fila-otimizacao", icon: ListFilter },
   { label: "Agentes IA", href: "/agentes", icon: Bot },
