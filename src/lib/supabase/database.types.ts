@@ -190,6 +190,93 @@ export interface ImagemProdutoRow {
   observacoes: string | null;
 }
 
+// ---- v1.8: Auditoria em massa ----
+
+export interface ImportacaoAnunciosRow {
+  id: string;
+  cliente_id: string;
+  marketplace: string | null;
+  nome_arquivo: string | null;
+  origem: string;
+  quantidade_anuncios: number | null;
+  quantidade_processada: number | null;
+  status: string;
+  data_importacao: string | null;
+  responsavel: string | null;
+  observacoes: string | null;
+  clientes?: { empresa: string } | null;
+}
+
+export interface AuditoriaAnuncioRow {
+  id: string;
+  importacao_id: string;
+  cliente_id: string;
+  anuncio_id: string | null;
+  produto_id: string | null;
+  marketplace: string | null;
+  link_anuncio: string | null;
+  titulo_atual: string | null;
+  categoria: string | null;
+  preco: number | null;
+  estoque: number | null;
+  vendas: number | null;
+  visitas: number | null;
+  conversao: number | null;
+  score_qualidade: number | null;
+  classificacao_abc: string;
+  prioridade: string;
+  status_auditoria: string;
+  problemas_encontrados: string | null;
+  oportunidades: string | null;
+  proxima_acao: string | null;
+  agente_recomendado: string | null;
+  responsavel: string | null;
+  clientes?: { empresa: string } | null;
+}
+
+export interface ProblemaAnuncioRow {
+  id: string;
+  auditoria_id: string;
+  tipo_problema: string;
+  gravidade: string;
+  descricao: string | null;
+  sugestao_correcao: string | null;
+  agente_recomendado: string | null;
+  status: string;
+}
+
+export interface FilaOtimizacaoRow {
+  id: string;
+  cliente_id: string;
+  auditoria_id: string;
+  anuncio_id: string | null;
+  prioridade: string;
+  tipo_acao: string;
+  agente_responsavel: string | null;
+  responsavel_humano: string | null;
+  status: string;
+  prazo: string | null;
+  resultado_esperado: string | null;
+  observacoes: string | null;
+  clientes?: { empresa: string } | null;
+  auditorias_anuncios?: { titulo_atual: string | null } | null;
+}
+
+export interface ExecucaoLoteRow {
+  id: string;
+  cliente_id: string;
+  agente_id: string | null;
+  tipo_execucao: string;
+  quantidade_itens: number | null;
+  status: string;
+  entrada_resumo: string | null;
+  saida_resumo: string | null;
+  erros: string | null;
+  responsavel: string | null;
+  clientes?: { empresa: string } | null;
+  agentes?: { nome: string } | null;
+}
+
 export interface AgenteRow {
   id: string;
   nome: string;

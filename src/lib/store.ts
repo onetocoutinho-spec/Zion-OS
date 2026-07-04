@@ -22,6 +22,13 @@ import { categoriaTemplates as seedCategoriaTemplates } from "./data/categoriaTe
 import { anuncioVariantes as seedAnuncioVariantes } from "./data/anuncioVariantes";
 import { precificacaoVariantes as seedPrecificacaoVariantes } from "./data/precificacaoVariantes";
 import { imagensProduto as seedImagensProduto } from "./data/imagensProduto";
+import {
+  importacoesAnuncios as seedImportacoes,
+  auditoriasAnuncios as seedAuditorias,
+  problemasAnuncio as seedProblemas,
+  filaOtimizacao as seedFila,
+  execucoesLote as seedExecucoesLote,
+} from "./data/auditoriaMassa";
 
 export type CollectionName =
   | "clientes"
@@ -40,13 +47,19 @@ export type CollectionName =
   | "categoriaTemplates"
   | "anuncioVariantes"
   | "precificacaoVariantes"
-  | "imagensProduto";
+  | "imagensProduto"
+  | "importacoesAnuncios"
+  | "auditoriasAnuncios"
+  | "problemasAnuncio"
+  | "filaOtimizacao"
+  | "execucoesLote";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
 // v1.2: registros ganharam campos de ID (clienteId, produtoId, …).
 // v1.7: modelagem de produtos marketplace (variantes, atributos, templates…).
-const VERSAO = "v1.7";
+// v1.8: auditoria em massa (importações, auditorias, fila…).
+const VERSAO = "v1.8";
 const storageKey = (c: CollectionName) => `zion-os:${VERSAO}:${c}`;
 
 const SEEDS: Record<CollectionName, { id: string }[]> = {
@@ -67,6 +80,11 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   anuncioVariantes: seedAnuncioVariantes,
   precificacaoVariantes: seedPrecificacaoVariantes,
   imagensProduto: seedImagensProduto,
+  importacoesAnuncios: seedImportacoes,
+  auditoriasAnuncios: seedAuditorias,
+  problemasAnuncio: seedProblemas,
+  filaOtimizacao: seedFila,
+  execucoesLote: seedExecucoesLote,
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

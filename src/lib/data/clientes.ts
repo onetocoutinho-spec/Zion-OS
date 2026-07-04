@@ -114,6 +114,21 @@ export const clientes: Cliente[] = [
     observacoes: "Margens apertadas na Shopee. Avaliar reprecificação da linha de facas.",
   },
   {
+    id: "cli-10",
+    empresa: "MegaShop Brasil",
+    responsavel: "Eduardo Prado",
+    segmento: "Multicategoria (grande base)",
+    marketplaces: ["Mercado Livre", "Shopee", "Amazon"],
+    plano: "Escala",
+    status: "Onboarding",
+    dataEntrada: "2026-06-25",
+    proximaReuniao: "2026-07-09",
+    proximaAcao: "Rodar auditoria em massa da base de ~1.000 anúncios do ML",
+    risco: "Médio",
+    observacoes:
+      "Cliente grande: já tem ~1.000 anúncios ativos no ML. Foco em auditoria em massa, score e fila de otimização por prioridade.",
+  },
+  {
     id: "cli-09",
     empresa: "GlowUp Cosméticos",
     responsavel: "Camila Rocha",

@@ -393,3 +393,162 @@ export interface RegistroFinanceiro {
   lucroEstimado: number;
   observacoes: string;
 }
+
+// ============================================================
+// v1.8 — Auditoria em massa (grandes bases de anúncios)
+// Enums em snake_case (iguais ao banco); rótulos legíveis em lib/auditoria.ts.
+// ============================================================
+
+export type OrigemImportacao = "planilha" | "csv" | "api" | "manual";
+export type StatusImportacao =
+  | "aguardando_processamento"
+  | "processando"
+  | "concluida"
+  | "erro"
+  | "cancelada";
+
+export interface ImportacaoAnuncios {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  marketplace: Marketplace;
+  nomeArquivo: string;
+  origem: OrigemImportacao;
+  quantidadeAnuncios: number;
+  quantidadeProcessada: number;
+  status: StatusImportacao;
+  dataImportacao: string; // ISO yyyy-mm-dd
+  responsavel: string;
+  observacoes: string;
+}
+
+export type PrioridadeAuditoria = "critica" | "alta" | "media" | "baixa";
+export type ClassificacaoABC = "A" | "B" | "C";
+export type StatusAuditoria =
+  | "pendente"
+  | "analisado"
+  | "em_otimizacao"
+  | "otimizado"
+  | "ignorado"
+  | "travado";
+
+export interface AuditoriaAnuncio {
+  id: string;
+  importacaoId: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  anuncioId: string | null;
+  produtoId: string | null;
+  marketplace: Marketplace;
+  linkAnuncio: string;
+  tituloAtual: string;
+  categoria: string;
+  preco: number;
+  estoque: number;
+  vendas: number;
+  visitas: number;
+  conversao: number; // %
+  scoreQualidade: number; // 0-100
+  classificacaoAbc: ClassificacaoABC;
+  prioridade: PrioridadeAuditoria;
+  statusAuditoria: StatusAuditoria;
+  problemasEncontrados: string;
+  oportunidades: string;
+  proximaAcao: string;
+  agenteRecomendado: string;
+  responsavel: string;
+}
+
+export type TipoProblema =
+  | "titulo_ruim"
+  | "descricao_incompleta"
+  | "imagem_fraca"
+  | "ficha_tecnica_incompleta"
+  | "preco_nao_competitivo"
+  | "estoque_baixo"
+  | "variacao_incorreta"
+  | "falta_tabela_medidas"
+  | "categoria_errada"
+  | "baixa_conversao"
+  | "baixa_visibilidade"
+  | "risco_reputacao";
+export type GravidadeProblema = "critica" | "alta" | "media" | "baixa";
+export type StatusProblema = "aberto" | "em_correcao" | "resolvido";
+
+export interface ProblemaAnuncio {
+  id: string;
+  auditoriaId: string;
+  tipoProblema: TipoProblema;
+  gravidade: GravidadeProblema;
+  descricao: string;
+  sugestaoCorrecao: string;
+  agenteRecomendado: string;
+  status: StatusProblema;
+}
+
+export type TipoAcaoFila =
+  | "revisar_titulo"
+  | "revisar_descricao"
+  | "revisar_imagens"
+  | "revisar_precificacao"
+  | "revisar_variacoes"
+  | "revisar_categoria"
+  | "criar_tabela_medidas"
+  | "fazer_benchmark"
+  | "revisar_compliance"
+  | "otimizar_completo";
+export type StatusFila =
+  | "pendente"
+  | "em_andamento"
+  | "aguardando_aprovacao"
+  | "concluido"
+  | "travado"
+  | "ignorado";
+
+export interface ItemFilaOtimizacao {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  auditoriaId: string;
+  anuncioId: string | null;
+  prioridade: PrioridadeAuditoria;
+  tipoAcao: TipoAcaoFila;
+  agenteResponsavel: string;
+  responsavelHumano: string;
+  status: StatusFila;
+  prazo: string; // ISO yyyy-mm-dd
+  resultadoEsperado: string;
+  observacoes: string;
+  /** Título do anúncio auditado (join), para exibição. */
+  tituloAnuncio?: string;
+}
+
+export type TipoExecucaoLote =
+  | "auditoria_seo"
+  | "geracao_titulo"
+  | "geracao_descricao"
+  | "revisao_precificacao"
+  | "revisao_imagens"
+  | "checklist_final"
+  | "relatorio_cliente";
+export type StatusExecucaoLote = "pendente" | "processando" | "concluida" | "erro";
+
+export interface ExecucaoLote {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  agenteId: string | null;
+  /** Nome do agente (join). */
+  agente?: string;
+  tipoExecucao: TipoExecucaoLote;
+  quantidadeItens: number;
+  status: StatusExecucaoLote;
+  entradaResumo: string;
+  saidaResumo: string;
+  erros: string;
+  responsavel: string;
+}

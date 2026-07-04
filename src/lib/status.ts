@@ -80,6 +80,18 @@ const TONE_MAP: Record<string, Tone> = {
   Lifestyle: "cyan",
   Infográfico: "blue",
   Vídeo: "orange",
+  // v1.8 — Auditoria em Massa
+  "Aguardando processamento": "yellow",
+  Processando: "blue",
+  Concluída: "green",
+  Analisado: "blue",
+  "Em otimização": "violet",
+  Otimizado: "green",
+  Ignorado: "gray",
+  Crítica: "red",
+  Aberto: "yellow",
+  "Em correção": "blue",
+  Resolvido: "green",
 };
 
 export function toneFor(status: string): Tone {

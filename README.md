@@ -1,6 +1,60 @@
-# Zion OS v1.7
+# Zion OS v1.8
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
+
+## O que mudou na v1.8 — Auditoria em Massa (bases grandes)
+
+Clientes chegam com **500, 1.000+ anúncios ativos**. Auditar um a um é inviável. A v1.8 traz o fluxo para **importar a base inteira, auditar em lote, pontuar cada anúncio e priorizar onde a otimização gera mais retorno** — sem travar a tela com milhares de registros.
+
+### O ciclo: importar → auditar → priorizar → executar
+
+- **Importação** (`importacoes_anuncios`): cada carga da base do cliente (planilha, CSV, API ou manual), com quantidade, origem, status e responsável.
+- **Auditoria** (`auditorias_anuncios`): **um registro por anúncio** com métricas (preço, vendas, visitas, conversão), **score de qualidade (0–100)**, **classificação ABC** e **prioridade**.
+- **Problemas** (`problemas_anuncio`): o que está errado em cada anúncio (título, imagem, ficha técnica, preço…), com gravidade, sugestão de correção e **agente recomendado**.
+- **Fila de otimização** (`fila_otimizacao`): a ordem de execução da equipe — os anúncios mais críticos primeiro, com ação, agente, responsável, prazo e resultado esperado.
+- **Execução em lote** (`execucoes_lote`): rodar um agente sobre vários anúncios de uma vez (ex.: reescrever 50 títulos) e registrar o resultado do lote.
+
+### Como o Zion decide a prioridade
+
+- **Score de qualidade (0–100)**: 8 sinais booleanos somam até 70 pontos (título, descrição, imagens, ficha técnica, preço, estoque, variações, tabela de medidas), + até 18 pela conversão e + 12 pela visibilidade.
+- **Curva ABC**: **A** = campeões de venda/receita, **C** = cauda longa. Baseada em vendas e receita estimada (preço × vendas).
+- **Prioridade** = valor × potencial de melhoria: um anúncio **classe A com score baixo é crítico** (otimizar rende muito); um **classe C com score bom é baixa prioridade**. É isso que evita gastar horas no anúncio errado.
+
+### O que foi adicionado
+
+- **Painel `/auditoria-massa`**: cards de resumo (importados, auditados, críticos, alta prioridade, score médio, na fila, otimizações concluídas), tabela de importações e tabela de auditorias **paginada** (carrega de 20 em 20), com filtros por cliente, marketplace, prioridade, ABC e status. Ações: **Nova importação**, **Processar auditoria simulada**, **Criar fila de otimização** e **Gerar relatório**.
+- **Detalhe da auditoria `/auditoria-massa/[id]`**: score, ABC, prioridade, métricas, oportunidade, próxima ação, agente recomendado e a lista de problemas. Ações: **Enviar para a fila**, **Criar tarefa relacionada**, **Marcar otimizado**, **Marcar ignorado**.
+- **Fila `/fila-otimizacao`**: itens ordenados por prioridade, com **Concluir / Travar** em um clique.
+- **6 novos agentes**: Auditoria em Massa, Score de Qualidade, Classificação ABC, Priorização de Otimização, Execução em Lote e Relatório de Base Grande.
+
+### Como rodar a migração (Supabase)
+
+**Aditiva e não destrutiva.** No SQL Editor, depois da migração 001:
+
+1. `database/migrations/002-auditoria-em-massa.sql` — cria as 5 tabelas, índices, RLS, realtime e triggers.
+
+Sem Supabase (modo demonstração), o seed local já traz o cliente **MegaShop Brasil** com 50 anúncios auditados representando uma base de ~1.000.
+
+### Como testar
+
+1. Abra **Auditoria em Massa** no menu. Veja os indicadores da base do MegaShop Brasil (score médio, críticos, alta prioridade).
+2. Filtre por **Prioridade = Crítica** para ver os anúncios de alto valor com score baixo. Clique em um para abrir o detalhe.
+3. No detalhe, clique **Enviar para a fila** → o item entra em **Fila de Otimização** e a auditoria vira "Em otimização".
+4. Na **Fila de Otimização**, use **Concluir** para marcar um item como resolvido.
+5. Na tela principal, clique **Criar fila de otimização** para mandar todos os críticos/alta de uma vez, ou **Gerar relatório** para registrar uma execução em lote de relatório.
+
+### Como simular um cliente com muitos anúncios
+
+- **Modo demonstração**: o seed já inclui o **MegaShop Brasil** (`cli-10`) com 2 importações (1.000 anúncios no ML + 340 na Shopee) e 50 auditorias representativas geradas de forma determinística — leves e estáveis entre recarregamentos.
+- **Criar outra base**: clique **Nova importação** para gerar uma importação simulada (500 anúncios) e depois **Processar auditoria simulada**.
+- **Escala real**: o painel foi feito para números grandes — a tabela de auditorias **pagina** (não renderiza milhares de linhas de uma vez) e os indicadores são calculados sobre a amostra. Quando a API de marketplace/CSV for conectada, o parser preenche `auditorias_anuncios` de verdade sem mudar as telas.
+
+### Como a Zion usa isso na operação
+
+1. **Onboarding de cliente grande**: importa a base, roda a auditoria e já mostra ao cliente a saúde da conta (score médio, quantos anúncios críticos).
+2. **Prioriza por retorno**: a equipe ataca primeiro os **classe A com score baixo** — onde uma hora de trabalho rende mais.
+3. **Distribui a execução**: a fila vira o quadro de trabalho da equipe (quem faz o quê, com qual agente, até quando).
+4. **Fecha o loop**: cada item concluído sobe o score; o relatório de base grande resume o antes/depois para o cliente.
 
 ## O que mudou na v1.7 — Modelagem de produtos para marketplace
 
@@ -164,6 +218,8 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 | `/clientes` | Carteira de clientes — visão 360° com tudo vinculado |
 | `/onboarding` | Checklist operacional de 14 itens por cliente |
 | `/produtos` · `/anuncios` | Base de produtos e esteira de otimização |
+| `/auditoria-massa` | **Novo** — importar e auditar bases grandes (score, ABC, prioridade) |
+| `/fila-otimizacao` | **Novo** — fila de execução da equipe, do mais crítico ao menos |
 | `/agentes` | Agentes IA com histórico de execuções |
 | `/tarefas` | Tarefas vinculadas a cliente/produto/anúncio/agente |
 | `/reunioes` | **Novo** — agenda de reuniões por cliente |
@@ -176,10 +232,10 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 - A proteção de rota é client-side (adequada para ferramenta interna; os dados em si já são protegidos pelo RLS no servidor).
 - No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local (a execução via IA funciona normalmente, desde que a `ANTHROPIC_API_KEY` esteja configurada).
 
-## O que falta para a v1.8 (recomendado)
+## O que falta para a v1.9 (recomendado)
 
-1. **Integração real com o Mercado Livre**: usar a modelagem da v1.7 para publicar anúncios com variações via API (o campo `id_variacao_marketplace` já está pronto).
-2. **Permissões por função/cliente** nas políticas RLS.
-3. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia).
-4. Portal do cliente (visão externa read-only).
-5. Upload real de imagens (hoje é por URL).
+1. **Importação real de base**: parser de CSV/planilha do Mercado Livre que preenche `auditorias_anuncios` de verdade (hoje a auditoria em massa usa amostra representativa).
+2. **Execução em lote com IA de fato**: conectar a fila e as `execucoes_lote` ao Claude para reescrever títulos/descrições de vários anúncios de uma vez.
+3. **Integração real com o Mercado Livre**: usar a modelagem da v1.7 para publicar anúncios com variações via API (o campo `id_variacao_marketplace` já está pronto).
+4. **Permissões por função/cliente** nas políticas RLS.
+5. Notificações internas, portal do cliente e upload real de imagens.

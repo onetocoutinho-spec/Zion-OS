@@ -7,12 +7,17 @@ import type {
   AgenteIA,
   Anuncio,
   AnuncioVariante,
+  AuditoriaAnuncio,
   CategoriaTemplate,
   Cliente,
   ExecucaoAgente,
+  ExecucaoLote,
   ImagemProduto,
+  ImportacaoAnuncios,
+  ItemFilaOtimizacao,
   Pendencia,
   PrecificacaoVariante,
+  ProblemaAnuncio,
   Produto,
   ProdutoAtributo,
   ProdutoVariante,
@@ -25,13 +30,18 @@ import type {
   AgenteRow,
   AnuncioRow,
   AnuncioVarianteRow,
+  AuditoriaAnuncioRow,
   CategoriaTemplateRow,
   ClienteRow,
+  ExecucaoLoteRow,
   ExecucaoRow,
+  FilaOtimizacaoRow,
   FinanceiroRow,
   ImagemProdutoRow,
+  ImportacaoAnunciosRow,
   PendenciaRow,
   PrecificacaoVarianteRow,
+  ProblemaAnuncioRow,
   ProdutoAtributoRow,
   ProdutoRow,
   ProdutoVarianteRow,
@@ -654,5 +664,194 @@ export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unkno
   if (d.url !== undefined) r.url = d.url;
   if (d.status !== undefined) r.status = d.status;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.8: Importações de anúncios ----
+
+export function importacaoParaApp(row: ImportacaoAnunciosRow): ImportacaoAnuncios {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    marketplace: (row.marketplace ?? "Mercado Livre") as ImportacaoAnuncios["marketplace"],
+    nomeArquivo: row.nome_arquivo ?? "",
+    origem: row.origem as ImportacaoAnuncios["origem"],
+    quantidadeAnuncios: Number(row.quantidade_anuncios ?? 0),
+    quantidadeProcessada: Number(row.quantidade_processada ?? 0),
+    status: row.status as ImportacaoAnuncios["status"],
+    dataImportacao: row.data_importacao ?? "",
+    responsavel: row.responsavel ?? "",
+    observacoes: row.observacoes ?? "",
+  };
+}
+
+export function importacaoParaBanco(d: Partial<ImportacaoAnuncios>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
+  if (d.nomeArquivo !== undefined) r.nome_arquivo = d.nomeArquivo;
+  if (d.origem !== undefined) r.origem = d.origem;
+  if (d.quantidadeAnuncios !== undefined) r.quantidade_anuncios = d.quantidadeAnuncios;
+  if (d.quantidadeProcessada !== undefined) r.quantidade_processada = d.quantidadeProcessada;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.dataImportacao !== undefined) r.data_importacao = d.dataImportacao || null;
+  if (d.responsavel !== undefined) r.responsavel = d.responsavel;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.8: Auditorias de anúncios ----
+
+export function auditoriaParaApp(row: AuditoriaAnuncioRow): AuditoriaAnuncio {
+  return {
+    id: row.id,
+    importacaoId: row.importacao_id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    anuncioId: row.anuncio_id,
+    produtoId: row.produto_id,
+    marketplace: (row.marketplace ?? "Mercado Livre") as AuditoriaAnuncio["marketplace"],
+    linkAnuncio: row.link_anuncio ?? "",
+    tituloAtual: row.titulo_atual ?? "",
+    categoria: row.categoria ?? "",
+    preco: Number(row.preco ?? 0),
+    estoque: Number(row.estoque ?? 0),
+    vendas: Number(row.vendas ?? 0),
+    visitas: Number(row.visitas ?? 0),
+    conversao: Number(row.conversao ?? 0),
+    scoreQualidade: Number(row.score_qualidade ?? 0),
+    classificacaoAbc: row.classificacao_abc as AuditoriaAnuncio["classificacaoAbc"],
+    prioridade: row.prioridade as AuditoriaAnuncio["prioridade"],
+    statusAuditoria: row.status_auditoria as AuditoriaAnuncio["statusAuditoria"],
+    problemasEncontrados: row.problemas_encontrados ?? "",
+    oportunidades: row.oportunidades ?? "",
+    proximaAcao: row.proxima_acao ?? "",
+    agenteRecomendado: row.agente_recomendado ?? "",
+    responsavel: row.responsavel ?? "",
+  };
+}
+
+export function auditoriaParaBanco(d: Partial<AuditoriaAnuncio>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.importacaoId !== undefined) r.importacao_id = d.importacaoId;
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.anuncioId !== undefined) r.anuncio_id = d.anuncioId;
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
+  if (d.linkAnuncio !== undefined) r.link_anuncio = d.linkAnuncio;
+  if (d.tituloAtual !== undefined) r.titulo_atual = d.tituloAtual;
+  if (d.categoria !== undefined) r.categoria = d.categoria;
+  if (d.preco !== undefined) r.preco = d.preco;
+  if (d.estoque !== undefined) r.estoque = d.estoque;
+  if (d.vendas !== undefined) r.vendas = d.vendas;
+  if (d.visitas !== undefined) r.visitas = d.visitas;
+  if (d.conversao !== undefined) r.conversao = d.conversao;
+  if (d.scoreQualidade !== undefined) r.score_qualidade = d.scoreQualidade;
+  if (d.classificacaoAbc !== undefined) r.classificacao_abc = d.classificacaoAbc;
+  if (d.prioridade !== undefined) r.prioridade = d.prioridade;
+  if (d.statusAuditoria !== undefined) r.status_auditoria = d.statusAuditoria;
+  if (d.problemasEncontrados !== undefined) r.problemas_encontrados = d.problemasEncontrados;
+  if (d.oportunidades !== undefined) r.oportunidades = d.oportunidades;
+  if (d.proximaAcao !== undefined) r.proxima_acao = d.proximaAcao;
+  if (d.agenteRecomendado !== undefined) r.agente_recomendado = d.agenteRecomendado;
+  if (d.responsavel !== undefined) r.responsavel = d.responsavel;
+  return r;
+}
+
+// ---- v1.8: Problemas de anúncio ----
+
+export function problemaParaApp(row: ProblemaAnuncioRow): ProblemaAnuncio {
+  return {
+    id: row.id,
+    auditoriaId: row.auditoria_id,
+    tipoProblema: row.tipo_problema as ProblemaAnuncio["tipoProblema"],
+    gravidade: row.gravidade as ProblemaAnuncio["gravidade"],
+    descricao: row.descricao ?? "",
+    sugestaoCorrecao: row.sugestao_correcao ?? "",
+    agenteRecomendado: row.agente_recomendado ?? "",
+    status: row.status as ProblemaAnuncio["status"],
+  };
+}
+
+export function problemaParaBanco(d: Partial<ProblemaAnuncio>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.auditoriaId !== undefined) r.auditoria_id = d.auditoriaId;
+  if (d.tipoProblema !== undefined) r.tipo_problema = d.tipoProblema;
+  if (d.gravidade !== undefined) r.gravidade = d.gravidade;
+  if (d.descricao !== undefined) r.descricao = d.descricao;
+  if (d.sugestaoCorrecao !== undefined) r.sugestao_correcao = d.sugestaoCorrecao;
+  if (d.agenteRecomendado !== undefined) r.agente_recomendado = d.agenteRecomendado;
+  if (d.status !== undefined) r.status = d.status;
+  return r;
+}
+
+// ---- v1.8: Fila de otimização ----
+
+export function filaParaApp(row: FilaOtimizacaoRow): ItemFilaOtimizacao {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    auditoriaId: row.auditoria_id,
+    anuncioId: row.anuncio_id,
+    prioridade: row.prioridade as ItemFilaOtimizacao["prioridade"],
+    tipoAcao: row.tipo_acao as ItemFilaOtimizacao["tipoAcao"],
+    agenteResponsavel: row.agente_responsavel ?? "",
+    responsavelHumano: row.responsavel_humano ?? "",
+    status: row.status as ItemFilaOtimizacao["status"],
+    prazo: row.prazo ?? "",
+    resultadoEsperado: row.resultado_esperado ?? "",
+    observacoes: row.observacoes ?? "",
+    tituloAnuncio: row.auditorias_anuncios?.titulo_atual ?? "",
+  };
+}
+
+export function filaParaBanco(d: Partial<ItemFilaOtimizacao>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.auditoriaId !== undefined) r.auditoria_id = d.auditoriaId;
+  if (d.anuncioId !== undefined) r.anuncio_id = d.anuncioId;
+  if (d.prioridade !== undefined) r.prioridade = d.prioridade;
+  if (d.tipoAcao !== undefined) r.tipo_acao = d.tipoAcao;
+  if (d.agenteResponsavel !== undefined) r.agente_responsavel = d.agenteResponsavel;
+  if (d.responsavelHumano !== undefined) r.responsavel_humano = d.responsavelHumano;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.prazo !== undefined) r.prazo = d.prazo || null;
+  if (d.resultadoEsperado !== undefined) r.resultado_esperado = d.resultadoEsperado;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.8: Execuções em lote ----
+
+export function execucaoLoteParaApp(row: ExecucaoLoteRow): ExecucaoLote {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    agenteId: row.agente_id,
+    agente: row.agentes?.nome ?? "—",
+    tipoExecucao: row.tipo_execucao as ExecucaoLote["tipoExecucao"],
+    quantidadeItens: Number(row.quantidade_itens ?? 0),
+    status: row.status as ExecucaoLote["status"],
+    entradaResumo: row.entrada_resumo ?? "",
+    saidaResumo: row.saida_resumo ?? "",
+    erros: row.erros ?? "",
+    responsavel: row.responsavel ?? "",
+  };
+}
+
+export function execucaoLoteParaBanco(d: Partial<ExecucaoLote>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.agenteId !== undefined) r.agente_id = d.agenteId;
+  if (d.tipoExecucao !== undefined) r.tipo_execucao = d.tipoExecucao;
+  if (d.quantidadeItens !== undefined) r.quantidade_itens = d.quantidadeItens;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.entradaResumo !== undefined) r.entrada_resumo = d.entradaResumo;
+  if (d.saidaResumo !== undefined) r.saida_resumo = d.saidaResumo;
+  if (d.erros !== undefined) r.erros = d.erros;
+  if (d.responsavel !== undefined) r.responsavel = d.responsavel;
   return r;
 }
