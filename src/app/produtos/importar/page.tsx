@@ -11,8 +11,6 @@ import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { formatBRL } from "@/lib/format";
-import { MARKETPLACES } from "@/lib/constantes";
-import type { Marketplace } from "@/lib/types";
 import {
   analisarProdutosCsv,
   confirmarImportacaoProdutos,
@@ -32,7 +30,6 @@ export default function ImportarProdutosPage() {
   const clientes = clientesData ?? [];
 
   const [clienteId, setClienteId] = useState("");
-  const [marketplace, setMarketplace] = useState<Marketplace>("Mercado Livre");
   const [nomeArquivo, setNomeArquivo] = useState("");
   const [analise, setAnalise] = useState<AnaliseProdutos | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,7 +50,7 @@ export default function ImportarProdutosPage() {
     setResultado(null);
     const texto = await file.text();
     setNomeArquivo(file.name);
-    setAnalise(analisarProdutosCsv(texto, marketplace));
+    setAnalise(analisarProdutosCsv(texto));
   }
 
   function baixarTemplate() {
@@ -94,7 +91,8 @@ export default function ImportarProdutosPage() {
         </Link>
         <h1 className="text-xl font-semibold tracking-tight text-white">Importar base de produtos (CSV)</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Suba a planilha da base + custos. Vira produto no Zion OS, pronto para rodar a Esteira de Anúncio.
+          Traga a base completa de produtos do cliente (do ERP) para o Zion OS e comece o cadastramento.
+          O <strong>marketplace é destino</strong> — o canal (ML, TikTok…) é escolhido depois, ao criar o anúncio.
         </p>
       </div>
 
@@ -106,15 +104,6 @@ export default function ImportarProdutosPage() {
               <option value="">Selecione…</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>{c.empresa}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col gap-1.5 text-xs text-zinc-500">
-            Marketplace padrão
-            <select className={selectClasses} value={marketplace} onChange={(e) => setMarketplace(e.target.value as Marketplace)}>
-              {MARKETPLACES.map((m) => (
-                <option key={m} value={m}>{m}</option>
               ))}
             </select>
           </label>

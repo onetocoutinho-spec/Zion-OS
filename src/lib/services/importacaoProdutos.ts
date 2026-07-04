@@ -144,7 +144,13 @@ function mapearLinha(
   return { base, margem };
 }
 
-export function analisarProdutosCsv(texto: string, marketplacePadrao: Marketplace): AnaliseProdutos {
+export function analisarProdutosCsv(
+  texto: string,
+  // A base é marketplace-agnóstica (fonte do ERP). O canal é destino, definido
+  // depois, ao criar o anúncio. Só usamos um default se a planilha trouxer a
+  // coluna "marketplace" preenchida.
+  marketplacePadrao: Marketplace = "Mercado Livre"
+): AnaliseProdutos {
   const vazio: AnaliseProdutos = {
     total: 0,
     colunasReconhecidas: [],
