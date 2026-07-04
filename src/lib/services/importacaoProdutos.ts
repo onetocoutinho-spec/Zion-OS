@@ -6,8 +6,9 @@
 
 import { parseCsv, normalizarHeader } from "../csv";
 import { MARKETPLACES } from "../constantes";
-import type { Marketplace, Produto } from "../types";
+import type { Marketplace, Produto, ProdutoVariante } from "../types";
 import { criarProdutos } from "./produtos";
+import { criarVariantesBulk } from "./produtoVariantes";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -16,7 +17,7 @@ const ALIASES: Record<string, string> = {
   marca: "marca", brand: "marca", fabricante: "marca",
   modelo: "modelo", model: "modelo", ref: "modelo", referencia: "modelo", codigo_modelo: "modelo",
   categoria: "categoria", category: "categoria", departamento: "categoria",
-  sku: "sku", codigo: "sku", cod: "sku", codigo_interno: "sku", mlb: "sku", id: "sku",
+  sku: "sku", codigo: "sku", cod: "sku", codigo_interno: "sku", id: "sku",
   cor: "cor", color: "cor",
   tamanho: "tamanho", size: "tamanho", numeracao: "tamanho", numero: "tamanho", grade: "tamanho",
   custo: "custo", custo_unitario: "custo", preco_custo: "custo", custo_linx: "custo", custo_compra: "custo",
@@ -27,6 +28,12 @@ const ALIASES: Record<string, string> = {
   cod_erp: "codErp", sku_erp: "codErp", codigo_erp: "codErp",
   cod_magazord: "codErp", magazord: "codErp", codigo_magazord: "codErp", sku_pai: "codErp",
   cod_bling: "codErp", cod_tiny: "codErp", cod_linx: "codErp",
+  // Variações (derivações): quando presente, o importador entra no modo agrupado.
+  sku_variacao: "skuVariacao", sku_variação: "skuVariacao", sku_deriv: "skuVariacao",
+  sku_derivacao: "skuVariacao", cod_derivacao: "skuVariacao", sku_var: "skuVariacao",
+  ean: "ean", gtin: "ean", codigo_barras: "ean",
+  // Id do anúncio no marketplace (MLB) — NÃO é o SKU; vai pro anúncio/variação.
+  mlb: "idExterno", mlb_id: "idExterno", id_anuncio: "idExterno", id_ml: "idExterno", id_externo: "idExterno",
 };
 
 const COLUNAS = [
@@ -77,13 +84,30 @@ function normalizarConfianca(v: string): "alta" | "media" | "baixa" | "" {
 
 export type BaseProduto = Omit<Produto, "id" | "clienteId" | "cliente">;
 
+/** Uma derivação (cor/tamanho) do produto, no modo agrupado. */
+export interface VariacaoImportada {
+  sku: string; // SKU da derivação (ex.: SKU Variação do ERP)
+  cor: string;
+  tamanho: string;
+  ean: string;
+  custo: number;
+  precoBase: number;
+  estoque: number;
+  idExterno: string; // MLB / id do anúncio no marketplace
+}
+
 export interface LinhaProduto {
   base: BaseProduto;
   margem: number;
+  /** Preenchido no modo agrupado (base com variações). */
+  variacoes?: VariacaoImportada[];
 }
 
 export interface AnaliseProdutos {
-  total: number;
+  /** "agrupado" quando a planilha traz SKU de variação (produto pai + derivações). */
+  modo: "flat" | "agrupado";
+  total: number; // nº de PRODUTOS (pais, no modo agrupado)
+  totalVariacoes: number;
   colunasReconhecidas: string[];
   colunasIgnoradas: string[];
   faltandoObrigatorias: string[];
@@ -144,6 +168,79 @@ function mapearLinha(
   return { base, margem };
 }
 
+/** Agrupa as linhas por SKU Pai (codErp), criando 1 produto pai + N variações. */
+function construirAgrupado(
+  registros: Record<string, string>[],
+  cols: Record<string, string>,
+  marketplacePadrao: Marketplace
+): LinhaProduto[] {
+  const grupos = new Map<string, Record<string, string>[]>();
+  registros.forEach((rec) => {
+    const val = (c: string) => (cols[c] ? (rec[cols[c]] ?? "").trim() : "");
+    const chave = val("codErp") || val("nome") || val("skuVariacao");
+    const arr = grupos.get(chave) ?? [];
+    arr.push(rec);
+    grupos.set(chave, arr);
+  });
+
+  const linhas: LinhaProduto[] = [];
+  for (const [chave, linhasGrupo] of grupos) {
+    const first = linhasGrupo[0];
+    const val = (c: string) => (cols[c] ? (first[cols[c]] ?? "").trim() : "");
+
+    const variacoes: VariacaoImportada[] = linhasGrupo.map((rec) => {
+      const v = (c: string) => (cols[c] ? (rec[cols[c]] ?? "").trim() : "");
+      return {
+        sku: v("skuVariacao"),
+        cor: v("cor"),
+        tamanho: v("tamanho"),
+        ean: v("ean"),
+        custo: parseNumero(v("custo")),
+        precoBase: parseNumero(v("precoVenda")),
+        estoque: parseInteiro(v("estoque")),
+        idExterno: v("idExterno"),
+      };
+    });
+
+    // Preço/custo do pai = representativo (1ª variação com preço); estoque = soma.
+    const repr = variacoes.find((x) => x.precoBase > 0) ?? variacoes[0];
+    const custo = repr?.custo ?? 0;
+    const precoVenda = repr?.precoBase ?? 0;
+    const estoque = variacoes.reduce((s, x) => s + x.estoque, 0);
+    const margem = margemZion(custo, precoVenda);
+    const confiancaCusto = normalizarConfianca(val("confianca"));
+
+    const base: BaseProduto = {
+      nome: val("nome") || "Produto sem nome",
+      marca: val("marca"),
+      modelo: val("modelo"),
+      categoria: val("categoria"),
+      sku: chave, // SKU Pai (do ERP) — nunca o MLB
+      cor: "",
+      tamanho: "",
+      custo,
+      precoVenda,
+      estoque,
+      marketplace: resolverMarketplace(val("marketplace"), marketplacePadrao),
+      statusCadastro: "Não iniciado",
+      statusSeo: "Pendente",
+      statusDescricao: "Pendente",
+      statusImagens: "Pendente",
+      statusPrecificacao: "Pendente",
+      prioridade: "Média",
+      observacoes: `Importado da base (${variacoes.length} derivações).`,
+      tipoProduto: "com_variacao",
+      codErp: chave || undefined,
+      precoMinimo: precoMinimoZion(custo),
+      margem,
+      confiancaCusto,
+    };
+
+    linhas.push({ base, margem, variacoes });
+  }
+  return linhas;
+}
+
 export function analisarProdutosCsv(
   texto: string,
   // A base é marketplace-agnóstica (fonte do ERP). O canal é destino, definido
@@ -152,7 +249,9 @@ export function analisarProdutosCsv(
   marketplacePadrao: Marketplace = "Mercado Livre"
 ): AnaliseProdutos {
   const vazio: AnaliseProdutos = {
+    modo: "flat",
     total: 0,
+    totalVariacoes: 0,
     colunasReconhecidas: [],
     colunasIgnoradas: [],
     faltandoObrigatorias: ["nome"],
@@ -167,10 +266,17 @@ export function analisarProdutosCsv(
   const cols = mapearColunas(headers);
   const colunasIgnoradas = headers.filter((h) => !ALIASES[normalizarHeader(h)]);
   const faltandoObrigatorias = ["nome"].filter((c) => !cols[c]);
-  const linhas = registros.map((r) => mapearLinha(r, cols, marketplacePadrao));
+
+  // Modo agrupado quando a planilha traz SKU de variação (produto pai + derivações).
+  const agrupado = Boolean(cols["skuVariacao"]);
+  const linhas = agrupado
+    ? construirAgrupado(registros, cols, marketplacePadrao)
+    : registros.map((r) => mapearLinha(r, cols, marketplacePadrao));
 
   return {
+    modo: agrupado ? "agrupado" : "flat",
     total: linhas.length,
+    totalVariacoes: linhas.reduce((s, l) => s + (l.variacoes?.length ?? 0), 0),
     colunasReconhecidas: Object.keys(cols),
     colunasIgnoradas,
     faltandoObrigatorias,
@@ -181,6 +287,7 @@ export function analisarProdutosCsv(
 
 export interface ResumoImportacaoProdutos {
   total: number;
+  totalVariacoes: number;
   comMargemBaixa: number;
 }
 
@@ -191,9 +298,41 @@ export async function confirmarImportacaoProdutos(params: {
 }): Promise<ResumoImportacaoProdutos> {
   const { clienteId, cliente, linhas } = params;
   const produtos = linhas.map((l) => ({ ...l.base, clienteId, cliente }));
-  await criarProdutos(produtos);
+  const criados = await criarProdutos(produtos); // ordem preservada
+
+  // Modo agrupado: cria as derivações de cada produto (SKU Variação, cor, tamanho).
+  const variantes: Omit<ProdutoVariante, "id">[] = [];
+  criados.forEach((prod, i) => {
+    (linhas[i]?.variacoes ?? []).forEach((v) => {
+      variantes.push({
+        produtoId: prod.id,
+        clienteId,
+        sku: v.sku,
+        codigoInterno: "",
+        ean: v.ean,
+        cor: v.cor,
+        tamanho: v.tamanho,
+        voltagem: "",
+        sabor: "",
+        aroma: "",
+        modeloVariacao: "",
+        custo: v.custo,
+        precoBase: v.precoBase,
+        estoque: v.estoque,
+        peso: 0,
+        altura: 0,
+        largura: 0,
+        comprimento: 0,
+        status: "Ativa",
+        observacoes: v.idExterno ? `MLB: ${v.idExterno}` : "",
+      });
+    });
+  });
+  if (variantes.length > 0) await criarVariantesBulk(variantes);
+
   return {
     total: produtos.length,
+    totalVariacoes: variantes.length,
     comMargemBaixa: linhas.filter((l) => l.margem < 5).length,
   };
 }

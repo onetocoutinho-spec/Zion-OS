@@ -75,7 +75,7 @@ export default function ImportarProdutosPage() {
         linhas: analise.linhas,
       });
       setResultado(
-        `Importados ${resumo.total} produtos${resumo.comMargemBaixa > 0 ? ` · ${resumo.comMargemBaixa} com margem abaixo de 5%` : ""}.`
+        `Importados ${resumo.total} produtos${resumo.totalVariacoes > 0 ? ` e ${resumo.totalVariacoes} variações` : ""}${resumo.comMargemBaixa > 0 ? ` · ${resumo.comMargemBaixa} com margem abaixo de 5%` : ""}.`
       );
       setTimeout(() => router.push("/produtos"), 1000);
     } finally {
@@ -128,6 +128,10 @@ export default function ImportarProdutosPage() {
           <span className="text-zinc-300">{COLUNAS_PRODUTOS.join(", ")}</span>. Obrigatória:{" "}
           <span className="text-zinc-300">nome</span>. A <span className="text-zinc-300">Margem Zion</span> é calculada
           de custo × preço (piso 5%).
+          <br />
+          <span className="text-zinc-400">Com variações:</span> inclua <span className="text-zinc-300">sku_pai</span> e{" "}
+          <span className="text-zinc-300">sku_variacao</span> (+ cor, tamanho, mlb) — o Zion agrupa por SKU Pai e cria o
+          produto pai com suas derivações. O <span className="text-zinc-300">SKU do produto = SKU Pai</span> (o MLB vira id do anúncio, não o SKU).
         </div>
       </Card>
 
@@ -141,7 +145,11 @@ export default function ImportarProdutosPage() {
             <>
               <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
                 <span className="text-zinc-300">
-                  <span className="font-semibold text-white">{analise.total}</span> produtos no arquivo
+                  <span className="font-semibold text-white">{analise.total}</span> produtos
+                  {analise.modo === "agrupado" && (
+                    <span className="text-zinc-400"> · <span className="font-semibold text-white">{analise.totalVariacoes}</span> variações</span>
+                  )}
+                  {" "}no arquivo
                 </span>
                 <span className="text-zinc-500">
                   Reconhecidas: <span className="text-zinc-300">{analise.colunasReconhecidas.join(", ") || "nenhuma"}</span>

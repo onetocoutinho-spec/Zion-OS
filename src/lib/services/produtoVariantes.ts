@@ -51,3 +51,10 @@ export async function criarVariantesEmLote(
   }
   return criadas;
 }
+
+/** Cria muitas variantes de uma vez (importação de base com variações). */
+export async function criarVariantesBulk(
+  novas: Omit<ProdutoVariante, "id">[]
+): Promise<ProdutoVariante[]> {
+  return repo.criarVarios(novas);
+}
