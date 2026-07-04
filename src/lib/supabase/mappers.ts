@@ -6,6 +6,7 @@
 import type {
   AgenteIA,
   Anuncio,
+  AnuncioGeradoRegistro,
   AnuncioVariante,
   AuditoriaAnuncio,
   CategoriaTemplate,
@@ -28,6 +29,7 @@ import type {
 } from "../types";
 import type {
   AgenteRow,
+  AnuncioGeradoRow,
   AnuncioRow,
   AnuncioVarianteRow,
   AuditoriaAnuncioRow,
@@ -861,5 +863,52 @@ export function execucaoLoteParaBanco(d: Partial<ExecucaoLote>): Record<string, 
   if (d.saidaResumo !== undefined) r.saida_resumo = d.saidaResumo;
   if (d.erros !== undefined) r.erros = d.erros;
   if (d.responsavel !== undefined) r.responsavel = d.responsavel;
+  return r;
+}
+
+// ---- v1.9: Anúncios gerados pela Esteira ----
+
+export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegistro {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    cliente: row.clientes?.empresa ?? "—",
+    produtoId: row.produto_id,
+    produto: row.produtos?.nome ?? null,
+    auditoriaId: row.auditoria_id,
+    marketplace: (row.marketplace ?? "Mercado Livre") as AnuncioGeradoRegistro["marketplace"],
+    origem: (row.origem ?? "esteira") as AnuncioGeradoRegistro["origem"],
+    tipoExecucao: (row.tipo_execucao ?? "Simulada") as AnuncioGeradoRegistro["tipoExecucao"],
+    notaDiagnostico: Number(row.nota_diagnostico ?? 0),
+    vereditoA10: (row.veredito_a10 ?? "reprovado") as AnuncioGeradoRegistro["vereditoA10"],
+    qtdPendencias: Number(row.qtd_pendencias ?? 0),
+    anuncio: (row.anuncio ?? {}) as AnuncioGeradoRegistro["anuncio"],
+    status: (row.status ?? "rascunho") as AnuncioGeradoRegistro["status"],
+    aprovadoPor: row.aprovado_por ?? "",
+    aprovadoEm: row.aprovado_em,
+    criadoEm: row.created_at ?? new Date().toISOString(),
+    observacoes: row.observacoes ?? "",
+  };
+}
+
+export function anuncioGeradoParaBanco(
+  d: Partial<AnuncioGeradoRegistro>
+): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.auditoriaId !== undefined) r.auditoria_id = d.auditoriaId;
+  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
+  if (d.origem !== undefined) r.origem = d.origem;
+  if (d.tipoExecucao !== undefined) r.tipo_execucao = d.tipoExecucao;
+  if (d.notaDiagnostico !== undefined) r.nota_diagnostico = d.notaDiagnostico;
+  if (d.vereditoA10 !== undefined) r.veredito_a10 = d.vereditoA10;
+  if (d.qtdPendencias !== undefined) r.qtd_pendencias = d.qtdPendencias;
+  if (d.anuncio !== undefined) r.anuncio = d.anuncio;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.aprovadoPor !== undefined) r.aprovado_por = d.aprovadoPor;
+  if (d.aprovadoEm !== undefined) r.aprovado_em = d.aprovadoEm;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }

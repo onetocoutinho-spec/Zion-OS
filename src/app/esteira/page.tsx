@@ -22,6 +22,10 @@ import { listarProdutos } from "@/lib/services/produtos";
 import { listarAnuncios, atualizarAnuncio } from "@/lib/services/anuncios";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { rodarEsteira } from "@/lib/services/esteira";
+import {
+  criarAnuncioGerado,
+  aprovarAnuncioGerado,
+} from "@/lib/services/anunciosGerados";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
 
 const SELECT =
@@ -48,6 +52,8 @@ export default function EsteiraPage() {
   const [anuncio, setAnuncio] = useState<AnuncioGerado | null>(null);
   const [aprovado, setAprovado] = useState(false);
   const [tituloAplicado, setTituloAplicado] = useState(false);
+  /** Id do registro persistido (fila de aprovação); null = não salvo (sem cliente). */
+  const [registroId, setRegistroId] = useState<string | null>(null);
 
   const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
@@ -89,6 +95,7 @@ export default function EsteiraPage() {
     setTipo(null);
     setAprovado(false);
     setTituloAplicado(false);
+    setRegistroId(null);
     try {
       const r = await rodarEsteira(briefing.trim(), {
         contexto: contexto || undefined,
@@ -97,11 +104,43 @@ export default function EsteiraPage() {
       setAnuncio(r.anuncio);
       setTipo(r.tipo);
       setAviso(r.aviso ?? null);
+
+      // Persiste o anúncio gerado (fila de aprovação). Precisa de um cliente.
+      if (cliente) {
+        const passouA10 =
+          r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
+        const reg = await criarAnuncioGerado({
+          clienteId: cliente.id,
+          cliente: cliente.empresa,
+          produtoId: produto?.id ?? null,
+          produto: produto?.nome ?? null,
+          auditoriaId: null,
+          marketplace: anuncioSel?.marketplace ?? produto?.marketplace ?? "Mercado Livre",
+          origem: "esteira",
+          tipoExecucao: r.tipo,
+          notaDiagnostico: r.anuncio.notaDiagnostico,
+          vereditoA10: r.anuncio.vereditoA10,
+          qtdPendencias: r.anuncio.pendencias.length,
+          anuncio: r.anuncio,
+          status: passouA10 ? "aguardando_aprovacao" : "rascunho",
+          aprovadoPor: "",
+          aprovadoEm: null,
+          criadoEm: new Date().toISOString(),
+          observacoes: "",
+        });
+        setRegistroId(reg.id);
+      }
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Falha ao rodar a esteira.");
     } finally {
       setRodando(false);
     }
+  }
+
+  async function aprovar() {
+    if (bloqueiaAprovacao || aprovado) return;
+    if (registroId) await aprovarAnuncioGerado(registroId);
+    setAprovado(true);
   }
 
   async function aplicarTitulo() {
@@ -224,7 +263,7 @@ export default function EsteiraPage() {
               <div className="flex flex-col items-end gap-1.5">
                 <Button
                   variant={aprovado ? "success" : "primary"}
-                  onClick={() => setAprovado(true)}
+                  onClick={aprovar}
                   disabled={bloqueiaAprovacao || aprovado}
                 >
                   {aprovado ? (
@@ -240,7 +279,16 @@ export default function EsteiraPage() {
                 )}
                 {aprovado && (
                   <span className="text-[11px] text-emerald-400">
-                    Envio via API do marketplace entra na Fase 2.
+                    Aprovado e salvo na fila — o envio via API entra na Fase 2.
+                  </span>
+                )}
+                {registroId ? (
+                  <LinkButton href="/esteira/aprovacoes" variant="ghost" className="px-2 py-1 text-xs">
+                    Salvo na fila de aprovação — abrir
+                  </LinkButton>
+                ) : (
+                  <span className="text-[11px] text-zinc-500">
+                    Selecione um cliente antes de rodar para salvar na fila.
                   </span>
                 )}
               </div>

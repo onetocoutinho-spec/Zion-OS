@@ -52,7 +52,8 @@ export type CollectionName =
   | "auditoriasAnuncios"
   | "problemasAnuncio"
   | "filaOtimizacao"
-  | "execucoesLote";
+  | "execucoesLote"
+  | "anunciosGerados";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -85,6 +86,8 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   problemasAnuncio: seedProblemas,
   filaOtimizacao: seedFila,
   execucoesLote: seedExecucoesLote,
+  // Anúncios gerados pela esteira: nasce vazio (é produção real, não demo).
+  anunciosGerados: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

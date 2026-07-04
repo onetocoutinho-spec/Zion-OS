@@ -2,6 +2,8 @@
 // Quando o sistema for conectado ao Supabase, estes tipos viram o contrato
 // entre o front e as tabelas do banco.
 
+import type { AnuncioGerado } from "./agentes/esteira";
+
 export type Marketplace = "Mercado Livre" | "TikTok Shop" | "Shopee" | "Amazon";
 
 export type ClienteStatus =
@@ -563,4 +565,42 @@ export interface ExecucaoLote {
   saidaResumo: string;
   erros: string;
   responsavel: string;
+}
+
+// ============================================================
+// v1.9 — Anúncios gerados pela Esteira (persistência + fila de aprovação)
+// O anúncio que a esteira produz vira registro com status; a fila de
+// "aprovados" é o que a publicação (Fase 2) consome.
+// ============================================================
+
+export type StatusAnuncioGerado =
+  | "rascunho"
+  | "aguardando_aprovacao"
+  | "aprovado"
+  | "rejeitado"
+  | "publicado";
+
+export interface AnuncioGeradoRegistro {
+  id: string;
+  clienteId: string;
+  /** Nome de exibição (join com clientes). */
+  cliente: string;
+  produtoId: string | null;
+  /** Nome do produto (join), quando vinculado. */
+  produto: string | null;
+  /** Auditoria de origem (esteira em lote), sem FK rígida. */
+  auditoriaId: string | null;
+  marketplace: Marketplace;
+  origem: "esteira" | "esteira_lote";
+  tipoExecucao: "IA" | "Simulada";
+  notaDiagnostico: number;
+  vereditoA10: "aprovado" | "reprovado";
+  qtdPendencias: number;
+  /** Payload completo do anúncio produzido pela esteira (JSON). */
+  anuncio: AnuncioGerado;
+  status: StatusAnuncioGerado;
+  aprovadoPor: string;
+  aprovadoEm: string | null; // ISO datetime
+  criadoEm: string; // ISO datetime
+  observacoes: string;
 }

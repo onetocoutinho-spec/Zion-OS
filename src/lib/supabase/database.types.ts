@@ -375,3 +375,26 @@ export interface PendenciaRow {
   clientes?: { empresa: string } | null;
   tarefas?: { tarefa: string } | null;
 }
+
+// ---- v1.9: Anúncios gerados pela Esteira (rodar a migração 004) ----
+
+export interface AnuncioGeradoRow {
+  id: string;
+  cliente_id: string;
+  produto_id: string | null;
+  auditoria_id: string | null;
+  marketplace: string | null;
+  origem: string | null;
+  tipo_execucao: string | null;
+  nota_diagnostico: number | null;
+  veredito_a10: string | null;
+  qtd_pendencias: number | null;
+  anuncio: unknown; // jsonb com o payload completo da esteira
+  status: string | null;
+  aprovado_por: string | null;
+  aprovado_em: string | null;
+  observacoes: string | null;
+  created_at?: string;
+  clientes?: { empresa: string } | null;
+  produtos?: { nome: string } | null;
+}

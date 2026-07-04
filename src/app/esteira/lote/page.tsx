@@ -21,6 +21,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { criarExecucaoLote } from "@/lib/services/execucoesLote";
+import { criarAnuncioGerado } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
 import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
@@ -115,6 +116,28 @@ export default function EsteiraLotePage() {
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
         if (aprovadoA10) aprovados++;
         else reprovados++;
+
+        // Persiste na fila de aprovação (não perde o que a esteira produziu).
+        await criarAnuncioGerado({
+          clienteId: fila[i].clienteId,
+          cliente: fila[i].cliente,
+          produtoId: fila[i].produtoId,
+          produto: null,
+          auditoriaId: fila[i].id,
+          marketplace: fila[i].marketplace,
+          origem: "esteira_lote",
+          tipoExecucao: r.tipo,
+          notaDiagnostico: r.anuncio.notaDiagnostico,
+          vereditoA10: r.anuncio.vereditoA10,
+          qtdPendencias: r.anuncio.pendencias.length,
+          anuncio: r.anuncio,
+          status: aprovadoA10 ? "aguardando_aprovacao" : "rascunho",
+          aprovadoPor: "",
+          aprovadoEm: null,
+          criadoEm: new Date().toISOString(),
+          observacoes: "",
+        });
+
         setItens((prev) =>
           prev.map((it, idx) => (idx === i ? { ...it, status: "ok", anuncio: r.anuncio, tipo: r.tipo } : it))
         );

@@ -92,6 +92,9 @@ const TONE_MAP: Record<string, Tone> = {
   Aberto: "yellow",
   "Em correção": "blue",
   Resolvido: "green",
+  // v1.9 — anúncios gerados pela esteira
+  Rascunho: "gray",
+  Rejeitado: "red",
 };
 
 export function toneFor(status: string): Tone {
