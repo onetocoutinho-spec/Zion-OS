@@ -20,14 +20,14 @@ const ALIASES: Record<string, string> = {
   cor: "cor", color: "cor",
   tamanho: "tamanho", size: "tamanho", numeracao: "tamanho", numero: "tamanho", grade: "tamanho",
   custo: "custo", custo_unitario: "custo", preco_custo: "custo", custo_linx: "custo", custo_compra: "custo",
-  preco: "precoVenda", preco_venda: "precoVenda", preco_de_venda: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
+  preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
   estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", estoque_disponivel: "estoque",
   marketplace: "marketplace", canal: "marketplace", plataforma: "marketplace",
 };
 
 const COLUNAS = [
   "nome", "marca", "modelo", "categoria", "sku", "cor", "tamanho",
-  "custo", "precoVenda", "estoque", "marketplace",
+  "custo", "preco", "estoque", "marketplace",
 ];
 
 // ---- Parsers ----
