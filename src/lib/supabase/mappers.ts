@@ -138,6 +138,10 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     descricaoBase: row.descricao_base ?? "",
     beneficios: row.beneficios ?? "",
     cuidados: row.cuidados ?? "",
+    codErp: row.cod_erp ?? "",
+    precoMinimo: row.preco_minimo != null ? Number(row.preco_minimo) : undefined,
+    margem: row.margem != null ? Number(row.margem) : undefined,
+    confiancaCusto: (row.confianca_custo ?? "") as Produto["confiancaCusto"],
   };
 }
 
@@ -168,6 +172,10 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.descricaoBase !== undefined) r.descricao_base = d.descricaoBase;
   if (d.beneficios !== undefined) r.beneficios = d.beneficios;
   if (d.cuidados !== undefined) r.cuidados = d.cuidados;
+  if (d.codErp !== undefined) r.cod_erp = d.codErp;
+  if (d.precoMinimo !== undefined) r.preco_minimo = d.precoMinimo;
+  if (d.margem !== undefined) r.margem = d.margem;
+  if (d.confiancaCusto !== undefined) r.confianca_custo = d.confiancaCusto;
   return r;
 }
 

@@ -113,6 +113,18 @@ export interface Produto {
   descricaoBase?: string;
   beneficios?: string;
   cuidados?: string;
+  // ---- v1.9: alinhamento com o modelo real (ERP do cliente + precificação Zion) ----
+  /**
+   * SKU Pai no ERP do cliente — chave canônica entre ERP ↔ ML ↔ TikTok.
+   * O ERP varia por cliente (Magazord na Chinelaria; Bling/Tiny/Linx em outros).
+   */
+  codErp?: string;
+  /** Preço mínimo pelo piso Zion (margem mínima). */
+  precoMinimo?: number;
+  /** Margem % pelo modelo Zion (preço − custo − preço×0,30 − 1,15 − frete). */
+  margem?: number;
+  /** Confiança do custo (fonte): alta | media | baixa. */
+  confiancaCusto?: "alta" | "media" | "baixa" | "";
 }
 
 export type VarianteStatus = "Ativa" | "Pausada" | "Sem estoque" | "Arquivada";

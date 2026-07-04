@@ -62,6 +62,11 @@ export interface ProdutoRow {
   descricao_base?: string | null;
   beneficios?: string | null;
   cuidados?: string | null;
+  // v1.9 (rodar a migração 003)
+  cod_erp?: string | null;
+  preco_minimo?: number | null;
+  margem?: number | null;
+  confianca_custo?: string | null;
   clientes?: { empresa: string } | null;
 }
 

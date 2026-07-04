@@ -23,11 +23,15 @@ const ALIASES: Record<string, string> = {
   preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
   estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", estoque_disponivel: "estoque",
   marketplace: "marketplace", canal: "marketplace", plataforma: "marketplace",
+  confianca: "confianca", confiabilidade: "confianca", confianca_custo: "confianca",
+  cod_erp: "codErp", sku_erp: "codErp", codigo_erp: "codErp",
+  cod_magazord: "codErp", magazord: "codErp", codigo_magazord: "codErp", sku_pai: "codErp",
+  cod_bling: "codErp", cod_tiny: "codErp", cod_linx: "codErp",
 };
 
 const COLUNAS = [
   "nome", "marca", "modelo", "categoria", "sku", "cor", "tamanho",
-  "custo", "preco", "estoque", "marketplace",
+  "custo", "preco", "estoque", "marketplace", "cod_erp", "confianca",
 ];
 
 // ---- Parsers ----
@@ -52,6 +56,21 @@ export function margemZion(custo: number, preco: number): number {
   const frete = preco >= 79 ? 14.15 : 0; // assume item leve; pesado é ajustado no B2
   const margem = preco - custo - preco * 0.3 - 1.15 - frete;
   return Math.round((margem / preco) * 1000) / 10;
+}
+
+/** Preço mínimo pelo piso Zion (margem ≥ 5%): (custo + 1,15 + frete) / 0,65. */
+export function precoMinimoZion(custo: number): number {
+  const semFrete = (custo + 1.15) / 0.65;
+  const piso = semFrete >= 79 ? (custo + 1.15 + 14.15) / 0.65 : semFrete;
+  return Math.round(piso * 100) / 100;
+}
+
+function normalizarConfianca(v: string): "alta" | "media" | "baixa" | "" {
+  const t = (v ?? "").trim().toLowerCase();
+  if (t.startsWith("alta") || t === "high") return "alta";
+  if (t.startsWith("med") || t === "medium") return "media";
+  if (t.startsWith("baix") || t === "low") return "baixa";
+  return "";
 }
 
 // ---- Tipos ----
@@ -91,6 +110,9 @@ function mapearLinha(
 
   const custo = parseNumero(val("custo"));
   const precoVenda = parseNumero(val("precoVenda"));
+  const margem = margemZion(custo, precoVenda);
+  const confiancaCusto = normalizarConfianca(val("confianca"));
+  const codErp = val("codErp");
 
   const base: BaseProduto = {
     nome: val("nome") || "Produto sem nome",
@@ -110,10 +132,16 @@ function mapearLinha(
     statusImagens: "Pendente",
     statusPrecificacao: "Pendente",
     prioridade: "Média",
-    observacoes: "Importado da base de produtos.",
+    observacoes: confiancaCusto && confiancaCusto !== "alta"
+      ? `Importado da base. Custo com confiança ${confiancaCusto} — validar antes de reprecificar.`
+      : "Importado da base de produtos.",
+    codErp: codErp || undefined,
+    precoMinimo: precoMinimoZion(custo),
+    margem,
+    confiancaCusto,
   };
 
-  return { base, margem: margemZion(custo, precoVenda) };
+  return { base, margem };
 }
 
 export function analisarProdutosCsv(texto: string, marketplacePadrao: Marketplace): AnaliseProdutos {
@@ -171,8 +199,8 @@ function campoCsv(v: string): string {
 }
 
 export function gerarTemplateProdutosCsv(): string {
-  const ex1 = ["Chinelo Slide Feminino Conforto", "Beira Rio", "8360", "Calçados > Chinelos", "MLB2001", "Preto", "34-39", "18,00", "59,90", "120", "Mercado Livre"];
-  const ex2 = ["Fone Bluetooth TWS", "TechSound", "TWS-Pro", "Áudio > Fones", "MLB2002", "Preto", "Único", "45,00", "199,90", "40", "Mercado Livre"];
+  const ex1 = ["Chinelo Slide Feminino Conforto", "Beira Rio", "8360", "Calçados > Chinelos", "MLB2001", "Preto", "34-39", "18,00", "59,90", "120", "Mercado Livre", "2640553", "alta"];
+  const ex2 = ["Fone Bluetooth TWS", "TechSound", "TWS-Pro", "Áudio > Fones", "MLB2002", "Preto", "Único", "45,00", "199,90", "40", "Mercado Livre", "", "media"];
   return [COLUNAS, ex1, ex2].map((l) => l.map(campoCsv).join(",")).join("\r\n");
 }
 
