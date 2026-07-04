@@ -47,7 +47,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="border-t border-white/5 p-4">
         <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3">
-          <p className="text-xs font-medium text-zinc-300">Zion OS v1.6</p>
+          <p className="text-xs font-medium text-zinc-300">Zion OS v1.7</p>
           <p className="mt-0.5 text-[11px] text-zinc-500">
             {supabaseConfigurado ? "Conectado ao Supabase" : "Modo demonstração (local)"}
           </p>

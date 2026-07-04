@@ -16,6 +16,12 @@ import { financeiro as seedFinanceiro } from "./data/financeiro";
 import { execucoes as seedExecucoes } from "./data/execucoes";
 import { reunioes as seedReunioes } from "./data/reunioes";
 import { pendencias as seedPendencias } from "./data/pendencias";
+import { produtoVariantes as seedProdutoVariantes } from "./data/produtoVariantes";
+import { produtoAtributos as seedProdutoAtributos } from "./data/produtoAtributos";
+import { categoriaTemplates as seedCategoriaTemplates } from "./data/categoriaTemplates";
+import { anuncioVariantes as seedAnuncioVariantes } from "./data/anuncioVariantes";
+import { precificacaoVariantes as seedPrecificacaoVariantes } from "./data/precificacaoVariantes";
+import { imagensProduto as seedImagensProduto } from "./data/imagensProduto";
 
 export type CollectionName =
   | "clientes"
@@ -28,12 +34,19 @@ export type CollectionName =
   | "financeiro"
   | "execucoes"
   | "reunioes"
-  | "pendencias";
+  | "pendencias"
+  | "produtoVariantes"
+  | "produtoAtributos"
+  | "categoriaTemplates"
+  | "anuncioVariantes"
+  | "precificacaoVariantes"
+  | "imagensProduto";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
 // v1.2: registros ganharam campos de ID (clienteId, produtoId, …).
-const VERSAO = "v1.2";
+// v1.7: modelagem de produtos marketplace (variantes, atributos, templates…).
+const VERSAO = "v1.7";
 const storageKey = (c: CollectionName) => `zion-os:${VERSAO}:${c}`;
 
 const SEEDS: Record<CollectionName, { id: string }[]> = {
@@ -48,6 +61,12 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   execucoes: seedExecucoes,
   reunioes: seedReunioes,
   pendencias: seedPendencias,
+  produtoVariantes: seedProdutoVariantes,
+  produtoAtributos: seedProdutoAtributos,
+  categoriaTemplates: seedCategoriaTemplates,
+  anuncioVariantes: seedAnuncioVariantes,
+  precificacaoVariantes: seedPrecificacaoVariantes,
+  imagensProduto: seedImagensProduto,
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

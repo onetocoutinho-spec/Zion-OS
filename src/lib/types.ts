@@ -69,6 +69,19 @@ export interface Onboarding {
 
 export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Com erro";
 
+/**
+ * Tipo do produto pai — determina se ele tem derivações (variantes) e como.
+ * v1.7: modelagem universal de marketplace.
+ */
+export type TipoProduto = "simples" | "com_variacao" | "kit" | "combo" | "catalogo";
+
+/**
+ * Produto = **produto pai**. Os campos cor/tamanho/custo/precoVenda/estoque/sku
+ * permanecem como atalho do "produto simples" (sem variação). Produtos com
+ * variação usam `ProdutoVariante` como fonte da verdade, e esses campos ficam
+ * como resumo/legado. Campos de modelagem marketplace são opcionais para não
+ * quebrar dados anteriores à v1.7.
+ */
 export interface Produto {
   id: string;
   clienteId: string;
@@ -77,6 +90,7 @@ export interface Produto {
   nome: string;
   marca: string;
   modelo: string;
+  /** Categoria operacional da Zion (serve como categoria_zion). */
   categoria: string;
   sku: string;
   cor: string;
@@ -85,12 +99,139 @@ export interface Produto {
   precoVenda: number;
   estoque: number;
   marketplace: Marketplace;
+  /** Status geral do produto pai (serve como status_geral). */
   statusCadastro: CadastroStatus;
   statusSeo: EtapaStatus;
   statusDescricao: EtapaStatus;
   statusImagens: EtapaStatus;
   statusPrecificacao: EtapaStatus;
   prioridade: Prioridade;
+  observacoes: string;
+  // ---- v1.7: modelagem marketplace (produto pai) ----
+  tipoProduto?: TipoProduto;
+  categoriaMarketplaceSugerida?: string;
+  descricaoBase?: string;
+  beneficios?: string;
+  cuidados?: string;
+}
+
+export type VarianteStatus = "Ativa" | "Pausada" | "Sem estoque" | "Arquivada";
+
+/** Derivação vendável do produto (cor + tamanho + SKU + estoque + preço…). */
+export interface ProdutoVariante {
+  id: string;
+  produtoId: string;
+  clienteId: string;
+  /** Nome do produto pai (join). */
+  produto?: string;
+  sku: string;
+  codigoInterno: string;
+  ean: string;
+  cor: string;
+  tamanho: string;
+  voltagem: string;
+  sabor: string;
+  aroma: string;
+  modeloVariacao: string;
+  custo: number;
+  precoBase: number;
+  estoque: number;
+  peso: number; // kg
+  altura: number; // cm
+  largura: number; // cm
+  comprimento: number; // cm
+  status: VarianteStatus;
+  observacoes: string;
+}
+
+export type TipoAtributo = "texto" | "numero" | "lista" | "booleano";
+export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA";
+
+/** Atributo dinâmico do produto (ficha técnica flexível por categoria). */
+export interface ProdutoAtributo {
+  id: string;
+  produtoId: string;
+  nomeAtributo: string;
+  valorAtributo: string;
+  tipoAtributo: TipoAtributo;
+  obrigatorio: boolean;
+  origem: OrigemAtributo;
+}
+
+/** Template operacional por categoria da Zion (o "molde" de cada nicho). */
+export interface CategoriaTemplate {
+  id: string;
+  categoriaZion: string;
+  marketplace: Marketplace | "Todos";
+  nomeTemplate: string;
+  descricao: string;
+  camposObrigatorios: string[];
+  camposRecomendados: string[];
+  atributosMarketplace: string[];
+  regrasVariacao: string;
+  checklistCategoria: string[];
+  agentesRecomendados: string[];
+}
+
+export type StatusEnvioVariante = "Não enviada" | "Enviada" | "Erro" | "Pausada";
+
+/** Vínculo de uma derivação a um anúncio (o que foi enviado ao marketplace). */
+export interface AnuncioVariante {
+  id: string;
+  anuncioId: string;
+  produtoId: string;
+  varianteId: string;
+  clienteId: string;
+  skuEnviado: string;
+  precoEnviado: number;
+  estoqueEnviado: number;
+  statusEnvio: StatusEnvioVariante;
+  idVariacaoMarketplace: string;
+  observacoes: string;
+  /** Resumo da variante (join), ex.: "Preto / 36". */
+  varianteResumo?: string;
+}
+
+export type StatusMargem = "Saudável" | "Apertada" | "Negativa";
+
+/** Precificação detalhada por derivação e marketplace. */
+export interface PrecificacaoVariante {
+  id: string;
+  clienteId: string;
+  produtoId: string;
+  varianteId: string;
+  marketplace: Marketplace;
+  custoProduto: number;
+  embalagem: number;
+  impostoPercentual: number;
+  taxaMarketplacePercentual: number;
+  taxaFixa: number;
+  comissaoGestorPercentual: number;
+  outrosCustos: number;
+  precoVenda: number;
+  lucroBruto: number;
+  lucroLiquido: number;
+  margemLiquidaPercentual: number;
+  precoMinimo: number;
+  statusMargem: StatusMargem;
+  observacoes: string;
+  /** Resumo da variante (join), ex.: "Preto / 36". */
+  varianteResumo?: string;
+}
+
+export type TipoImagem = "Principal" | "Secundária" | "Lifestyle" | "Infográfico" | "Vídeo";
+export type ImagemStatus = "Pendente" | "Em produção" | "Aprovada" | "Publicada";
+
+/** Imagem/vídeo por produto, variação e/ou anúncio. */
+export interface ImagemProduto {
+  id: string;
+  clienteId: string;
+  produtoId: string;
+  varianteId: string | null;
+  anuncioId: string | null;
+  tipoImagem: TipoImagem;
+  url: string;
+  status: ImagemStatus;
   observacoes: string;
 }
 
@@ -115,6 +256,11 @@ export interface Anuncio {
   statusPublicacao: "Pendente" | "Agendado" | "Publicado";
   proximaAcao: string;
   responsavel: string;
+  // ---- v1.7: modelagem marketplace ----
+  categoriaMarketplace?: string;
+  descricao?: string;
+  idExternoMarketplace?: string;
+  observacoes?: string;
 }
 
 export type AreaAgente =

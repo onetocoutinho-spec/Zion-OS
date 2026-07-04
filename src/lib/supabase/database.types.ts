@@ -56,6 +56,12 @@ export interface ProdutoRow {
   status_precificacao: string;
   prioridade: string;
   observacoes: string | null;
+  // v1.7 (ausentes em bancos anteriores — rodar a migração 001)
+  tipo_produto?: string | null;
+  categoria_marketplace_sugerida?: string | null;
+  descricao_base?: string | null;
+  beneficios?: string | null;
+  cuidados?: string | null;
   clientes?: { empresa: string } | null;
 }
 
@@ -76,8 +82,112 @@ export interface AnuncioRow {
   status_publicacao: string;
   proxima_acao: string | null;
   responsavel: string | null;
+  // v1.7
+  categoria_marketplace?: string | null;
+  descricao?: string | null;
+  id_externo_marketplace?: string | null;
+  observacoes?: string | null;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;
+}
+
+export interface ProdutoVarianteRow {
+  id: string;
+  produto_id: string;
+  cliente_id: string;
+  sku: string | null;
+  codigo_interno: string | null;
+  ean: string | null;
+  cor: string | null;
+  tamanho: string | null;
+  voltagem: string | null;
+  sabor: string | null;
+  aroma: string | null;
+  modelo_variacao: string | null;
+  custo: number | null;
+  preco_base: number | null;
+  estoque: number | null;
+  peso: number | null;
+  altura: number | null;
+  largura: number | null;
+  comprimento: number | null;
+  status: string;
+  observacoes: string | null;
+  produtos?: { nome: string } | null;
+}
+
+export interface ProdutoAtributoRow {
+  id: string;
+  produto_id: string;
+  nome_atributo: string;
+  valor_atributo: string | null;
+  tipo_atributo: string;
+  obrigatorio: boolean;
+  origem: string;
+}
+
+export interface CategoriaTemplateRow {
+  id: string;
+  categoria_zion: string;
+  marketplace: string;
+  nome_template: string;
+  descricao: string | null;
+  campos_obrigatorios: string[] | null;
+  campos_recomendados: string[] | null;
+  atributos_marketplace: string[] | null;
+  regras_variacao: string | null;
+  checklist_categoria: string[] | null;
+  agentes_recomendados: string[] | null;
+}
+
+export interface AnuncioVarianteRow {
+  id: string;
+  anuncio_id: string;
+  produto_id: string;
+  variante_id: string;
+  cliente_id: string;
+  sku_enviado: string | null;
+  preco_enviado: number | null;
+  estoque_enviado: number | null;
+  status_envio: string;
+  id_variacao_marketplace: string | null;
+  observacoes: string | null;
+  produto_variantes?: { cor: string | null; tamanho: string | null; voltagem: string | null; sabor: string | null; aroma: string | null; modelo_variacao: string | null } | null;
+}
+
+export interface PrecificacaoVarianteRow {
+  id: string;
+  cliente_id: string;
+  produto_id: string;
+  variante_id: string;
+  marketplace: string;
+  custo_produto: number | null;
+  embalagem: number | null;
+  imposto_percentual: number | null;
+  taxa_marketplace_percentual: number | null;
+  taxa_fixa: number | null;
+  comissao_gestor_percentual: number | null;
+  outros_custos: number | null;
+  preco_venda: number | null;
+  lucro_bruto: number | null;
+  lucro_liquido: number | null;
+  margem_liquida_percentual: number | null;
+  preco_minimo: number | null;
+  status_margem: string;
+  observacoes: string | null;
+  produto_variantes?: { cor: string | null; tamanho: string | null; voltagem: string | null; sabor: string | null; aroma: string | null; modelo_variacao: string | null } | null;
+}
+
+export interface ImagemProdutoRow {
+  id: string;
+  cliente_id: string;
+  produto_id: string;
+  variante_id: string | null;
+  anuncio_id: string | null;
+  tipo_imagem: string;
+  url: string | null;
+  status: string;
+  observacoes: string | null;
 }
 
 export interface AgenteRow {

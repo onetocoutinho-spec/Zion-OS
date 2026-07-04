@@ -61,6 +61,25 @@ const TONE_MAP: Record<string, Tone> = {
   Baixo: "green",
   Médio: "yellow",
   Alto: "red",
+  // v1.7 — variantes / envio / margem / imagens
+  Ativa: "green",
+  Pausada: "orange",
+  "Sem estoque": "red",
+  Arquivada: "gray",
+  "Não enviada": "gray",
+  Enviada: "green",
+  Erro: "red",
+  Saudável: "green",
+  Apertada: "yellow",
+  Negativa: "red",
+  "Em produção": "blue",
+  Aprovada: "green",
+  Publicada: "cyan",
+  Principal: "violet",
+  Secundária: "gray",
+  Lifestyle: "cyan",
+  Infográfico: "blue",
+  Vídeo: "orange",
 };
 
 export function toneFor(status: string): Tone {

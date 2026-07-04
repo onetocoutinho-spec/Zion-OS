@@ -1,6 +1,55 @@
-# Zion OS v1.6
+# Zion OS v1.7
 
 Sistema interno da **Zion Company** — agência especializada em ajudar empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee e Amazon).
+
+## O que mudou na v1.7 — Modelagem de produtos para marketplace
+
+A modelagem de produtos passou de "produto simples" para uma estrutura **universal**, que atende calçados, roupas, cosméticos, eletrônicos, casa e utilidades — e produtos simples também.
+
+### Produto pai × Variação × Anúncio (a distinção que importa)
+
+- **Produto pai** (`produtos`): a "ideia" do produto — nome, marca, categoria, descrição base, benefícios, cuidados, **tipo** (simples / com variação / kit / combo / catálogo).
+- **Variação / SKU** (`produto_variantes`): cada derivação **vendável** — ex.: *Tênis Preto 38*. Tem SKU, EAN, custo, preço, estoque, peso/dimensões próprios. **É aqui que o estoque real vive** em produtos com variação.
+- **Anúncio** (`anuncios`): o produto publicado **em um marketplace** (título, descrição, categoria do marketplace, id externo).
+- **Variação no anúncio** (`anuncio_variantes`): quais derivações foram **enviadas** àquele anúncio, com preço/estoque/ID de variação por marketplace.
+
+### O que foi adicionado
+
+- **Página do produto com abas**: Geral · **Variações** · Atributos · Anúncios · **Precificação** · **Imagens**.
+- **Gerador de grade de variações**: informe *Cores: Preto, Avelã* × *Tamanhos: 34,35,36,37* e o sistema cria as 8 combinações de uma vez, cada uma com SKU sugerido, custo, preço e estoque. Edição em lote e uma a uma.
+- **Atributos dinâmicos** por produto (ficha técnica flexível por categoria).
+- **Templates de categoria** (`/templates`): o molde de cada nicho — campos obrigatórios/recomendados, regras de variação, checklist de anúncio e agentes recomendados.
+- **Precificação por derivação**: calculadora que considera custo, embalagem, imposto, taxa do marketplace, taxa fixa e comissão → lucro, margem, preço mínimo e saúde da margem.
+- **Imagens** por produto, variação e anúncio.
+- **Anúncio → "Variações vinculadas ao anúncio"**: selecione as derivações do produto e defina preço/estoque/ID enviados por marketplace.
+- **9 novos agentes**: Produto Pai, Variações e SKUs, Gerador de Grade, Atributos por Categoria, Anúncio por Marketplace, Anúncio Variações ML, Precificação por Derivação, Imagens por Variação, Checklist por Categoria.
+
+### Como rodar a migração (Supabase)
+
+Tudo é **aditivo e não destrutivo** — não apaga dados. No SQL Editor, rode nesta ordem:
+
+1. `database/migrations/001-modelagem-produtos-marketplace.sql` — cria as novas tabelas e colunas.
+2. `database/migrations/001b-seed-modelagem.sql` *(opcional)* — insere os 6 templates de categoria, um calçado de exemplo com variações e os 9 novos agentes.
+
+Sem Supabase (modo demonstração), tudo já vem no seed local — os campos novos aparecem automaticamente.
+
+### Como testar — produto de calçado (com variação)
+
+1. Abra **Produtos → "Tênis Casual Urbano"** (ou crie um produto com **Tipo = Com variação**).
+2. Aba **Variações**: veja as derivações cor × tamanho, cada uma com SKU/EAN/estoque próprios.
+3. Clique **"Gerar grade de variações"**, digite `Cores: Verde` e `Tamanhos: 34, 35, 36` → **Gerar** cria as 3 combinações com SKU automático.
+4. Aba **Precificação**: escolha uma variação, informe custo e taxas → o sistema calcula lucro, margem e preço mínimo, e salva por derivação.
+5. Crie um **anúncio** para o produto e, na página do anúncio, em **"Variações vinculadas ao anúncio"**, vincule as derivações e defina preço/estoque enviados.
+
+### Como testar — produto simples (sem variação)
+
+1. Crie um produto com **Tipo = Simples** (ex.: o "Farol de Milha Universal LED" já existente).
+2. A aba **Geral** mostra custo/preço/estoque direto no produto (sem precisar de variações).
+3. As abas Variações/Precificação/Imagens continuam disponíveis, mas você não precisa usá-las — o produto simples funciona só com os dados do pai.
+
+### Como isso se conecta com o Mercado Livre (e outros)
+
+A estrutura espelha como o ML organiza catálogo: **item (produto) → variações (por atributo) → estoque/preço por variação**. Cada `anuncio_variantes` guarda o `id_variacao_marketplace` — o campo onde, numa versão futura com a API do ML, vamos gravar o ID que o marketplace devolve ao publicar cada derivação. Os `categoria_templates` mapeiam os atributos exigidos por categoria (o que o ML chama de "ficha técnica"), reduzindo bloqueio de anúncio. **Nenhuma integração com API de marketplace foi conectada ainda** — a modelagem é que está pronta para receber.
 
 ## O que mudou na v1.6
 
@@ -127,10 +176,10 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 - A proteção de rota é client-side (adequada para ferramenta interna; os dados em si já são protegidos pelo RLS no servidor).
 - No modo demonstração (sem Supabase) não há login nem tempo real — é um sandbox local (a execução via IA funciona normalmente, desde que a `ANTHROPIC_API_KEY` esteja configurada).
 
-## O que falta para a v1.7 (recomendado)
+## O que falta para a v1.8 (recomendado)
 
-1. **Permissões por função/cliente** nas políticas RLS
-2. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia)
-3. Portal do cliente (visão externa read-only)
-4. Integrações com marketplaces (começando pelo Mercado Livre)
-5. Renderização Markdown dos resultados dos agentes
+1. **Integração real com o Mercado Livre**: usar a modelagem da v1.7 para publicar anúncios com variações via API (o campo `id_variacao_marketplace` já está pronto).
+2. **Permissões por função/cliente** nas políticas RLS.
+3. Notificações internas (tarefas atrasadas, pendências antigas, reuniões do dia).
+4. Portal do cliente (visão externa read-only).
+5. Upload real de imagens (hoje é por URL).

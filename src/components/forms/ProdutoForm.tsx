@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, FormGrid, Input, Select, TextArea, ouInfoNecessaria } from "@/components/ui/form";
-import { CADASTRO_STATUS, ETAPA_STATUS, MARKETPLACES, PRIORIDADES } from "@/lib/constantes";
+import { CADASTRO_STATUS, ETAPA_STATUS, MARKETPLACES, PRIORIDADES, TIPOS_PRODUTO } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { atualizarProduto, criarProduto } from "@/lib/services/produtos";
@@ -41,6 +41,11 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
     statusPrecificacao: inicial?.statusPrecificacao ?? "Pendente",
     prioridade: inicial?.prioridade ?? "Média",
     observacoes: inicial?.observacoes ?? "",
+    tipoProduto: inicial?.tipoProduto ?? "simples",
+    categoriaMarketplaceSugerida: inicial?.categoriaMarketplaceSugerida ?? "",
+    descricaoBase: inicial?.descricaoBase ?? "",
+    beneficios: inicial?.beneficios ?? "",
+    cuidados: inicial?.cuidados ?? "",
   });
 
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
@@ -80,6 +85,11 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
       precoVenda: form.precoVenda ? numero(form.precoVenda) : 0,
       estoque: numero(form.estoque),
       observacoes: form.observacoes,
+      tipoProduto: form.tipoProduto as Produto["tipoProduto"],
+      categoriaMarketplaceSugerida: form.categoriaMarketplaceSugerida,
+      descricaoBase: form.descricaoBase,
+      beneficios: form.beneficios,
+      cuidados: form.cuidados,
     } as Omit<Produto, "id">;
 
     if (inicial) {
@@ -105,6 +115,20 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
           </Field>
           <Field label="Nome do produto" required error={erros.nome}>
             <Input value={form.nome} onChange={(e) => set("nome", e.target.value)} />
+          </Field>
+          <Field label="Tipo de produto" hint="Com variação → controle cada derivação (SKU) na aba Variações.">
+            <select
+              value={form.tipoProduto}
+              onChange={(e) => set("tipoProduto", e.target.value as (typeof form)["tipoProduto"])}
+              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/60"
+            >
+              {TIPOS_PRODUTO.map((t) => (
+                <option key={t.valor} value={t.valor}>{t.rotulo}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Categoria marketplace sugerida" hint="Ex.: MLB1276 - Calçados > Tênis">
+            <Input value={form.categoriaMarketplaceSugerida} onChange={(e) => set("categoriaMarketplaceSugerida", e.target.value)} />
           </Field>
           <Field label="Marca">
             <Input value={form.marca} onChange={(e) => set("marca", e.target.value)} />
@@ -156,7 +180,16 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
           </Field>
         </FormGrid>
 
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
+          <Field label="Descrição base">
+            <TextArea value={form.descricaoBase} onChange={(e) => set("descricaoBase", e.target.value)} placeholder="Descrição do produto que serve de base para os anúncios." />
+          </Field>
+          <Field label="Benefícios">
+            <TextArea value={form.beneficios} onChange={(e) => set("beneficios", e.target.value)} rows={2} />
+          </Field>
+          <Field label="Cuidados">
+            <TextArea value={form.cuidados} onChange={(e) => set("cuidados", e.target.value)} rows={2} />
+          </Field>
           <Field label="Observações">
             <TextArea value={form.observacoes} onChange={(e) => set("observacoes", e.target.value)} />
           </Field>

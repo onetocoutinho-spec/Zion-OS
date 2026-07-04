@@ -11,6 +11,7 @@ import {
   BarChart3,
   Wallet,
   Settings,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Clientes", href: "/clientes", icon: Users },
   { label: "Onboarding", href: "/onboarding", icon: Rocket },
   { label: "Produtos", href: "/produtos", icon: Package },
+  { label: "Templates", href: "/templates", icon: Layers },
   { label: "Anúncios", href: "/anuncios", icon: Megaphone },
   { label: "Agentes IA", href: "/agentes", icon: Bot },
   { label: "Tarefas", href: "/tarefas", icon: ListChecks },

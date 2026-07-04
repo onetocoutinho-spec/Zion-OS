@@ -1,0 +1,36 @@
+import { criarRepositorio } from "../repositorio";
+import { imagemParaApp, imagemParaBanco } from "../supabase/mappers";
+import type { ImagemProdutoRow } from "../supabase/database.types";
+import type { ImagemProduto } from "../types";
+
+const repo = criarRepositorio<ImagemProduto, ImagemProdutoRow>({
+  tabela: "imagens_produto",
+  colecao: "imagensProduto",
+  prefixoIdLocal: "img",
+  selecao: "*",
+  paraApp: imagemParaApp,
+  paraBanco: imagemParaBanco,
+});
+
+export async function listarImagensDoProduto(produtoId: string): Promise<ImagemProduto[]> {
+  return repo.listar({ coluna: "produto_id", valor: produtoId, campoLocal: "produtoId" });
+}
+
+export async function listarImagensDoAnuncio(anuncioId: string): Promise<ImagemProduto[]> {
+  return repo.listar({ coluna: "anuncio_id", valor: anuncioId, campoLocal: "anuncioId" });
+}
+
+export async function criarImagem(dados: Omit<ImagemProduto, "id">): Promise<ImagemProduto> {
+  return repo.criar(dados);
+}
+
+export async function atualizarImagem(
+  id: string,
+  dados: Partial<ImagemProduto>
+): Promise<ImagemProduto | null> {
+  return repo.atualizar(id, dados);
+}
+
+export async function excluirImagem(id: string): Promise<void> {
+  return repo.excluir(id);
+}

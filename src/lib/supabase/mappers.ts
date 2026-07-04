@@ -6,10 +6,16 @@
 import type {
   AgenteIA,
   Anuncio,
+  AnuncioVariante,
+  CategoriaTemplate,
   Cliente,
   ExecucaoAgente,
+  ImagemProduto,
   Pendencia,
+  PrecificacaoVariante,
   Produto,
+  ProdutoAtributo,
+  ProdutoVariante,
   RegistroFinanceiro,
   Relatorio,
   Reuniao,
@@ -18,15 +24,44 @@ import type {
 import type {
   AgenteRow,
   AnuncioRow,
+  AnuncioVarianteRow,
+  CategoriaTemplateRow,
   ClienteRow,
   ExecucaoRow,
   FinanceiroRow,
+  ImagemProdutoRow,
   PendenciaRow,
+  PrecificacaoVarianteRow,
+  ProdutoAtributoRow,
   ProdutoRow,
+  ProdutoVarianteRow,
   RelatorioRow,
   ReuniaoRow,
   TarefaRow,
 } from "./database.types";
+import { resumoVariante } from "../variantes";
+
+/** Resumo de variante a partir dos campos join no banco. */
+function resumoVarianteRow(
+  v?: {
+    cor: string | null;
+    tamanho: string | null;
+    voltagem: string | null;
+    sabor: string | null;
+    aroma: string | null;
+    modelo_variacao: string | null;
+  } | null
+): string {
+  if (!v) return "—";
+  return resumoVariante({
+    cor: v.cor ?? "",
+    tamanho: v.tamanho ?? "",
+    voltagem: v.voltagem ?? "",
+    sabor: v.sabor ?? "",
+    aroma: v.aroma ?? "",
+    modeloVariacao: v.modelo_variacao ?? "",
+  });
+}
 
 // ---- Clientes ----
 
@@ -88,6 +123,11 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     statusPrecificacao: row.status_precificacao as Produto["statusPrecificacao"],
     prioridade: row.prioridade as Produto["prioridade"],
     observacoes: row.observacoes ?? "",
+    tipoProduto: (row.tipo_produto ?? "simples") as Produto["tipoProduto"],
+    categoriaMarketplaceSugerida: row.categoria_marketplace_sugerida ?? "",
+    descricaoBase: row.descricao_base ?? "",
+    beneficios: row.beneficios ?? "",
+    cuidados: row.cuidados ?? "",
   };
 }
 
@@ -112,6 +152,12 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.statusPrecificacao !== undefined) r.status_precificacao = d.statusPrecificacao;
   if (d.prioridade !== undefined) r.prioridade = d.prioridade;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  if (d.tipoProduto !== undefined) r.tipo_produto = d.tipoProduto;
+  if (d.categoriaMarketplaceSugerida !== undefined)
+    r.categoria_marketplace_sugerida = d.categoriaMarketplaceSugerida;
+  if (d.descricaoBase !== undefined) r.descricao_base = d.descricaoBase;
+  if (d.beneficios !== undefined) r.beneficios = d.beneficios;
+  if (d.cuidados !== undefined) r.cuidados = d.cuidados;
   return r;
 }
 
@@ -137,6 +183,10 @@ export function anuncioParaApp(row: AnuncioRow): Anuncio {
     statusPublicacao: row.status_publicacao as Anuncio["statusPublicacao"],
     proximaAcao: row.proxima_acao ?? "",
     responsavel: row.responsavel ?? "",
+    categoriaMarketplace: row.categoria_marketplace ?? "",
+    descricao: row.descricao ?? "",
+    idExternoMarketplace: row.id_externo_marketplace ?? "",
+    observacoes: row.observacoes ?? "",
   };
 }
 
@@ -157,6 +207,10 @@ export function anuncioParaBanco(d: Partial<Anuncio>): Record<string, unknown> {
   if (d.statusPublicacao !== undefined) r.status_publicacao = d.statusPublicacao;
   if (d.proximaAcao !== undefined) r.proxima_acao = d.proximaAcao;
   if (d.responsavel !== undefined) r.responsavel = d.responsavel;
+  if (d.categoriaMarketplace !== undefined) r.categoria_marketplace = d.categoriaMarketplace;
+  if (d.descricao !== undefined) r.descricao = d.descricao;
+  if (d.idExternoMarketplace !== undefined) r.id_externo_marketplace = d.idExternoMarketplace;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
   return r;
 }
 
@@ -370,5 +424,235 @@ export function pendenciaParaBanco(d: Partial<Pendencia>): Record<string, unknow
   if (d.tarefaId !== undefined) r.tarefa_id = d.tarefaId;
   if (d.descricao !== undefined) r.descricao = d.descricao;
   if (d.resolvida !== undefined) r.resolvida = d.resolvida;
+  return r;
+}
+
+// ---- v1.7: Variantes de produto ----
+
+export function varianteParaApp(row: ProdutoVarianteRow): ProdutoVariante {
+  return {
+    id: row.id,
+    produtoId: row.produto_id,
+    clienteId: row.cliente_id,
+    produto: row.produtos?.nome ?? "",
+    sku: row.sku ?? "",
+    codigoInterno: row.codigo_interno ?? "",
+    ean: row.ean ?? "",
+    cor: row.cor ?? "",
+    tamanho: row.tamanho ?? "",
+    voltagem: row.voltagem ?? "",
+    sabor: row.sabor ?? "",
+    aroma: row.aroma ?? "",
+    modeloVariacao: row.modelo_variacao ?? "",
+    custo: Number(row.custo ?? 0),
+    precoBase: Number(row.preco_base ?? 0),
+    estoque: Number(row.estoque ?? 0),
+    peso: Number(row.peso ?? 0),
+    altura: Number(row.altura ?? 0),
+    largura: Number(row.largura ?? 0),
+    comprimento: Number(row.comprimento ?? 0),
+    status: row.status as ProdutoVariante["status"],
+    observacoes: row.observacoes ?? "",
+  };
+}
+
+export function varianteParaBanco(d: Partial<ProdutoVariante>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.sku !== undefined) r.sku = d.sku;
+  if (d.codigoInterno !== undefined) r.codigo_interno = d.codigoInterno;
+  if (d.ean !== undefined) r.ean = d.ean;
+  if (d.cor !== undefined) r.cor = d.cor;
+  if (d.tamanho !== undefined) r.tamanho = d.tamanho;
+  if (d.voltagem !== undefined) r.voltagem = d.voltagem;
+  if (d.sabor !== undefined) r.sabor = d.sabor;
+  if (d.aroma !== undefined) r.aroma = d.aroma;
+  if (d.modeloVariacao !== undefined) r.modelo_variacao = d.modeloVariacao;
+  if (d.custo !== undefined) r.custo = d.custo;
+  if (d.precoBase !== undefined) r.preco_base = d.precoBase;
+  if (d.estoque !== undefined) r.estoque = d.estoque;
+  if (d.peso !== undefined) r.peso = d.peso;
+  if (d.altura !== undefined) r.altura = d.altura;
+  if (d.largura !== undefined) r.largura = d.largura;
+  if (d.comprimento !== undefined) r.comprimento = d.comprimento;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.7: Atributos de produto ----
+
+export function atributoParaApp(row: ProdutoAtributoRow): ProdutoAtributo {
+  return {
+    id: row.id,
+    produtoId: row.produto_id,
+    nomeAtributo: row.nome_atributo,
+    valorAtributo: row.valor_atributo ?? "",
+    tipoAtributo: row.tipo_atributo as ProdutoAtributo["tipoAtributo"],
+    obrigatorio: row.obrigatorio,
+    origem: row.origem as ProdutoAtributo["origem"],
+  };
+}
+
+export function atributoParaBanco(d: Partial<ProdutoAtributo>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.nomeAtributo !== undefined) r.nome_atributo = d.nomeAtributo;
+  if (d.valorAtributo !== undefined) r.valor_atributo = d.valorAtributo;
+  if (d.tipoAtributo !== undefined) r.tipo_atributo = d.tipoAtributo;
+  if (d.obrigatorio !== undefined) r.obrigatorio = d.obrigatorio;
+  if (d.origem !== undefined) r.origem = d.origem;
+  return r;
+}
+
+// ---- v1.7: Templates de categoria ----
+
+export function templateParaApp(row: CategoriaTemplateRow): CategoriaTemplate {
+  return {
+    id: row.id,
+    categoriaZion: row.categoria_zion,
+    marketplace: row.marketplace as CategoriaTemplate["marketplace"],
+    nomeTemplate: row.nome_template,
+    descricao: row.descricao ?? "",
+    camposObrigatorios: row.campos_obrigatorios ?? [],
+    camposRecomendados: row.campos_recomendados ?? [],
+    atributosMarketplace: row.atributos_marketplace ?? [],
+    regrasVariacao: row.regras_variacao ?? "",
+    checklistCategoria: row.checklist_categoria ?? [],
+    agentesRecomendados: row.agentes_recomendados ?? [],
+  };
+}
+
+export function templateParaBanco(d: Partial<CategoriaTemplate>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.categoriaZion !== undefined) r.categoria_zion = d.categoriaZion;
+  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
+  if (d.nomeTemplate !== undefined) r.nome_template = d.nomeTemplate;
+  if (d.descricao !== undefined) r.descricao = d.descricao;
+  if (d.camposObrigatorios !== undefined) r.campos_obrigatorios = d.camposObrigatorios;
+  if (d.camposRecomendados !== undefined) r.campos_recomendados = d.camposRecomendados;
+  if (d.atributosMarketplace !== undefined) r.atributos_marketplace = d.atributosMarketplace;
+  if (d.regrasVariacao !== undefined) r.regras_variacao = d.regrasVariacao;
+  if (d.checklistCategoria !== undefined) r.checklist_categoria = d.checklistCategoria;
+  if (d.agentesRecomendados !== undefined) r.agentes_recomendados = d.agentesRecomendados;
+  return r;
+}
+
+// ---- v1.7: Variantes vinculadas a anúncio ----
+
+export function anuncioVarianteParaApp(row: AnuncioVarianteRow): AnuncioVariante {
+  return {
+    id: row.id,
+    anuncioId: row.anuncio_id,
+    produtoId: row.produto_id,
+    varianteId: row.variante_id,
+    clienteId: row.cliente_id,
+    skuEnviado: row.sku_enviado ?? "",
+    precoEnviado: Number(row.preco_enviado ?? 0),
+    estoqueEnviado: Number(row.estoque_enviado ?? 0),
+    statusEnvio: row.status_envio as AnuncioVariante["statusEnvio"],
+    idVariacaoMarketplace: row.id_variacao_marketplace ?? "",
+    observacoes: row.observacoes ?? "",
+    varianteResumo: resumoVarianteRow(row.produto_variantes),
+  };
+}
+
+export function anuncioVarianteParaBanco(d: Partial<AnuncioVariante>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.anuncioId !== undefined) r.anuncio_id = d.anuncioId;
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.varianteId !== undefined) r.variante_id = d.varianteId;
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.skuEnviado !== undefined) r.sku_enviado = d.skuEnviado;
+  if (d.precoEnviado !== undefined) r.preco_enviado = d.precoEnviado;
+  if (d.estoqueEnviado !== undefined) r.estoque_enviado = d.estoqueEnviado;
+  if (d.statusEnvio !== undefined) r.status_envio = d.statusEnvio;
+  if (d.idVariacaoMarketplace !== undefined) r.id_variacao_marketplace = d.idVariacaoMarketplace;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.7: Precificação por variante ----
+
+export function precificacaoParaApp(row: PrecificacaoVarianteRow): PrecificacaoVariante {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    produtoId: row.produto_id,
+    varianteId: row.variante_id,
+    marketplace: row.marketplace as PrecificacaoVariante["marketplace"],
+    custoProduto: Number(row.custo_produto ?? 0),
+    embalagem: Number(row.embalagem ?? 0),
+    impostoPercentual: Number(row.imposto_percentual ?? 0),
+    taxaMarketplacePercentual: Number(row.taxa_marketplace_percentual ?? 0),
+    taxaFixa: Number(row.taxa_fixa ?? 0),
+    comissaoGestorPercentual: Number(row.comissao_gestor_percentual ?? 0),
+    outrosCustos: Number(row.outros_custos ?? 0),
+    precoVenda: Number(row.preco_venda ?? 0),
+    lucroBruto: Number(row.lucro_bruto ?? 0),
+    lucroLiquido: Number(row.lucro_liquido ?? 0),
+    margemLiquidaPercentual: Number(row.margem_liquida_percentual ?? 0),
+    precoMinimo: Number(row.preco_minimo ?? 0),
+    statusMargem: row.status_margem as PrecificacaoVariante["statusMargem"],
+    observacoes: row.observacoes ?? "",
+    varianteResumo: resumoVarianteRow(row.produto_variantes),
+  };
+}
+
+export function precificacaoParaBanco(
+  d: Partial<PrecificacaoVariante>
+): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.varianteId !== undefined) r.variante_id = d.varianteId;
+  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
+  if (d.custoProduto !== undefined) r.custo_produto = d.custoProduto;
+  if (d.embalagem !== undefined) r.embalagem = d.embalagem;
+  if (d.impostoPercentual !== undefined) r.imposto_percentual = d.impostoPercentual;
+  if (d.taxaMarketplacePercentual !== undefined)
+    r.taxa_marketplace_percentual = d.taxaMarketplacePercentual;
+  if (d.taxaFixa !== undefined) r.taxa_fixa = d.taxaFixa;
+  if (d.comissaoGestorPercentual !== undefined)
+    r.comissao_gestor_percentual = d.comissaoGestorPercentual;
+  if (d.outrosCustos !== undefined) r.outros_custos = d.outrosCustos;
+  if (d.precoVenda !== undefined) r.preco_venda = d.precoVenda;
+  if (d.lucroBruto !== undefined) r.lucro_bruto = d.lucroBruto;
+  if (d.lucroLiquido !== undefined) r.lucro_liquido = d.lucroLiquido;
+  if (d.margemLiquidaPercentual !== undefined)
+    r.margem_liquida_percentual = d.margemLiquidaPercentual;
+  if (d.precoMinimo !== undefined) r.preco_minimo = d.precoMinimo;
+  if (d.statusMargem !== undefined) r.status_margem = d.statusMargem;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- v1.7: Imagens de produto ----
+
+export function imagemParaApp(row: ImagemProdutoRow): ImagemProduto {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    produtoId: row.produto_id,
+    varianteId: row.variante_id,
+    anuncioId: row.anuncio_id,
+    tipoImagem: row.tipo_imagem as ImagemProduto["tipoImagem"],
+    url: row.url ?? "",
+    status: row.status as ImagemProduto["status"],
+    observacoes: row.observacoes ?? "",
+  };
+}
+
+export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.varianteId !== undefined) r.variante_id = d.varianteId;
+  if (d.anuncioId !== undefined) r.anuncio_id = d.anuncioId;
+  if (d.tipoImagem !== undefined) r.tipo_imagem = d.tipoImagem;
+  if (d.url !== undefined) r.url = d.url;
+  if (d.status !== undefined) r.status = d.status;
+  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
   return r;
 }

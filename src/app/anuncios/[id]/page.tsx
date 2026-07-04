@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
+import { VariantesDoAnuncio } from "@/components/produtos/VariantesDoAnuncio";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarAnuncio, excluirAnuncio } from "@/lib/services/anuncios";
 import { listarTarefasDoAnuncio } from "@/lib/services/tarefas";
@@ -98,6 +99,10 @@ export default function AnuncioDetalhePage() {
           </Button>
         </div>
       </div>
+
+      <Card title="Variações vinculadas ao anúncio">
+        <VariantesDoAnuncio anuncio={anuncio} />
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <Card title="Títulos">
