@@ -14,7 +14,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
@@ -112,10 +112,15 @@ export default function EsteiraPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Esteira de Anúncio"
-        description="Deixe os dados do produto e rode a esteira (diagnóstico → SEO → construção → revisão) numa passada. Sai o anúncio pronto, com a trava de aprovação antes de publicar."
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader
+          title="Esteira de Anúncio"
+          description="Deixe os dados do produto e rode a esteira (diagnóstico → SEO → construção → revisão) numa passada. Sai o anúncio pronto, com a trava de aprovação antes de publicar."
+        />
+        <LinkButton href="/esteira/lote" variant="ghost">
+          <Workflow size={14} /> Rodar em lote
+        </LinkButton>
+      </div>
 
       {/* Entrada */}
       <Card title="1. Produto e briefing">

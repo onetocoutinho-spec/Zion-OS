@@ -12,6 +12,7 @@ import {
   Gauge,
   ListFilter,
   CheckCircle2,
+  Workflow,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -220,6 +221,9 @@ export default function AuditoriaMassaPage() {
       <div className="flex flex-wrap gap-2">
         <LinkButton href="/auditoria-massa/importar" variant="primary">
           <Upload size={14} /> Importar CSV/planilha
+        </LinkButton>
+        <LinkButton href="/esteira/lote" variant="ghost">
+          <Workflow size={14} /> Rodar esteira em lote
         </LinkButton>
         <Button variant="ghost" onClick={acaoCriarFila} disabled={busy}>
           <ListPlus size={14} /> Criar fila de otimização
