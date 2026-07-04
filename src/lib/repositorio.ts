@@ -12,6 +12,7 @@ import { getSupabase, supabaseConfigurado } from "./supabase/client";
 import {
   CollectionName,
   createItem,
+  createManyItems,
   getById,
   listAll,
   notificarMudanca,
@@ -92,6 +93,33 @@ export function criarRepositorio<T extends { id: string }, Row>(
     return paraApp(data as Row);
   }
 
+  /**
+   * Cria muitos registros de uma vez. No Supabase insere em lotes (chunks)
+   * preservando a ordem; no modo local grava tudo com uma escrita só.
+   * Essencial para importações grandes (500, 1.000+ anúncios).
+   */
+  async function criarVarios(registros: Omit<T, "id">[]): Promise<T[]> {
+    if (registros.length === 0) return [];
+    if (!supabaseConfigurado) {
+      return createManyItems<T>(colecao, registros, prefixoIdLocal);
+    }
+    const CHUNK = 500;
+    const criados: T[] = [];
+    for (let i = 0; i < registros.length; i += CHUNK) {
+      const lote = registros
+        .slice(i, i + CHUNK)
+        .map((r) => paraBanco(r as Partial<T>));
+      const { data, error } = await getSupabase()
+        .from(tabela)
+        .insert(lote)
+        .select(selecao);
+      if (error) erroSupabase(`criar registros em ${tabela}`, error.message);
+      criados.push(...((data ?? []) as Row[]).map(paraApp));
+    }
+    notificarMudanca();
+    return criados;
+  }
+
   async function atualizar(id: string, dados: Partial<T>): Promise<T | null> {
     if (!supabaseConfigurado) {
       return updateItem<T>(colecao, id, dados);
@@ -117,5 +145,5 @@ export function criarRepositorio<T extends { id: string }, Row>(
     notificarMudanca();
   }
 
-  return { listar, buscar, criar, atualizar, excluir };
+  return { listar, buscar, criar, criarVarios, atualizar, excluir };
 }

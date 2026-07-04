@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Plus,
-  PlayCircle,
+  Upload,
   ListPlus,
   FileText,
   ClipboardList,
@@ -20,7 +19,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatDate } from "@/lib/format";
 import { MARKETPLACES } from "@/lib/constantes";
@@ -34,11 +33,7 @@ import {
 } from "@/lib/auditoria";
 import type { Tone } from "@/lib/status";
 import type { ClassificacaoABC, PrioridadeAuditoria } from "@/lib/types";
-import {
-  listarImportacoes,
-  criarImportacao,
-  processarImportacaoSimulada,
-} from "@/lib/services/importacoes";
+import { listarImportacoes } from "@/lib/services/importacoes";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarFila, enviarAuditoriaParaFila } from "@/lib/services/filaOtimizacao";
 import { listarExecucoesLote, criarExecucaoLote } from "@/lib/services/execucoesLote";
@@ -160,44 +155,6 @@ export default function AuditoriaMassaPage() {
     return null;
   }
 
-  const hoje = new Date().toISOString().slice(0, 10);
-
-  async function acaoNovaImportacao() {
-    const base = resolverClienteBase();
-    if (!base) return;
-    setBusy(true);
-    try {
-      await criarImportacao({
-        clienteId: base.clienteId,
-        cliente: base.cliente,
-        marketplace: "Mercado Livre",
-        nomeArquivo: `nova_base_${hoje}.csv`,
-        origem: "csv",
-        quantidadeAnuncios: 500,
-        quantidadeProcessada: 0,
-        status: "aguardando_processamento",
-        dataImportacao: hoje,
-        responsavel: "Lucas",
-        observacoes: "Importação simulada criada pelo painel de Auditoria em Massa.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function acaoProcessarPendentes() {
-    const pendentes = importacoes.filter(
-      (i) => i.status === "aguardando_processamento" || i.status === "processando"
-    );
-    if (pendentes.length === 0) return;
-    setBusy(true);
-    try {
-      for (const imp of pendentes) await processarImportacaoSimulada(imp.id);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function acaoCriarFila() {
     const alvos = filtradas
       .filter((a) => a.prioridade === "critica" || a.prioridade === "alta")
@@ -261,12 +218,9 @@ export default function AuditoriaMassaPage() {
 
       {/* Ações */}
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={acaoNovaImportacao} disabled={busy}>
-          <Plus size={14} /> Nova importação
-        </Button>
-        <Button variant="ghost" onClick={acaoProcessarPendentes} disabled={busy}>
-          <PlayCircle size={14} /> Processar auditoria simulada
-        </Button>
+        <LinkButton href="/auditoria-massa/importar" variant="primary">
+          <Upload size={14} /> Importar CSV/planilha
+        </LinkButton>
         <Button variant="ghost" onClick={acaoCriarFila} disabled={busy}>
           <ListPlus size={14} /> Criar fila de otimização
         </Button>
@@ -280,7 +234,7 @@ export default function AuditoriaMassaPage() {
         <div className="-m-5">
           <Table headers={HEADERS_IMP}>
             {importacoesData && importacoes.length === 0 && (
-              <EmptyRow colSpan={HEADERS_IMP.length} mensagem="Nenhuma importação ainda. Use “Nova importação”." />
+              <EmptyRow colSpan={HEADERS_IMP.length} mensagem="Nenhuma importação ainda. Use “Importar CSV/planilha”." />
             )}
             {importacoes.map((i) => (
               <tr key={i.id} className="hover:bg-white/[0.02]">

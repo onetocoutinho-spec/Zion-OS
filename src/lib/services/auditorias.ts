@@ -42,6 +42,13 @@ export async function criarAuditoria(
   return repo.criar(dados);
 }
 
+/** Cria muitas auditorias de uma vez (importação em massa). */
+export async function criarAuditorias(
+  dados: Omit<AuditoriaAnuncio, "id">[]
+): Promise<AuditoriaAnuncio[]> {
+  return repo.criarVarios(dados);
+}
+
 export async function atualizarAuditoria(
   id: string,
   dados: Partial<AuditoriaAnuncio>

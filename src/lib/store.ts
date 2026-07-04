@@ -159,6 +159,20 @@ export function createItem<T extends { id: string }>(
   return item;
 }
 
+/** Cria vários itens de uma vez, com uma única escrita/notificação. */
+export function createManyItems<T extends { id: string }>(
+  collection: CollectionName,
+  registros: Omit<T, "id">[],
+  prefixo: string
+): T[] {
+  if (registros.length === 0) return [];
+  const criados = registros.map(
+    (dados) => ({ ...dados, id: novoId(prefixo) }) as T
+  );
+  write(collection, [...criados, ...read<T>(collection)]);
+  return criados;
+}
+
 export function updateItem<T extends { id: string }>(
   collection: CollectionName,
   id: string,

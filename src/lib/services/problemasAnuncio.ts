@@ -24,6 +24,13 @@ export async function criarProblema(
   return repo.criar(dados);
 }
 
+/** Cria muitos problemas de uma vez (importação em massa). */
+export async function criarProblemas(
+  dados: Omit<ProblemaAnuncio, "id">[]
+): Promise<ProblemaAnuncio[]> {
+  return repo.criarVarios(dados);
+}
+
 export async function atualizarProblema(
   id: string,
   dados: Partial<ProblemaAnuncio>

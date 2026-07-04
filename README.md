@@ -22,7 +22,8 @@ Clientes chegam com **500, 1.000+ anúncios ativos**. Auditar um a um é inviáv
 
 ### O que foi adicionado
 
-- **Painel `/auditoria-massa`**: cards de resumo (importados, auditados, críticos, alta prioridade, score médio, na fila, otimizações concluídas), tabela de importações e tabela de auditorias **paginada** (carrega de 20 em 20), com filtros por cliente, marketplace, prioridade, ABC e status. Ações: **Nova importação**, **Processar auditoria simulada**, **Criar fila de otimização** e **Gerar relatório**.
+- **Painel `/auditoria-massa`**: cards de resumo (importados, auditados, críticos, alta prioridade, score médio, na fila, otimizações concluídas), tabela de importações e tabela de auditorias **paginada** (carrega de 20 em 20), com filtros por cliente, marketplace, prioridade, ABC e status. Ações: **Importar CSV/planilha**, **Criar fila de otimização** e **Gerar relatório**.
+- **Importação real por CSV `/auditoria-massa/importar`**: sobe o arquivo exportado do marketplace, o Zion **lê cada anúncio** (parser próprio: aspas, quebras de linha, delimitador `,`/`;`/tab, números no formato BR `199,90`), reconhece as colunas por nome (tolerante a acento/maiúscula e a nomes comuns do ML), mostra uma **prévia** com score/ABC/prioridade e grava tudo **em lote** (auditorias + problemas). Botão para **baixar o modelo** de planilha.
 - **Detalhe da auditoria `/auditoria-massa/[id]`**: score, ABC, prioridade, métricas, oportunidade, próxima ação, agente recomendado e a lista de problemas. Ações: **Enviar para a fila**, **Criar tarefa relacionada**, **Marcar otimizado**, **Marcar ignorado**.
 - **Fila `/fila-otimizacao`**: itens ordenados por prioridade, com **Concluir / Travar** em um clique.
 - **6 novos agentes**: Auditoria em Massa, Score de Qualidade, Classificação ABC, Priorização de Otimização, Execução em Lote e Relatório de Base Grande.
@@ -42,6 +43,14 @@ Sem Supabase (modo demonstração), o seed local já traz o cliente **MegaShop B
 3. No detalhe, clique **Enviar para a fila** → o item entra em **Fila de Otimização** e a auditoria vira "Em otimização".
 4. Na **Fila de Otimização**, use **Concluir** para marcar um item como resolvido.
 5. Na tela principal, clique **Criar fila de otimização** para mandar todos os críticos/alta de uma vez, ou **Gerar relatório** para registrar uma execução em lote de relatório.
+
+### Como importar a base de um cliente (CSV)
+
+1. Em **Auditoria em Massa** → **Importar CSV/planilha**.
+2. Clique **Baixar modelo** para pegar a planilha exemplo (colunas: `titulo, sku, categoria, preco, estoque, vendas, visitas, link, marketplace` + sinais opcionais `descricao_ok, imagens_ok, ficha_ok, preco_competitivo, variacoes_ok, tabela_medidas`, valores 0/1).
+3. Preencha com os anúncios do cliente (ou exporte do Mercado Livre e ajuste os cabeçalhos — só `titulo` e `preco` são obrigatórios; o resto é reconhecido por aproximação).
+4. Selecione o **cliente**, o **marketplace padrão** e o arquivo. A prévia mostra os primeiros anúncios já com **score, ABC e prioridade** calculados.
+5. **Confirmar importação** → gera todas as auditorias e problemas de uma vez. Quanto mais colunas de sinal você preencher, mais preciso o diagnóstico.
 
 ### Como simular um cliente com muitos anúncios
 
@@ -234,8 +243,8 @@ Telas (src/app)  →  Serviços (src/lib/services)  →  Repositório (src/lib/r
 
 ## O que falta para a v1.9 (recomendado)
 
-1. **Importação real de base**: parser de CSV/planilha do Mercado Livre que preenche `auditorias_anuncios` de verdade (hoje a auditoria em massa usa amostra representativa).
-2. **Execução em lote com IA de fato**: conectar a fila e as `execucoes_lote` ao Claude para reescrever títulos/descrições de vários anúncios de uma vez.
+1. **Execução em lote com IA de fato**: conectar a fila e as `execucoes_lote` ao Claude para reescrever títulos/descrições de vários anúncios de uma vez.
+2. **Importação direto pela API do Mercado Livre**: hoje a importação é por CSV/planilha; o próximo passo é puxar a base direto da conta do cliente via API (a origem `api` já está prevista).
 3. **Integração real com o Mercado Livre**: usar a modelagem da v1.7 para publicar anúncios com variações via API (o campo `id_variacao_marketplace` já está pronto).
 4. **Permissões por função/cliente** nas políticas RLS.
 5. Notificações internas, portal do cliente e upload real de imagens.
