@@ -1,14 +1,12 @@
-// Execução real de Agentes IA via API Claude.
+// Execução real de Agentes IA via provedor de IA (Gemini ou Claude).
 //
-// Roda somente no servidor: a ANTHROPIC_API_KEY vem do .env.local e nunca
-// chega ao navegador. Sem a chave configurada, retorna 503 e o frontend cai
-// para a execução simulada (comportamento das versões anteriores).
+// Roda somente no servidor: as chaves (GEMINI_API_KEY / ANTHROPIC_API_KEY) vêm
+// do .env.local e nunca chegam ao navegador. Sem nenhuma chave, retorna 503 e o
+// frontend cai para a execução simulada (comportamento das versões anteriores).
 
-import Anthropic from "@anthropic-ai/sdk";
+import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 
-export const maxDuration = 120; // execuções com thinking podem demorar
-
-const MODELO = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
+export const maxDuration = 120;
 
 // Envelope estruturado comum a todos os agentes: a entrega principal continua
 // livre (Markdown), e dois extras opcionais alimentam os botões de ação do
@@ -67,7 +65,6 @@ interface CorpoExecucao {
     promptResumido: string;
   };
   entrada?: string;
-  /** Bloco de dados do sistema (cliente/produto/anúncio) montado pelo frontend. */
   contexto?: string;
 }
 
@@ -98,19 +95,18 @@ function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
     `Instruções do agente:`,
     agente.promptResumido,
     ``,
-    `Responda sempre em português do Brasil, com formatação clara em Markdown.`,
+    `Responda sempre em português do Brasil, com formatação clara em Markdown no campo resultado_markdown.`,
     `Entregue diretamente a saída esperada, pronta para a equipe usar — sem preâmbulos.`,
     `Se a entrada não tiver informação suficiente, entregue o melhor resultado possível e liste ao final o que faltou.`,
   ].join("\n");
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!provedorConfigurado()) {
     return Response.json(
       {
         configurado: false,
-        erro: "ANTHROPIC_API_KEY não configurada no .env.local. A execução será simulada.",
+        erro: "Nenhum provedor de IA configurado (GEMINI_API_KEY ou ANTHROPIC_API_KEY). A execução será simulada.",
       },
       { status: 503 }
     );
@@ -133,65 +129,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = new Anthropic({ apiKey });
-
   try {
-    const resposta = await client.messages.create({
-      model: MODELO,
-      max_tokens: 16000,
-      thinking: { type: "adaptive" },
+    const { json, modelo } = await chamarIAEstruturada({
       system: montarSystemPrompt(corpo.agente),
-      output_config: { format: { type: "json_schema", schema: ESQUEMA_RESULTADO } },
-      messages: [{ role: "user", content: montarMensagem(entrada, contexto) }],
+      mensagem: montarMensagem(entrada, contexto),
+      schema: ESQUEMA_RESULTADO,
+      maxTokens: 8000,
     });
 
-    const texto = resposta.content
-      .filter((bloco) => bloco.type === "text")
-      .map((bloco) => bloco.text)
-      .join("\n")
-      .trim();
-
-    if (resposta.stop_reason === "refusal" || !texto) {
-      return Response.json(
-        { erro: "O modelo não pôde completar esta solicitação. Ajuste a entrada e tente novamente." },
-        { status: 422 }
-      );
-    }
-
-    // Com output_config o texto é JSON válido; o try é defesa extra
-    // (ex.: resposta truncada por max_tokens).
     try {
-      const estruturado = JSON.parse(texto) as ResultadoEstruturado;
+      const estruturado = JSON.parse(json) as ResultadoEstruturado;
       return Response.json({
         resultado: estruturado.resultado_markdown,
         tituloOtimizado: estruturado.titulo_otimizado,
         tarefasSugeridas: estruturado.tarefas_sugeridas ?? [],
-        modelo: resposta.model,
+        modelo,
       });
     } catch {
-      return Response.json({ resultado: texto, modelo: resposta.model });
+      // Defesa: se não vier JSON válido, devolve o texto cru.
+      return Response.json({ resultado: json, modelo });
     }
   } catch (erro) {
-    if (erro instanceof Anthropic.AuthenticationError) {
-      return Response.json(
-        { erro: "ANTHROPIC_API_KEY inválida. Confira a chave no .env.local." },
-        { status: 500 }
-      );
-    }
-    if (erro instanceof Anthropic.RateLimitError) {
-      return Response.json(
-        { erro: "Limite de requisições da API Claude atingido. Aguarde alguns instantes e tente novamente." },
-        { status: 429 }
-      );
-    }
-    if (erro instanceof Anthropic.APIError) {
-      return Response.json(
-        { erro: `Erro da API Claude (${erro.status}): ${erro.message}` },
-        { status: 500 }
-      );
-    }
     return Response.json(
-      { erro: "Falha de conexão com a API Claude. Verifique a internet e tente novamente." },
+      { erro: erro instanceof Error ? erro.message : "Falha ao executar o agente." },
       { status: 500 }
     );
   }
