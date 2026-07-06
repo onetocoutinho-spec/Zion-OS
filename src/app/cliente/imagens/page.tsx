@@ -12,6 +12,9 @@ import {
   Search,
   AlertTriangle,
   CheckCircle2,
+  Wand2,
+  Sparkles,
+  Save,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -21,8 +24,9 @@ import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarImagensDoProduto } from "@/lib/services/imagensProduto";
 import { uploadImagemProduto } from "@/lib/services/storageImagens";
+import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
-import type { Produto } from "@/lib/types";
+import type { ImagemProduto, Produto } from "@/lib/types";
 
 function norm(s: string): string {
   return s
@@ -186,43 +190,191 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   const produto = produtos.find((p) => p.id === produtoId);
   const lista = imagens ?? [];
 
+  const fonte = lista.find((i) => i.tipoImagem === "Principal") ?? lista[0];
+
   return (
-    <Card
-      title={`Fotos · ${produto?.nome ?? ""}`}
-      action={
-        <button onClick={() => setProdutoId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
-          Trocar produto
-        </button>
-      }
-    >
+    <>
+      <Card
+        title={`Fotos · ${produto?.nome ?? ""}`}
+        action={
+          <button onClick={() => setProdutoId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
+            Trocar produto
+          </button>
+        }
+      >
+        {erro && (
+          <p className="mb-3 flex items-center gap-2 text-sm text-red-400">
+            <AlertTriangle size={15} /> {erro}
+          </p>
+        )}
+
+        {lista.length > 0 && (
+          <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {lista.map((img) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <div key={img.id} className="relative aspect-square overflow-hidden rounded-lg border border-white/5 bg-black/30">
+                <img src={img.url} alt="" className="h-full w-full object-cover" />
+                {img.tipoImagem === "Principal" && (
+                  <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                    Capa
+                  </span>
+                )}
+                {img.tipoImagem === "Infográfico" && (
+                  <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                    Infográfico
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500">
+          {enviando ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+          {enviando ? "Enviando…" : lista.length > 0 ? "Adicionar mais fotos" : "Enviar fotos"}
+          <input type="file" accept="image/*" multiple className="hidden" onChange={aoEscolher} disabled={enviando} />
+        </label>
+        <p className="mt-2 text-xs text-zinc-500">A primeira foto vira a capa (1:1) do anúncio. JPG ou PNG.</p>
+      </Card>
+
+      {fonte && produto && (
+        <EstudioIA
+          clienteId={clienteId}
+          produto={produto}
+          fonte={fonte}
+          onSalvo={reload}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------- Estúdio de imagem por IA (a partir da foto real) ----------
+
+function EstudioIA({
+  clienteId,
+  produto,
+  fonte,
+  onSalvo,
+}: {
+  clienteId: string;
+  produto: Produto;
+  fonte: ImagemProduto;
+  onSalvo: () => void;
+}) {
+  const [beneficios, setBeneficios] = useState(produto.beneficios ?? "");
+  const [gerando, setGerando] = useState<TipoGeracao | null>(null);
+  const [resultado, setResultado] = useState<{ dataUrl: string; base64: string; mimeType: string; tipo: TipoGeracao } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function gerar(tipo: TipoGeracao) {
+    if (gerando) return;
+    setGerando(tipo);
+    setErro(null);
+    setResultado(null);
+    try {
+      const r = await gerarImagemProduto({
+        imagemUrl: fonte.url,
+        tipo,
+        beneficios: tipo === "infografico" ? beneficios : undefined,
+        produtoNome: produto.nome,
+      });
+      setResultado({ ...r, tipo });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gerar a imagem.");
+    } finally {
+      setGerando(null);
+    }
+  }
+
+  async function salvar() {
+    if (!resultado || salvando) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      await salvarImagemGerada({
+        clienteId,
+        produtoId: produto.id,
+        base64: resultado.base64,
+        mimeType: resultado.mimeType,
+        tipo: resultado.tipo,
+      });
+      setResultado(null);
+      onSalvo();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card title="Estúdio de imagem (IA)">
+      <p className="mb-3 text-sm text-zinc-400">
+        A IA parte da sua <span className="text-zinc-300">foto real</span> — melhora a capa ou cria um
+        infográfico, sem descaracterizar o produto.
+      </p>
+
+      <div className="flex flex-wrap items-start gap-4">
+        {/* Foto de origem */}
+        <div className="w-28 shrink-0">
+          <p className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Foto real</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={fonte.url} alt="" className="aspect-square w-full rounded-lg border border-white/5 object-cover" />
+        </div>
+
+        {/* Ações */}
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => gerar("melhorar")} disabled={gerando !== null}>
+              {gerando === "melhorar" ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />}
+              Melhorar capa (1:1)
+            </Button>
+            <Button variant="ghost" onClick={() => gerar("infografico")} disabled={gerando !== null}>
+              {gerando === "infografico" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              Gerar infográfico
+            </Button>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] uppercase tracking-wider text-zinc-500">
+              Benefícios (para o infográfico)
+            </label>
+            <textarea
+              value={beneficios}
+              onChange={(e) => setBeneficios(e.target.value)}
+              rows={2}
+              placeholder="Ex.: palmilha ortopédica, ultraconforto, antiderrapante…"
+              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+            />
+          </div>
+        </div>
+      </div>
+
       {erro && (
-        <p className="mb-3 flex items-center gap-2 text-sm text-red-400">
+        <p className="mt-3 flex items-center gap-2 text-sm text-red-400">
           <AlertTriangle size={15} /> {erro}
         </p>
       )}
 
-      {lista.length > 0 && (
-        <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
-          {lista.map((img) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <div key={img.id} className="relative aspect-square overflow-hidden rounded-lg border border-white/5 bg-black/30">
-              <img src={img.url} alt="" className="h-full w-full object-cover" />
-              {img.tipoImagem === "Principal" && (
-                <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
-                  Capa
-                </span>
-              )}
+      {resultado && (
+        <div className="mt-4 border-t border-white/5 pt-4">
+          <p className="mb-2 text-[11px] uppercase tracking-wider text-zinc-500">Resultado</p>
+          <div className="flex flex-wrap items-end gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={resultado.dataUrl} alt="" className="w-48 rounded-lg border border-white/10" />
+            <div className="flex gap-2">
+              <Button onClick={salvar} disabled={salvando}>
+                {salvando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                {resultado.tipo === "melhorar" ? "Salvar como capa" : "Salvar imagem"}
+              </Button>
+              <Button variant="ghost" onClick={() => setResultado(null)} disabled={salvando}>
+                <X size={15} /> Descartar
+              </Button>
             </div>
-          ))}
+          </div>
         </div>
       )}
-
-      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500">
-        {enviando ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-        {enviando ? "Enviando…" : lista.length > 0 ? "Adicionar mais fotos" : "Enviar fotos"}
-        <input type="file" accept="image/*" multiple className="hidden" onChange={aoEscolher} disabled={enviando} />
-      </label>
-      <p className="mt-2 text-xs text-zinc-500">A primeira foto vira a capa (1:1) do anúncio. JPG ou PNG.</p>
     </Card>
   );
 }

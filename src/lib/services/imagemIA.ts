@@ -1,0 +1,77 @@
+// Geração de imagem por IA — orquestração no cliente (Fase 3.2).
+//
+// Chama /api/imagens/gerar (que detém a chave do Gemini), mostra o resultado e,
+// se o cliente aprovar, salva a imagem gerada no Storage como uma nova foto do
+// produto (reusa o upload existente).
+
+import { uploadImagemProduto } from "./storageImagens";
+import type { ImagemProduto } from "../types";
+
+export type TipoGeracao = "melhorar" | "infografico";
+
+export interface ResultadoGeracao {
+  base64: string;
+  mimeType: string;
+  /** data URL pronto para <img src>. */
+  dataUrl: string;
+}
+
+export async function gerarImagemProduto(opcoes: {
+  imagemUrl: string;
+  tipo: TipoGeracao;
+  beneficios?: string;
+  produtoNome?: string;
+}): Promise<ResultadoGeracao> {
+  const resposta = await fetch("/api/imagens/gerar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opcoes),
+  });
+  const dados = (await resposta.json()) as {
+    imagemBase64?: string;
+    mimeType?: string;
+    erro?: string;
+    configurado?: boolean;
+  };
+  if (resposta.status === 503) {
+    throw new Error(
+      dados.erro ?? "A geração de imagem por IA não está configurada no servidor."
+    );
+  }
+  if (!resposta.ok || !dados.imagemBase64) {
+    throw new Error(dados.erro ?? "Não foi possível gerar a imagem.");
+  }
+  const mimeType = dados.mimeType ?? "image/png";
+  return {
+    base64: dados.imagemBase64,
+    mimeType,
+    dataUrl: `data:${mimeType};base64,${dados.imagemBase64}`,
+  };
+}
+
+function base64ParaFile(base64: string, mimeType: string, nome: string): File {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], nome, { type: mimeType });
+}
+
+/** Salva a imagem gerada como uma nova foto do produto (Storage + registro). */
+export async function salvarImagemGerada(opcoes: {
+  clienteId: string;
+  produtoId: string;
+  base64: string;
+  mimeType: string;
+  tipo: TipoGeracao;
+}): Promise<ImagemProduto> {
+  const ext = opcoes.mimeType.includes("png") ? "png" : "jpg";
+  const nome = `ia-${opcoes.tipo}-${Date.now()}.${ext}`;
+  const file = base64ParaFile(opcoes.base64, opcoes.mimeType, nome);
+  return uploadImagemProduto({
+    clienteId: opcoes.clienteId,
+    produtoId: opcoes.produtoId,
+    file,
+    tipo: opcoes.tipo === "melhorar" ? "Principal" : "Infográfico",
+    observacoes: "Gerada por IA (a partir da foto real).",
+  });
+}
