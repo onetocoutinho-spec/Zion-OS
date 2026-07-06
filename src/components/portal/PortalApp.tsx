@@ -13,6 +13,9 @@ import {
   XCircle,
   AlertTriangle,
   Gauge,
+  Upload,
+  Download,
+  ClipboardList,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
@@ -23,6 +26,13 @@ import { useLiveQuery } from "@/lib/hooks";
 import { getSupabase } from "@/lib/supabase/client";
 import { montarContexto } from "@/lib/contexto";
 import { listarProdutos } from "@/lib/services/produtos";
+import {
+  analisarProdutosCsv,
+  confirmarImportacaoProdutos,
+  gerarTemplateProdutosCsv,
+  type AnaliseProdutos,
+} from "@/lib/services/importacaoProdutos";
+import { gerarAuditoriasDaBase } from "@/lib/services/auditoriaDaBase";
 import { rodarEsteira } from "@/lib/services/esteira";
 import {
   criarAnuncioGerado,
@@ -57,6 +67,11 @@ export function PortalApp({ perfil }: { perfil: Perfil }) {
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Importação da base
+  const [analise, setAnalise] = useState<AnaliseProdutos | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [msgBase, setMsgBase] = useState<string | null>(null);
+  const [auditando, setAuditando] = useState(false);
 
   const nome = resumo?.cliente || perfil.nome || "sua loja";
   const restante = quota?.restante ?? 0;
@@ -127,6 +142,64 @@ export function PortalApp({ perfil }: { perfil: Perfil }) {
     }
   }
 
+  async function aoEscolherArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMsgBase(null);
+    setAnalise(analisarProdutosCsv(await file.text()));
+  }
+
+  function baixarModelo() {
+    const blob = new Blob([String.fromCharCode(0xfeff) + gerarTemplateProdutosCsv()], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelo-produtos.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importar() {
+    if (!analise || analise.total === 0 || importando) return;
+    setImportando(true);
+    setMsgBase(null);
+    try {
+      const r = await confirmarImportacaoProdutos({
+        clienteId: perfil.clienteId ?? "",
+        cliente: nome,
+        linhas: analise.linhas,
+      });
+      setMsgBase(
+        `${r.total} produtos importados${r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : ""}.`
+      );
+      setAnalise(null);
+    } catch (e) {
+      setMsgBase(e instanceof Error ? `Falha ao importar: ${e.message}` : "Falha ao importar.");
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  async function auditar() {
+    if (!perfil.clienteId || auditando) return;
+    setAuditando(true);
+    setMsgBase(null);
+    try {
+      const r = await gerarAuditoriasDaBase(perfil.clienteId, nome);
+      setMsgBase(
+        r.auditados === 0
+          ? "Nada novo a auditar (a base já está auditada)."
+          : `Base auditada: ${r.auditados} produtos · ${r.criticas + r.altas} prioritários.`
+      );
+    } catch (e) {
+      setMsgBase(e instanceof Error ? `Falha ao auditar: ${e.message}` : "Falha ao auditar.");
+    } finally {
+      setAuditando(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#08080d] text-zinc-200">
       <header className="border-b border-white/5 bg-[#0b0b12]">
@@ -164,6 +237,49 @@ export function PortalApp({ perfil }: { perfil: Perfil }) {
           <StatCard label="Aprovados" value={resumo?.aprovados ?? 0} icon={CheckCircle2} tone="green" />
           <StatCard label="Publicados" value={resumo?.publicados ?? 0} icon={Send} tone="cyan" />
         </div>
+
+        {/* Sua base de produtos (importar + auditar) */}
+        <Card title="Sua base de produtos">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm text-zinc-400">
+              <span className="mb-1 block text-[11px] font-medium text-zinc-500">Importar por planilha (CSV)</span>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={aoEscolherArquivo}
+                className="text-sm text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-violet-500"
+              />
+            </label>
+            <Button variant="ghost" onClick={baixarModelo}>
+              <Download size={14} /> Baixar modelo
+            </Button>
+            <Button variant="ghost" onClick={auditar} disabled={auditando || (resumo?.totalProdutos ?? 0) === 0}>
+              <ClipboardList size={14} /> {auditando ? "Auditando…" : "Auditar base"}
+            </Button>
+          </div>
+
+          {analise && !analise.erro && (
+            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm">
+              <span className="text-zinc-300">
+                <span className="font-semibold text-white">{analise.total}</span> produtos
+                {analise.modo === "agrupado" ? ` · ${analise.totalVariacoes} variações` : ""} no arquivo
+              </span>
+              <Button onClick={importar} disabled={importando}>
+                <Upload size={14} /> {importando ? "Importando…" : `Importar (${analise.total})`}
+              </Button>
+            </div>
+          )}
+          {analise?.erro && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-red-400">
+              <AlertTriangle size={14} /> {analise.erro}
+            </p>
+          )}
+          {msgBase && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-emerald-400">
+              <CheckCircle2 size={15} /> {msgBase}
+            </p>
+          )}
+        </Card>
 
         {/* Gerar anúncio (esteira) */}
         <Card
