@@ -22,11 +22,20 @@ import { listarProdutos } from "@/lib/services/produtos";
 import { listarAnuncios, atualizarAnuncio } from "@/lib/services/anuncios";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { rodarEsteira } from "@/lib/services/esteira";
+import { rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
 import {
   criarAnuncioGerado,
   aprovarAnuncioGerado,
 } from "@/lib/services/anunciosGerados";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
+
+const STATUS_PASSO: Record<PassoCadeia["status"], { rotulo: string; classe: string }> = {
+  pendente: { rotulo: "•", classe: "text-zinc-600 bg-white/[0.03]" },
+  rodando: { rotulo: "…", classe: "text-violet-300 bg-violet-500/15 ring-1 ring-inset ring-violet-500/30 animate-pulse" },
+  ok: { rotulo: "✓", classe: "text-emerald-400 bg-emerald-500/10" },
+  erro: { rotulo: "!", classe: "text-red-400 bg-red-500/10" },
+  pulado: { rotulo: "–", classe: "text-zinc-600 bg-white/[0.02]" },
+};
 
 const SELECT =
   "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/50";
@@ -45,6 +54,8 @@ export default function EsteiraPage() {
   const [produtoId, setProdutoId] = useState("");
   const [anuncioId, setAnuncioId] = useState("");
   const [briefing, setBriefing] = useState("");
+  const [modo, setModo] = useState<"rapido" | "aprofundado">("rapido");
+  const [passos, setPassos] = useState<PassoCadeia[]>([]);
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -96,11 +107,20 @@ export default function EsteiraPage() {
     setAprovado(false);
     setTituloAplicado(false);
     setRegistroId(null);
+    setPassos([]);
     try {
-      const r = await rodarEsteira(briefing.trim(), {
-        contexto: contexto || undefined,
-        produto: produto?.nome,
-      });
+      const r =
+        modo === "aprofundado"
+          ? await rodarCadeiaEsteira({
+              briefing: briefing.trim() || undefined,
+              contexto: contexto || undefined,
+              produto: produto?.nome,
+              onPasso: setPassos,
+            })
+          : await rodarEsteira(briefing.trim(), {
+              contexto: contexto || undefined,
+              produto: produto?.nome,
+            });
       setAnuncio(r.anuncio);
       setTipo(r.tipo);
       setAviso(r.aviso ?? null);
@@ -128,7 +148,8 @@ export default function EsteiraPage() {
             aprovadoPor: "",
             aprovadoEm: null,
             criadoEm: new Date().toISOString(),
-            observacoes: "",
+            observacoes:
+              modo === "aprofundado" ? "Gerado no modo aprofundado (multi-agente)." : "",
           });
           setRegistroId(reg.id);
         } catch {
@@ -222,6 +243,22 @@ export default function EsteiraPage() {
                 : "Cole o briefing do produto (nome, marca, categoria, custo, preço, grade, material…)."
             }
           />
+          {/* Modo de execução */}
+          <div className="mt-3 inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
+            {(["rapido", "aprofundado"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setModo(m)}
+                disabled={rodando}
+                className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  modo === m ? "bg-violet-500/15 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {m === "rapido" ? "Rápido (uma passada)" : "Aprofundado (multi-agente)"}
+              </button>
+            ))}
+          </div>
+
           <div className="mt-3 flex items-center gap-3">
             <Button onClick={rodar} disabled={rodando || !podeRodar}>
               {rodando ? (
@@ -231,9 +268,34 @@ export default function EsteiraPage() {
               )}
             </Button>
             <span className="text-[11px] text-zinc-600">
-              Roda A1→A2→A9→A4→A10 numa passada. Usa a API Claude quando configurada.
+              {modo === "aprofundado"
+                ? "Roda A0→A1→A2→A9→construtores→A4→A10, um agente por vez (mais lento, máxima fidelidade)."
+                : "Roda A1→A2→A9→A4→A10 numa passada só (rápido). Usa a IA configurada no servidor."}
             </span>
           </div>
+
+          {/* Progresso da cadeia (modo aprofundado) */}
+          {passos.length > 0 && (
+            <div className="mt-4 rounded-lg border border-white/5 bg-black/20 p-3">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                Linha de produção
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {passos.map((p) => {
+                  const s = STATUS_PASSO[p.status];
+                  return (
+                    <span
+                      key={p.codigo}
+                      title={`${p.codigo} · ${p.nome} — ${p.status}`}
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium ${s.classe}`}
+                    >
+                      <span className="tabular-nums">{s.rotulo}</span> {p.codigo}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 

@@ -23,6 +23,8 @@ import {
   AlertTriangle,
   Gauge,
   Package,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -38,7 +40,9 @@ import {
   rejeitarAnuncioGerado,
 } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
+import { rodarAgentePortal } from "@/lib/services/agentePortal";
 import { quotaEsteira } from "@/lib/services/perfil";
+import type { FerramentaPortal } from "@/lib/agentes/catalogo";
 import { precoMinimoZion } from "@/lib/services/importacaoProdutos";
 import { saudeMargem } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
@@ -65,8 +69,15 @@ interface Ferramenta {
   quando: string;
   icon: LucideIcon;
   tone: "violet" | "blue" | "green" | "orange" | "cyan" | "yellow";
-  /** true = calcula localmente (sem IA, sem cota). */
-  local?: boolean;
+  /**
+   * Como a ferramenta executa:
+   * - "agente": roda só o agente real do catálogo (rápido, 1 chamada, Markdown).
+   * - "esteira": roda a esteira completa (estruturado, aprovável).
+   * - "local": cálculo local, sem IA (preço/margem).
+   */
+  modo: "agente" | "esteira" | "local";
+  /** Agente do catálogo, quando modo = "agente". */
+  agente?: FerramentaPortal;
 }
 
 const TONE_ICON: Record<Ferramenta["tone"], string> = {
@@ -79,16 +90,16 @@ const TONE_ICON: Record<Ferramenta["tone"], string> = {
 };
 
 const FERRAMENTAS: Ferramenta[] = [
-  { key: "titulo", nome: "Melhorar título", descricao: "Cria um título otimizado com as palavras que os clientes buscam.", quando: "Quando o título está fraco ou genérico.", icon: Wand2, tone: "violet" },
-  { key: "descricao", nome: "Criar descrição de alta conversão", descricao: "Escreve uma descrição completa que vende e tira dúvidas.", quando: "Quando falta descrição ou ela é curta demais.", icon: FileText, tone: "blue" },
-  { key: "seo", nome: "Analisar SEO", descricao: "Sugere palavras-chave para o produto aparecer nas buscas.", quando: "Para melhorar a posição do anúncio.", icon: Search, tone: "cyan" },
-  { key: "tabela_medidas", nome: "Criar tabela de medidas", descricao: "Monta a tabela de tamanhos e como medir corretamente.", quando: "Produtos com numeração ou tamanhos.", icon: Ruler, tone: "orange" },
-  { key: "ficha_tecnica", nome: "Revisar ficha técnica", descricao: "Preenche os atributos obrigatórios do marketplace.", quando: "Para não perder pontos de qualidade.", icon: ListChecks, tone: "green" },
-  { key: "preco", nome: "Analisar preço e margem", descricao: "Mostra o lucro real e o preço ideal pelo modelo Zion.", quando: "Antes de definir ou revisar o preço.", icon: Calculator, tone: "green", local: true },
-  { key: "imagens", nome: "Criar sugestões de imagem", descricao: "Lista as fotos ideais e o que cada uma deve mostrar.", quando: "Para melhorar a apresentação visual.", icon: ImageIcon, tone: "violet" },
-  { key: "auditoria", nome: "Fazer auditoria completa", descricao: "Analisa tudo e dá uma nota, com o que corrigir primeiro.", quando: "Para uma visão geral do anúncio.", icon: ClipboardCheck, tone: "orange" },
-  { key: "faq", nome: "Gerar FAQ", descricao: "Cria perguntas e respostas frequentes para o anúncio.", quando: "Para reduzir dúvidas e devoluções.", icon: MessagesSquare, tone: "blue" },
-  { key: "plano", nome: "Criar plano de ação", descricao: "Lista os próximos passos para deixar o anúncio pronto.", quando: "Quando não sabe por onde começar.", icon: ListTodo, tone: "yellow" },
+  { key: "titulo", nome: "Melhorar título", descricao: "Cria um título otimizado com as palavras que os clientes buscam.", quando: "Quando o título está fraco ou genérico.", icon: Wand2, tone: "violet", modo: "agente", agente: "titulo" },
+  { key: "descricao", nome: "Criar descrição de alta conversão", descricao: "Escreve uma descrição completa que vende e tira dúvidas.", quando: "Quando falta descrição ou ela é curta demais.", icon: FileText, tone: "blue", modo: "agente", agente: "descricao" },
+  { key: "seo", nome: "Analisar SEO", descricao: "Sugere palavras-chave para o produto aparecer nas buscas.", quando: "Para melhorar a posição do anúncio.", icon: Search, tone: "cyan", modo: "agente", agente: "seo" },
+  { key: "tabela_medidas", nome: "Criar tabela de medidas", descricao: "Monta a tabela de tamanhos e como medir corretamente.", quando: "Produtos com numeração ou tamanhos.", icon: Ruler, tone: "orange", modo: "agente", agente: "tabela_medidas" },
+  { key: "ficha_tecnica", nome: "Revisar ficha técnica", descricao: "Preenche os atributos obrigatórios do marketplace.", quando: "Para não perder pontos de qualidade.", icon: ListChecks, tone: "green", modo: "agente", agente: "ficha_tecnica" },
+  { key: "preco", nome: "Analisar preço e margem", descricao: "Mostra o lucro real e o preço ideal pelo modelo Zion.", quando: "Antes de definir ou revisar o preço.", icon: Calculator, tone: "green", modo: "local" },
+  { key: "imagens", nome: "Criar sugestões de imagem", descricao: "Lista as fotos ideais e o que cada uma deve mostrar.", quando: "Para melhorar a apresentação visual.", icon: ImageIcon, tone: "violet", modo: "agente", agente: "imagens" },
+  { key: "auditoria", nome: "Fazer auditoria completa", descricao: "Analisa tudo e dá uma nota, com o que corrigir primeiro.", quando: "Para uma visão geral do anúncio.", icon: ClipboardCheck, tone: "orange", modo: "esteira" },
+  { key: "faq", nome: "Gerar FAQ", descricao: "Cria perguntas e respostas frequentes para o anúncio.", quando: "Para reduzir dúvidas e devoluções.", icon: MessagesSquare, tone: "blue", modo: "esteira" },
+  { key: "plano", nome: "Criar plano de ação", descricao: "Lista os próximos passos para deixar o anúncio pronto.", quando: "Quando não sabe por onde começar.", icon: ListTodo, tone: "yellow", modo: "esteira" },
 ];
 
 export default function ClienteOtimizar() {
@@ -106,6 +117,11 @@ export default function ClienteOtimizar() {
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resultadoAgente, setResultadoAgente] = useState<{
+    markdown: string;
+    agente: string;
+    tipo: "IA" | "Simulada";
+  } | null>(null);
 
   const ferramenta = FERRAMENTAS.find((f) => f.key === ferramentaKey) ?? null;
   const produto = (produtos ?? []).find((p) => p.id === produtoId) ?? null;
@@ -129,6 +145,7 @@ export default function ClienteOtimizar() {
 
   function voltar() {
     setErro(null);
+    setResultadoAgente(null);
     if (passo === 3) setProdutoId(null);
     else if (passo === 2) setFerramentaKey(null);
   }
@@ -136,6 +153,25 @@ export default function ClienteOtimizar() {
     setFerramentaKey(null);
     setProdutoId(null);
     setErro(null);
+    setResultadoAgente(null);
+  }
+
+  async function gerarAgente() {
+    if (!produto || !ferramenta?.agente || rodando) return;
+    setRodando(true);
+    setErro(null);
+    setResultadoAgente(null);
+    try {
+      const r = await rodarAgentePortal(ferramenta.agente, {
+        contexto: montarContexto({ produto }),
+        produto: produto.nome,
+      });
+      setResultadoAgente(r);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível gerar. Tente novamente.");
+    } finally {
+      setRodando(false);
+    }
   }
 
   async function gerar() {
@@ -340,7 +376,9 @@ export default function ClienteOtimizar() {
           rodando={rodando}
           busy={busy}
           semCota={semCota}
+          resultadoAgente={resultadoAgente}
           onGerar={gerar}
+          onGerarAgente={gerarAgente}
           onAprovar={aprovar}
           onRefazer={refazer}
           onOutro={recomecar}
@@ -357,7 +395,9 @@ function ResultadoPasso({
   rodando,
   busy,
   semCota,
+  resultadoAgente,
   onGerar,
+  onGerarAgente,
   onAprovar,
   onRefazer,
   onOutro,
@@ -368,14 +408,30 @@ function ResultadoPasso({
   rodando: boolean;
   busy: boolean;
   semCota: boolean;
+  resultadoAgente: { markdown: string; agente: string; tipo: "IA" | "Simulada" } | null;
   onGerar: () => void;
+  onGerarAgente: () => void;
   onAprovar: () => void;
   onRefazer: () => void;
   onOutro: () => void;
 }) {
-  // Ferramenta de preço: cálculo local, sem IA.
-  if (ferramenta.local) {
+  // Preço: cálculo local, sem IA.
+  if (ferramenta.modo === "local") {
     return <PrecoResultado produto={produto} onOutro={onOutro} />;
+  }
+
+  // Agente único: roda só o agente da ferramenta (rápido) e mostra o resultado.
+  if (ferramenta.modo === "agente") {
+    return (
+      <AgenteResultado
+        ferramenta={ferramenta}
+        produto={produto}
+        rodando={rodando}
+        resultado={resultadoAgente}
+        onGerar={onGerarAgente}
+        onOutro={onOutro}
+      />
+    );
   }
 
   const anuncio = registro?.anuncio ?? null;
@@ -459,6 +515,98 @@ function Dado({ label, valor }: { label: string; valor: string }) {
       <p className="text-[11px] uppercase tracking-wider text-zinc-500">{label}</p>
       <p className="truncate text-zinc-200">{valor}</p>
     </div>
+  );
+}
+
+/** Resultado de uma ferramenta que roda só o SEU agente (rápido, Markdown). */
+function AgenteResultado({
+  ferramenta,
+  produto,
+  rodando,
+  resultado,
+  onGerar,
+  onOutro,
+}: {
+  ferramenta: Ferramenta;
+  produto: Produto;
+  rodando: boolean;
+  resultado: { markdown: string; agente: string; tipo: "IA" | "Simulada" } | null;
+  onGerar: () => void;
+  onOutro: () => void;
+}) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar() {
+    if (!resultado) return;
+    try {
+      await navigator.clipboard.writeText(resultado.markdown);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1800);
+    } catch {
+      /* clipboard indisponível — ignora */
+    }
+  }
+
+  return (
+    <Card
+      title={`${ferramenta.nome} · ${produto.nome}`}
+      action={
+        <button onClick={onOutro} className="text-xs text-zinc-500 hover:text-zinc-300">
+          Otimizar outro
+        </button>
+      }
+    >
+      {rodando ? (
+        <div className="flex flex-col items-center justify-center py-10 text-center">
+          <Sparkles size={26} className="animate-pulse text-violet-400" />
+          <p className="mt-3 text-sm text-zinc-300">A IA está gerando…</p>
+          <p className="mt-1 text-xs text-zinc-500">É rápido — só esta ferramenta.</p>
+        </div>
+      ) : !resultado ? (
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-400">
+            A IA vai usar os dados abaixo para {ferramenta.nome.toLowerCase()}. Confira antes de gerar:
+          </p>
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm sm:grid-cols-3">
+            <Dado label="Produto" valor={produto.nome} />
+            <Dado label="Marca" valor={produto.marca || "—"} />
+            <Dado label="Categoria" valor={produto.categoria || "—"} />
+            <Dado label="Marketplace" valor={produto.marketplace} />
+            <Dado label="Preço" valor={formatBRL(produto.precoVenda)} />
+            <Dado label="Estoque" valor={String(produto.estoque)} />
+          </div>
+          <Button onClick={onGerar}>
+            <Play size={15} /> Gerar com IA
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Pill tone={resultado.tipo === "Simulada" ? "yellow" : "violet"}>
+              {resultado.tipo === "Simulada" ? "Exemplo (IA não configurada)" : `Gerado pelo agente ${resultado.agente}`}
+            </Pill>
+            <button
+              onClick={copiar}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300 hover:border-white/20"
+            >
+              {copiado ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              {copiado ? "Copiado" : "Copiar"}
+            </button>
+          </div>
+          <div className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/5 bg-black/20 p-4 text-sm leading-relaxed text-zinc-200">
+            {resultado.markdown}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+            <Button variant="ghost" onClick={onGerar}>
+              <Play size={14} /> Gerar de novo
+            </Button>
+            <Link href="/cliente/otimizar" onClick={onOutro} className="ml-auto text-xs text-violet-400 hover:text-violet-300">
+              Usar outra ferramenta →
+            </Link>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

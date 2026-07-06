@@ -4,41 +4,37 @@
 // skill `esteira-anuncio-ml`. Módulo puro (tipos + prompt + schema), importável
 // tanto pela rota do servidor quanto pelo cliente. A chamada ao Claude fica só
 // na rota /api/agentes/esteira.
+//
+// Os prompts vêm do CATÁLOGO (fonte única dos prompts reais A0–A12). Aqui só
+// compomos a "passada única": cada agente vira uma etapa interna descrita pelo
+// seu objetivo real, e a saída é o anúncio estruturado (ESQUEMA_ANUNCIO).
 
-// ---- Regras-mãe da Zion (valem para todos os agentes) ----
+import {
+  REGRAS_MAE as REGRAS_MAE_CATALOGO,
+  CHECKLIST_QUALIDADE,
+  agentesDaEsteira,
+} from "./catalogo";
 
-export const REGRAS_MAE = `Regras-mãe da Zion Company (valem para TODAS as etapas):
-- NUNCA inventar dado de produto. Quando faltar, registrar exatamente "⚠️ informação necessária: <campo>" e listar em "pendencias".
-- Respeitar a CATEGORIA do produto e seus atributos obrigatórios.
-- Título ML: no MÁXIMO 60 caracteres, com a keyword principal na frente, SEM cor nem tamanho (isso é variação/atributo).
-- Atributos/ficha técnica são os FILTROS de busca do ML — preencher o máximo possível.
-- Margem mínima 5%. Modelo Zion: margem = preço − custo − preço×0,30 − 1,15 − frete (frete leve R$14,15 / pesado R$21,65 só se preço ≥ R$79). Nunca liberar preço abaixo do piso de 5%.
-- Defaults Zion (usar automático quando aplicável): garantia = 90 dias (fornecedor); conteúdo da embalagem = 1 par (calçado); frete grátis embutido no preço.
-- O anúncio só está pronto se o cliente COMPRA sem precisar perguntar nada.`;
-
-// ---- Etapas internas da esteira (uma passada) ----
-
-const ETAPAS = `Você é a ESTEIRA DE ANÚNCIO da Zion Company. A partir do briefing do produto,
-produza um anúncio de Mercado Livre COMPLETO e pronto para competir, rodando internamente estas
-etapas (nesta ordem) e entregando só o resultado final estruturado:
-
-1) DIAGNÓSTICO (A1): avalie o estado atual e dê uma nota de 0 a 100 (campo notaDiagnostico).
-2) SEO (A2): defina a keyword principal (vai na frente do título) e as secundárias (para descrição/atributos).
-3) BENCHMARK (A9): se houver links/dados de concorrentes, use-os; senão, trabalhe com o padrão da categoria e marque pendência.
-4) CONSTRUÇÃO (A4 orquestrando):
-   - A3 Título: ≤60 caracteres, keyword na frente, sem cor/tamanho.
-   - A5 Descrição: completa (benefícios → diferenciais → material/uso → cuidados → envio/garantia → o que vem na caixa → orientação) e uma versão curta.
-   - A6 Ficha/Atributos: mapeie cada dado no atributo correto da categoria; marque os obrigatórios que faltam.
-   - A7 Tabela de Medidas: se o produto tem numeração/tamanho, monte a tabela + "como medir" + forma (pequeno/normal/grande).
-   - A8 Variações/SKU: organize cor/tamanho/SKU/EAN/estoque/preço; todas as derivações no MESMO anúncio; valide margem ≥5%.
-   - A12 Imagens: gere PROMPTS de imagem (capa 1:1, detalhe, medidas, humanizada, benefícios) preservando fidelidade ao produto.
-5) REVISÃO FINAL (A10 — trava): rode o checklist de qualidade e decida vereditoA10 = "aprovado" ou "reprovado".
-   Reprove se: título >60 ou com cor/tamanho; atributos obrigatórios faltando; preço abaixo do piso 5%; pendências bloqueantes.
-
-Consolide TODAS as "⚠️ informação necessária" em "pendencias". Responda em português do Brasil.`;
+// Re-exporta as regras-mãe do catálogo (compatibilidade com quem importa daqui).
+export const REGRAS_MAE = REGRAS_MAE_CATALOGO;
 
 export function montarSystemPromptEsteira(): string {
-  return `${ETAPAS}\n\n${REGRAS_MAE}`;
+  const etapas = agentesDaEsteira()
+    .map((a) => `${a.codigo} · ${a.nome} — ${a.objetivo}`)
+    .join("\n");
+  const checklist = CHECKLIST_QUALIDADE.map((c) => `- ${c}`).join("\n");
+
+  return `Você é a ESTEIRA DE ANÚNCIO da Zion Company. A partir do briefing do produto, produza um anúncio de Mercado Livre COMPLETO e pronto para competir, rodando INTERNAMENTE (numa única passada, sem expor etapas intermediárias) a linha de produção dos agentes abaixo, na ordem, usando a saída de um como entrada do próximo. Entregue só o resultado final estruturado.
+
+LINHA DE PRODUÇÃO (agentes internos):
+${etapas}
+
+CHECKLIST DE QUALIDADE (o A10 é a trava — só aprove com tudo ✅):
+${checklist}
+
+Preencha "notaDiagnostico" com a nota do A1 (0–100). Consolide TODAS as "⚠️ informação necessária" em "pendencias". Defina vereditoA10 = "aprovado" só se passar no checklist; senão "reprovado" com o motivo. Responda em português do Brasil.
+
+${REGRAS_MAE}`;
 }
 
 // ---- Schema de saída (o anúncio pronto) ----

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bot, Play, Link2, Plus } from "lucide-react";
+import { Bot, Play, Link2, Plus, Workflow, ChevronDown } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Badge } from "@/components/ui/Badge";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AREAS_AGENTE, IMPLANTACAO_STATUS } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarAgentes } from "@/lib/services/agentes";
+import { agentesDaEsteira } from "@/lib/agentes/catalogo";
 
 export default function AgentesPage() {
   const [area, setArea] = useState("Todos");
@@ -41,6 +42,8 @@ export default function AgentesPage() {
           <Plus size={14} /> Novo agente
         </LinkButton>
       </div>
+
+      <SecaoEsteira />
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
         {filtrados.map((a) => (
@@ -92,6 +95,69 @@ export default function AgentesPage() {
           acaoLabel="Criar agente"
           acaoHref="/agentes/novo"
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Esteira de Anúncio ML (A0–A12) — lida direto do catálogo (fonte única dos
+ * prompts reais). Read-only: mostra o prompt verdadeiro de cada agente. É o que
+ * a esteira executa (modo rápido e aprofundado).
+ */
+function SecaoEsteira() {
+  const [aberto, setAberto] = useState(true);
+  const agentes = agentesDaEsteira();
+
+  return (
+    <div className="mb-6 rounded-xl border border-violet-500/15 bg-violet-500/[0.03] p-4">
+      <button
+        onClick={() => setAberto((v) => !v)}
+        className="flex w-full items-center gap-2.5 text-left"
+      >
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
+          <Workflow size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-zinc-100">Esteira de Anúncio ML — {agentes.length} agentes</p>
+          <p className="text-xs text-zinc-500">
+            Prompts reais A0–A12 (fonte única). É o que a esteira roda; clique num agente para ver o prompt.
+          </p>
+        </div>
+        <ChevronDown
+          size={16}
+          className={`shrink-0 text-zinc-500 transition-transform ${aberto ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {aberto && (
+        <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-2">
+          {agentes.map((a) => (
+            <details key={a.codigo} className="group rounded-lg border border-white/5 bg-[#0e0e16] p-3">
+              <summary className="flex cursor-pointer items-start gap-2.5">
+                <span className="mt-0.5 inline-flex h-6 shrink-0 items-center rounded-md bg-violet-500/10 px-1.5 text-[11px] font-semibold text-violet-300">
+                  {a.codigo}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-zinc-200">{a.nome}</span>
+                  <span className="block text-xs text-zinc-500">{a.objetivo}</span>
+                </span>
+                <ChevronDown size={14} className="mt-1 shrink-0 text-zinc-600 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-3 space-y-2 border-t border-white/5 pt-3 text-xs">
+                <p className="text-zinc-500">
+                  <span className="text-zinc-400">Quando usar:</span> {a.quandoUsar}
+                </p>
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Prompt do agente</p>
+                  <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
+                    {a.promptSistema}
+                  </pre>
+                </div>
+              </div>
+            </details>
+          ))}
+        </div>
       )}
     </div>
   );
