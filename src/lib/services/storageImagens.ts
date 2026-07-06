@@ -66,13 +66,15 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
 
 /**
  * URLs das imagens de um produto que vão para o anúncio (ML).
- * TODAS as fotos do produto são enviadas — a única forma de não enviar é o
- * cliente EXCLUIR a foto. A "Principal" vira a capa (vai primeiro).
+ * TODAS entram por padrão — o cliente não precisa selecionar nada. Só fica de
+ * fora a foto que ele explicitamente "tirar do envio" (status "Pendente").
+ * A "Principal" vira a capa (vai primeiro).
  */
 export async function urlsDoProduto(produtoId: string): Promise<string[]> {
   if (!produtoId) return [];
   const imgs = await listarImagensDoProduto(produtoId);
   return imgs
+    .filter((i) => i.status !== "Pendente") // "Pendente" = tirada do envio pelo cliente
     .sort((a, b) => (a.tipoImagem === "Principal" ? -1 : b.tipoImagem === "Principal" ? 1 : 0))
     .map((i) => i.url);
 }

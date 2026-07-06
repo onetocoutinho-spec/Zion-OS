@@ -17,6 +17,8 @@ import {
   Save,
   Star,
   Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -137,6 +139,19 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
     [produtoId]
   );
 
+  // Tudo entra por padrão; "Pendente" = o cliente tirou do envio (sem apagar).
+  const enviada = (img: ImagemProduto) => img.status !== "Pendente";
+
+  async function alternarEnvio(img: ImagemProduto) {
+    setImgBusy(img.id);
+    try {
+      await atualizarImagem(img.id, { status: enviada(img) ? "Pendente" : "Aprovada" });
+      reload();
+    } finally {
+      setImgBusy(null);
+    }
+  }
+
   async function tornarCapa(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
@@ -241,14 +256,15 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           <>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs">
               <span className="text-zinc-400">
-                <span className="font-semibold text-emerald-400">{lista.length}</span> foto(s) —{" "}
-                <span className="text-zinc-300">todas vão para o anúncio</span>.
+                <span className="font-semibold text-emerald-400">{lista.filter(enviada).length}</span> de{" "}
+                {lista.length} foto(s) vão para o anúncio.
               </span>
-              <span className="text-zinc-500">★ = capa · 🗑 remova para não enviar.</span>
+              <span className="text-zinc-500">Todas entram por padrão · ★ = capa · 👁 tira do envio.</span>
             </div>
 
             <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {lista.map((img) => {
+                const vai = enviada(img);
                 const ocupada = imgBusy === img.id;
                 return (
                   <div
@@ -256,7 +272,11 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                     className="group relative aspect-square overflow-hidden rounded-lg border border-white/10 bg-black/30"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.url} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={img.url}
+                      alt=""
+                      className={`h-full w-full object-cover transition-opacity ${vai ? "" : "opacity-35"}`}
+                    />
                     {img.tipoImagem === "Principal" && (
                       <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
                         Capa
@@ -265,6 +285,11 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                     {img.tipoImagem === "Infográfico" && (
                       <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
                         Infográfico
+                      </span>
+                    )}
+                    {!vai && (
+                      <span className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[9px] text-zinc-300">
+                        fora do envio
                       </span>
                     )}
 
@@ -279,9 +304,17 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                         <Star size={12} className={img.tipoImagem === "Principal" ? "fill-violet-400 text-violet-400" : ""} />
                       </button>
                       <button
+                        onClick={() => alternarEnvio(img)}
+                        disabled={ocupada}
+                        title={vai ? "Tirar do envio (mantém a foto)" : "Voltar a enviar"}
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-emerald-300"
+                      >
+                        {vai ? <Eye size={12} /> : <EyeOff size={12} />}
+                      </button>
+                      <button
                         onClick={() => remover(img)}
                         disabled={ocupada}
-                        title="Remover (não será enviada)"
+                        title="Remover (apaga a foto)"
                         className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-red-400"
                       >
                         {ocupada ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
@@ -294,7 +327,7 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           </>
         ) : (
           <div className="mb-4 rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-500">
-            Ainda sem fotos. Todas as fotos que você enviar (ou gerar com a IA) vão para o anúncio — é só remover as que não quiser.
+            Ainda sem fotos. Tudo que você enviar (ou gerar com a IA) já vai para o anúncio — você não precisa selecionar nada; só tira do envio o que não quiser.
           </div>
         )}
 
@@ -304,7 +337,7 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           <input type="file" accept="image/*" multiple className="hidden" onChange={aoEscolher} disabled={enviando} />
         </label>
         <p className="mt-2 text-xs text-zinc-500">
-          Todas as fotos vão para o anúncio como estão. Passe o mouse numa foto para definir a capa (★) ou removê-la (só assim ela não é enviada).
+          Todas as fotos já vão para o anúncio — você não seleciona uma a uma. Passe o mouse numa foto para definir a capa (★), tirar do envio (👁, sem apagar) ou remover (🗑).
         </p>
       </Card>
 
