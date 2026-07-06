@@ -11,12 +11,12 @@
 // atualiza as telas abertas automaticamente.
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Zap } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/form";
 import { RealtimeSync } from "./RealtimeSync";
-import { PortalApp } from "@/components/portal/PortalApp";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 
 type EstadoSessao = "carregando" | "logado" | "deslogado";
@@ -167,12 +167,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // Logado, mas ainda descobrindo o papel.
   if (supabaseConfigurado && perfil === undefined) return <TelaCarregando />;
 
-  // Cliente → portal read-only (não vê o app da equipe).
+  // Cliente → Portal do Cliente (rotas /cliente/*), nunca a casca da equipe.
   if (perfil?.papel === "cliente") {
     return (
       <>
         {supabaseConfigurado && <RealtimeSync />}
-        <PortalApp perfil={perfil} />
+        <ClienteGate>{children}</ClienteGate>
       </>
     );
   }
@@ -184,4 +184,21 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       {children}
     </>
   );
+}
+
+/**
+ * Mantém o cliente sempre dentro de /cliente/*. Se ele cair em qualquer rota
+ * da equipe (ex.: "/"), mostramos o carregamento e redirecionamos — assim ele
+ * nunca vê o painel interno, nem por um instante.
+ */
+function ClienteGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const noPortal = pathname === "/cliente" || pathname.startsWith("/cliente/");
+
+  useEffect(() => {
+    if (!noPortal) router.replace("/cliente");
+  }, [noPortal, router]);
+
+  return noPortal ? <>{children}</> : <TelaCarregando />;
 }

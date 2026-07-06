@@ -1,0 +1,246 @@
+"use client";
+
+import { Fragment, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Megaphone,
+  ShieldCheck,
+  XCircle,
+  ChevronDown,
+  Wand2,
+  Sparkles,
+} from "lucide-react";
+import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
+import { FilterSelect } from "@/components/ui/FilterSelect";
+import { Button } from "@/components/ui/Button";
+import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
+import { useClientPortal } from "@/components/client-portal/context";
+import { useLiveQuery } from "@/lib/hooks";
+import {
+  listarAnunciosGeradosDoCliente,
+  aprovarAnuncioGerado,
+  rejeitarAnuncioGerado,
+  ROTULO_STATUS_ANUNCIO_GERADO,
+} from "@/lib/services/anunciosGerados";
+import { toneScore } from "@/lib/client-portal/metrics";
+import { toneFor } from "@/lib/status";
+import type { AnuncioGeradoRegistro } from "@/lib/types";
+
+const STATUS_FILTRO = ["Aguardando aprovação", "Aprovado", "Rascunho", "Rejeitado", "Publicado"] as const;
+const MAPA_FILTRO: Record<string, string> = {
+  "Aguardando aprovação": "aguardando_aprovacao",
+  Aprovado: "aprovado",
+  Rascunho: "rascunho",
+  Rejeitado: "rejeitado",
+  Publicado: "publicado",
+};
+
+function prioridade(a: AnuncioGeradoRegistro): { label: string; tone: "red" | "yellow" | "green" } {
+  if (a.notaDiagnostico < 40 || a.qtdPendencias >= 3) return { label: "Alta", tone: "red" };
+  if (a.notaDiagnostico < 70 || a.qtdPendencias > 0) return { label: "Média", tone: "yellow" };
+  return { label: "Baixa", tone: "green" };
+}
+
+export default function ClienteAnuncios() {
+  const { clienteId, nome } = useClientPortal();
+  const { data: anuncios } = useLiveQuery(
+    () => listarAnunciosGeradosDoCliente(clienteId),
+    [clienteId]
+  );
+
+  const [fStatus, setFStatus] = useState("Todos");
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const filtrados = useMemo(() => {
+    return [...(anuncios ?? [])]
+      .filter((a) => fStatus === "Todos" || a.status === MAPA_FILTRO[fStatus])
+      .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
+  }, [anuncios, fStatus]);
+
+  async function aprovar(id: string) {
+    setBusy(id);
+    try {
+      await aprovarAnuncioGerado(id, nome || "cliente");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function refazer(id: string) {
+    setBusy(id);
+    try {
+      await rejeitarAnuncioGerado(id, "Refazer solicitado pelo cliente.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const total = (anuncios ?? []).length;
+
+  return (
+    <>
+      <PageHeader
+        titulo="Meus Anúncios"
+        subtitulo="Os anúncios que a IA gerou para você. Revise e aprove os que estiverem prontos."
+        acao={
+          <Link href="/cliente/otimizar">
+            <Button>
+              <Wand2 size={15} /> Otimizar com IA
+            </Button>
+          </Link>
+        }
+      />
+
+      {total === 0 ? (
+        <VazioAmigavel
+          icon={Megaphone}
+          titulo="Você ainda não tem anúncios gerados"
+          descricao="Use a otimização com IA para criar títulos, descrições e ficha técnica prontos a partir dos seus produtos."
+          acao={
+            <Link href="/cliente/otimizar">
+              <Button>
+                <Sparkles size={15} /> Otimizar com IA
+              </Button>
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <FilterSelect label="Status" value={fStatus} options={STATUS_FILTRO} onChange={setFStatus} />
+            <span className="ml-auto text-xs text-zinc-500">
+              {filtrados.length} de {total} anúncios
+            </span>
+          </div>
+
+          <Table
+            headers={["Anúncio", "Marketplace", "Score", "Problema principal", "Prioridade", "Status", "Ação"]}
+          >
+            {filtrados.length === 0 ? (
+              <EmptyRow colSpan={7} />
+            ) : (
+              filtrados.map((a) => {
+                const prio = prioridade(a);
+                const problema = a.anuncio?.pendencias?.[0] ?? "—";
+                const podeAprovar = a.vereditoA10 === "aprovado" && a.qtdPendencias === 0;
+                const expandido = aberto === a.id;
+                return (
+                  <Fragment key={a.id}>
+                    <tr className="hover:bg-white/[0.02]">
+                      <TdMain sub={a.produto || undefined}>
+                        {a.anuncio?.tituloOtimizado || a.produto || "Anúncio"}
+                      </TdMain>
+                      <Td>{a.marketplace}</Td>
+                      <Td>
+                        <Pill tone={toneScore(a.notaDiagnostico)}>{a.notaDiagnostico}/100</Pill>
+                      </Td>
+                      <Td className="max-w-56 truncate" >
+                        {problema}
+                      </Td>
+                      <Td>
+                        <Pill tone={prio.tone}>{prio.label}</Pill>
+                      </Td>
+                      <Td>
+                        <Pill tone={toneFor(a.status)}>
+                          {ROTULO_STATUS_ANUNCIO_GERADO[a.status] ?? a.status}
+                        </Pill>
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setAberto(expandido ? null : a.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 hover:border-white/20"
+                          >
+                            Detalhes
+                            <ChevronDown
+                              size={12}
+                              className={`transition-transform ${expandido ? "rotate-180" : ""}`}
+                            />
+                          </button>
+                          {(a.status === "aguardando_aprovacao" || a.status === "rascunho") && (
+                            <>
+                              {podeAprovar ? (
+                                <Button
+                                  variant="success"
+                                  className="px-2 py-1 text-xs"
+                                  onClick={() => aprovar(a.id)}
+                                  disabled={busy === a.id}
+                                >
+                                  <ShieldCheck size={12} /> Aprovar
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="danger"
+                                  className="px-2 py-1 text-xs"
+                                  onClick={() => refazer(a.id)}
+                                  disabled={busy === a.id}
+                                >
+                                  <XCircle size={12} /> Refazer
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </Td>
+                    </tr>
+                    {expandido && a.anuncio && (
+                      <tr className="bg-white/[0.015]">
+                        <td colSpan={7} className="px-4 py-4">
+                          <DetalheAnuncio registro={a} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })
+            )}
+          </Table>
+        </>
+      )}
+    </>
+  );
+}
+
+function DetalheAnuncio({ registro }: { registro: AnuncioGeradoRegistro }) {
+  const a = registro.anuncio!;
+  return (
+    <div className="space-y-3 text-sm">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">Título otimizado</p>
+        <p className="mt-0.5 text-zinc-200">{a.tituloOtimizado}</p>
+      </div>
+      {a.descricaoCurta && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">Descrição curta</p>
+          <p className="mt-0.5 whitespace-pre-line text-zinc-300">{a.descricaoCurta}</p>
+        </div>
+      )}
+      {a.palavrasChavePrincipais?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">Palavras-chave</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {a.palavrasChavePrincipais.map((k, i) => (
+              <Pill key={i} tone="violet">
+                {k}
+              </Pill>
+            ))}
+          </div>
+        </div>
+      )}
+      {a.pendencias?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-amber-400">Pendências a revisar</p>
+          <ul className="mt-1 list-disc pl-5 text-amber-300/90">
+            {a.pendencias.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="text-xs text-zinc-500">
+        Veredito da IA: <span className="text-zinc-300">{registro.vereditoA10}</span> · nota{" "}
+        {registro.notaDiagnostico}/100
+      </p>
+    </div>
+  );
+}

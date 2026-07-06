@@ -71,6 +71,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
   }, []);
 
+  // O Portal do Cliente (/cliente/*) tem a própria casca (ClientPortalShell).
+  // Aqui renderizamos só o conteúdo, sem a navegação interna da equipe.
+  // (depois de todos os hooks acima, para não alterar a ordem de hooks.)
+  if (pathname.startsWith("/cliente")) return <>{children}</>;
+
   async function sair() {
     await getSupabase().auth.signOut();
     // O AuthGate detecta o fim da sessão e volta para a tela de login.
