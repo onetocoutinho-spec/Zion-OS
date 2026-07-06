@@ -9,6 +9,10 @@ import {
   Clock,
   CheckCircle2,
   Send,
+  Rocket,
+  ExternalLink,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -24,6 +28,8 @@ import {
   rejeitarAnuncioGerado,
   ROTULO_STATUS_ANUNCIO_GERADO,
 } from "@/lib/services/anunciosGerados";
+import { montarPreviewML, publicarNoML } from "@/lib/services/publicacaoML";
+import type { AnuncioGeradoRegistro } from "@/lib/types";
 
 const HEADERS = [
   "Anúncio gerado",
@@ -77,6 +83,73 @@ export default function AprovacoesPage() {
   }
 
   return (
+    <>
+      <ConteudoAprovacoes
+        registros={registros}
+        filtrados={filtrados}
+        clientes={clientes}
+        cliente={cliente}
+        setCliente={setCliente}
+        status={status}
+        setStatus={setStatus}
+        busy={busy}
+        aprovar={aprovar}
+        rejeitar={rejeitar}
+        stats={{ aguardando, rascunhos, aprovadosN, publicados }}
+        data={data}
+      />
+    </>
+  );
+}
+
+function ConteudoAprovacoes({
+  registros,
+  filtrados,
+  clientes,
+  cliente,
+  setCliente,
+  status,
+  setStatus,
+  busy,
+  aprovar,
+  rejeitar,
+  stats,
+  data,
+}: {
+  registros: AnuncioGeradoRegistro[];
+  filtrados: AnuncioGeradoRegistro[];
+  clientes: string[];
+  cliente: string;
+  setCliente: (v: string) => void;
+  status: string;
+  setStatus: (v: string) => void;
+  busy: boolean;
+  aprovar: (id: string) => void;
+  rejeitar: (id: string) => void;
+  stats: { aguardando: number; rascunhos: number; aprovadosN: number; publicados: number };
+  data: AnuncioGeradoRegistro[] | null | undefined;
+}) {
+  const { aguardando, rascunhos, aprovadosN, publicados } = stats;
+  const [preview, setPreview] = useState<AnuncioGeradoRegistro | null>(null);
+  const [publicando, setPublicando] = useState(false);
+  const [msgPub, setMsgPub] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+
+  async function publicarReal() {
+    if (!preview || publicando) return;
+    setPublicando(true);
+    setMsgPub(null);
+    try {
+      const r = await publicarNoML(preview, true);
+      setMsgPub({ tipo: "ok", texto: `Publicado no ML: ${r.id}` });
+      setPreview(null);
+    } catch (e) {
+      setMsgPub({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao publicar." });
+    } finally {
+      setPublicando(false);
+    }
+  }
+
+  return (
     <div className="space-y-6">
       <div>
         <Link href="/esteira" className="mb-2 inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300">
@@ -106,6 +179,19 @@ export default function AprovacoesPage() {
           onChange={setStatus}
         />
       </div>
+
+      {msgPub && (
+        <p
+          className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
+            msgPub.tipo === "ok"
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+              : "border-red-500/20 bg-red-500/10 text-red-400"
+          }`}
+        >
+          {msgPub.tipo === "ok" ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+          {msgPub.texto}
+        </p>
+      )}
 
       <Table headers={HEADERS}>
         {data && filtrados.length === 0 && (
@@ -171,7 +257,26 @@ export default function AprovacoesPage() {
               <Td><Badge>{ROTULO_STATUS_ANUNCIO_GERADO[r.status]}</Badge></Td>
               <Td className="whitespace-nowrap text-xs">{formatDateTime(r.criadoEm)}</Td>
               <Td>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
+                  {r.status === "aprovado" && (
+                    <Button
+                      className="px-2 py-1 text-xs"
+                      onClick={() => setPreview(r)}
+                      title="Revisar o payload e publicar no Mercado Livre"
+                    >
+                      <Rocket size={13} /> Publicar
+                    </Button>
+                  )}
+                  {r.status === "publicado" && r.mlPermalink && (
+                    <a
+                      href={r.mlPermalink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+                    >
+                      <ExternalLink size={12} /> Ver no ML
+                    </a>
+                  )}
                   <Button
                     variant="success"
                     className="px-2 py-1 text-xs"
@@ -195,6 +300,84 @@ export default function AprovacoesPage() {
           );
         })}
       </Table>
+
+      {preview && (
+        <ModalPublicar
+          registro={preview}
+          publicando={publicando}
+          onPublicar={publicarReal}
+          onFechar={() => setPreview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Modal de publicação: mostra o payload (dry-run) e permite publicar de verdade. */
+function ModalPublicar({
+  registro,
+  publicando,
+  onPublicar,
+  onFechar,
+}: {
+  registro: AnuncioGeradoRegistro;
+  publicando: boolean;
+  onPublicar: () => void;
+  onFechar: () => void;
+}) {
+  const payload = montarPreviewML(registro);
+  const semCategoria = !payload.category_id;
+  const semFotos = !Array.isArray(payload.pictures) || payload.pictures.length === 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
+      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+        <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
+          <div>
+            <p className="text-sm font-semibold text-white">Publicar no Mercado Livre</p>
+            <p className="text-xs text-zinc-500">{registro.anuncio?.tituloOtimizado}</p>
+          </div>
+          <button onClick={onFechar} className="text-zinc-500 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <p className="mb-2 text-xs text-zinc-400">
+            Prévia do que será enviado ao ML (dry-run). Revise antes de publicar de verdade.
+          </p>
+          {(semCategoria || semFotos) && (
+            <ul className="mb-3 space-y-1 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 text-xs text-amber-400">
+              {semCategoria && (
+                <li className="flex items-center gap-1.5">
+                  <AlertTriangle size={12} /> Categoria será prevista pelo título no envio (ou informe manualmente).
+                </li>
+              )}
+              {semFotos && (
+                <li className="flex items-center gap-1.5">
+                  <AlertTriangle size={12} /> Sem fotos: o ML exige imagens reais (URLs). O item pode ficar incompleto.
+                </li>
+              )}
+            </ul>
+          )}
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">
+            {JSON.stringify(payload, null, 2)}
+          </pre>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-white/5 px-5 py-3">
+          <span className="text-[11px] text-zinc-600">
+            Publicação real exige ML_CLIENT_ID/SECRET no servidor + cliente conectado.
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onFechar}>Fechar</Button>
+            <Button onClick={onPublicar} disabled={publicando}>
+              <Rocket size={14} /> {publicando ? "Publicando…" : "Publicar de verdade"}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -394,6 +394,8 @@ export interface AnuncioGeradoRow {
   aprovado_por: string | null;
   aprovado_em: string | null;
   observacoes: string | null;
+  ml_item_id?: string | null;
+  ml_permalink?: string | null;
   created_at?: string;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;

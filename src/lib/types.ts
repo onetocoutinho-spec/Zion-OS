@@ -603,4 +603,9 @@ export interface AnuncioGeradoRegistro {
   aprovadoEm: string | null; // ISO datetime
   criadoEm: string; // ISO datetime
   observacoes: string;
+  // ---- Fase 3: publicação no marketplace ----
+  /** ID do item no Mercado Livre (ex.: MLB123...), após publicar. */
+  mlItemId?: string | null;
+  /** Link público do anúncio no ML. */
+  mlPermalink?: string | null;
 }

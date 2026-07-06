@@ -888,6 +888,8 @@ export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegist
     aprovadoEm: row.aprovado_em,
     criadoEm: row.created_at ?? new Date().toISOString(),
     observacoes: row.observacoes ?? "",
+    mlItemId: row.ml_item_id ?? null,
+    mlPermalink: row.ml_permalink ?? null,
   };
 }
 
@@ -909,6 +911,8 @@ export function anuncioGeradoParaBanco(
   if (d.aprovadoPor !== undefined) r.aprovado_por = d.aprovadoPor;
   if (d.aprovadoEm !== undefined) r.aprovado_em = d.aprovadoEm;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  if (d.mlItemId !== undefined) r.ml_item_id = d.mlItemId;
+  if (d.mlPermalink !== undefined) r.ml_permalink = d.mlPermalink;
   // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }

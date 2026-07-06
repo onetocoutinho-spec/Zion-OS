@@ -71,11 +71,16 @@ export async function rejeitarAnuncioGerado(
   });
 }
 
-/** Fase 2 marcará como publicado após o envio via API do marketplace. */
+/** Marca como publicado após o envio via API do marketplace (Fase 3). */
 export async function marcarAnuncioPublicado(
-  id: string
+  id: string,
+  ml?: { itemId?: string; permalink?: string }
 ): Promise<AnuncioGeradoRegistro | null> {
-  return repo.atualizar(id, { status: "publicado" });
+  return repo.atualizar(id, {
+    status: "publicado",
+    ...(ml?.itemId ? { mlItemId: ml.itemId } : {}),
+    ...(ml?.permalink ? { mlPermalink: ml.permalink } : {}),
+  });
 }
 
 export async function excluirAnuncioGerado(id: string): Promise<void> {
