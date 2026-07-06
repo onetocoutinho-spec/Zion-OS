@@ -64,12 +64,16 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
   });
 }
 
-/** URLs das imagens de um produto (para alimentar a publicação no ML). */
+/**
+ * URLs das imagens de um produto que vão para o anúncio (ML).
+ * Só entram as marcadas para envio (status "Aprovada" ou "Publicada");
+ * a "Principal" vira a capa (vai primeiro).
+ */
 export async function urlsDoProduto(produtoId: string): Promise<string[]> {
   if (!produtoId) return [];
   const imgs = await listarImagensDoProduto(produtoId);
-  // Principal primeiro (vira a capa no ML).
   return imgs
+    .filter((i) => i.status === "Aprovada" || i.status === "Publicada")
     .sort((a, b) => (a.tipoImagem === "Principal" ? -1 : b.tipoImagem === "Principal" ? 1 : 0))
     .map((i) => i.url);
 }

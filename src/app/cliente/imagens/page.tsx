@@ -15,6 +15,10 @@ import {
   Wand2,
   Sparkles,
   Save,
+  Star,
+  Trash2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +26,11 @@ import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
-import { listarImagensDoProduto } from "@/lib/services/imagensProduto";
+import {
+  listarImagensDoProduto,
+  atualizarImagem,
+  excluirImagem,
+} from "@/lib/services/imagensProduto";
 import { uploadImagemProduto } from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
@@ -124,11 +132,46 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   const [busca, setBusca] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [imgBusy, setImgBusy] = useState<string | null>(null);
 
   const { data: imagens, reload } = useLiveQuery(
     () => (produtoId ? listarImagensDoProduto(produtoId) : Promise.resolve([])),
     [produtoId]
   );
+
+  const enviada = (img: ImagemProduto) => img.status === "Aprovada" || img.status === "Publicada";
+
+  async function alternarEnvio(img: ImagemProduto) {
+    setImgBusy(img.id);
+    try {
+      await atualizarImagem(img.id, { status: enviada(img) ? "Pendente" : "Aprovada" });
+      reload();
+    } finally {
+      setImgBusy(null);
+    }
+  }
+
+  async function tornarCapa(img: ImagemProduto) {
+    setImgBusy(img.id);
+    try {
+      const atual = (imagens ?? []).find((i) => i.tipoImagem === "Principal");
+      if (atual && atual.id !== img.id) await atualizarImagem(atual.id, { tipoImagem: "Secundária" });
+      await atualizarImagem(img.id, { tipoImagem: "Principal", status: "Aprovada" });
+      reload();
+    } finally {
+      setImgBusy(null);
+    }
+  }
+
+  async function remover(img: ImagemProduto) {
+    setImgBusy(img.id);
+    try {
+      await excluirImagem(img.id);
+      reload();
+    } finally {
+      setImgBusy(null);
+    }
+  }
 
   const filtrados = useMemo(() => {
     const q = norm(busca);
@@ -208,24 +251,86 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           </p>
         )}
 
-        {lista.length > 0 && (
-          <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {lista.map((img) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <div key={img.id} className="relative aspect-square overflow-hidden rounded-lg border border-white/5 bg-black/30">
-                <img src={img.url} alt="" className="h-full w-full object-cover" />
-                {img.tipoImagem === "Principal" && (
-                  <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
-                    Capa
-                  </span>
-                )}
-                {img.tipoImagem === "Infográfico" && (
-                  <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
-                    Infográfico
-                  </span>
-                )}
-              </div>
-            ))}
+        {lista.length > 0 ? (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs">
+              <span className="text-zinc-400">
+                <span className="font-semibold text-emerald-400">{lista.filter(enviada).length}</span> de{" "}
+                {lista.length} foto(s) vão para o anúncio.
+              </span>
+              <span className="text-zinc-500">
+                Use como estão ou otimize com IA abaixo. ✓ = enviar · ★ = capa.
+              </span>
+            </div>
+
+            <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {lista.map((img) => {
+                const vai = enviada(img);
+                const ocupada = imgBusy === img.id;
+                return (
+                  <div
+                    key={img.id}
+                    className={`group relative aspect-square overflow-hidden rounded-lg border bg-black/30 ${
+                      vai ? "border-white/10" : "border-white/5"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.url}
+                      alt=""
+                      className={`h-full w-full object-cover transition-opacity ${vai ? "" : "opacity-35"}`}
+                    />
+                    {img.tipoImagem === "Principal" && (
+                      <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                        Capa
+                      </span>
+                    )}
+                    {img.tipoImagem === "Infográfico" && (
+                      <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                        Infográfico
+                      </span>
+                    )}
+                    {!vai && (
+                      <span className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[9px] text-zinc-300">
+                        fora do envio
+                      </span>
+                    )}
+
+                    {/* Controles */}
+                    <div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={() => tornarCapa(img)}
+                        disabled={ocupada}
+                        title="Definir como capa"
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-violet-300"
+                      >
+                        <Star size={12} className={img.tipoImagem === "Principal" ? "fill-violet-400 text-violet-400" : ""} />
+                      </button>
+                      <button
+                        onClick={() => alternarEnvio(img)}
+                        disabled={ocupada}
+                        title={vai ? "Não enviar no anúncio" : "Enviar no anúncio"}
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-emerald-300"
+                      >
+                        {vai ? <Eye size={12} /> : <EyeOff size={12} />}
+                      </button>
+                      <button
+                        onClick={() => remover(img)}
+                        disabled={ocupada}
+                        title="Remover"
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-red-400"
+                      >
+                        {ocupada ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="mb-4 rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center text-sm text-zinc-500">
+            Ainda sem fotos. Envie as suas — você escolhe quais vão para o anúncio e pode otimizar com IA depois.
           </div>
         )}
 
@@ -234,7 +339,9 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           {enviando ? "Enviando…" : lista.length > 0 ? "Adicionar mais fotos" : "Enviar fotos"}
           <input type="file" accept="image/*" multiple className="hidden" onChange={aoEscolher} disabled={enviando} />
         </label>
-        <p className="mt-2 text-xs text-zinc-500">A primeira foto vira a capa (1:1) do anúncio. JPG ou PNG.</p>
+        <p className="mt-2 text-xs text-zinc-500">
+          As fotos enviadas já vão para o anúncio como estão. Passe o mouse numa foto para definir a capa (★), tirar do envio (👁) ou remover.
+        </p>
       </Card>
 
       {fonte && produto && (
@@ -300,6 +407,10 @@ function EstudioIA({
         mimeType: resultado.mimeType,
         tipo: resultado.tipo,
       });
+      // A capa melhorada assume o lugar; a foto real vira secundária.
+      if (resultado.tipo === "melhorar" && fonte.tipoImagem === "Principal") {
+        await atualizarImagem(fonte.id, { tipoImagem: "Secundária" });
+      }
       setResultado(null);
       onSalvo();
     } catch (e) {
