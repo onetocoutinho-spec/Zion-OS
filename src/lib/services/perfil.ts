@@ -16,10 +16,12 @@ const EQUIPE: Perfil = { papel: "equipe", clienteId: null, nome: "" };
 
 export async function meuPerfil(): Promise<Perfil> {
   if (!supabaseConfigurado) return EQUIPE;
-  const sb = getSupabase();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth.user) return EQUIPE;
+  // Qualquer falha (sessão inválida, tabela perfis inexistente, rede) NUNCA
+  // pode travar o app — cai para equipe (fail-safe).
   try {
+    const sb = getSupabase();
+    const { data: auth } = await sb.auth.getUser();
+    if (!auth.user) return EQUIPE;
     const { data } = await sb
       .from("perfis")
       .select("papel, cliente_id, nome")
@@ -32,7 +34,6 @@ export async function meuPerfil(): Promise<Perfil> {
       nome: (data.nome as string | null) ?? "",
     };
   } catch {
-    // Tabela perfis ainda não existe (005 não rodada) → trata como equipe.
     return EQUIPE;
   }
 }

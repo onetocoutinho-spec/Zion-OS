@@ -136,10 +136,26 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
       setEstado("logado");
-      setPerfil(await meuPerfil());
+      // Descobre o papel, mas NUNCA trava: se demorar/falhar, entra como equipe.
+      const equipe: Perfil = { papel: "equipe", clienteId: null, nome: "" };
+      try {
+        const p = await Promise.race<Perfil>([
+          meuPerfil(),
+          new Promise<Perfil>((res) => setTimeout(() => res(equipe), 5000)),
+        ]);
+        setPerfil(p);
+      } catch {
+        setPerfil(equipe);
+      }
     }
 
-    sb.auth.getSession().then(({ data }) => resolver(Boolean(data.session)));
+    sb.auth
+      .getSession()
+      .then(({ data }) => resolver(Boolean(data.session)))
+      .catch(() => {
+        setEstado("deslogado");
+        setPerfil(undefined);
+      });
     const { data: listener } = sb.auth.onAuthStateChange((_evento, sessao) =>
       resolver(Boolean(sessao))
     );
