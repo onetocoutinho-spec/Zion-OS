@@ -84,6 +84,36 @@ export function classificarPrioridade(
   return "baixa";
 }
 
+// ---- Priorização cold-start (base que quase não vende) ----
+
+/**
+ * Quando a base inteira vende ~0, o ABC não separa nada (tudo vira C) e a
+ * fila fica cega. Aqui o eixo "valor" é trocado por POTENCIAL:
+ * margem × estoque disponível × quanto há para ganhar (score baixo).
+ */
+export function classificarPrioridadeColdStart(
+  score: number,
+  potencial: { margem?: number; estoque: number }
+): PrioridadeAuditoria {
+  // Sem margem informada, considera ok (não penaliza por falta de dado).
+  const margemBoa = potencial.margem === undefined || potencial.margem >= 10;
+  const margemMinima = potencial.margem === undefined || potencial.margem >= 5;
+  const altoPotencial = margemBoa && potencial.estoque >= 5;
+  const algumPotencial = margemMinima && potencial.estoque > 0;
+  if (altoPotencial && score < 55) return "critica";
+  if ((altoPotencial && score < 75) || (algumPotencial && score < 50)) return "alta";
+  if (algumPotencial && score < 70) return "media";
+  if (score < 45) return "media";
+  return "baixa";
+}
+
+/** Detecta base cold-start: praticamente nenhuma venda no conjunto. */
+export function ehBaseColdStart(itens: { vendas: number }[]): boolean {
+  if (itens.length === 0) return false;
+  const soma = itens.reduce((s, i) => s + i.vendas, 0);
+  return soma < Math.max(5, itens.length * 0.2);
+}
+
 // ---- Rótulos legíveis (banco em snake_case → UI em português) ----
 
 export const ROTULO_ORIGEM: Record<OrigemImportacao, string> = {
@@ -198,4 +228,36 @@ export const AGENTE_POR_PROBLEMA: Record<TipoProblema, string> = {
   baixa_conversao: "Zion Concorrência",
   baixa_visibilidade: "Zion Diagnóstico ML",
   risco_reputacao: "Zion Diagnóstico ML",
+};
+
+/** Gravidade padrão por tipo de problema (canônico — usar em toda geração). */
+export const GRAVIDADE_PROBLEMA: Record<TipoProblema, GravidadeProblema> = {
+  titulo_ruim: "alta",
+  descricao_incompleta: "media",
+  imagem_fraca: "alta",
+  ficha_tecnica_incompleta: "critica",
+  preco_nao_competitivo: "alta",
+  estoque_baixo: "media",
+  variacao_incorreta: "alta",
+  falta_tabela_medidas: "media",
+  categoria_errada: "critica",
+  baixa_conversao: "alta",
+  baixa_visibilidade: "media",
+  risco_reputacao: "critica",
+};
+
+/** Sugestão de correção padrão por tipo de problema (canônico). */
+export const SUGESTAO_PROBLEMA: Record<TipoProblema, string> = {
+  titulo_ruim: "Reescrever o título com palavras-chave de maior busca (até 60 caracteres).",
+  descricao_incompleta: "Completar a descrição com benefícios, uso e ficha técnica.",
+  imagem_fraca: "Refazer a foto principal (fundo branco) e adicionar lifestyle.",
+  ficha_tecnica_incompleta: "Preencher os atributos obrigatórios da categoria.",
+  preco_nao_competitivo: "Reprecificar comparando com os 5 principais concorrentes.",
+  estoque_baixo: "Repor estoque ou pausar o anúncio para não perder reputação.",
+  variacao_incorreta: "Corrigir as variações e vincular SKUs corretos.",
+  falta_tabela_medidas: "Adicionar a tabela de medidas na descrição.",
+  categoria_errada: "Mover para a categoria correta do marketplace.",
+  baixa_conversao: "Revisar título, imagens e preço para melhorar a conversão.",
+  baixa_visibilidade: "Otimizar SEO e avaliar campanha de ads.",
+  risco_reputacao: "Tratar causa de reclamações/atrasos antes de escalar.",
 };

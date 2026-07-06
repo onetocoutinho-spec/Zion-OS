@@ -20,12 +20,14 @@ import { FilterSelect } from "@/components/ui/FilterSelect";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
+import { listarProdutos } from "@/lib/services/produtos";
+import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { criarExecucaoLote } from "@/lib/services/execucoesLote";
 import { criarAnuncioGerado } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
 import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
-import type { AuditoriaAnuncio, PrioridadeAuditoria } from "@/lib/types";
+import type { AuditoriaAnuncio, PrioridadeAuditoria, Produto, ProdutoVariante } from "@/lib/types";
 
 const PESO: Record<PrioridadeAuditoria, number> = { critica: 0, alta: 1, media: 2, baixa: 3 };
 
@@ -43,9 +45,16 @@ interface ItemLote {
   erro?: string;
 }
 
-/** Monta o briefing da esteira a partir de uma auditoria. */
-function briefingDaAuditoria(a: AuditoriaAnuncio): string {
-  return [
+/**
+ * Monta o briefing da esteira a partir da auditoria, enriquecido com o
+ * produto vinculado (custo, margem, ERP) e suas variações — quando existirem.
+ */
+function briefingDaAuditoria(
+  a: AuditoriaAnuncio,
+  produto?: Produto,
+  variacoes: ProdutoVariante[] = []
+): string {
+  const blocoAuditoria = [
     `## Anúncio a otimizar (vindo da Auditoria em Massa)`,
     `- Título atual: ${a.tituloAtual}`,
     `- Categoria: ${a.categoria}`,
@@ -54,9 +63,36 @@ function briefingDaAuditoria(a: AuditoriaAnuncio): string {
     `- Classe ABC: ${a.classificacaoAbc} · Prioridade: ${a.prioridade} · Score atual: ${a.scoreQualidade}/100`,
     `- Problemas encontrados: ${a.problemasEncontrados}`,
     a.linkAnuncio ? `- Link: ${a.linkAnuncio}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ];
+
+  const blocoProduto = produto
+    ? [
+        ``,
+        `## Produto vinculado (base do cliente)`,
+        `- Nome: ${produto.nome}`,
+        produto.marca || produto.modelo ? `- Marca/Modelo: ${produto.marca || "—"} / ${produto.modelo || "—"}` : "",
+        `- SKU (pai): ${produto.sku}${produto.codErp ? ` · Cód. ERP: ${produto.codErp}` : ""}`,
+        `- Custo: ${formatBRL(produto.custo)} · Preço: ${formatBRL(produto.precoVenda)}` +
+          (produto.margem !== undefined ? ` · Margem Zion: ${produto.margem}%` : "") +
+          (produto.precoMinimo !== undefined ? ` · Preço mínimo (piso 5%): ${formatBRL(produto.precoMinimo)}` : ""),
+        produto.confiancaCusto ? `- Confiança do custo: ${produto.confiancaCusto}` : "",
+      ]
+    : [];
+
+  const blocoVariacoes =
+    variacoes.length > 0
+      ? [
+          ``,
+          `## Variações (${variacoes.length})`,
+          ...variacoes.slice(0, 15).map(
+            (v) =>
+              `- ${[v.cor, v.tamanho].filter(Boolean).join(" / ") || "—"} · SKU ${v.sku}${v.ean ? ` · EAN ${v.ean}` : ""} · estoque ${v.estoque}${v.precoBase > 0 ? ` · ${formatBRL(v.precoBase)}` : ""}`
+          ),
+          variacoes.length > 15 ? `- (+${variacoes.length - 15} variações na mesma grade)` : "",
+        ]
+      : [];
+
+  return [...blocoAuditoria, ...blocoProduto, ...blocoVariacoes].filter(Boolean).join("\n");
 }
 
 const ICONE: Record<StatusItem, React.ReactNode> = {
@@ -76,6 +112,25 @@ export default function EsteiraLotePage() {
 
   const { data: auditoriasData } = useLiveQuery(listarAuditorias);
   const auditorias = auditoriasData ?? [];
+  const { data: produtosData } = useLiveQuery(listarProdutos);
+  const { data: variantesData } = useLiveQuery(listarTodasVariantes);
+
+  const produtoPorId = useMemo(() => {
+    const m = new Map<string, Produto>();
+    (produtosData ?? []).forEach((p) => m.set(p.id, p));
+    return m;
+  }, [produtosData]);
+
+  const variantesPorProduto = useMemo(() => {
+    const m = new Map<string, ProdutoVariante[]>();
+    (variantesData ?? []).forEach((v) => {
+      if (!v.produtoId) return;
+      const arr = m.get(v.produtoId) ?? [];
+      arr.push(v);
+      m.set(v.produtoId, arr);
+    });
+    return m;
+  }, [variantesData]);
 
   const clientes = useMemo(() => [...new Set(auditorias.map((a) => a.cliente))], [auditorias]);
 
@@ -108,8 +163,10 @@ export default function EsteiraLotePage() {
     for (let i = 0; i < fila.length; i++) {
       setItens((prev) => prev.map((it, idx) => (idx === i ? { ...it, status: "rodando" } : it)));
       try {
+        const prod = fila[i].produtoId ? produtoPorId.get(fila[i].produtoId!) : undefined;
+        const vars = fila[i].produtoId ? (variantesPorProduto.get(fila[i].produtoId!) ?? []) : [];
         const r = await rodarEsteira("", {
-          contexto: briefingDaAuditoria(fila[i]),
+          contexto: briefingDaAuditoria(fila[i], prod, vars),
           produto: fila[i].tituloAtual,
         });
         tipoFinal = r.tipo;

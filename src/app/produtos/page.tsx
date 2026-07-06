@@ -2,16 +2,17 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Upload, ChevronDown, Users } from "lucide-react";
+import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Table, Td } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
-import { LinkButton } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CADASTRO_STATUS, PRIORIDADES } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
+import { gerarAuditoriasDaBase } from "@/lib/services/auditoriaDaBase";
 import { formatBRL } from "@/lib/format";
 import type { Produto } from "@/lib/types";
 
@@ -34,7 +35,29 @@ export default function ProdutosPage() {
   const [prioridade, setPrioridade] = useState("Todos");
   const [cliente, setCliente] = useState("Todos");
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
+  const [auditando, setAuditando] = useState<string | null>(null);
+  const [msgAuditoria, setMsgAuditoria] = useState<string | null>(null);
   const { data: produtos } = useLiveQuery(listarProdutos);
+
+  async function auditarBase(nome: string, itens: Produto[]) {
+    if (auditando || itens.length === 0) return;
+    setAuditando(nome);
+    setMsgAuditoria(null);
+    try {
+      const r = await gerarAuditoriasDaBase(itens[0].clienteId, nome);
+      setMsgAuditoria(
+        r.auditados === 0
+          ? `${nome}: nada novo a auditar (${r.pulados} produtos já auditados).`
+          : `${nome}: ${r.auditados} produtos auditados · ${r.criticas} críticos · ${r.altas} alta prioridade · ${r.problemas} problemas mapeados.`
+      );
+    } catch (e) {
+      setMsgAuditoria(
+        e instanceof Error ? `Falha ao auditar: ${e.message}` : "Falha ao auditar a base."
+      );
+    } finally {
+      setAuditando(null);
+    }
+  }
 
   const clientesComProduto = [...new Set((produtos ?? []).map((p) => p.cliente))];
 
@@ -90,6 +113,17 @@ export default function ProdutosPage() {
         </div>
       </div>
 
+      {msgAuditoria && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 size={15} /> {msgAuditoria}
+          </span>
+          <LinkButton href="/auditoria-massa" variant="ghost" className="px-2 py-1 text-xs">
+            Abrir Auditoria em Massa
+          </LinkButton>
+        </div>
+      )}
+
       {produtos && grupos.length === 0 && (
         <EmptyState
           mensagem="Nenhum produto encontrado com os filtros atuais."
@@ -104,23 +138,35 @@ export default function ProdutosPage() {
           const estoqueTotal = itens.reduce((s, p) => s + p.estoque, 0);
           return (
             <section key={nome}>
-              <button
-                onClick={() => toggle(nome)}
-                className="mb-2 flex w-full items-center justify-between rounded-lg border border-white/5 bg-white/[0.03] px-4 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
-              >
-                <div className="flex items-center gap-2.5">
+              <div className="mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-4 py-2 transition-colors hover:bg-white/[0.05]">
+                <button
+                  onClick={() => toggle(nome)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-left"
+                >
                   <ChevronDown
                     size={16}
                     className={`shrink-0 text-zinc-500 transition-transform ${aberto ? "" : "-rotate-90"}`}
                   />
                   <Users size={15} className="shrink-0 text-violet-400" />
-                  <span className="text-sm font-semibold text-zinc-100">{nome}</span>
-                  <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-400">
+                  <span className="truncate text-sm font-semibold text-zinc-100">{nome}</span>
+                  <span className="shrink-0 rounded-full bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-400">
                     {itens.length} {itens.length === 1 ? "produto" : "produtos"}
                   </span>
+                </button>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="hidden text-xs text-zinc-500 sm:inline">{estoqueTotal} em estoque</span>
+                  <Button
+                    variant="ghost"
+                    className="px-2 py-1 text-xs"
+                    onClick={() => auditarBase(nome, itens)}
+                    disabled={auditando !== null}
+                    title="Gera a Auditoria em Massa direto desta base (cold-start)"
+                  >
+                    <ClipboardList size={13} />
+                    {auditando === nome ? "Auditando…" : "Auditar base"}
+                  </Button>
                 </div>
-                <span className="text-xs text-zinc-500">{estoqueTotal} em estoque</span>
-              </button>
+              </div>
 
               {aberto && (
                 <Table headers={HEADERS}>

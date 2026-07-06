@@ -172,6 +172,11 @@ export default function ImportarCsvPage() {
                 <span className="text-zinc-300">
                   <span className="font-semibold text-white">{analise.total}</span> anúncios no arquivo
                 </span>
+                {analise.coldStart && (
+                  <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-xs text-cyan-400 ring-1 ring-inset ring-cyan-500/20">
+                    Base cold-start — prioridade por potencial (estoque × score), não por venda
+                  </span>
+                )}
                 <span className="text-zinc-500">
                   Colunas reconhecidas: <span className="text-zinc-300">{analise.colunasReconhecidas.join(", ") || "nenhuma"}</span>
                 </span>

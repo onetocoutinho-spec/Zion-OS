@@ -16,6 +16,11 @@ export async function listarVariantesDoProduto(produtoId: string): Promise<Produ
   return repo.listar({ coluna: "produto_id", valor: produtoId, campoLocal: "produtoId" });
 }
 
+/** Todas as variantes (para joins em memória, ex.: auditoria da base). */
+export async function listarTodasVariantes(): Promise<ProdutoVariante[]> {
+  return repo.listar();
+}
+
 export async function buscarVariante(id: string): Promise<ProdutoVariante | null> {
   return repo.buscar(id);
 }

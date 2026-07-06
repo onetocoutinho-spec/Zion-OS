@@ -10,13 +10,16 @@ import {
   calcularScore,
   classificarABC,
   classificarPrioridade,
+  classificarPrioridadeColdStart,
+  ehBaseColdStart,
   AGENTE_POR_PROBLEMA,
   ROTULO_TIPO_PROBLEMA,
+  GRAVIDADE_PROBLEMA as GRAVIDADE,
+  SUGESTAO_PROBLEMA as SUGESTAO,
   type SinaisQualidade,
 } from "../auditoria";
 import type {
   AuditoriaAnuncio,
-  GravidadeProblema,
   Marketplace,
   ProblemaAnuncio,
   TipoProblema,
@@ -53,35 +56,8 @@ const ALIASES: Record<string, string> = {
 const COLUNAS_METRICAS = ["titulo", "sku", "categoria", "preco", "estoque", "vendas", "visitas", "conversao", "link", "marketplace"];
 const COLUNAS_SINAIS = ["titulo_ok", "descricao_ok", "imagens_ok", "ficha_ok", "preco_competitivo", "variacoes_ok", "tabela_medidas"];
 
-const GRAVIDADE: Record<TipoProblema, GravidadeProblema> = {
-  titulo_ruim: "alta",
-  descricao_incompleta: "media",
-  imagem_fraca: "alta",
-  ficha_tecnica_incompleta: "critica",
-  preco_nao_competitivo: "alta",
-  estoque_baixo: "media",
-  variacao_incorreta: "alta",
-  falta_tabela_medidas: "media",
-  categoria_errada: "critica",
-  baixa_conversao: "alta",
-  baixa_visibilidade: "media",
-  risco_reputacao: "critica",
-};
-
-const SUGESTAO: Record<TipoProblema, string> = {
-  titulo_ruim: "Reescrever o título com palavras-chave de maior busca (até 60 caracteres).",
-  descricao_incompleta: "Completar a descrição com benefícios, uso e ficha técnica.",
-  imagem_fraca: "Refazer a foto principal (fundo branco) e adicionar lifestyle.",
-  ficha_tecnica_incompleta: "Preencher os atributos obrigatórios da categoria.",
-  preco_nao_competitivo: "Reprecificar comparando com os 5 principais concorrentes.",
-  estoque_baixo: "Repor estoque ou pausar o anúncio para não perder reputação.",
-  variacao_incorreta: "Corrigir as variações e vincular SKUs corretos.",
-  falta_tabela_medidas: "Adicionar a tabela de medidas na descrição.",
-  categoria_errada: "Mover para a categoria correta do marketplace.",
-  baixa_conversao: "Revisar título, imagens e preço para melhorar a conversão.",
-  baixa_visibilidade: "Otimizar SEO e avaliar campanha de ads.",
-  risco_reputacao: "Tratar causa de reclamações/atrasos antes de escalar.",
-};
+// Gravidade, sugestão e agente por tipo de problema vêm de lib/auditoria.ts
+// (mapas canônicos, compartilhados com a auditoria gerada da base).
 
 // ---- Parsers de valor ----
 
@@ -126,6 +102,8 @@ export interface ResultadoAnalise {
   faltandoObrigatorias: string[];
   amostra: LinhaAuditoria[];
   linhas: LinhaAuditoria[];
+  /** Base quase sem vendas: prioridade recalculada por potencial (cold-start). */
+  coldStart: boolean;
   erro?: string;
 }
 
@@ -241,6 +219,7 @@ export function analisarCsv(texto: string, marketplacePadrao: Marketplace): Resu
     faltandoObrigatorias: ["titulo", "preco"],
     amostra: [],
     linhas: [],
+    coldStart: false,
   };
   const { headers, linhas: registros } = parseCsv(texto);
   if (headers.length === 0 || registros.length === 0) {
@@ -254,6 +233,19 @@ export function analisarCsv(texto: string, marketplacePadrao: Marketplace): Resu
 
   const linhas = registros.map((r) => mapearLinha(r, cols, marketplacePadrao));
 
+  // Base cold-start: o ABC por vendas não separa nada — reprioriza por
+  // potencial (estoque × score baixo) para a fila não ficar cega.
+  const coldStart = ehBaseColdStart(linhas.map((l) => l.base));
+  if (coldStart) {
+    linhas.forEach((l) => {
+      l.base.prioridade = classificarPrioridadeColdStart(l.base.scoreQualidade, {
+        estoque: l.base.estoque,
+      });
+      l.base.oportunidades =
+        "Base cold-start — priorizado por potencial (estoque × score), não por venda.";
+    });
+  }
+
   return {
     total: linhas.length,
     colunasReconhecidas: reconhecidas,
@@ -261,6 +253,7 @@ export function analisarCsv(texto: string, marketplacePadrao: Marketplace): Resu
     faltandoObrigatorias,
     amostra: linhas.slice(0, 8),
     linhas,
+    coldStart,
   };
 }
 
