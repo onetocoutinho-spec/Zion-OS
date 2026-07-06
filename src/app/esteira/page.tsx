@@ -106,29 +106,36 @@ export default function EsteiraPage() {
       setAviso(r.aviso ?? null);
 
       // Persiste o anúncio gerado (fila de aprovação). Precisa de um cliente.
+      // Falha na gravação (ex.: migração 004 não rodada) NÃO derruba o anúncio.
       if (cliente) {
-        const passouA10 =
-          r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
-        const reg = await criarAnuncioGerado({
-          clienteId: cliente.id,
-          cliente: cliente.empresa,
-          produtoId: produto?.id ?? null,
-          produto: produto?.nome ?? null,
-          auditoriaId: null,
-          marketplace: anuncioSel?.marketplace ?? produto?.marketplace ?? "Mercado Livre",
-          origem: "esteira",
-          tipoExecucao: r.tipo,
-          notaDiagnostico: r.anuncio.notaDiagnostico,
-          vereditoA10: r.anuncio.vereditoA10,
-          qtdPendencias: r.anuncio.pendencias.length,
-          anuncio: r.anuncio,
-          status: passouA10 ? "aguardando_aprovacao" : "rascunho",
-          aprovadoPor: "",
-          aprovadoEm: null,
-          criadoEm: new Date().toISOString(),
-          observacoes: "",
-        });
-        setRegistroId(reg.id);
+        try {
+          const passouA10 =
+            r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
+          const reg = await criarAnuncioGerado({
+            clienteId: cliente.id,
+            cliente: cliente.empresa,
+            produtoId: produto?.id ?? null,
+            produto: produto?.nome ?? null,
+            auditoriaId: null,
+            marketplace: anuncioSel?.marketplace ?? produto?.marketplace ?? "Mercado Livre",
+            origem: "esteira",
+            tipoExecucao: r.tipo,
+            notaDiagnostico: r.anuncio.notaDiagnostico,
+            vereditoA10: r.anuncio.vereditoA10,
+            qtdPendencias: r.anuncio.pendencias.length,
+            anuncio: r.anuncio,
+            status: passouA10 ? "aguardando_aprovacao" : "rascunho",
+            aprovadoPor: "",
+            aprovadoEm: null,
+            criadoEm: new Date().toISOString(),
+            observacoes: "",
+          });
+          setRegistroId(reg.id);
+        } catch {
+          setAviso(
+            "Anúncio gerado, mas não foi salvo na fila (rode a migração 004 no Supabase para persistir as aprovações)."
+          );
+        }
       }
     } catch (falha) {
       setErro(falha instanceof Error ? falha.message : "Falha ao rodar a esteira.");

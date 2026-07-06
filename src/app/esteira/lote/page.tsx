@@ -175,25 +175,30 @@ export default function EsteiraLotePage() {
         else reprovados++;
 
         // Persiste na fila de aprovação (não perde o que a esteira produziu).
-        await criarAnuncioGerado({
-          clienteId: fila[i].clienteId,
-          cliente: fila[i].cliente,
-          produtoId: fila[i].produtoId,
-          produto: null,
-          auditoriaId: fila[i].id,
-          marketplace: fila[i].marketplace,
-          origem: "esteira_lote",
-          tipoExecucao: r.tipo,
-          notaDiagnostico: r.anuncio.notaDiagnostico,
-          vereditoA10: r.anuncio.vereditoA10,
-          qtdPendencias: r.anuncio.pendencias.length,
-          anuncio: r.anuncio,
-          status: aprovadoA10 ? "aguardando_aprovacao" : "rascunho",
-          aprovadoPor: "",
-          aprovadoEm: null,
-          criadoEm: new Date().toISOString(),
-          observacoes: "",
-        });
+        // Falha na gravação não interrompe o lote.
+        try {
+          await criarAnuncioGerado({
+            clienteId: fila[i].clienteId,
+            cliente: fila[i].cliente,
+            produtoId: fila[i].produtoId,
+            produto: null,
+            auditoriaId: fila[i].id,
+            marketplace: fila[i].marketplace,
+            origem: "esteira_lote",
+            tipoExecucao: r.tipo,
+            notaDiagnostico: r.anuncio.notaDiagnostico,
+            vereditoA10: r.anuncio.vereditoA10,
+            qtdPendencias: r.anuncio.pendencias.length,
+            anuncio: r.anuncio,
+            status: aprovadoA10 ? "aguardando_aprovacao" : "rascunho",
+            aprovadoPor: "",
+            aprovadoEm: null,
+            criadoEm: new Date().toISOString(),
+            observacoes: "",
+          });
+        } catch {
+          /* persistência opcional: migração 004 pode não estar no Supabase ainda */
+        }
 
         setItens((prev) =>
           prev.map((it, idx) => (idx === i ? { ...it, status: "ok", anuncio: r.anuncio, tipo: r.tipo } : it))
