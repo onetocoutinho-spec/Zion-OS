@@ -76,3 +76,23 @@ export async function portalAnuncios(): Promise<PortalAnuncio[]> {
   const { data } = await getSupabase().rpc("portal_anuncios");
   return (data as PortalAnuncio[]) ?? [];
 }
+
+// ---- Cota mensal da esteira (self-service) ----
+
+export interface QuotaEsteira {
+  limite: number;
+  usado: number;
+  restante: number;
+}
+
+export async function quotaEsteira(): Promise<QuotaEsteira> {
+  if (!supabaseConfigurado) return { limite: 30, usado: 0, restante: 30 };
+  try {
+    const { data } = await getSupabase().rpc("quota_esteira");
+    const limite = Number((data as { limite?: number })?.limite ?? 0);
+    const usado = Number((data as { usado?: number })?.usado ?? 0);
+    return { limite, usado, restante: Math.max(0, limite - usado) };
+  } catch {
+    return { limite: 0, usado: 0, restante: 0 };
+  }
+}
