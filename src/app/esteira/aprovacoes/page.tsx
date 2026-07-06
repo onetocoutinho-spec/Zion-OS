@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -29,6 +29,7 @@ import {
   ROTULO_STATUS_ANUNCIO_GERADO,
 } from "@/lib/services/anunciosGerados";
 import { montarPreviewML, publicarNoML } from "@/lib/services/publicacaoML";
+import { urlsDoProduto } from "@/lib/services/storageImagens";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
 
 const HEADERS = [
@@ -325,7 +326,20 @@ function ModalPublicar({
   onPublicar: () => void;
   onFechar: () => void;
 }) {
-  const payload = montarPreviewML(registro);
+  const [pics, setPics] = useState<string[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    if (registro.produtoId) {
+      urlsDoProduto(registro.produtoId)
+        .then((u) => vivo && setPics(u))
+        .catch(() => vivo && setPics([]));
+    }
+    return () => {
+      vivo = false;
+    };
+  }, [registro.produtoId]);
+
+  const payload = montarPreviewML(registro, { pictures: pics });
   const semCategoria = !payload.category_id;
   const semFotos = !Array.isArray(payload.pictures) || payload.pictures.length === 0;
 

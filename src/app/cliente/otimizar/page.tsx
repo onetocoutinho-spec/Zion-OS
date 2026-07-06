@@ -306,7 +306,16 @@ export default function ClienteOtimizar() {
         </p>
       )}
 
-      {/* Passo 1 — escolher ferramenta */}
+      {/* Passo 1 — otimização em massa + escolher ferramenta */}
+      {passo === 1 && (
+        <OtimizarEmMassa
+          clienteId={clienteId}
+          nome={nome}
+          produtos={produtos ?? []}
+          jaOtimizados={anuncioPorProduto}
+          restante={quota?.restante ?? 0}
+        />
+      )}
       {passo === 1 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {FERRAMENTAS.map((f) => {
@@ -385,6 +394,134 @@ export default function ClienteOtimizar() {
         />
       )}
     </>
+  );
+}
+
+function OtimizarEmMassa({
+  clienteId,
+  nome,
+  produtos,
+  jaOtimizados,
+  restante,
+}: {
+  clienteId: string;
+  nome: string;
+  produtos: Produto[];
+  jaOtimizados: Map<string, AnuncioGeradoRegistro>;
+  restante: number;
+}) {
+  const pendentes = useMemo(
+    () => produtos.filter((p) => !jaOtimizados.has(p.id)),
+    [produtos, jaOtimizados]
+  );
+  const [rodando, setRodando] = useState(false);
+  const [prog, setProg] = useState<{ feito: number; total: number } | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const cap = Math.min(pendentes.length, Math.max(0, restante));
+
+  async function rodarTudo() {
+    if (rodando || cap <= 0) return;
+    setRodando(true);
+    setErro(null);
+    setMsg(null);
+    const alvo = pendentes.slice(0, cap);
+    setProg({ feito: 0, total: alvo.length });
+    let feito = 0;
+    try {
+      for (const produto of alvo) {
+        const r = await rodarEsteira("", {
+          contexto: montarContexto({ produto }),
+          produto: produto.nome,
+        });
+        const passouA10 =
+          r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
+        await criarAnuncioGerado({
+          clienteId,
+          cliente: nome,
+          produtoId: produto.id,
+          produto: produto.nome,
+          auditoriaId: null,
+          marketplace: produto.marketplace ?? "Mercado Livre",
+          origem: "esteira",
+          tipoExecucao: r.tipo,
+          notaDiagnostico: r.anuncio.notaDiagnostico,
+          vereditoA10: r.anuncio.vereditoA10,
+          qtdPendencias: r.anuncio.pendencias.length,
+          anuncio: r.anuncio,
+          status: passouA10 ? "aguardando_aprovacao" : "rascunho",
+          aprovadoPor: "",
+          aprovadoEm: null,
+          criadoEm: new Date().toISOString(),
+          observacoes: "",
+        });
+        feito++;
+        setProg({ feito, total: alvo.length });
+      }
+      setMsg(`${feito} produto(s) otimizados. Revise e aprove em “Meus Anúncios”.`);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao otimizar em massa.");
+    } finally {
+      setRodando(false);
+      setProg(null);
+    }
+  }
+
+  if (pendentes.length === 0) return null;
+  const pct = prog && prog.total > 0 ? Math.round((prog.feito / prog.total) * 100) : 0;
+
+  return (
+    <div className="rounded-xl border border-violet-500/15 bg-violet-500/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
+            <Sparkles size={15} className="text-violet-400" /> Otimizar toda a base de uma vez
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {pendentes.length} produto(s) ainda sem anúncio. A IA gera todos, um a um.
+          </p>
+        </div>
+        <Button onClick={rodarTudo} disabled={rodando || cap <= 0}>
+          {rodando ? (
+            <>
+              <Sparkles size={14} className="animate-pulse" />
+              {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
+            </>
+          ) : (
+            <>
+              <Play size={14} /> Otimizar {cap} produto(s)
+            </>
+          )}
+        </Button>
+      </div>
+
+      {restante < pendentes.length && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
+          <Gauge size={12} /> Sua cota permite {restante} este mês — o restante fica para depois.
+        </p>
+      )}
+
+      {prog && (
+        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/5">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 transition-all"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+
+      {msg && (
+        <p className="mt-2 flex items-center gap-2 text-sm text-emerald-400">
+          <CheckCircle2 size={15} /> {msg}
+        </p>
+      )}
+      {erro && (
+        <p className="mt-2 flex items-center gap-2 text-sm text-red-400">
+          <AlertTriangle size={15} /> {erro}
+        </p>
+      )}
+    </div>
   );
 }
 

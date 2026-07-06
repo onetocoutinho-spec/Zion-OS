@@ -7,6 +7,7 @@
 import { montarItemML } from "../marketplaces/mlPayload";
 import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
 import { marcarAnuncioPublicado } from "./anunciosGerados";
+import { urlsDoProduto } from "./storageImagens";
 import type { AnuncioGeradoRegistro } from "../types";
 
 function num(v: string | number | undefined | null): number {
@@ -67,7 +68,16 @@ export async function publicarNoML(
   go: boolean,
   opcoes: OpcoesPublicacao = {}
 ): Promise<ResultadoPublicacao> {
-  const payload = montarPreviewML(registro, opcoes);
+  // Puxa as fotos reais do produto (Storage) quando não vieram explicitamente.
+  let pictures = opcoes.pictures;
+  if (pictures === undefined && registro.produtoId) {
+    try {
+      pictures = await urlsDoProduto(registro.produtoId);
+    } catch {
+      pictures = [];
+    }
+  }
+  const payload = montarPreviewML(registro, { ...opcoes, pictures });
   if (!go) return { dry: true, payload };
 
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
