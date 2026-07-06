@@ -16,6 +16,8 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/form";
 import { RealtimeSync } from "./RealtimeSync";
+import { PortalApp } from "@/components/portal/PortalApp";
+import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 
 type EstadoSessao = "carregando" | "logado" | "deslogado";
 
@@ -118,24 +120,48 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [estado, setEstado] = useState<EstadoSessao>(
     supabaseConfigurado ? "carregando" : "logado"
   );
+  // Perfil: undefined = ainda carregando; null = equipe/sem perfil.
+  const [perfil, setPerfil] = useState<Perfil | null | undefined>(
+    supabaseConfigurado ? undefined : null
+  );
 
   useEffect(() => {
     if (!supabaseConfigurado) return;
     const sb = getSupabase();
 
-    sb.auth.getSession().then(({ data }) => {
-      setEstado(data.session ? "logado" : "deslogado");
-    });
+    async function resolver(logado: boolean) {
+      if (!logado) {
+        setEstado("deslogado");
+        setPerfil(undefined);
+        return;
+      }
+      setEstado("logado");
+      setPerfil(await meuPerfil());
+    }
 
-    const { data: listener } = sb.auth.onAuthStateChange((_evento, sessao) => {
-      setEstado(sessao ? "logado" : "deslogado");
-    });
+    sb.auth.getSession().then(({ data }) => resolver(Boolean(data.session)));
+    const { data: listener } = sb.auth.onAuthStateChange((_evento, sessao) =>
+      resolver(Boolean(sessao))
+    );
     return () => listener.subscription.unsubscribe();
   }, []);
 
   if (estado === "carregando") return <TelaCarregando />;
   if (estado === "deslogado") return <TelaLogin />;
+  // Logado, mas ainda descobrindo o papel.
+  if (supabaseConfigurado && perfil === undefined) return <TelaCarregando />;
 
+  // Cliente → portal read-only (não vê o app da equipe).
+  if (perfil?.papel === "cliente") {
+    return (
+      <>
+        {supabaseConfigurado && <RealtimeSync />}
+        <PortalApp perfil={perfil} />
+      </>
+    );
+  }
+
+  // Equipe (ou modo demo) → app completo.
   return (
     <>
       {supabaseConfigurado && <RealtimeSync />}
