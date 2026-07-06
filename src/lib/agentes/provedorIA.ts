@@ -77,7 +77,7 @@ export function paraSchemaGemini(s: unknown): unknown {
 
 async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
   const key = process.env.GEMINI_API_KEY as string;
-  const modelo = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+  const modelo = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
 
   const body = {
@@ -103,9 +103,10 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
 
   if (!resp.ok) {
     const msg = data.error?.message ?? `HTTP ${resp.status}`;
-    if (resp.status === 429) throw new Error("Limite do Gemini atingido (free tier). Aguarde e tente de novo.");
-    if (resp.status === 400 && /API key/i.test(msg)) throw new Error("GEMINI_API_KEY inválida. Confira a chave no .env.local.");
-    throw new Error(`Erro do Gemini: ${msg}`);
+    const st = data.error?.status ?? "";
+    if (resp.status === 400 && /API key|API_KEY/i.test(msg))
+      throw new Error("GEMINI_API_KEY inválida. Confira a chave no .env.local.");
+    throw new Error(`Gemini ${resp.status} ${st}: ${msg}`.slice(0, 400));
   }
 
   const cand = data.candidates?.[0];
