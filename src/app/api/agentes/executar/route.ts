@@ -6,7 +6,8 @@
 
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 
-export const maxDuration = 120;
+// 60s = limite do plano Hobby (grátis) da Vercel.
+export const maxDuration = 60;
 
 // Envelope estruturado comum a todos os agentes: a entrega principal continua
 // livre (Markdown), e dois extras opcionais alimentam os botões de ação do

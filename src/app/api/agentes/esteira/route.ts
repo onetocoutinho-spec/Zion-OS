@@ -8,7 +8,9 @@
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 
-export const maxDuration = 120;
+// 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
+// ~25–40s. Em plano pago dá para subir para 300.
+export const maxDuration = 60;
 
 interface CorpoEsteira {
   produto?: string;
