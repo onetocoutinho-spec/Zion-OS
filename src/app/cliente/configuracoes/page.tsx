@@ -1,17 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Store, Gauge, User, Mail, LifeBuoy, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Store, Gauge, User, Mail, LifeBuoy, ShieldCheck, Plug, CheckCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { quotaEsteira } from "@/lib/services/perfil";
+import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 
 export default function ClienteConfiguracoes() {
-  const { nome, marketplace } = useClientPortal();
+  const { nome, marketplace, clienteId } = useClientPortal();
   const { data: quota } = useLiveQuery(quotaEsteira);
+  const { data: canal } = useLiveQuery(
+    () => buscarCanal(clienteId, "Mercado Livre"),
+    [clienteId]
+  );
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +77,34 @@ export default function ClienteConfiguracoes() {
           </p>
         </Card>
       </div>
+
+      <Card title="Integrações">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-400/10 text-yellow-400">
+            <Store size={19} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-zinc-200">Mercado Livre</p>
+              {canal?.ativo && canal?.refreshToken ? (
+                <Pill tone="green">
+                  <CheckCircle2 size={12} /> Conectado
+                </Pill>
+              ) : (
+                <Pill tone="gray">Não conectado</Pill>
+              )}
+            </div>
+            <p className="text-xs text-zinc-500">
+              Conecte sua conta para publicar e atualizar anúncios pela Zion.
+            </p>
+          </div>
+          <Link href="/cliente/conectar-ml">
+            <Button variant={canal?.ativo ? "ghost" : "primary"}>
+              <Plug size={15} /> {canal?.ativo ? "Gerenciar" : "Conectar"}
+            </Button>
+          </Link>
+        </div>
+      </Card>
 
       <Card title="Precisa de ajuda?">
         <div className="flex flex-wrap items-center gap-3">

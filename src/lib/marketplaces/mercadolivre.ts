@@ -30,6 +30,40 @@ async function extrairErro(resposta: Response): Promise<string> {
   }
 }
 
+/** Troca o `code` do OAuth (authorization_code) pelo primeiro par de tokens. */
+export async function trocarCodigoPorToken(cred: {
+  clientId: string;
+  clientSecret: string;
+  code: string;
+  redirectUri: string;
+}): Promise<TokensML> {
+  const resposta = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: cred.clientId,
+      client_secret: cred.clientSecret,
+      code: cred.code,
+      redirect_uri: cred.redirectUri,
+    }),
+  });
+  if (!resposta.ok) throw new Error(`Falha ao conectar com o ML: ${await extrairErro(resposta)}`);
+  const j = (await resposta.json()) as {
+    access_token: string;
+    refresh_token: string;
+    user_id?: number;
+  };
+  return {
+    accessToken: j.access_token,
+    refreshToken: j.refresh_token,
+    userId: j.user_id != null ? String(j.user_id) : undefined,
+  };
+}
+
 /** Renova o access token via refresh_token grant. Retorna o novo par de tokens. */
 export async function renovarToken(cred: {
   clientId: string;
