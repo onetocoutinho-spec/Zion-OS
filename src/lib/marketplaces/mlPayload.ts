@@ -54,8 +54,8 @@ function paraNumero(v: string | number | undefined | null): number {
 }
 
 export interface OpcoesPayloadML {
-  /** Só precisamos de preço e estoque do produto pai. */
-  produto: Pick<Produto, "precoVenda" | "estoque">;
+  /** Preço/estoque do pai + SKU (para o atributo SELLER_SKU do ML). */
+  produto: { precoVenda: number; estoque: number; sku?: string; codErp?: string };
   anuncio: AnuncioGerado;
   categoryId: string;
   tipoAnuncio: string;
@@ -68,12 +68,24 @@ export function montarItemML(opcoes: OpcoesPayloadML): Record<string, unknown> {
   const { produto, anuncio, categoryId, tipoAnuncio, pictures = [] } = opcoes;
 
   // Atributos a partir da ficha técnica (pula pendências "⚠️ informação necessária").
-  const attributes = (anuncio.fichaTecnica ?? [])
+  const attributes: Record<string, string>[] = (anuncio.fichaTecnica ?? [])
     .filter((f) => f.valor && !/informação necessária|informacao necessaria/i.test(f.valor))
-    .map((f) => {
+    .map((f): Record<string, string> => {
       const id = MAPA_ATRIBUTOS_ML[normalizar(f.atributo)];
       return id ? { id, value_name: f.valor } : { name: f.atributo, value_name: f.valor };
     });
+
+  // SELLER_SKU: é o campo que o PAINEL do ML mostra como "SKU" e que o ERP
+  // usa para conciliar (o seller_custom_field sozinho não aparece lá).
+  const skuPai = (produto.sku || produto.codErp || "").trim();
+  if (skuPai && !attributes.some((a) => a.id === "SELLER_SKU")) {
+    attributes.push({ id: "SELLER_SKU", value_name: skuPai });
+  }
+  // GTIN: sem EAN em nenhuma variação, o ML exige o motivo do GTIN vazio.
+  const temEan = (anuncio.variacoes ?? []).some((v) => v.ean && v.ean.trim());
+  if (!temEan && !attributes.some((a) => a.id === "GTIN")) {
+    attributes.push({ id: "EMPTY_GTIN_REASON", value_id: "17055160" });
+  }
 
   // Variações → attribute_combinations (SIZE + COLOR) + estoque/preço por variação.
   const variations = (anuncio.variacoes ?? [])
@@ -108,6 +120,8 @@ export function montarItemML(opcoes: OpcoesPayloadML): Record<string, unknown> {
       { id: "WARRANTY_TYPE", value_name: "Garantia do vendedor" },
       { id: "WARRANTY_TIME", value_name: "90 dias" },
     ],
+    // Frete grátis via Mercado Envios (padrão Zion; o vendedor absorve no preço).
+    shipping: { mode: "me2", local_pick_up: false, free_shipping: true },
     pictures: pictures.map((source) => ({ source })),
     attributes,
     description: { plain_text: anuncio.descricaoCompleta || anuncio.descricaoCurta || "" },
@@ -117,6 +131,7 @@ export function montarItemML(opcoes: OpcoesPayloadML): Record<string, unknown> {
     item.variations = variations;
   } else {
     item.available_quantity = Math.max(1, produto.estoque || 1);
+    if (skuPai) item.seller_custom_field = skuPai;
   }
 
   return item;

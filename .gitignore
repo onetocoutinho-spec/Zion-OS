@@ -34,6 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# credenciais / segredos (NUNCA versionar)
+credenciais*
+*.secret
+*.secrets
+segredos*
+
 # vercel
 .vercel
 
