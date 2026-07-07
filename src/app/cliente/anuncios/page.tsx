@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Wand2,
   Sparkles,
+  Download,
 } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -22,9 +23,11 @@ import {
   rejeitarAnuncioGerado,
   ROTULO_STATUS_ANUNCIO_GERADO,
 } from "@/lib/services/anunciosGerados";
+import { listarProdutos } from "@/lib/services/produtos";
+import { baixarVinculacaoCsv } from "@/lib/services/exportacaoErp";
 import { toneScore } from "@/lib/client-portal/metrics";
 import { toneFor } from "@/lib/status";
-import type { AnuncioGeradoRegistro } from "@/lib/types";
+import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
 
 const STATUS_FILTRO = ["Aguardando aprovação", "Aprovado", "Rascunho", "Rejeitado", "Publicado"] as const;
 const MAPA_FILTRO: Record<string, string> = {
@@ -47,10 +50,18 @@ export default function ClienteAnuncios() {
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
   );
+  const { data: produtos } = useLiveQuery(listarProdutos);
 
   const [fStatus, setFStatus] = useState("Todos");
   const [aberto, setAberto] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+
+  const publicados = (anuncios ?? []).filter((a) => a.status === "publicado" && a.mlItemId).length;
+
+  function exportarVinculacao() {
+    const mapa = new Map<string, Produto>((produtos ?? []).map((p) => [p.id, p]));
+    baixarVinculacaoCsv(anuncios ?? [], mapa);
+  }
 
   const filtrados = useMemo(() => {
     return [...(anuncios ?? [])]
@@ -83,11 +94,22 @@ export default function ClienteAnuncios() {
         titulo="Meus Anúncios"
         subtitulo="Os anúncios que a IA gerou para você. Revise e aprove os que estiverem prontos."
         acao={
-          <Link href="/cliente/otimizar">
-            <Button>
-              <Wand2 size={15} /> Otimizar com IA
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {publicados > 0 && (
+              <Button
+                variant="ghost"
+                onClick={exportarVinculacao}
+                title="Baixar o arquivo SKU↔MLB para importar (vincular) no seu ERP"
+              >
+                <Download size={15} /> Vincular no ERP ({publicados})
+              </Button>
+            )}
+            <Link href="/cliente/otimizar">
+              <Button>
+                <Wand2 size={15} /> Otimizar com IA
+              </Button>
+            </Link>
+          </div>
         }
       />
 
