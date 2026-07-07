@@ -49,8 +49,8 @@ export async function rodarAgentePortal(
     };
   }
 
-  const dados = (await resposta.json()) as { resultado_markdown?: string; erro?: string };
+  const dados = (await resposta.json()) as { resultado?: string; erro?: string };
   if (!resposta.ok) throw new Error(dados.erro ?? "Não foi possível gerar. Tente novamente.");
 
-  return { markdown: dados.resultado_markdown ?? "", tipo: "IA", agente: rotulo };
+  return { markdown: dados.resultado ?? "", tipo: "IA", agente: rotulo };
 }

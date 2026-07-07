@@ -91,21 +91,31 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
     },
   };
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = (await resp.json().catch(() => ({}))) as {
+  // Retry em 503 (modelo sobrecarregado) e 429 (rate limit) — transitórios.
+  let resp!: Response;
+  let data!: {
     candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
     error?: { message?: string; status?: string };
   };
+  const MAX = 3;
+  for (let tentativa = 1; tentativa <= MAX; tentativa++) {
+    resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    data = (await resp.json().catch(() => ({}))) as typeof data;
+    if (resp.ok || (resp.status !== 503 && resp.status !== 429) || tentativa === MAX) break;
+    await new Promise((r) => setTimeout(r, 1200 * tentativa)); // 1.2s, 2.4s
+  }
 
   if (!resp.ok) {
     const msg = data.error?.message ?? `HTTP ${resp.status}`;
     const st = data.error?.status ?? "";
     if (resp.status === 400 && /API key|API_KEY/i.test(msg))
       throw new Error("GEMINI_API_KEY inválida. Confira a chave no .env.local.");
+    if (resp.status === 503)
+      throw new Error("O Gemini está sobrecarregado no momento (tente de novo em instantes).");
     throw new Error(`Gemini ${resp.status} ${st}: ${msg}`.slice(0, 400));
   }
 

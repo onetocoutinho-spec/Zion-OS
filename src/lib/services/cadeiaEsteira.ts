@@ -66,9 +66,9 @@ async function rodarAgenteTexto(
     }),
   });
   if (resposta.status === 503) return { markdown: "", simulado: true };
-  const dados = (await resposta.json()) as { resultado_markdown?: string; erro?: string };
+  const dados = (await resposta.json()) as { resultado?: string; erro?: string };
   if (!resposta.ok) throw new Error(dados.erro ?? `Falha no agente ${agente.codigo}.`);
-  return { markdown: dados.resultado_markdown ?? "", simulado: false };
+  return { markdown: dados.resultado ?? "", simulado: false };
 }
 
 export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<ResultadoCadeia> {
