@@ -20,18 +20,21 @@ const ALIASES: Record<string, string> = {
   sku: "sku", codigo: "sku", cod: "sku", codigo_interno: "sku", id: "sku",
   cor: "cor", color: "cor",
   tamanho: "tamanho", size: "tamanho", numeracao: "tamanho", numero: "tamanho", grade: "tamanho",
-  custo: "custo", custo_unitario: "custo", preco_custo: "custo", custo_linx: "custo", custo_compra: "custo",
-  preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
-  estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", estoque_disponivel: "estoque",
+  custo: "custo", custo_unitario: "custo", preco_custo: "custo", preco_de_custo: "custo", valor_de_custo: "custo", custo_medio: "custo", custo_linx: "custo", custo_compra: "custo",
+  preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", valor_unitario: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
+  // Bling/Tiny usam "Descrição" como nome do produto na exportação.
+  descricao: "nome", descrição: "nome",
+  estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", saldo: "estoque", saldo_estoque: "estoque", estoque_disponivel: "estoque",
   marketplace: "marketplace", canal: "marketplace", plataforma: "marketplace",
   confianca: "confianca", confiabilidade: "confianca", confianca_custo: "confianca",
   cod_erp: "codErp", sku_erp: "codErp", codigo_erp: "codErp",
   cod_magazord: "codErp", magazord: "codErp", codigo_magazord: "codErp", sku_pai: "codErp",
+  codigo_pai: "codErp", cod_pai: "codErp", produto_pai: "codErp",
   cod_bling: "codErp", cod_tiny: "codErp", cod_linx: "codErp",
   // Variações (derivações): quando presente, o importador entra no modo agrupado.
   sku_variacao: "skuVariacao", sku_variação: "skuVariacao", sku_deriv: "skuVariacao",
   sku_derivacao: "skuVariacao", cod_derivacao: "skuVariacao", sku_var: "skuVariacao",
-  ean: "ean", gtin: "ean", codigo_barras: "ean",
+  ean: "ean", gtin: "ean", gtin_ean: "ean", codigo_barras: "ean",
   // Id do anúncio no marketplace (MLB) — NÃO é o SKU; vai pro anúncio/variação.
   mlb: "idExterno", mlb_id: "idExterno", id_anuncio: "idExterno", id_ml: "idExterno", id_externo: "idExterno",
 };
@@ -123,6 +126,102 @@ function mapearColunas(headers: string[]): Record<string, string> {
     if (canon && !achado[canon]) achado[canon] = h;
   }
   return achado;
+}
+
+// ---- Assistente de mapeamento de ERP ----
+
+/** Campos canônicos que o cliente pode mapear no assistente (ordem de exibição). */
+export const CAMPOS_MAPEAVEIS: {
+  campo: string;
+  rotulo: string;
+  obrigatorio?: boolean;
+  dica?: string;
+}[] = [
+  { campo: "nome", rotulo: "Nome do produto", obrigatorio: true },
+  { campo: "custo", rotulo: "Custo" },
+  { campo: "precoVenda", rotulo: "Preço de venda" },
+  { campo: "estoque", rotulo: "Estoque" },
+  { campo: "codErp", rotulo: "SKU/Código do ERP (pai)", dica: "Chave que agrupa as variações" },
+  { campo: "skuVariacao", rotulo: "SKU da variação", dica: "Se preenchido, ativa o modo com variações" },
+  { campo: "cor", rotulo: "Cor" },
+  { campo: "tamanho", rotulo: "Tamanho / Numeração" },
+  { campo: "ean", rotulo: "EAN / GTIN" },
+  { campo: "marca", rotulo: "Marca" },
+  { campo: "modelo", rotulo: "Modelo" },
+  { campo: "categoria", rotulo: "Categoria" },
+  { campo: "sku", rotulo: "SKU interno" },
+  { campo: "marketplace", rotulo: "Marketplace (opcional)" },
+  { campo: "confianca", rotulo: "Confiança do custo" },
+];
+
+/** Lê só o cabeçalho + um valor de exemplo por coluna (para o assistente). */
+export function lerCabecalho(texto: string): {
+  headers: string[];
+  exemplos: Record<string, string>;
+} {
+  const { headers, linhas } = parseCsv(texto);
+  const exemplos: Record<string, string> = {};
+  for (const h of headers) {
+    exemplos[h] = (linhas.find((r) => (r[h] ?? "").trim())?.[h] ?? "").trim();
+  }
+  return { headers, exemplos };
+}
+
+/** Mapeamento automático (campo canônico → nome da coluna) pelos apelidos. */
+export function autoMapear(headers: string[]): Record<string, string> {
+  return mapearColunas(headers);
+}
+
+/**
+ * Presets por ERP: campo canônico → nomes de coluna prováveis (normalizados).
+ * Usados como atalho no assistente; o cliente sempre pode ajustar manualmente.
+ */
+export const PRESETS_ERP: Record<string, Record<string, string[]>> = {
+  Bling: {
+    nome: ["descricao", "descrição", "produto"],
+    sku: ["codigo", "código"],
+    custo: ["preco de custo", "preço de custo", "custo"],
+    precoVenda: ["preco", "preço", "preco de venda"],
+    estoque: ["estoque", "saldo"],
+    ean: ["gtin/ean", "gtin", "ean"],
+    marca: ["marca"],
+    categoria: ["categoria"],
+  },
+  Tiny: {
+    nome: ["descricao", "descrição", "nome"],
+    sku: ["codigo", "código", "sku"],
+    custo: ["preco de custo", "preço de custo", "custo"],
+    precoVenda: ["preco", "preço"],
+    estoque: ["estoque", "saldo"],
+    ean: ["gtin", "ean"],
+    marca: ["marca"],
+    categoria: ["categoria"],
+  },
+  Magazord: {
+    codErp: ["sku pai", "codigo pai", "cod pai", "produto pai"],
+    skuVariacao: ["sku", "codigo", "cod"],
+    nome: ["produto", "descricao", "descrição", "nome"],
+    cor: ["cor"],
+    tamanho: ["tamanho", "numeracao", "numeração", "numero"],
+    custo: ["custo", "preco de custo"],
+    precoVenda: ["preco", "preço"],
+    estoque: ["estoque", "saldo"],
+    ean: ["ean", "gtin"],
+  },
+};
+
+/** Aplica um preset de ERP sobre as colunas reais da planilha. */
+export function aplicarPreset(preset: string, headers: string[]): Record<string, string> {
+  const p = PRESETS_ERP[preset];
+  const mapa: Record<string, string> = {};
+  if (!p) return mapa;
+  const alvo = headers.map((h) => ({ h, n: normalizarHeader(h) }));
+  for (const [canon, cands] of Object.entries(p)) {
+    const cn = cands.map((c) => normalizarHeader(c));
+    const hit = alvo.find((a) => cn.includes(a.n));
+    if (hit && !Object.values(mapa).includes(hit.h)) mapa[canon] = hit.h;
+  }
+  return mapa;
 }
 
 function mapearLinha(
@@ -246,7 +345,10 @@ export function analisarProdutosCsv(
   // A base é marketplace-agnóstica (fonte do ERP). O canal é destino, definido
   // depois, ao criar o anúncio. Só usamos um default se a planilha trouxer a
   // coluna "marketplace" preenchida.
-  marketplacePadrao: Marketplace = "Mercado Livre"
+  marketplacePadrao: Marketplace = "Mercado Livre",
+  // Mapeamento explícito (campo canônico → coluna) vindo do assistente. Quando
+  // ausente, cai no reconhecimento automático por apelidos.
+  mapeamento?: Record<string, string>
 ): AnaliseProdutos {
   const vazio: AnaliseProdutos = {
     modo: "flat",
@@ -263,8 +365,13 @@ export function analisarProdutosCsv(
     return { ...vazio, erro: "Arquivo vazio ou sem linhas de dados." };
   }
 
-  const cols = mapearColunas(headers);
-  const colunasIgnoradas = headers.filter((h) => !ALIASES[normalizarHeader(h)]);
+  const cols = mapeamento
+    ? Object.fromEntries(
+        Object.entries(mapeamento).filter(([, h]) => h && headers.includes(h))
+      )
+    : mapearColunas(headers);
+  const usadas = new Set(Object.values(cols));
+  const colunasIgnoradas = headers.filter((h) => !usadas.has(h));
   const faltandoObrigatorias = ["nome"].filter((c) => !cols[c]);
 
   // Modo agrupado quando a planilha traz SKU de variação (produto pai + derivações).
