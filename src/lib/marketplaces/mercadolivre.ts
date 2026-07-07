@@ -133,6 +133,94 @@ export async function criarItem(
   return { id: j.id, permalink: j.permalink, status: j.status };
 }
 
+// ---- Pedidos / vendas (para o dashboard de métricas) ----
+
+export interface ItemPedidoML {
+  itemId: string;
+  sku: string;
+  titulo: string;
+  qtd: number;
+  precoUnit: number;
+}
+
+export interface PedidoML {
+  id: string;
+  data: string; // ISO (date_created / date_closed)
+  status: string;
+  total: number; // total_amount pago
+  taxas: number; // soma das sale_fee (comissão ML)
+  itens: ItemPedidoML[];
+}
+
+interface OrderRaw {
+  id: number | string;
+  status?: string;
+  date_created?: string;
+  date_closed?: string;
+  total_amount?: number;
+  order_items?: {
+    item?: { id?: string; title?: string; seller_sku?: string; seller_custom_field?: string };
+    quantity?: number;
+    unit_price?: number;
+    sale_fee?: number;
+  }[];
+}
+
+/**
+ * Busca os pedidos PAGOS do vendedor desde `desde` (ISO). Pagina até um teto
+ * (para caber no serverless). Devolve um formato enxuto para o cálculo.
+ */
+export async function buscarPedidosML(
+  accessToken: string,
+  sellerId: string,
+  opcoes: { desde?: string; maxPedidos?: number } = {}
+): Promise<PedidoML[]> {
+  const limit = 50;
+  const teto = opcoes.maxPedidos ?? 300;
+  const pedidos: PedidoML[] = [];
+  let offset = 0;
+
+  while (pedidos.length < teto) {
+    const url = new URL(`${API}/orders/search`);
+    url.searchParams.set("seller", sellerId);
+    url.searchParams.set("order.status", "paid");
+    url.searchParams.set("sort", "date_desc");
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+    if (opcoes.desde) url.searchParams.set("order.date_created.from", opcoes.desde);
+
+    const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!r.ok) throw new Error(`Falha ao buscar vendas do ML: ${await extrairErro(r)}`);
+    const data = (await r.json()) as { results?: OrderRaw[]; paging?: { total?: number } };
+    const results = data.results ?? [];
+    if (results.length === 0) break;
+
+    for (const o of results) {
+      const itens = (o.order_items ?? []).map((oi) => ({
+        itemId: oi.item?.id ?? "",
+        sku: (oi.item?.seller_sku || oi.item?.seller_custom_field || "").trim(),
+        titulo: oi.item?.title ?? "",
+        qtd: Number(oi.quantity ?? 0),
+        precoUnit: Number(oi.unit_price ?? 0),
+      }));
+      pedidos.push({
+        id: String(o.id),
+        data: o.date_closed || o.date_created || "",
+        status: o.status ?? "paid",
+        total: Number(o.total_amount ?? 0),
+        taxas: (o.order_items ?? []).reduce((s, oi) => s + Number(oi.sale_fee ?? 0), 0),
+        itens,
+      });
+    }
+
+    offset += limit;
+    const total = data.paging?.total ?? 0;
+    if (offset >= total) break;
+  }
+
+  return pedidos;
+}
+
 // ---- Guia de tamanhos (SIZE_GRID) — modelo User Products ----
 
 export interface LinhaGuiaTamanho {

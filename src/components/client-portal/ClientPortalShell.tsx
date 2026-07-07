@@ -24,6 +24,7 @@ import {
   X,
   Store,
   Zap,
+  TrendingUp,
 } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
@@ -33,6 +34,7 @@ import { ClientPortalProvider } from "./context";
 
 const MENU = [
   { href: "/cliente", label: "Início", icon: Home },
+  { href: "/cliente/vendas", label: "Vendas", icon: TrendingUp },
   { href: "/cliente/produtos", label: "Meus Produtos", icon: Package },
   { href: "/cliente/anuncios", label: "Meus Anúncios", icon: Megaphone },
   { href: "/cliente/imagens", label: "Fotos", icon: Images },
