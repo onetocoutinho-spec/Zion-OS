@@ -145,5 +145,29 @@ export function criarRepositorio<T extends { id: string }, Row>(
     notificarMudanca();
   }
 
-  return { listar, buscar, criar, criarVarios, atualizar, excluir };
+  /**
+   * Exclui em massa por um filtro de igualdade e, opcionalmente, um prefixo de
+   * texto (ex.: observacoes começando com "Importado do ML"). Uma requisição só.
+   */
+  async function excluirPorFiltro(
+    filtro: FiltroIgual<T>,
+    prefixo?: { coluna: string; campoLocal: keyof T; valor: string }
+  ): Promise<void> {
+    if (!supabaseConfigurado) {
+      const itens = listAll<T>(colecao).filter(
+        (i) =>
+          i[filtro.campoLocal] === filtro.valor &&
+          (!prefixo || String(i[prefixo.campoLocal] ?? "").startsWith(prefixo.valor))
+      );
+      for (const it of itens) removeItem(colecao, it.id);
+      return;
+    }
+    let q = getSupabase().from(tabela).delete().eq(filtro.coluna, filtro.valor);
+    if (prefixo) q = q.ilike(prefixo.coluna, `${prefixo.valor}%`);
+    const { error } = await q;
+    if (error) erroSupabase(`excluir em massa em ${tabela}`, error.message);
+    notificarMudanca();
+  }
+
+  return { listar, buscar, criar, criarVarios, atualizar, excluir, excluirPorFiltro };
 }

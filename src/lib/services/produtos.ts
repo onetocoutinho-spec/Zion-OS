@@ -43,3 +43,14 @@ export async function atualizarProduto(
 export async function excluirProduto(id: string): Promise<void> {
   return repo.excluir(id);
 }
+
+/**
+ * Exclui os produtos importados do Mercado Livre do cliente (variações caem
+ * em cascata). Usado pela reimportação "substituir".
+ */
+export async function excluirProdutosImportadosML(clienteId: string): Promise<void> {
+  return repo.excluirPorFiltro(
+    { coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" },
+    { coluna: "observacoes", campoLocal: "observacoes", valor: "Importado do ML" }
+  );
+}

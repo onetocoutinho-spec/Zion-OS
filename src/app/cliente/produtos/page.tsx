@@ -42,6 +42,12 @@ export default function ClienteProdutos() {
 
   async function importarDoML() {
     if (importandoML) return;
+    if (
+      !window.confirm(
+        "Importar do Mercado Livre substitui a importação anterior do ML (produtos e anúncios vindos do ML) e traz tudo de novo, agrupado. Continuar?"
+      )
+    )
+      return;
     setImportandoML(true);
     setMsgML(null);
     try {

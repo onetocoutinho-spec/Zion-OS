@@ -4,20 +4,20 @@
 // pra: (1) montar a base sem planilha, a partir do que já está no ar; e
 // (2) não duplicar na publicação (cada anúncio já vem vinculado ao MLB).
 //
-// AGRUPAMENTO por família (modelo User Products, ex.: chinelo): no ML cada
-// TAMANHO é um MLB separado. Aqui reunimos os itens da mesma família
-// (user_product_id / family_name) em UM produto com variações de tamanho,
-// mas mantemos 1 registro de anúncio por MLB — assim a vinculação SKU↔MLB
-// do ERP continua por tamanho.
+// AGRUPAMENTO por família/título: no ML o mesmo modelo costuma virar vários
+// MLBs (User Products por tamanho, ou anúncios repetidos com o mesmo título).
+// Reunimos em UM produto com variações, mantendo 1 registro de anúncio por MLB
+// — assim a vinculação SKU↔MLB do ERP continua por tamanho.
 //
-// Idempotente: pula os MLBs já importados.
+// SUBSTITUI: cada importação limpa a importação anterior do ML do cliente e
+// reimporta tudo agrupado (sem depender de apagar via SQL, sem duplicar).
 
 import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
-import { criarProdutos } from "./produtos";
+import { criarProdutos, excluirProdutosImportadosML } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
 import {
   criarAnunciosGeradosBulk,
-  listarAnunciosGeradosDoCliente,
+  excluirAnunciosImportadosML,
 } from "./anunciosGerados";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
 import type { AnuncioGerado } from "../agentes/esteira";
@@ -237,17 +237,18 @@ export async function importarAnunciosDoCliente(
   }
 
   const anuncios = (dados.anuncios ?? []).filter((a) => a.mlb);
+  if (anuncios.length === 0) {
+    return { produtos: 0, anuncios: 0, variacoes: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
+  }
 
-  // Anti-duplicidade: pula os MLBs já importados.
-  const existentes = await listarAnunciosGeradosDoCliente(clienteId);
-  const jaTem = new Set(existentes.map((e) => e.mlItemId).filter(Boolean));
-  const novos = anuncios.filter((a) => !jaTem.has(a.mlb));
-  const pulados = anuncios.length - novos.length;
+  // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
+  // variações em cascata) antes de reimportar — evita duplicar e não depende
+  // de limpar via SQL. Só mexe no que foi importado do ML.
+  await excluirAnunciosImportadosML(clienteId);
+  await excluirProdutosImportadosML(clienteId);
 
-  if (novos.length === 0) return { produtos: 0, anuncios: 0, variacoes: 0, pulados };
-
-  // Agrupa por família → 1 produto por grupo.
-  const grupos = agrupar(novos);
+  // Agrupa por família/título → 1 produto por grupo.
+  const grupos = agrupar(anuncios);
 
   // 1) Produtos (ordem preservada).
   const criados = await criarProdutos(
@@ -300,6 +301,6 @@ export async function importarAnunciosDoCliente(
     produtos: criados.length,
     anuncios: anunciosPayload.length,
     variacoes: variantes.length,
-    pulados,
+    pulados: 0,
   };
 }
