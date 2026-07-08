@@ -4,7 +4,9 @@
 // O botão "Conectar Mercado Livre" navega para cá; aqui montamos a URL de
 // autorização e mandamos o vendedor para o ML fazer login e autorizar.
 
-const AUTH_URL = "https://auth.mercadolibre.com.br/authorization";
+// Brasil usa "mercadoliVre.com.br" (com V). Os outros países do ML usam
+// "mercadolibre" — só o BR é "Mercado Livre".
+const AUTH_URL = "https://auth.mercadolivre.com.br/authorization";
 
 function origem(request: Request): string {
   const proto = request.headers.get("x-forwarded-proto") ?? "https";
