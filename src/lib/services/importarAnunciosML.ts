@@ -35,29 +35,37 @@ export interface ResultadoImportacaoAnuncios {
 /** Um grupo vira 1 produto. */
 type Grupo = AnuncioML[];
 
-/**
- * Chave de agrupamento, em ordem de confiança:
- *  1) família do ML (user_product_id) — modelo User Products (chinelo);
- *  2) family_name;
- *  3) título normalizado — junta anúncios repetidos do mesmo modelo
- *     (vendedores criam vários MLBs com o mesmo título, sem família).
- */
-function chaveGrupo(a: AnuncioML): string {
-  if (a.familyId) return `fam:${a.familyId}`;
-  if (a.familyName) return `fam:${a.familyName.trim().toLowerCase()}`;
-  return `tit:${a.titulo.trim().toLowerCase().replace(/\s+/g, " ")}`;
-}
-
 /** Quantas unidades de variação o grupo tem (soma de tamanhos/variações). */
 function unidades(g: Grupo): number {
   return g.reduce((n, a) => n + (a.variacoes.length > 0 ? a.variacoes.length : 1), 0);
 }
 
-/** Reúne os itens por família (ou, sem família, por título). */
+function normalizarTitulo(t: string): string {
+  return t.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Reúne os itens do mesmo modelo em um grupo (= 1 produto).
+ *
+ * O ML dá um `user_product_id` por item publicado — muitas vezes ÚNICO por
+ * anúncio (não é uma família compartilhada). Então só tratamos como família
+ * quando o mesmo `user_product_id` aparece em 2+ anúncios; caso contrário
+ * agrupamos por TÍTULO normalizado (o sinal confiável de "mesmo modelo",
+ * já que o vendedor cria vários MLBs com o mesmo título).
+ */
 function agrupar(anuncios: AnuncioML[]): Grupo[] {
+  const contFamilia = new Map<string, number>();
+  for (const a of anuncios) {
+    if (a.familyId) contFamilia.set(a.familyId, (contFamilia.get(a.familyId) ?? 0) + 1);
+  }
+  const chaveDe = (a: AnuncioML): string => {
+    if (a.familyId && (contFamilia.get(a.familyId) ?? 0) > 1) return `fam:${a.familyId}`;
+    const t = normalizarTitulo(a.titulo);
+    return t ? `tit:${t}` : `mlb:${a.mlb}`;
+  };
   const mapa = new Map<string, Grupo>();
   for (const a of anuncios) {
-    const chave = chaveGrupo(a);
+    const chave = chaveDe(a);
     const lista = mapa.get(chave) ?? [];
     lista.push(a);
     mapa.set(chave, lista);
