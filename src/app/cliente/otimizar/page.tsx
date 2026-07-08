@@ -137,6 +137,16 @@ export default function ClienteOtimizar() {
     return m;
   }, [anuncios]);
 
+  // Otimizações REAIS (feitas pela IA) — os anúncios importados do ML não
+  // contam, senão a base inteira apareceria como "já otimizada".
+  const otimizadosReais = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of anuncios ?? []) {
+      if (a.produtoId && !(a.observacoes ?? "").startsWith("Importado")) s.add(a.produtoId);
+    }
+    return s;
+  }, [anuncios]);
+
   const registro = produtoId ? anuncioPorProduto.get(produtoId) ?? null : null;
   const restante = quota?.restante ?? 0;
   const semCota = Boolean(quota) && restante <= 0;
@@ -312,7 +322,7 @@ export default function ClienteOtimizar() {
           clienteId={clienteId}
           nome={nome}
           produtos={produtos ?? []}
-          jaOtimizados={anuncioPorProduto}
+          otimizados={otimizadosReais}
           restante={quota?.restante ?? 0}
         />
       )}
@@ -354,7 +364,7 @@ export default function ClienteOtimizar() {
           />
           <ul className="max-h-96 divide-y divide-white/[0.04] overflow-y-auto">
             {produtosFiltrados.map((p) => {
-              const otimizado = anuncioPorProduto.has(p.id);
+              const otimizado = otimizadosReais.has(p.id);
               return (
                 <li key={p.id}>
                   <button
@@ -401,74 +411,88 @@ function OtimizarEmMassa({
   clienteId,
   nome,
   produtos,
-  jaOtimizados,
+  otimizados,
   restante,
 }: {
   clienteId: string;
   nome: string;
   produtos: Produto[];
-  jaOtimizados: Map<string, AnuncioGeradoRegistro>;
+  /** IDs de produtos que JÁ têm otimização real (feita pela IA). */
+  otimizados: Set<string>;
   restante: number;
 }) {
   const pendentes = useMemo(
-    () => produtos.filter((p) => !jaOtimizados.has(p.id)),
-    [produtos, jaOtimizados]
+    () => produtos.filter((p) => !otimizados.has(p.id)),
+    [produtos, otimizados]
   );
   const [rodando, setRodando] = useState(false);
   const [prog, setProg] = useState<{ feito: number; total: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const cap = Math.min(pendentes.length, Math.max(0, restante));
+  async function otimizar(produto: Produto) {
+    const r = await rodarEsteira("", {
+      contexto: montarContexto({ produto }),
+      produto: produto.nome,
+    });
+    const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
+    await criarAnuncioGerado({
+      clienteId,
+      cliente: nome,
+      produtoId: produto.id,
+      produto: produto.nome,
+      auditoriaId: null,
+      marketplace: produto.marketplace ?? "Mercado Livre",
+      origem: "esteira",
+      tipoExecucao: r.tipo,
+      notaDiagnostico: r.anuncio.notaDiagnostico,
+      vereditoA10: r.anuncio.vereditoA10,
+      qtdPendencias: r.anuncio.pendencias.length,
+      anuncio: r.anuncio,
+      status: passouA10 ? "aguardando_aprovacao" : "rascunho",
+      aprovadoPor: "",
+      aprovadoEm: null,
+      criadoEm: new Date().toISOString(),
+      observacoes: "",
+    });
+  }
 
-  async function rodarTudo() {
-    if (rodando || cap <= 0) return;
+  async function rodarLote(lista: Produto[]) {
+    const alvo = lista.slice(0, Math.max(0, restante));
+    if (rodando || alvo.length === 0) return;
+    if (
+      !window.confirm(
+        `Otimizar ${alvo.length} produto(s) com a IA — título, descrição, SEO, ficha técnica, medidas, FAQ e plano, tudo de uma vez. Pode levar alguns minutos. Continuar?`
+      )
+    )
+      return;
     setRodando(true);
     setErro(null);
     setMsg(null);
-    const alvo = pendentes.slice(0, cap);
     setProg({ feito: 0, total: alvo.length });
     let feito = 0;
     try {
       for (const produto of alvo) {
-        const r = await rodarEsteira("", {
-          contexto: montarContexto({ produto }),
-          produto: produto.nome,
-        });
-        const passouA10 =
-          r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
-        await criarAnuncioGerado({
-          clienteId,
-          cliente: nome,
-          produtoId: produto.id,
-          produto: produto.nome,
-          auditoriaId: null,
-          marketplace: produto.marketplace ?? "Mercado Livre",
-          origem: "esteira",
-          tipoExecucao: r.tipo,
-          notaDiagnostico: r.anuncio.notaDiagnostico,
-          vereditoA10: r.anuncio.vereditoA10,
-          qtdPendencias: r.anuncio.pendencias.length,
-          anuncio: r.anuncio,
-          status: passouA10 ? "aguardando_aprovacao" : "rascunho",
-          aprovadoPor: "",
-          aprovadoEm: null,
-          criadoEm: new Date().toISOString(),
-          observacoes: "",
-        });
+        await otimizar(produto);
         feito++;
         setProg({ feito, total: alvo.length });
       }
       setMsg(`${feito} produto(s) otimizados. Revise e aprove em “Meus Anúncios”.`);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao otimizar em massa.");
+      setErro(
+        e instanceof Error
+          ? `${e.message} (${feito} concluído(s) antes da falha)`
+          : "Falha ao otimizar em massa."
+      );
     } finally {
       setRodando(false);
       setProg(null);
     }
   }
 
-  if (pendentes.length === 0) return null;
+  const total = produtos.length;
+  const capFaltam = Math.min(pendentes.length, Math.max(0, restante));
+  const capTodos = Math.min(total, Math.max(0, restante));
   const pct = prog && prog.total > 0 ? Math.round((prog.feito / prog.total) * 100) : 0;
 
   return (
@@ -476,27 +500,48 @@ function OtimizarEmMassa({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
-            <Sparkles size={15} className="text-violet-400" /> Otimizar toda a base de uma vez
+            <Sparkles size={15} className="text-violet-400" /> Otimizar tudo
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
-            {pendentes.length} produto(s) ainda sem anúncio. A IA gera todos, um a um.
+            A IA gera título, descrição, SEO, ficha, medidas, FAQ e plano de cada produto — tudo de
+            uma vez. {pendentes.length} de {total} ainda sem otimização.
           </p>
         </div>
-        <Button onClick={rodarTudo} disabled={rodando || cap <= 0}>
-          {rodando ? (
-            <>
-              <Sparkles size={14} className="animate-pulse" />
-              {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
-            </>
-          ) : (
-            <>
-              <Play size={14} /> Otimizar {cap} produto(s)
-            </>
+        <div className="flex flex-wrap items-center gap-2">
+          {pendentes.length > 0 && (
+            <Button onClick={() => rodarLote(pendentes)} disabled={rodando || capFaltam <= 0}>
+              {rodando ? (
+                <>
+                  <Sparkles size={14} className="animate-pulse" />
+                  {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
+                </>
+              ) : (
+                <>
+                  <Play size={14} /> Otimizar tudo ({capFaltam})
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+          <Button
+            variant={pendentes.length > 0 ? "ghost" : "primary"}
+            onClick={() => rodarLote(produtos)}
+            disabled={rodando || capTodos <= 0}
+          >
+            {rodando && pendentes.length === 0 ? (
+              <>
+                <Sparkles size={14} className="animate-pulse" />
+                {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} /> Reotimizar todos ({capTodos})
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
-      {restante < pendentes.length && (
+      {restante < total && (
         <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
           <Gauge size={12} /> Sua cota permite {restante} este mês — o restante fica para depois.
         </p>
