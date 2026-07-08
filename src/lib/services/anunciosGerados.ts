@@ -100,8 +100,9 @@ export async function excluirAnuncioGerado(id: string): Promise<void> {
 
 /** Exclui os anúncios importados do Mercado Livre do cliente (reimportação "substituir"). */
 export async function excluirAnunciosImportadosML(clienteId: string): Promise<void> {
+  // Prefixo comum "Importado do " cobre variações do texto ao longo do tempo.
   return repo.excluirPorFiltro(
     { coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" },
-    { coluna: "observacoes", campoLocal: "observacoes", valor: "Importado do Mercado Livre" }
+    { coluna: "observacoes", campoLocal: "observacoes", valor: "Importado do " }
   );
 }

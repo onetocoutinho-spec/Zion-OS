@@ -49,8 +49,10 @@ export async function excluirProduto(id: string): Promise<void> {
  * em cascata). Usado pela reimportação "substituir".
  */
 export async function excluirProdutosImportadosML(clienteId: string): Promise<void> {
+  // Prefixo comum "Importado do " cobre os dois formatos gravados ao longo do
+  // tempo: "Importado do ML (...)" e "Importado do Mercado Livre (...)".
   return repo.excluirPorFiltro(
     { coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" },
-    { coluna: "observacoes", campoLocal: "observacoes", valor: "Importado do ML" }
+    { coluna: "observacoes", campoLocal: "observacoes", valor: "Importado do " }
   );
 }
