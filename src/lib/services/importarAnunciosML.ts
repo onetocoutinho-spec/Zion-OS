@@ -32,23 +32,32 @@ export interface ResultadoImportacaoAnuncios {
   aviso?: string;
 }
 
-/** Um grupo vira 1 produto. Família = vários MLBs (User Products); senão = 1 MLB. */
+/** Um grupo vira 1 produto. */
 type Grupo = AnuncioML[];
 
-/** É família (produto com variações de tamanho vindas de MLBs separados)? */
-function ehFamilia(g: Grupo): boolean {
-  const rep = g[0];
-  return g.length > 1 || (rep.variacoes.length === 0 && Boolean(rep.familyId || rep.familyName));
+/**
+ * Chave de agrupamento, em ordem de confiança:
+ *  1) família do ML (user_product_id) — modelo User Products (chinelo);
+ *  2) family_name;
+ *  3) título normalizado — junta anúncios repetidos do mesmo modelo
+ *     (vendedores criam vários MLBs com o mesmo título, sem família).
+ */
+function chaveGrupo(a: AnuncioML): string {
+  if (a.familyId) return `fam:${a.familyId}`;
+  if (a.familyName) return `fam:${a.familyName.trim().toLowerCase()}`;
+  return `tit:${a.titulo.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
-/** Reúne os itens por família (ou por MLB, quando não há família). */
+/** Quantas unidades de variação o grupo tem (soma de tamanhos/variações). */
+function unidades(g: Grupo): number {
+  return g.reduce((n, a) => n + (a.variacoes.length > 0 ? a.variacoes.length : 1), 0);
+}
+
+/** Reúne os itens por família (ou, sem família, por título). */
 function agrupar(anuncios: AnuncioML[]): Grupo[] {
   const mapa = new Map<string, Grupo>();
   for (const a of anuncios) {
-    const chave =
-      a.variacoes.length === 0 && (a.familyId || a.familyName)
-        ? `fam:${a.familyId || a.familyName.toLowerCase()}`
-        : `mlb:${a.mlb}`;
+    const chave = chaveGrupo(a);
     const lista = mapa.get(chave) ?? [];
     lista.push(a);
     mapa.set(chave, lista);
@@ -58,16 +67,13 @@ function agrupar(anuncios: AnuncioML[]): Grupo[] {
 
 function baseProdutoDoGrupo(g: Grupo): BaseProduto {
   const rep = g[0];
-  const familia = ehFamilia(g);
-  const classica = rep.variacoes.length > 0;
-  const comVariacao = familia || classica;
-  const estoque = familia
-    ? g.reduce((s, a) => s + a.estoque, 0)
-    : classica
-      ? rep.variacoes.reduce((s, v) => s + v.estoque, 0)
-      : rep.estoque;
+  const comVariacao = unidades(g) > 1;
+  const estoque = g.reduce(
+    (s, a) => s + (a.variacoes.length > 0 ? a.variacoes.reduce((x, v) => x + v.estoque, 0) : a.estoque),
+    0
+  );
   return {
-    nome: (familia ? rep.familyName || rep.titulo : rep.titulo) || "Anúncio do ML",
+    nome: rep.familyName || rep.titulo || "Anúncio do ML",
     marca: rep.marca,
     modelo: rep.modelo,
     categoria: rep.categoria,
@@ -84,8 +90,8 @@ function baseProdutoDoGrupo(g: Grupo): BaseProduto {
     statusImagens: "Concluído",
     statusPrecificacao: "Pendente",
     prioridade: "Média",
-    observacoes: familia
-      ? `Importado do ML (família com ${g.length} tamanho(s)). Complete o custo para a margem.`
+    observacoes: comVariacao
+      ? `Importado do ML (${g.length} anúncio(s), ${unidades(g)} variação(ões)). Complete o custo para a margem.`
       : `Importado do ML (${rep.mlb}). Complete o custo para a margem.`,
     tipoProduto: comVariacao ? "com_variacao" : "simples",
     codErp: comVariacao ? undefined : rep.sku || undefined,
@@ -244,11 +250,13 @@ export async function importarAnunciosDoCliente(
   const variantes: Omit<ProdutoVariante, "id">[] = [];
   criados.forEach((prod, gi) => {
     const g = grupos[gi];
-    const rep = g[0];
-    if (rep.variacoes.length > 0) {
-      rep.variacoes.forEach((v) => variantes.push(varianteClassica(prod.id, clienteId, v)));
-    } else if (ehFamilia(g)) {
-      g.forEach((a) => variantes.push(varianteDeItem(prod.id, clienteId, a)));
+    if (unidades(g) <= 1) return; // produto simples, sem variação
+    for (const a of g) {
+      if (a.variacoes.length > 0) {
+        a.variacoes.forEach((v) => variantes.push(varianteClassica(prod.id, clienteId, v)));
+      } else {
+        variantes.push(varianteDeItem(prod.id, clienteId, a));
+      }
     }
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
