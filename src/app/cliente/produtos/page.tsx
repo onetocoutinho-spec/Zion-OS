@@ -52,16 +52,11 @@ export default function ClienteProdutos() {
     setMsgML(null);
     try {
       const r = await importarAnunciosDoCliente(clienteId, nome);
-      if (r.aviso) {
-        setMsgML({ tipo: "erro", texto: r.aviso });
+      if (r.produtos === 0) {
+        setMsgML({ tipo: "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
       } else {
-        setMsgML({
-          tipo: "ok",
-          texto:
-            r.produtos === 0
-              ? `Nenhum anúncio encontrado na conta.`
-              : `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}.`,
-        });
+        const base = `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}.`;
+        setMsgML({ tipo: r.aviso ? "erro" : "ok", texto: r.aviso ? `${base} ${r.aviso}` : base });
         reload();
       }
     } catch (e) {

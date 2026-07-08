@@ -123,10 +123,10 @@ export function criarRepositorio<T extends { id: string }, Row>(
           if (retornar) criados.push(...((data ?? []) as Row[]).map(paraApp));
           break;
         } catch (e) {
-          if (tentativa >= 3) {
+          if (tentativa >= 6) {
             erroSupabase(`criar registros em ${tabela}`, e instanceof Error ? e.message : String(e));
           }
-          await new Promise((r) => setTimeout(r, 500 * tentativa));
+          await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
         }
       }
     }

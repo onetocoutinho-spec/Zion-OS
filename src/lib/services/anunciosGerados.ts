@@ -50,7 +50,7 @@ export async function criarAnuncioGerado(
 export async function criarAnunciosGeradosBulk(
   dados: Omit<AnuncioGeradoRegistro, "id">[]
 ): Promise<void> {
-  await repo.criarVarios(dados, { chunk: 25, retornar: false });
+  await repo.criarVarios(dados, { chunk: 100, retornar: false });
 }
 
 export async function atualizarAnuncioGerado(

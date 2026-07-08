@@ -303,7 +303,18 @@ export async function importarAnunciosDoCliente(
       mlPermalink: a.permalink,
     }))
   );
-  await criarAnunciosGeradosBulk(anunciosPayload);
+  // Os produtos + variações (a base) já estão gravados. Anúncios e fotos são
+  // complementares: se a rede falhar, NÃO derrubamos a importação inteira —
+  // avisamos e o cliente clica de novo pra completar (é "substituir").
+  let avisoParcial: string | undefined;
+  let anunciosOk = 0;
+  try {
+    await criarAnunciosGeradosBulk(anunciosPayload);
+    anunciosOk = anunciosPayload.length;
+  } catch {
+    avisoParcial =
+      "Produtos importados e agrupados. Alguns anúncios não gravaram (rede) — clique em Importar de novo para completar.";
+  }
 
   // 4) Imagens: as fotos reais do ML viram imagens do produto (prontas pro
   //    Estúdio IA). Capa = Principal; as demais Secundárias; dedup por URL.
@@ -323,13 +334,20 @@ export async function importarAnunciosDoCliente(
       });
     });
   });
-  if (imagens.length > 0) await criarImagensBulk(imagens);
+  let imagensOk = 0;
+  try {
+    if (imagens.length > 0) await criarImagensBulk(imagens);
+    imagensOk = imagens.length;
+  } catch {
+    /* fotos são secundárias — não derruba a importação */
+  }
 
   return {
     produtos: criados.length,
-    anuncios: anunciosPayload.length,
+    anuncios: anunciosOk,
     variacoes: variantes.length,
-    imagens: imagens.length,
+    imagens: imagensOk,
     pulados: 0,
+    aviso: avisoParcial,
   };
 }
