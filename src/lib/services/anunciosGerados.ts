@@ -42,6 +42,17 @@ export async function criarAnuncioGerado(
   return repo.criar(dados);
 }
 
+/**
+ * Cria muitos anúncios de uma vez (importação em massa do ML). Lotes de 100
+ * porque cada linha carrega o JSON do anúncio — evita payloads gigantes e o
+ * "Failed to fetch" que dava ao gravar um a um.
+ */
+export async function criarAnunciosGeradosBulk(
+  dados: Omit<AnuncioGeradoRegistro, "id">[]
+): Promise<AnuncioGeradoRegistro[]> {
+  return repo.criarVarios(dados, 100);
+}
+
 export async function atualizarAnuncioGerado(
   id: string,
   dados: Partial<AnuncioGeradoRegistro>

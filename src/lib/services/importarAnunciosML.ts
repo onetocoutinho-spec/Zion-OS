@@ -10,7 +10,7 @@ import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
 import { criarProdutos } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
 import {
-  criarAnuncioGerado,
+  criarAnunciosGeradosBulk,
   listarAnunciosGeradosDoCliente,
 } from "./anunciosGerados";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
@@ -154,31 +154,31 @@ export async function importarAnunciosDoCliente(
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
 
-  // 3) Anúncios gerados marcados como publicados (com o MLB).
-  for (let i = 0; i < criados.length; i++) {
-    const a = novos[i];
-    await criarAnuncioGerado({
+  // 3) Anúncios gerados marcados como publicados (com o MLB) — em lote.
+  const agora = new Date().toISOString();
+  await criarAnunciosGeradosBulk(
+    criados.map((prod, i) => ({
       clienteId,
       cliente,
-      produtoId: criados[i].id,
-      produto: criados[i].nome,
+      produtoId: prod.id,
+      produto: prod.nome,
       auditoriaId: null,
       marketplace: "Mercado Livre",
-      origem: "esteira",
-      tipoExecucao: "Simulada",
+      origem: "esteira" as const,
+      tipoExecucao: "Simulada" as const,
       notaDiagnostico: 0,
-      vereditoA10: "aprovado",
+      vereditoA10: "aprovado" as const,
       qtdPendencias: 0,
-      anuncio: anuncioGeradoDoML(a),
-      status: "publicado",
+      anuncio: anuncioGeradoDoML(novos[i]),
+      status: "publicado" as const,
       aprovadoPor: "Mercado Livre",
-      aprovadoEm: new Date().toISOString(),
-      criadoEm: new Date().toISOString(),
+      aprovadoEm: agora,
+      criadoEm: agora,
       observacoes: "Importado do Mercado Livre.",
-      mlItemId: a.mlb,
-      mlPermalink: a.permalink,
-    });
-  }
+      mlItemId: novos[i].mlb,
+      mlPermalink: novos[i].permalink,
+    }))
+  );
 
   return { importados: criados.length, variacoes: variantes.length, pulados };
 }

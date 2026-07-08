@@ -98,12 +98,12 @@ export function criarRepositorio<T extends { id: string }, Row>(
    * preservando a ordem; no modo local grava tudo com uma escrita só.
    * Essencial para importações grandes (500, 1.000+ anúncios).
    */
-  async function criarVarios(registros: Omit<T, "id">[]): Promise<T[]> {
+  async function criarVarios(registros: Omit<T, "id">[], chunk = 500): Promise<T[]> {
     if (registros.length === 0) return [];
     if (!supabaseConfigurado) {
       return createManyItems<T>(colecao, registros, prefixoIdLocal);
     }
-    const CHUNK = 500;
+    const CHUNK = chunk;
     const criados: T[] = [];
     for (let i = 0; i < registros.length; i += CHUNK) {
       const lote = registros
