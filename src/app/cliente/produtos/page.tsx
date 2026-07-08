@@ -52,9 +52,9 @@ export default function ClienteProdutos() {
         setMsgML({
           tipo: "ok",
           texto:
-            r.importados === 0
+            r.produtos === 0
               ? `Nenhum anúncio novo (todos os ${r.pulados} já estavam importados).`
-              : `${r.importados} anúncios importados do ML${r.variacoes > 0 ? ` (${r.variacoes} variações)` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`,
+              : `${r.produtos} produtos · ${r.anuncios} anúncios do ML${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`,
         });
         reload();
       }

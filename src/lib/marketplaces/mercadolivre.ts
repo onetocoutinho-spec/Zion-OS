@@ -245,6 +245,13 @@ export interface AnuncioML {
   modelo: string;
   fotos: string[];
   variacoes: VariacaoAnuncioML[];
+  // Modelo User Products (ex.: chinelo): cada tamanho é um MLB separado,
+  // agrupado por família. Usamos isso para reunir os "SKUs separados".
+  familyId: string; // user_product_id
+  familyName: string; // family_name
+  cor: string; // COLOR do item (quando não há variações internas)
+  tamanho: string; // SIZE do item
+  ean: string; // GTIN do item
 }
 
 interface ItemRaw {
@@ -256,6 +263,8 @@ interface ItemRaw {
   status?: string;
   permalink?: string;
   seller_custom_field?: string;
+  family_name?: string | null;
+  user_product_id?: string | null;
   attributes?: { id?: string; value_name?: string | null }[];
   pictures?: { url?: string; secure_url?: string }[];
   variations?: {
@@ -293,6 +302,11 @@ function mapearItem(it: ItemRaw): AnuncioML {
     modelo: attr(it.attributes, "MODEL"),
     fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
     variacoes,
+    familyId: (it.user_product_id ?? "").toString().trim(),
+    familyName: (it.family_name ?? "").trim(),
+    cor: attr(it.attributes, "COLOR"),
+    tamanho: attr(it.attributes, "SIZE"),
+    ean: attr(it.attributes, "GTIN"),
   };
 }
 
@@ -323,7 +337,7 @@ export async function buscarAnunciosDoVendedor(
   // 2) Multiget (20 por vez) com os campos que interessam.
   const anuncios: AnuncioML[] = [];
   const campos =
-    "id,title,price,available_quantity,category_id,status,permalink,seller_custom_field,attributes,pictures,variations";
+    "id,title,price,available_quantity,category_id,status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
