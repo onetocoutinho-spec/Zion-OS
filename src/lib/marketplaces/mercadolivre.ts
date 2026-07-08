@@ -221,6 +221,122 @@ export async function buscarPedidosML(
   return pedidos;
 }
 
+// ---- Importar anúncios já cadastrados na conta do vendedor ----
+
+export interface VariacaoAnuncioML {
+  cor: string;
+  tamanho: string;
+  sku: string;
+  ean: string;
+  preco: number;
+  estoque: number;
+}
+
+export interface AnuncioML {
+  mlb: string;
+  titulo: string;
+  categoria: string; // category_id
+  preco: number;
+  estoque: number;
+  status: string;
+  permalink: string;
+  sku: string; // seller_custom_field / SELLER_SKU
+  marca: string;
+  modelo: string;
+  fotos: string[];
+  variacoes: VariacaoAnuncioML[];
+}
+
+interface ItemRaw {
+  id?: string;
+  title?: string;
+  category_id?: string;
+  price?: number;
+  available_quantity?: number;
+  status?: string;
+  permalink?: string;
+  seller_custom_field?: string;
+  attributes?: { id?: string; value_name?: string | null }[];
+  pictures?: { url?: string; secure_url?: string }[];
+  variations?: {
+    price?: number;
+    available_quantity?: number;
+    seller_custom_field?: string;
+    attribute_combinations?: { id?: string; value_name?: string | null }[];
+    attributes?: { id?: string; value_name?: string | null }[];
+  }[];
+}
+
+function attr(attrs: { id?: string; value_name?: string | null }[] | undefined, id: string): string {
+  return (attrs ?? []).find((a) => a.id === id)?.value_name?.trim() || "";
+}
+
+function mapearItem(it: ItemRaw): AnuncioML {
+  const variacoes: VariacaoAnuncioML[] = (it.variations ?? []).map((v) => ({
+    cor: attr(v.attribute_combinations, "COLOR"),
+    tamanho: attr(v.attribute_combinations, "SIZE"),
+    sku: (v.seller_custom_field || attr(v.attributes, "SELLER_SKU") || "").trim(),
+    ean: attr(v.attributes, "GTIN"),
+    preco: Number(v.price ?? it.price ?? 0),
+    estoque: Number(v.available_quantity ?? 0),
+  }));
+  return {
+    mlb: it.id ?? "",
+    titulo: it.title ?? "",
+    categoria: it.category_id ?? "",
+    preco: Number(it.price ?? 0),
+    estoque: Number(it.available_quantity ?? 0),
+    status: it.status ?? "",
+    permalink: it.permalink ?? "",
+    sku: (it.seller_custom_field || attr(it.attributes, "SELLER_SKU") || "").trim(),
+    marca: attr(it.attributes, "BRAND"),
+    modelo: attr(it.attributes, "MODEL"),
+    fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
+    variacoes,
+  };
+}
+
+/** Lista os MLBs do vendedor e busca cada um (multiget de 20 em 20). */
+export async function buscarAnunciosDoVendedor(
+  accessToken: string,
+  sellerId: string,
+  opcoes: { max?: number } = {}
+): Promise<AnuncioML[]> {
+  const teto = opcoes.max ?? 500;
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  // 1) Coleta os ids (paginado).
+  const ids: string[] = [];
+  let offset = 0;
+  while (ids.length < teto) {
+    const url = `${API}/users/${sellerId}/items/search?limit=50&offset=${offset}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) throw new Error(`Falha ao listar anúncios do ML: ${await extrairErro(r)}`);
+    const d = (await r.json()) as { results?: string[]; paging?: { total?: number } };
+    const results = d.results ?? [];
+    if (results.length === 0) break;
+    ids.push(...results);
+    offset += 50;
+    if (offset >= (d.paging?.total ?? 0)) break;
+  }
+
+  // 2) Multiget (20 por vez) com os campos que interessam.
+  const anuncios: AnuncioML[] = [];
+  const campos =
+    "id,title,price,available_quantity,category_id,status,permalink,seller_custom_field,attributes,pictures,variations";
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20).join(",");
+    const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+    if (!r.ok) continue;
+    const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+    for (const x of arr) {
+      if (x.code === 200 && x.body?.id) anuncios.push(mapearItem(x.body));
+    }
+  }
+
+  return anuncios;
+}
+
 // ---- Guia de tamanhos (SIZE_GRID) — modelo User Products ----
 
 export interface LinhaGuiaTamanho {

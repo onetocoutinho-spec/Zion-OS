@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
+import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
@@ -23,8 +24,8 @@ const STATUS = ["Otimizado", "Em revisão", "Sem otimização"] as const;
 const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as const;
 
 export default function ClienteProdutos() {
-  const { clienteId } = useClientPortal();
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  const { clienteId, nome } = useClientPortal();
+  const { data: produtos, reload } = useLiveQuery(listarProdutos);
   const { data: anuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
@@ -36,6 +37,33 @@ export default function ClienteProdutos() {
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarImport, setMostrarImport] = useState(false);
+  const [importandoML, setImportandoML] = useState(false);
+  const [msgML, setMsgML] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+
+  async function importarDoML() {
+    if (importandoML) return;
+    setImportandoML(true);
+    setMsgML(null);
+    try {
+      const r = await importarAnunciosDoCliente(clienteId, nome);
+      if (r.aviso) {
+        setMsgML({ tipo: "erro", texto: r.aviso });
+      } else {
+        setMsgML({
+          tipo: "ok",
+          texto:
+            r.importados === 0
+              ? `Nenhum anúncio novo (todos os ${r.pulados} já estavam importados).`
+              : `${r.importados} anúncios importados do ML${r.variacoes > 0 ? ` (${r.variacoes} variações)` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`,
+        });
+        reload();
+      }
+    } catch (e) {
+      setMsgML({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao importar do ML." });
+    } finally {
+      setImportandoML(false);
+    }
+  }
 
   const scorePorProduto = useMemo(
     () => mapaScorePorProduto(anuncios ?? [], auditorias ?? []),
@@ -87,9 +115,13 @@ export default function ClienteProdutos() {
         subtitulo="Sua base de produtos. Otimize cada um com a IA para vender melhor."
         acao={
           <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={importarDoML} disabled={importandoML} title="Puxar os anúncios já cadastrados na sua conta do Mercado Livre">
+              {importandoML ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}{" "}
+              {importandoML ? "Importando…" : "Importar do ML"}
+            </Button>
             <Button variant="ghost" onClick={() => setMostrarImport((v) => !v)}>
               {mostrarImport ? <X size={15} /> : <Upload size={15} />}{" "}
-              {mostrarImport ? "Fechar" : "Importar"}
+              {mostrarImport ? "Fechar" : "Planilha"}
             </Button>
             <Link href="/cliente/otimizar">
               <Button>
@@ -99,6 +131,18 @@ export default function ClienteProdutos() {
           </div>
         }
       />
+
+      {msgML && (
+        <p
+          className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
+            msgML.tipo === "ok"
+              ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+              : "border-amber-500/20 bg-amber-500/5 text-amber-400"
+          }`}
+        >
+          {msgML.tipo === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />} {msgML.texto}
+        </p>
+      )}
 
       {(mostrarImport || total === 0) && (
         <ImportarProdutos onImportado={() => setMostrarImport(false)} />
