@@ -24,6 +24,11 @@ export async function criarImagem(dados: Omit<ImagemProduto, "id">): Promise<Ima
   return repo.criar(dados);
 }
 
+/** Cria muitas imagens de uma vez (importação do ML: fotos reais dos anúncios). */
+export async function criarImagensBulk(dados: Omit<ImagemProduto, "id">[]): Promise<void> {
+  await repo.criarVarios(dados, { chunk: 100, retornar: false });
+}
+
 export async function atualizarImagem(
   id: string,
   dados: Partial<ImagemProduto>

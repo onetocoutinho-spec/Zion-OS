@@ -19,15 +19,20 @@ import {
   criarAnunciosGeradosBulk,
   excluirAnunciosImportadosML,
 } from "./anunciosGerados";
+import { criarImagensBulk } from "./imagensProduto";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
 import type { AnuncioGerado } from "../agentes/esteira";
 import type { BaseProduto } from "./importacaoProdutos";
-import type { ProdutoVariante } from "../types";
+import type { ProdutoVariante, ImagemProduto } from "../types";
+
+/** Máximo de fotos importadas por produto (o ML permite ~10-12 por anúncio). */
+const MAX_FOTOS = 10;
 
 export interface ResultadoImportacaoAnuncios {
   produtos: number;
   anuncios: number;
   variacoes: number;
+  imagens: number;
   pulados: number;
   aviso?: string;
 }
@@ -218,7 +223,7 @@ export async function importarAnunciosDoCliente(
 ): Promise<ResultadoImportacaoAnuncios> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
   if (!canal?.refreshToken) {
-    return { produtos: 0, anuncios: 0, variacoes: 0, pulados: 0, aviso: "Cliente não conectado ao Mercado Livre." };
+    return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Cliente não conectado ao Mercado Livre." };
   }
 
   const resposta = await fetch("/api/ml/importar-anuncios", {
@@ -233,12 +238,12 @@ export async function importarAnunciosDoCliente(
   };
   if (dados.refreshToken) await atualizarRefreshToken(clienteId, dados.refreshToken, "Mercado Livre");
   if (!resposta.ok) {
-    return { produtos: 0, anuncios: 0, variacoes: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
+    return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
   }
 
   const anuncios = (dados.anuncios ?? []).filter((a) => a.mlb);
   if (anuncios.length === 0) {
-    return { produtos: 0, anuncios: 0, variacoes: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
+    return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
   }
 
   // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
@@ -297,10 +302,31 @@ export async function importarAnunciosDoCliente(
   );
   await criarAnunciosGeradosBulk(anunciosPayload);
 
+  // 4) Imagens: as fotos reais do ML viram imagens do produto (prontas pro
+  //    Estúdio IA). Capa = Principal; as demais Secundárias; dedup por URL.
+  const imagens: Omit<ImagemProduto, "id">[] = [];
+  criados.forEach((prod, gi) => {
+    const urls = [...new Set(grupos[gi].flatMap((a) => a.fotos))].slice(0, MAX_FOTOS);
+    urls.forEach((url, i) => {
+      imagens.push({
+        clienteId,
+        produtoId: prod.id,
+        varianteId: null,
+        anuncioId: null,
+        tipoImagem: i === 0 ? "Principal" : "Secundária",
+        url,
+        status: "Aprovada", // é a foto real que já está no anúncio
+        observacoes: "Importada do Mercado Livre.",
+      });
+    });
+  });
+  if (imagens.length > 0) await criarImagensBulk(imagens);
+
   return {
     produtos: criados.length,
     anuncios: anunciosPayload.length,
     variacoes: variantes.length,
+    imagens: imagens.length,
     pulados: 0,
   };
 }

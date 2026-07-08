@@ -59,8 +59,8 @@ export default function ClienteProdutos() {
           tipo: "ok",
           texto:
             r.produtos === 0
-              ? `Nenhum anúncio novo (todos os ${r.pulados} já estavam importados).`
-              : `${r.produtos} produtos · ${r.anuncios} anúncios do ML${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`,
+              ? `Nenhum anúncio encontrado na conta.`
+              : `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}.`,
         });
         reload();
       }
