@@ -50,13 +50,14 @@ function normalizarTitulo(t: string): string {
 }
 
 /**
- * Reúne os itens do mesmo modelo em um grupo (= 1 produto).
- *
- * O ML dá um `user_product_id` por item publicado — muitas vezes ÚNICO por
- * anúncio (não é uma família compartilhada). Então só tratamos como família
- * quando o mesmo `user_product_id` aparece em 2+ anúncios; caso contrário
- * agrupamos por TÍTULO normalizado (o sinal confiável de "mesmo modelo",
- * já que o vendedor cria vários MLBs com o mesmo título).
+ * Reúne os itens do mesmo modelo em um grupo (= 1 produto), em ordem de
+ * confiança:
+ *  1) `family_name` — o campo que o ML compartilha entre os itens da mesma
+ *     família (ex.: mesmo chinelo em tamanhos/cores separados por MLB). É o
+ *     sinal mais forte aqui.
+ *  2) `user_product_id` COMPARTILHADO por 2+ itens (o ML costuma dar um id
+ *     único por item, que sozinho não serve pra agrupar).
+ *  3) título normalizado — fallback pra anúncios repetidos sem família.
  */
 function agrupar(anuncios: AnuncioML[]): Grupo[] {
   const contFamilia = new Map<string, number>();
@@ -64,7 +65,9 @@ function agrupar(anuncios: AnuncioML[]): Grupo[] {
     if (a.familyId) contFamilia.set(a.familyId, (contFamilia.get(a.familyId) ?? 0) + 1);
   }
   const chaveDe = (a: AnuncioML): string => {
-    if (a.familyId && (contFamilia.get(a.familyId) ?? 0) > 1) return `fam:${a.familyId}`;
+    const fam = a.familyName.trim().toLowerCase();
+    if (fam) return `fam:${fam}`;
+    if (a.familyId && (contFamilia.get(a.familyId) ?? 0) > 1) return `fid:${a.familyId}`;
     const t = normalizarTitulo(a.titulo);
     return t ? `tit:${t}` : `mlb:${a.mlb}`;
   };
