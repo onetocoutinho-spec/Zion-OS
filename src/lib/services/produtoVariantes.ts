@@ -60,6 +60,6 @@ export async function criarVariantesEmLote(
 /** Cria muitas variantes de uma vez (importação de base com variações). */
 export async function criarVariantesBulk(
   novas: Omit<ProdutoVariante, "id">[]
-): Promise<ProdutoVariante[]> {
-  return repo.criarVarios(novas);
+): Promise<void> {
+  await repo.criarVarios(novas, { chunk: 200, retornar: false });
 }

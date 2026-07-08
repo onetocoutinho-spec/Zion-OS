@@ -97,24 +97,38 @@ export function criarRepositorio<T extends { id: string }, Row>(
    * Cria muitos registros de uma vez. No Supabase insere em lotes (chunks)
    * preservando a ordem; no modo local grava tudo com uma escrita só.
    * Essencial para importações grandes (500, 1.000+ anúncios).
+   *
+   * `retornar: false` faz o insert NÃO trazer as linhas de volta (sem o
+   * `select` com joins) — muito mais leve, evita "Failed to fetch" em lotes
+   * grandes com JSON. Cada lote tem retry (falhas de rede transitórias).
    */
-  async function criarVarios(registros: Omit<T, "id">[], chunk = 500): Promise<T[]> {
+  async function criarVarios(
+    registros: Omit<T, "id">[],
+    opcoes: { chunk?: number; retornar?: boolean } = {}
+  ): Promise<T[]> {
     if (registros.length === 0) return [];
     if (!supabaseConfigurado) {
       return createManyItems<T>(colecao, registros, prefixoIdLocal);
     }
-    const CHUNK = chunk;
+    const CHUNK = opcoes.chunk ?? 500;
+    const retornar = opcoes.retornar ?? true;
     const criados: T[] = [];
     for (let i = 0; i < registros.length; i += CHUNK) {
-      const lote = registros
-        .slice(i, i + CHUNK)
-        .map((r) => paraBanco(r as Partial<T>));
-      const { data, error } = await getSupabase()
-        .from(tabela)
-        .insert(lote)
-        .select(selecao);
-      if (error) erroSupabase(`criar registros em ${tabela}`, error.message);
-      criados.push(...((data ?? []) as Row[]).map(paraApp));
+      const lote = registros.slice(i, i + CHUNK).map((r) => paraBanco(r as Partial<T>));
+      for (let tentativa = 1; ; tentativa++) {
+        try {
+          const insert = getSupabase().from(tabela).insert(lote);
+          const { data, error } = retornar ? await insert.select(selecao) : await insert;
+          if (error) throw new Error(error.message);
+          if (retornar) criados.push(...((data ?? []) as Row[]).map(paraApp));
+          break;
+        } catch (e) {
+          if (tentativa >= 3) {
+            erroSupabase(`criar registros em ${tabela}`, e instanceof Error ? e.message : String(e));
+          }
+          await new Promise((r) => setTimeout(r, 500 * tentativa));
+        }
+      }
     }
     notificarMudanca();
     return criados;
