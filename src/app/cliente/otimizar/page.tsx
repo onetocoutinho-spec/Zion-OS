@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Wand2,
@@ -40,6 +40,12 @@ import {
   rejeitarAnuncioGerado,
 } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
+import {
+  enfileirarProdutos,
+  statusFila,
+  limparConcluidos,
+  type StatusFila,
+} from "@/lib/services/filaOtimizacaoProduto";
 import { rodarAgentePortal } from "@/lib/services/agentePortal";
 import { quotaEsteira } from "@/lib/services/perfil";
 import type { FerramentaPortal } from "@/lib/agentes/catalogo";
@@ -320,7 +326,6 @@ export default function ClienteOtimizar() {
       {passo === 1 && (
         <OtimizarEmMassa
           clienteId={clienteId}
-          nome={nome}
           produtos={produtos ?? []}
           otimizados={otimizadosReais}
           restante={quota?.restante ?? 0}
@@ -409,13 +414,11 @@ export default function ClienteOtimizar() {
 
 function OtimizarEmMassa({
   clienteId,
-  nome,
   produtos,
   otimizados,
   restante,
 }: {
   clienteId: string;
-  nome: string;
   produtos: Produto[];
   /** IDs de produtos que JÁ têm otimização real (feita pela IA). */
   otimizados: Set<string>;
@@ -425,75 +428,68 @@ function OtimizarEmMassa({
     () => produtos.filter((p) => !otimizados.has(p.id)),
     [produtos, otimizados]
   );
-  const [rodando, setRodando] = useState(false);
-  const [prog, setProg] = useState<{ feito: number; total: number } | null>(null);
+  const [fila, setFila] = useState<StatusFila | null>(null);
+  const [enfileirando, setEnfileirando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function otimizar(produto: Produto) {
-    const r = await rodarEsteira("", {
-      contexto: montarContexto({ produto }),
-      produto: produto.nome,
-    });
-    const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
-    await criarAnuncioGerado({
-      clienteId,
-      cliente: nome,
-      produtoId: produto.id,
-      produto: produto.nome,
-      auditoriaId: null,
-      marketplace: produto.marketplace ?? "Mercado Livre",
-      origem: "esteira",
-      tipoExecucao: r.tipo,
-      notaDiagnostico: r.anuncio.notaDiagnostico,
-      vereditoA10: r.anuncio.vereditoA10,
-      qtdPendencias: r.anuncio.pendencias.length,
-      anuncio: r.anuncio,
-      status: passouA10 ? "aguardando_aprovacao" : "rascunho",
-      aprovadoPor: "",
-      aprovadoEm: null,
-      criadoEm: new Date().toISOString(),
-      observacoes: "",
-    });
-  }
+  // Acompanha a fila (o worker processa no servidor) — atualiza a cada 4s.
+  useEffect(() => {
+    let vivo = true;
+    async function tick() {
+      try {
+        const s = await statusFila(clienteId);
+        if (vivo) setFila(s);
+      } catch {
+        /* ignora falha de polling */
+      }
+    }
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => {
+      vivo = false;
+      clearInterval(id);
+    };
+  }, [clienteId]);
 
-  async function rodarLote(lista: Produto[]) {
+  async function enfileirar(lista: Produto[]) {
     const alvo = lista.slice(0, Math.max(0, restante));
-    if (rodando || alvo.length === 0) return;
+    if (enfileirando || alvo.length === 0) return;
     if (
       !window.confirm(
-        `Otimizar ${alvo.length} produto(s) com a IA — título, descrição, SEO, ficha técnica, medidas, FAQ e plano, tudo de uma vez. Pode levar alguns minutos. Continuar?`
+        `Enfileirar ${alvo.length} produto(s) para a IA otimizar no servidor (título, descrição, SEO, ficha, medidas, FAQ e plano)? Roda sozinho — você pode fechar a aba.`
       )
     )
       return;
-    setRodando(true);
+    setEnfileirando(true);
     setErro(null);
     setMsg(null);
-    setProg({ feito: 0, total: alvo.length });
-    let feito = 0;
     try {
-      for (const produto of alvo) {
-        await otimizar(produto);
-        feito++;
-        setProg({ feito, total: alvo.length });
-      }
-      setMsg(`${feito} produto(s) otimizados. Revise e aprove em “Meus Anúncios”.`);
+      const n = await enfileirarProdutos(clienteId, alvo.map((p) => p.id));
+      setMsg(`${n} produto(s) na fila. A IA processa no servidor — acompanhe abaixo (pode fechar a aba).`);
+      setFila(await statusFila(clienteId));
     } catch (e) {
-      setErro(
-        e instanceof Error
-          ? `${e.message} (${feito} concluído(s) antes da falha)`
-          : "Falha ao otimizar em massa."
-      );
+      setErro(e instanceof Error ? e.message : "Falha ao enfileirar.");
     } finally {
-      setRodando(false);
-      setProg(null);
+      setEnfileirando(false);
+    }
+  }
+
+  async function limpar() {
+    try {
+      await limparConcluidos(clienteId);
+      setFila(await statusFila(clienteId));
+    } catch {
+      /* ignora */
     }
   }
 
   const total = produtos.length;
   const capFaltam = Math.min(pendentes.length, Math.max(0, restante));
   const capTodos = Math.min(total, Math.max(0, restante));
-  const pct = prog && prog.total > 0 ? Math.round((prog.feito / prog.total) * 100) : 0;
+  const ativos = (fila?.pendente ?? 0) + (fila?.processando ?? 0);
+  const feito = fila ? fila.concluido + fila.erro : 0;
+  const pct = fila && fila.total > 0 ? Math.round((feito / fila.total) * 100) : 0;
 
   return (
     <div className="rounded-xl border border-violet-500/15 bg-violet-500/[0.03] p-4">
@@ -504,39 +500,22 @@ function OtimizarEmMassa({
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">
             A IA gera título, descrição, SEO, ficha, medidas, FAQ e plano de cada produto — tudo de
-            uma vez. {pendentes.length} de {total} ainda sem otimização.
+            uma vez, <span className="text-zinc-400">no servidor</span> (pode fechar a aba).{" "}
+            {pendentes.length} de {total} ainda sem otimização.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {pendentes.length > 0 && (
-            <Button onClick={() => rodarLote(pendentes)} disabled={rodando || capFaltam <= 0}>
-              {rodando ? (
-                <>
-                  <Sparkles size={14} className="animate-pulse" />
-                  {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
-                </>
-              ) : (
-                <>
-                  <Play size={14} /> Otimizar tudo ({capFaltam})
-                </>
-              )}
+            <Button onClick={() => enfileirar(pendentes)} disabled={enfileirando || capFaltam <= 0}>
+              <Play size={14} /> Otimizar tudo ({capFaltam})
             </Button>
           )}
           <Button
             variant={pendentes.length > 0 ? "ghost" : "primary"}
-            onClick={() => rodarLote(produtos)}
-            disabled={rodando || capTodos <= 0}
+            onClick={() => enfileirar(produtos)}
+            disabled={enfileirando || capTodos <= 0}
           >
-            {rodando && pendentes.length === 0 ? (
-              <>
-                <Sparkles size={14} className="animate-pulse" />
-                {prog ? ` Otimizando ${prog.feito}/${prog.total}…` : " Otimizando…"}
-              </>
-            ) : (
-              <>
-                <Sparkles size={14} /> Reotimizar todos ({capTodos})
-              </>
-            )}
+            <Sparkles size={14} /> Reotimizar todos ({capTodos})
           </Button>
         </div>
       </div>
@@ -547,12 +526,35 @@ function OtimizarEmMassa({
         </p>
       )}
 
-      {prog && (
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/5">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 transition-all"
-            style={{ width: `${pct}%` }}
-          />
+      {fila && fila.total > 0 && (
+        <div className="mt-3">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-violet-500 to-emerald-500 transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+            <span className="text-emerald-400">{fila.concluido} concluídos</span>
+            {fila.processando > 0 && <span className="text-violet-300">{fila.processando} processando</span>}
+            <span>{fila.pendente} na fila</span>
+            {fila.erro > 0 && <span className="text-amber-400">{fila.erro} com erro</span>}
+            {ativos > 0 ? (
+              <span className="ml-auto flex items-center gap-1 text-violet-300">
+                <Sparkles size={12} className="animate-pulse" /> processando no servidor…
+              </span>
+            ) : fila.concluido > 0 ? (
+              <button onClick={limpar} className="ml-auto text-zinc-500 hover:text-zinc-300">
+                Limpar concluídos
+              </button>
+            ) : null}
+          </div>
+          {ativos === 0 && feito > 0 && (
+            <p className="mt-2 text-xs text-zinc-500">
+              Terminou. Atualize a página para ver os anúncios em{" "}
+              <span className="text-zinc-300">Meus Anúncios</span>.
+            </p>
+          )}
         </div>
       )}
 
