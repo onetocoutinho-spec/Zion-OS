@@ -15,6 +15,7 @@ import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/lib/data/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { importarCustos } from "@/lib/services/importacaoCustos";
+import { lerPlanilha } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
@@ -92,8 +93,8 @@ export default function ClienteProdutos() {
     setImportandoCusto(true);
     setMsgML(null);
     try {
-      const texto = await file.text();
-      const r = await importarCustos(clienteId, texto);
+      const planilha = await lerPlanilha(file);
+      const r = await importarCustos(clienteId, planilha);
       if (r.aviso) {
         setMsgML({ tipo: "erro", texto: r.aviso });
       } else {
@@ -230,7 +231,7 @@ export default function ClienteProdutos() {
             <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos por SKU (CSV: sku, custo)">
               {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
               {importandoCusto ? "Importando…" : "Custos"}
-              <input ref={custoInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={aoImportarCustos} />
+              <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />
             </Button>
             <Link href="/cliente/otimizar">
               <Button>

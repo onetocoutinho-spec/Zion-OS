@@ -26,7 +26,8 @@ import {
   criarTabelasBulk,
 } from "@/lib/services/tabelasMedidasCliente";
 import { MODELOS_PADRAO } from "@/lib/data/tabelasMedidas";
-import { parseCsv, normalizarHeader } from "@/lib/csv";
+import { normalizarHeader } from "@/lib/csv";
+import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import type { LinhaMedida, TabelaMedida } from "@/lib/types";
 
 interface Rascunho {
@@ -62,9 +63,9 @@ function norm(s: string): string {
     .trim();
 }
 
-/** Lê um CSV (marca, numeração, medida) e agrupa em tabelas por marca. */
-function csvParaTabelas(texto: string): { marca: string; linhas: LinhaMedida[] }[] {
-  const { headers, linhas } = parseCsv(texto);
+/** Agrupa uma planilha (marca, numeração, medida) em tabelas por marca. */
+function planilhaParaTabelas(planilha: PlanilhaLida): { marca: string; linhas: LinhaMedida[] }[] {
+  const { headers, linhas } = planilha;
   const acha = (nomes: string[]) => headers.find((h) => nomes.includes(normalizarHeader(h)));
   const hMarca = acha(["marca"]);
   const hRot = acha(["numeracao", "tamanho", "rotulo", "numero", "num"]);
@@ -186,10 +187,10 @@ export default function ClienteMedidas() {
     setBusy(true);
     setMsg(null);
     try {
-      const texto = await file.text();
-      const grupos = csvParaTabelas(texto);
+      const planilha = await lerPlanilha(file);
+      const grupos = planilhaParaTabelas(planilha);
       if (grupos.length === 0) {
-        setMsg({ tipo: "erro", texto: "CSV sem colunas reconhecidas (marca, numeração, medida)." });
+        setMsg({ tipo: "erro", texto: "Planilha sem colunas reconhecidas (marca, numeração, medida)." });
         return;
       }
       const novos = grupos
@@ -222,8 +223,14 @@ export default function ClienteMedidas() {
               <Sparkles size={15} /> Importar modelos
             </Button>
             <Button variant="ghost" onClick={() => inputRef.current?.click()} disabled={busy}>
-              <Upload size={15} /> Importar CSV
-              <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importarCsv} />
+              <Upload size={15} /> Importar planilha
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={importarCsv}
+              />
             </Button>
             <Button onClick={novo}>
               <Plus size={15} /> Nova tabela
@@ -342,7 +349,7 @@ export default function ClienteMedidas() {
 
       <p className="mt-2 flex items-center gap-2 text-xs text-zinc-600">
         <X size={12} className="opacity-0" /> Prioridade da IA: medida do produto (override) → tabela da
-        marca → padrão. CSV: colunas <code>marca, numeração, medida</code>.
+        marca → padrão. Planilha (CSV/Excel): colunas <code>marca, numeração, medida</code>.
       </p>
     </>
   );

@@ -18,6 +18,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { lerPlanilhaComoCsv } from "@/lib/planilha";
 import { useClientPortal } from "./context";
 import {
   analisarProdutosCsv,
@@ -50,10 +51,10 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
     if (!file) return;
     setMsg(null);
     setAnalise(null);
-    const conteudo = await file.text();
+    const conteudo = await lerPlanilhaComoCsv(file);
     const { headers: hs, exemplos: ex } = lerCabecalho(conteudo);
     if (hs.length === 0) {
-      setMsg({ tipo: "erro", texto: "Não consegui ler as colunas do arquivo. Confira se é um CSV." });
+      setMsg({ tipo: "erro", texto: "Não consegui ler as colunas do arquivo. Confira se é um CSV ou Excel." });
       return;
     }
     setTexto(conteudo);
@@ -135,7 +136,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <input
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={aoEscolher}
                 className="text-sm text-zinc-300 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-violet-500"
               />

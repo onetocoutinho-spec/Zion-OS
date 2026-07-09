@@ -4,7 +4,8 @@
 // margem e preço mínimo pelo modelo Zion. Para produtos com variação, o custo
 // do pai vira o MENOR custo das variações casadas (referência p/ margem/nota).
 
-import { parseCsv, normalizarHeader } from "../csv";
+import { normalizarHeader } from "../csv";
+import type { PlanilhaLida } from "../planilha";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
@@ -28,8 +29,8 @@ function parseNumero(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export async function importarCustos(clienteId: string, csvTexto: string): Promise<ResultadoCustos> {
-  const { headers, linhas } = parseCsv(csvTexto);
+export async function importarCustos(clienteId: string, planilha: PlanilhaLida): Promise<ResultadoCustos> {
+  const { headers, linhas } = planilha;
   const acha = (nomes: string[]) => headers.find((h) => nomes.includes(normalizarHeader(h)));
   const hSku = acha(["sku", "codigo", "cod", "seller_sku", "sku_variacao", "codigo_sku"]);
   const hCusto = acha(["custo", "custo_unitario", "custounit", "preco_custo", "cost", "valor_custo"]);
