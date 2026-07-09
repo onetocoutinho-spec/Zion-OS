@@ -124,6 +124,72 @@ function renderTabela(tab: Record<string, number>): string {
   return ["Numeração\tComprimento do pé", ...linhas].join("\n");
 }
 
+/** Linha de tabela do cliente (rótulo → valor livre). */
+export interface LinhaMedidaLite {
+  rotulo: string;
+  valor: string;
+}
+
+/** Tabela vinda do cliente (banco). */
+export interface TabelaClienteLite {
+  marca?: string;
+  comoMedir?: string;
+  linhas: LinhaMedidaLite[];
+}
+
+/** Renderiza as linhas de uma tabela do cliente (genérica: calçado, roupa…). */
+function renderLinhas(linhas: LinhaMedidaLite[]): string {
+  const corpo = linhas
+    .filter((l) => l.rotulo || l.valor)
+    .map((l) => `${l.rotulo}\t${l.valor}`);
+  return ["Tamanho\tMedida", ...corpo].join("\n");
+}
+
+function numeroParaLinha(cm: number): string {
+  return `${cm.toFixed(1).replace(".", ",")} cm`;
+}
+
+/** Converte uma tabela hardcoded (número → cm) em linhas rótulo/valor. */
+function linhasDe(tab: Record<string, number>): LinhaMedidaLite[] {
+  return Object.entries(tab)
+    .sort((a, b) => primeiroNumero(a[0]) - primeiroNumero(b[0]))
+    .map(([rotulo, cm]) => ({ rotulo, valor: numeroParaLinha(cm) }));
+}
+
+/** Nome de exibição por chave de marca. */
+const NOMES_MARCA: Record<string, string> = {
+  havaianas: "Havaianas",
+  modare: "Modare",
+  "beira rio": "Beira Rio",
+  ipanema: "Ipanema",
+  grendha: "Grendha",
+  grendene: "Grendene",
+  zaxy: "Zaxy",
+  molekinho: "Molekinho",
+  molekinha: "Molekinha",
+  azaleia: "Azaleia",
+  yvate: "Yvate",
+  actvitta: "Actvitta",
+  moleca: "Moleca",
+  vizzano: "Vizzano",
+};
+
+/**
+ * Modelos prontos (uma tabela por marca) que o cliente pode importar para a
+ * própria conta e depois editar. É o "seed" editável do que hoje é hardcoded.
+ */
+export const MODELOS_PADRAO: {
+  nome: string;
+  marca: string;
+  comoMedir: string;
+  linhas: LinhaMedidaLite[];
+}[] = Object.entries(TABELAS_MARCA).map(([chave, tab]) => ({
+  nome: NOMES_MARCA[chave] ?? chave,
+  marca: NOMES_MARCA[chave] ?? chave,
+  comoMedir: COMO_MEDIR,
+  linhas: linhasDe(tab),
+}));
+
 /** Grade adulto de referência (padrão BR) para marcas ainda sem tabela. */
 const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
   Object.entries(PADRAO_BR).filter(([k]) => {
@@ -159,6 +225,8 @@ export function montarTabelaMedidas(opts: {
   marca?: string;
   tamanhos: string[];
   override?: string;
+  /** Tabelas cadastradas pelo cliente (têm prioridade sobre as hardcoded). */
+  tabelasCliente?: TabelaClienteLite[];
 }): ResultadoTabela {
   const override = (opts.override ?? "").trim();
   if (override) {
@@ -166,6 +234,24 @@ export function montarTabelaMedidas(opts: {
   }
 
   const marcaKey = normalizarMarca(opts.marca ?? "");
+
+  // 1) Tabela do próprio cliente, casada pela marca.
+  const doCliente =
+    marcaKey !== ""
+      ? (opts.tabelasCliente ?? []).find(
+          (t) => t.linhas.length > 0 && t.marca && normalizarMarca(t.marca) === marcaKey
+        )
+      : undefined;
+  if (doCliente) {
+    return {
+      tabela: renderLinhas(doCliente.linhas),
+      comoMedir: (doCliente.comoMedir ?? "").trim() || COMO_MEDIR,
+      confiavel: true,
+      oficial: true,
+      fonte: "marca",
+    };
+  }
+
   const marcaTab = TABELAS_MARCA[marcaKey] ?? null;
   if (marcaTab) {
     return {

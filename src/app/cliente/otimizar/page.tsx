@@ -34,6 +34,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { montarContexto } from "@/lib/contexto";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { listarTabelasDoCliente } from "@/lib/services/tabelasMedidasCliente";
 import {
   criarAnuncioGerado,
   listarAnunciosGeradosDoCliente,
@@ -117,6 +118,10 @@ export default function ClienteOtimizar() {
     [clienteId]
   );
   const { data: quota } = useLiveQuery(quotaEsteira);
+  const { data: tabelasMedidas } = useLiveQuery(
+    () => listarTabelasDoCliente(clienteId),
+    [clienteId]
+  );
 
   const [ferramentaKey, setFerramentaKey] = useState<Campo | null>(null);
   const [produtoId, setProdutoId] = useState<string | null>(null);
@@ -181,7 +186,7 @@ export default function ClienteOtimizar() {
     try {
       const variantes = await listarVariantesDoProduto(produto.id);
       const r = await rodarAgentePortal(ferramenta.agente, {
-        contexto: montarContexto({ produto, variantes }),
+        contexto: montarContexto({ produto, variantes, tabelasMedidas: tabelasMedidas ?? [] }),
         produto: produto.nome,
       });
       setResultadoAgente(r);
@@ -199,7 +204,7 @@ export default function ClienteOtimizar() {
     try {
       const variantes = await listarVariantesDoProduto(produto.id);
       const r = await rodarEsteira("", {
-        contexto: montarContexto({ produto, variantes }),
+        contexto: montarContexto({ produto, variantes, tabelasMedidas: tabelasMedidas ?? [] }),
         produto: produto.nome,
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

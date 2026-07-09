@@ -4,7 +4,7 @@
 
 import { formatBRL, formatDate } from "./format";
 import { montarTabelaMedidas } from "./data/tabelasMedidas";
-import type { Anuncio, Cliente, Produto, ProdutoVariante } from "./types";
+import type { Anuncio, Cliente, Produto, ProdutoVariante, TabelaMedida } from "./types";
 
 export function contextoDoCliente(c: Cliente): string {
   return [
@@ -83,15 +83,22 @@ export interface EntidadesContexto {
   produto?: Produto | null;
   anuncio?: Anuncio | null;
   variantes?: ProdutoVariante[] | null;
+  /** Tabelas de medidas do cliente (por marca) — têm prioridade. */
+  tabelasMedidas?: TabelaMedida[] | null;
 }
 
 /** Tabela de medidas (numeração → cm) resolvida por override/marca/padrão. */
-export function contextoDaTabelaMedidas(produto: Produto, variantes: ProdutoVariante[]): string {
+export function contextoDaTabelaMedidas(
+  produto: Produto,
+  variantes: ProdutoVariante[],
+  tabelasCliente: TabelaMedida[] = []
+): string {
   const tamanhos = variantes.map((v) => v.tamanho).filter(Boolean);
   const r = montarTabelaMedidas({
     marca: produto.marca,
     tamanhos,
     override: produto.tabelaMedidasOverride,
+    tabelasCliente,
   });
   if (r.fonte === "vazio" || !r.tabela) return "";
   const nota =
@@ -112,13 +119,19 @@ export function contextoDaTabelaMedidas(produto: Produto, variantes: ProdutoVari
 }
 
 /** Junta as seções presentes num único bloco de contexto. */
-export function montarContexto({ cliente, produto, anuncio, variantes }: EntidadesContexto): string {
+export function montarContexto({
+  cliente,
+  produto,
+  anuncio,
+  variantes,
+  tabelasMedidas,
+}: EntidadesContexto): string {
   const vs = variantes ?? [];
   return [
     cliente ? contextoDoCliente(cliente) : null,
     produto ? contextoDoProduto(produto) : null,
     vs.length > 0 ? contextoDasVariacoes(vs) : null,
-    produto ? contextoDaTabelaMedidas(produto, vs) || null : null,
+    produto ? contextoDaTabelaMedidas(produto, vs, tabelasMedidas ?? []) || null : null,
     anuncio ? contextoDoAnuncio(anuncio) : null,
   ]
     .filter(Boolean)

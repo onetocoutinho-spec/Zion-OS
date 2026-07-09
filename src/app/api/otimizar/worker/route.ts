@@ -10,9 +10,18 @@ import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira, type AnuncioGerado } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
-import { produtoParaApp, varianteParaApp, anuncioGeradoParaBanco } from "@/lib/supabase/mappers";
-import type { ProdutoRow, ProdutoVarianteRow } from "@/lib/supabase/database.types";
-import type { Produto, ProdutoVariante } from "@/lib/types";
+import {
+  produtoParaApp,
+  varianteParaApp,
+  tabelaMedidaParaApp,
+  anuncioGeradoParaBanco,
+} from "@/lib/supabase/mappers";
+import type {
+  ProdutoRow,
+  ProdutoVarianteRow,
+  TabelaMedidaRow,
+} from "@/lib/supabase/database.types";
+import type { Produto, ProdutoVariante, TabelaMedida } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 300; // Vercel Pro
@@ -63,8 +72,12 @@ function montarMensagem(contexto: string): string {
  * de desistir. Erros de rede/quota (429) NÃO são engolidos aqui: sobem para o
  * chamador tratar (backoff/requeue).
  */
-async function gerarAnuncio(produto: Produto, variantes: ProdutoVariante[]): Promise<AnuncioGerado> {
-  const mensagem = montarMensagem(montarContexto({ produto, variantes }));
+async function gerarAnuncio(
+  produto: Produto,
+  variantes: ProdutoVariante[],
+  tabelasMedidas: TabelaMedida[]
+): Promise<AnuncioGerado> {
+  const mensagem = montarMensagem(montarContexto({ produto, variantes, tabelasMedidas }));
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     const { json } = await chamarIAEstruturada({
@@ -82,7 +95,25 @@ async function gerarAnuncio(produto: Produto, variantes: ProdutoVariante[]): Pro
   throw new Error(`IA devolveu JSON inválido após 3 tentativas: ${ultimoParse}`);
 }
 
-async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Resultado> {
+/** Tabelas de medidas do cliente, com cache por cliente dentro da execução. */
+async function tabelasDoCliente(
+  admin: SupabaseClient,
+  clienteId: string,
+  cache: Map<string, TabelaMedida[]>
+): Promise<TabelaMedida[]> {
+  const emCache = cache.get(clienteId);
+  if (emCache) return emCache;
+  const { data } = await admin.from("tabelas_medidas").select("*").eq("cliente_id", clienteId);
+  const tabelas = ((data ?? []) as TabelaMedidaRow[]).map(tabelaMedidaParaApp);
+  cache.set(clienteId, tabelas);
+  return tabelas;
+}
+
+async function processarUm(
+  admin: SupabaseClient,
+  fila: FilaRow,
+  cacheTabelas: Map<string, TabelaMedida[]>
+): Promise<Resultado> {
   try {
     const { data: prodRow } = await admin
       .from("produtos")
@@ -97,7 +128,8 @@ async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Result
       .select("*")
       .eq("produto_id", fila.produto_id);
     const variantes = ((varRows ?? []) as ProdutoVarianteRow[]).map(varianteParaApp);
-    const anuncio = await gerarAnuncio(produto, variantes);
+    const tabelas = await tabelasDoCliente(admin, fila.cliente_id, cacheTabelas);
+    const anuncio = await gerarAnuncio(produto, variantes, tabelas);
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({
@@ -174,6 +206,7 @@ async function rodar(): Promise<Response> {
   let ok = 0;
   let falhas = 0;
   let rate = false;
+  const cacheTabelas = new Map<string, TabelaMedida[]>();
   while (Date.now() - inicio < ORCAMENTO_MS) {
     const { data: pend } = await admin
       .from("fila_otimizacao_produto")
@@ -191,7 +224,7 @@ async function rodar(): Promise<Response> {
       .update({ status: "processando" })
       .in("id", lote.map((f) => f.id));
 
-    const res = await Promise.all(lote.map((f) => processarUm(admin, f)));
+    const res = await Promise.all(lote.map((f) => processarUm(admin, f, cacheTabelas)));
     for (const r of res) {
       if (r === "ok") ok++;
       else if (r === "erro") falhas++;

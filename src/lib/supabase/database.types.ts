@@ -71,6 +71,15 @@ export interface ProdutoRow {
   clientes?: { empresa: string } | null;
 }
 
+export interface TabelaMedidaRow {
+  id: string;
+  cliente_id: string;
+  nome: string | null;
+  marca: string | null;
+  como_medir: string | null;
+  linhas: { rotulo: string; valor: string }[] | null;
+}
+
 export interface AnuncioRow {
   id: string;
   cliente_id: string;

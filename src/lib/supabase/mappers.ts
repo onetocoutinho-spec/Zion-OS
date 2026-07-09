@@ -25,6 +25,7 @@ import type {
   RegistroFinanceiro,
   Relatorio,
   Reuniao,
+  TabelaMedida,
   Tarefa,
 } from "../types";
 import type {
@@ -49,6 +50,7 @@ import type {
   ProdutoVarianteRow,
   RelatorioRow,
   ReuniaoRow,
+  TabelaMedidaRow,
   TarefaRow,
 } from "./database.types";
 import { resumoVariante } from "../variantes";
@@ -676,6 +678,29 @@ export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unkno
   if (d.url !== undefined) r.url = d.url;
   if (d.status !== undefined) r.status = d.status;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  return r;
+}
+
+// ---- Tabelas de medidas gerenciáveis pelo cliente ----
+
+export function tabelaMedidaParaApp(row: TabelaMedidaRow): TabelaMedida {
+  return {
+    id: row.id,
+    clienteId: row.cliente_id,
+    nome: row.nome ?? "",
+    marca: row.marca ?? "",
+    comoMedir: row.como_medir ?? "",
+    linhas: Array.isArray(row.linhas) ? row.linhas : [],
+  };
+}
+
+export function tabelaMedidaParaBanco(d: Partial<TabelaMedida>): Record<string, unknown> {
+  const r: Record<string, unknown> = {};
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
+  if (d.nome !== undefined) r.nome = d.nome;
+  if (d.marca !== undefined) r.marca = d.marca;
+  if (d.comoMedir !== undefined) r.como_medir = d.comoMedir;
+  if (d.linhas !== undefined) r.linhas = d.linhas;
   return r;
 }
 

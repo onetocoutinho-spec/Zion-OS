@@ -134,6 +134,23 @@ export interface Produto {
   tabelaMedidasOverride?: string;
 }
 
+/** Uma linha de tabela de medidas: rótulo (numeração/tamanho) → valor (medida). */
+export interface LinhaMedida {
+  rotulo: string;
+  valor: string;
+}
+
+/** Tabela de medidas gerenciada pelo cliente (por marca ou avulsa). */
+export interface TabelaMedida {
+  id: string;
+  clienteId: string;
+  nome: string;
+  /** Quando preenchida, aplica a todos os produtos desta marca. */
+  marca: string;
+  comoMedir: string;
+  linhas: LinhaMedida[];
+}
+
 export type VarianteStatus = "Ativa" | "Pausada" | "Sem estoque" | "Arquivada";
 
 /** Derivação vendável do produto (cor + tamanho + SKU + estoque + preço…). */
