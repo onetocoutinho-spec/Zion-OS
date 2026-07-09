@@ -52,6 +52,23 @@ const AZALEIA_YVATE: Record<string, number> = {
   "34": 22.5, "35": 23.0, "36": 23.5, "37": 24.0, "38": 25.0, "39": 26.0, "40": 26.7,
 };
 
+const ACTVITTA: Record<string, number> = {
+  // Individual · guia do cliente (comp. palmilha)
+  "37": 24.6, "38": 25.3, "39": 25.9, "40": 26.6, "41": 27.3,
+  "42": 27.9, "43": 28.6, "44": 29.3, "45": 29.9,
+};
+
+const MOLECA: Record<string, number> = {
+  // Individual · guia do cliente (comp. palmilha)
+  "34": 23.0, "35": 23.5, "36": 24.0, "37": 24.5, "38": 25.0, "39": 25.5, "40": 26.0,
+};
+
+const VIZZANO: Record<string, number> = {
+  // Individual · guia do cliente
+  "33": 22.0, "34": 22.5, "35": 23.3, "36": 24.0, "37": 24.7,
+  "38": 25.3, "39": 26.0, "40": 26.6, "41": 27.3,
+};
+
 /** Marca (normalizada) → tabela. Vizzano/Moleca/Actvitta pendentes (padrão BR). */
 export const TABELAS_MARCA: Record<string, Record<string, number>> = {
   havaianas: HAVAIANAS,
@@ -65,10 +82,20 @@ export const TABELAS_MARCA: Record<string, Record<string, number>> = {
   molekinha: MOLEKINHO,
   azaleia: AZALEIA_YVATE,
   yvate: AZALEIA_YVATE,
+  actvitta: ACTVITTA,
+  moleca: MOLECA,
+  vizzano: VIZZANO,
 };
 
 /** Marcas com números oficiais do cliente (as demais são referência). */
-const MARCAS_OFICIAIS = new Set(["havaianas", "modare", "beira rio"]);
+const MARCAS_OFICIAIS = new Set([
+  "havaianas",
+  "modare",
+  "beira rio",
+  "actvitta",
+  "moleca",
+  "vizzano",
+]);
 
 export const COMO_MEDIR =
   "Como medir: descalço, pise numa folha A4 com o calcanhar na parede e marque a ponta do dedo maior; meça em cm. Meça os dois pés e use o MAIOR. Na dúvida entre dois números, escolha o MAIOR — deixe 0,5 a 1 cm de folga.";
