@@ -83,26 +83,33 @@ function normalizarMarca(m: string): string {
     .trim();
 }
 
-/**
- * Expande a tabela para casar tanto numeração pareada ("37/38") quanto
- * individual ("38"): cada par também vira as duas numerações soltas.
- */
-function expandir(tab: Record<string, number>): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(tab)) {
-    const key = k.replace(/\s+/g, "");
-    out[key] = v;
-    if (key.includes("/")) for (const parte of key.split("/")) out[parte] = v;
-  }
-  return out;
+/** Primeiro número inteiro do rótulo de numeração (para ordenar). */
+function primeiroNumero(s: string): number {
+  const m = s.match(/\d+/);
+  return m ? parseInt(m[0], 10) : 9999;
 }
 
-function ordenarTamanhos(ts: string[]): string[] {
-  return [...new Set(ts.map((t) => t.trim()).filter(Boolean))].sort((a, b) => {
-    const na = parseFloat(a.replace(",", "."));
-    const nb = parseFloat(b.replace(",", "."));
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    return a.localeCompare(b);
+/** Renderiza a grade COMPLETA de uma tabela (numeração → cm), ordenada. */
+function renderTabela(tab: Record<string, number>): string {
+  const linhas = Object.entries(tab)
+    .sort((a, b) => primeiroNumero(a[0]) - primeiroNumero(b[0]))
+    .map(([k, v]) => `${k}\t${v.toFixed(1).replace(".", ",")} cm`);
+  return ["Numeração\tComprimento do pé", ...linhas].join("\n");
+}
+
+/** Grade adulto de referência (padrão BR) para marcas ainda sem tabela. */
+const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
+  Object.entries(PADRAO_BR).filter(([k]) => {
+    const n = Number(k);
+    return n >= 33 && n <= 45;
+  })
+);
+
+/** Parece grade de calçado? (evita montar tabela para não-calçado.) */
+function ehCalcado(tamanhos: string[]): boolean {
+  return tamanhos.some((t) => {
+    const n = primeiroNumero(t);
+    return n >= 15 && n <= 48;
   });
 }
 
@@ -117,8 +124,9 @@ export interface ResultadoTabela {
 }
 
 /**
- * Monta a tabela de medidas para os tamanhos informados, na ordem de
- * prioridade override → marca → padrão BR.
+ * Monta a tabela de medidas, na ordem de prioridade override → marca →
+ * padrão BR. Mostra a grade COMPLETA da marca (não depende da numeração —
+ * às vezes suja — das variações; ela costuma vir com "BR", faixas etc.).
  */
 export function montarTabelaMedidas(opts: {
   marca?: string;
@@ -130,29 +138,27 @@ export function montarTabelaMedidas(opts: {
     return { tabela: override, comoMedir: COMO_MEDIR, confiavel: true, oficial: true, fonte: "override" };
   }
 
-  const tamanhos = ordenarTamanhos(opts.tamanhos);
-  if (tamanhos.length === 0) {
-    return { tabela: "", comoMedir: COMO_MEDIR, confiavel: false, oficial: false, fonte: "vazio" };
-  }
-
   const marcaKey = normalizarMarca(opts.marca ?? "");
   const marcaTab = TABELAS_MARCA[marcaKey] ?? null;
-  const fonte: "marca" | "padrao" = marcaTab ? "marca" : "padrao";
-  const lookup = expandir(marcaTab ?? PADRAO_BR);
+  if (marcaTab) {
+    return {
+      tabela: renderTabela(marcaTab),
+      comoMedir: COMO_MEDIR,
+      confiavel: true,
+      oficial: MARCAS_OFICIAIS.has(marcaKey),
+      fonte: "marca",
+    };
+  }
 
-  const linhas = tamanhos.map((t) => {
-    const t2 = t.replace(/\s+/g, "");
-    const cm = (lookup[t2] ?? PADRAO_BR[t2]) ?? null;
-    const val = cm != null ? `${cm.toFixed(1).replace(".", ",")} cm` : "—";
-    return `${t}\t${val}`;
-  });
-
-  const tabela = ["Numeração\tComprimento do pé", ...linhas].join("\n");
+  // Marca sem tabela ainda (ex.: Vizzano/Moleca/Actvitta): grade padrão BR.
+  if (!ehCalcado(opts.tamanhos)) {
+    return { tabela: "", comoMedir: COMO_MEDIR, confiavel: false, oficial: false, fonte: "vazio" };
+  }
   return {
-    tabela,
+    tabela: renderTabela(PADRAO_REFERENCIA),
     comoMedir: COMO_MEDIR,
-    confiavel: fonte === "marca",
-    oficial: fonte === "marca" && MARCAS_OFICIAIS.has(marcaKey),
-    fonte,
+    confiavel: false,
+    oficial: false,
+    fonte: "padrao",
   };
 }
