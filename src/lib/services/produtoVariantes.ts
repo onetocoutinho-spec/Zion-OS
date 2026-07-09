@@ -63,3 +63,8 @@ export async function criarVariantesBulk(
 ): Promise<void> {
   await repo.criarVarios(novas, { chunk: 200, retornar: false });
 }
+
+/** Atualiza várias variantes de uma vez (ex.: custos em massa). */
+export async function atualizarVariantesBulk(variantes: ProdutoVariante[]): Promise<void> {
+  return repo.atualizarVarios(variantes);
+}

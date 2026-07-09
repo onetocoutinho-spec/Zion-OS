@@ -44,6 +44,11 @@ export async function excluirProduto(id: string): Promise<void> {
   return repo.excluir(id);
 }
 
+/** Atualiza vários produtos de uma vez (ex.: custos em massa). */
+export async function atualizarProdutosBulk(produtos: Produto[]): Promise<void> {
+  return repo.atualizarVarios(produtos);
+}
+
 /**
  * Exclui os produtos importados do Mercado Livre do cliente (variações caem
  * em cascata). Usado pela reimportação "substituir".

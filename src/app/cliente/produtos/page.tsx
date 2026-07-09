@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -14,6 +14,7 @@ import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/lib/data/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
+import { importarCustos } from "@/lib/services/importacaoCustos";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
@@ -80,6 +81,34 @@ export default function ClienteProdutos() {
   const [kitTipo, setKitTipo] = useState<"nenhum" | "kit" | "combo">("kit");
   const [kitItens, setKitItens] = useState<KitComponente[]>([]);
   const [salvandoKit, setSalvandoKit] = useState(false);
+
+  // --- Importar custos (CSV: sku, custo) ---
+  const custoInputRef = useRef<HTMLInputElement>(null);
+  const [importandoCusto, setImportandoCusto] = useState(false);
+  async function aoImportarCustos(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || importandoCusto) return;
+    setImportandoCusto(true);
+    setMsgML(null);
+    try {
+      const texto = await file.text();
+      const r = await importarCustos(clienteId, texto);
+      if (r.aviso) {
+        setMsgML({ tipo: "erro", texto: r.aviso });
+      } else {
+        setMsgML({
+          tipo: "ok",
+          texto: `Custos: ${r.produtos} produto(s) · ${r.variantes} variação(ões) atualizados${r.naoEncontrados > 0 ? ` · ${r.naoEncontrados} SKU(s) não encontrado(s)` : ""}.`,
+        });
+        reload();
+      }
+    } catch (err) {
+      setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar custos." });
+    } finally {
+      setImportandoCusto(false);
+    }
+  }
 
   function abrirKit(p: Produto) {
     setKitProd(p);
@@ -197,6 +226,11 @@ export default function ClienteProdutos() {
             <Button variant="ghost" onClick={() => setMostrarImport((v) => !v)}>
               {mostrarImport ? <X size={15} /> : <Upload size={15} />}{" "}
               {mostrarImport ? "Fechar" : "Planilha"}
+            </Button>
+            <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos por SKU (CSV: sku, custo)">
+              {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
+              {importandoCusto ? "Importando…" : "Custos"}
+              <input ref={custoInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={aoImportarCustos} />
             </Button>
             <Link href="/cliente/otimizar">
               <Button>

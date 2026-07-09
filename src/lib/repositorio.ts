@@ -134,6 +134,38 @@ export function criarRepositorio<T extends { id: string }, Row>(
     return criados;
   }
 
+  /**
+   * Atualiza muitos registros de uma vez (upsert por id). Cada item deve ser
+   * completo (linha inteira) — usado por importações que alteram um campo em
+   * massa (ex.: custo por SKU). Com retry por lote.
+   */
+  async function atualizarVarios(registros: T[], chunk = 200): Promise<void> {
+    if (registros.length === 0) return;
+    if (!supabaseConfigurado) {
+      for (const r of registros) updateItem<T>(colecao, r.id, r);
+      return;
+    }
+    for (let i = 0; i < registros.length; i += chunk) {
+      const lote = registros.slice(i, i + chunk).map((r) => ({
+        ...paraBanco(r as Partial<T>),
+        id: r.id,
+      }));
+      for (let tentativa = 1; ; tentativa++) {
+        try {
+          const { error } = await getSupabase().from(tabela).upsert(lote, { onConflict: "id" });
+          if (error) throw new Error(error.message);
+          break;
+        } catch (e) {
+          if (tentativa >= 5) {
+            erroSupabase(`atualizar registros em ${tabela}`, e instanceof Error ? e.message : String(e));
+          }
+          await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
+        }
+      }
+    }
+    notificarMudanca();
+  }
+
   async function atualizar(id: string, dados: Partial<T>): Promise<T | null> {
     if (!supabaseConfigurado) {
       return updateItem<T>(colecao, id, dados);
@@ -183,5 +215,5 @@ export function criarRepositorio<T extends { id: string }, Row>(
     notificarMudanca();
   }
 
-  return { listar, buscar, criar, criarVarios, atualizar, excluir, excluirPorFiltro };
+  return { listar, buscar, criar, criarVarios, atualizar, atualizarVarios, excluir, excluirPorFiltro };
 }
