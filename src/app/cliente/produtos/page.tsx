@@ -228,7 +228,7 @@ export default function ClienteProdutos() {
               {mostrarImport ? <X size={15} /> : <Upload size={15} />}{" "}
               {mostrarImport ? "Fechar" : "Planilha"}
             </Button>
-            <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos por SKU (CSV: sku, custo)">
+            <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos (CSV/Excel) — colunas: custo + sku e/ou nome do produto">
               {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
               {importandoCusto ? "Importando…" : "Custos"}
               <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />

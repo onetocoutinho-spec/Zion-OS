@@ -1,8 +1,11 @@
-// Importação de custos em massa (planilha CSV: sku → custo).
+// Importação de custos em massa (planilha CSV/Excel).
 //
-// Casa por SKU (variação e/ou SKU pai/codErp), atualiza o custo e recalcula
-// margem e preço mínimo pelo modelo Zion. Para produtos com variação, o custo
-// do pai vira o MENOR custo das variações casadas (referência p/ margem/nota).
+// Casa cada linha por:
+//   1) SKU  → variação e/ou SKU pai/codErp;
+//   2) NOME do produto → exato (normalizado) e, se não achar, o mais parecido
+//      por sobreposição de palavras.
+// Atualiza o custo e recalcula margem e preço mínimo (modelo Zion). Quando casa
+// por nome, propaga o custo para todas as variações do produto.
 
 import { normalizarHeader } from "../csv";
 import type { PlanilhaLida } from "../planilha";
@@ -20,72 +23,150 @@ export interface ResultadoCustos {
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
+const normNome = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+const palavras = (s: string) => new Set(normNome(s).split(" ").filter((w) => w.length > 2));
 
 /** Lê "12,50" / "12.50" / "R$ 1.234,56" → número. */
 function parseNumero(s: string): number {
   let t = s.replace(/[^\d.,-]/g, "").trim();
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", "."); // vírgula = decimal BR
+  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
   const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
+}
+
+interface EntradaNome {
+  palavras: Set<string>;
+  custo: number;
 }
 
 export async function importarCustos(clienteId: string, planilha: PlanilhaLida): Promise<ResultadoCustos> {
   const { headers, linhas } = planilha;
   const acha = (nomes: string[]) => headers.find((h) => nomes.includes(normalizarHeader(h)));
   const hSku = acha(["sku", "codigo", "cod", "seller_sku", "sku_variacao", "codigo_sku"]);
-  const hCusto = acha(["custo", "custo_unitario", "custounit", "preco_custo", "cost", "valor_custo"]);
-  if (!hSku || !hCusto) {
-    return { produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, aviso: "CSV precisa das colunas 'sku' e 'custo'." };
+  const hNome = acha(["nome", "produto", "descricao", "titulo", "nome_produto", "descricao_produto", "item"]);
+  const hCusto = acha(["custo", "custo_unitario", "custounit", "preco_custo", "cost", "valor_custo", "custo_produto"]);
+  if (!hCusto || (!hSku && !hNome)) {
+    return {
+      produtos: 0,
+      variantes: 0,
+      naoEncontrados: 0,
+      linhasCsv: linhas.length,
+      aviso: "A planilha precisa da coluna 'custo' e de 'sku' e/ou 'nome/produto'.",
+    };
   }
 
-  const mapa = new Map<string, number>();
+  const porSku = new Map<string, number>();
+  const porNomeExato = new Map<string, number>();
+  const entradasNome: EntradaNome[] = [];
   for (const row of linhas) {
-    const sku = norm(row[hSku] ?? "");
     const custo = parseNumero(row[hCusto] ?? "");
-    if (sku && custo > 0) mapa.set(sku, custo);
+    if (custo <= 0) continue;
+    if (hSku) {
+      const sku = norm(row[hSku] ?? "");
+      if (sku) porSku.set(sku, custo);
+    }
+    if (hNome) {
+      const nome = (row[hNome] ?? "").trim();
+      if (nome) {
+        porNomeExato.set(normNome(nome), custo);
+        entradasNome.push({ palavras: palavras(nome), custo });
+      }
+    }
   }
-  if (mapa.size === 0) {
-    return { produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, aviso: "Nenhum par SKU/custo válido no CSV." };
+  if (porSku.size === 0 && porNomeExato.size === 0) {
+    return { produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, aviso: "Nenhum custo válido na planilha." };
   }
 
   const produtos = await listarProdutosDoCliente(clienteId);
-  const variantes = (await listarTodasVariantes()).filter((v) => v.clienteId === clienteId);
+  const todasVar = (await listarTodasVariantes()).filter((v) => v.clienteId === clienteId);
+  const varsPorProduto = new Map<string, ProdutoVariante[]>();
+  for (const v of todasVar) {
+    const arr = varsPorProduto.get(v.produtoId) ?? [];
+    arr.push(v);
+    varsPorProduto.set(v.produtoId, arr);
+  }
 
-  // 1) Variações casadas por SKU.
   const varAtualizadas: ProdutoVariante[] = [];
+  const idVarCasada = new Set<string>();
   const custosPorProduto = new Map<string, number[]>();
-  const skusUsados = new Set<string>();
-  for (const v of variantes) {
-    const c = mapa.get(norm(v.sku));
+  const usados = new Set<string>();
+
+  // 1) Variações por SKU.
+  for (const v of todasVar) {
+    const c = porSku.get(norm(v.sku));
     if (c == null) continue;
-    skusUsados.add(norm(v.sku));
+    usados.add(norm(v.sku));
+    idVarCasada.add(v.id);
     varAtualizadas.push({ ...v, custo: c });
     const arr = custosPorProduto.get(v.produtoId) ?? [];
     arr.push(c);
     custosPorProduto.set(v.produtoId, arr);
   }
 
-  // 2) Produtos: por SKU/codErp direto, senão menor custo das variações.
+  /** Melhor custo por nome (exato, senão o mais parecido). */
+  function custoPorNome(nomeProduto: string): number | null {
+    const exato = porNomeExato.get(normNome(nomeProduto));
+    if (exato != null) return exato;
+    const pp = palavras(nomeProduto);
+    if (pp.size === 0) return null;
+    let melhor = 0;
+    let custo: number | null = null;
+    for (const e of entradasNome) {
+      let comuns = 0;
+      for (const w of e.palavras) if (pp.has(w)) comuns++;
+      const score = comuns / Math.max(e.palavras.size, pp.size, 1);
+      if (score > melhor) {
+        melhor = score;
+        custo = e.custo;
+      }
+    }
+    return melhor >= 0.6 ? custo : null;
+  }
+
+  // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
   const prodAtualizados: Produto[] = [];
   for (const p of produtos) {
-    let custo = mapa.get(norm(p.sku));
-    if (custo != null) skusUsados.add(norm(p.sku));
+    let custo = porSku.get(norm(p.sku));
+    if (custo != null) usados.add(norm(p.sku));
     if (custo == null && p.codErp) {
-      custo = mapa.get(norm(p.codErp));
-      if (custo != null) skusUsados.add(norm(p.codErp));
+      custo = porSku.get(norm(p.codErp));
+      if (custo != null) usados.add(norm(p.codErp));
+    }
+    let porNome = false;
+    if (custo == null && hNome) {
+      const c = custoPorNome(p.nome);
+      if (c != null) {
+        custo = c;
+        porNome = true;
+      }
     }
     if (custo == null) {
       const cs = custosPorProduto.get(p.id);
       if (cs && cs.length > 0) custo = Math.min(...cs);
     }
-    if (custo != null && custo > 0) {
-      prodAtualizados.push({
-        ...p,
-        custo,
-        margem: margemZion(custo, p.precoVenda),
-        precoMinimo: precoMinimoZion(custo),
-        confiancaCusto: "alta",
-      });
+    if (custo == null || custo <= 0) continue;
+
+    prodAtualizados.push({
+      ...p,
+      custo,
+      margem: margemZion(custo, p.precoVenda),
+      precoMinimo: precoMinimoZion(custo),
+      confiancaCusto: "alta",
+    });
+    if (porNome) usados.add(normNome(p.nome));
+
+    // Propaga o custo para as variações ainda não casadas por SKU.
+    for (const v of varsPorProduto.get(p.id) ?? []) {
+      if (!idVarCasada.has(v.id)) {
+        idVarCasada.add(v.id);
+        varAtualizadas.push({ ...v, custo });
+      }
     }
   }
 
@@ -93,7 +174,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   if (prodAtualizados.length > 0) await atualizarProdutosBulk(prodAtualizados);
 
   let naoEncontrados = 0;
-  for (const sku of mapa.keys()) if (!skusUsados.has(sku)) naoEncontrados++;
+  for (const sku of porSku.keys()) if (!usados.has(sku)) naoEncontrados++;
 
   return {
     produtos: prodAtualizados.length,
