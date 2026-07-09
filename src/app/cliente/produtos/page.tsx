@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +10,9 @@ import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarProdutos } from "@/lib/services/produtos";
+import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { montarTabelaMedidas } from "@/lib/data/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -40,6 +42,38 @@ export default function ClienteProdutos() {
   const [escolhendoML, setEscolhendoML] = useState(false);
   const [importandoML, setImportandoML] = useState(false);
   const [msgML, setMsgML] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [medindo, setMedindo] = useState<Produto | null>(null);
+  const [textoMedida, setTextoMedida] = useState("");
+  const [carregandoMedida, setCarregandoMedida] = useState(false);
+  const [salvandoMedida, setSalvandoMedida] = useState(false);
+
+  async function abrirMedidas(p: Produto) {
+    setMedindo(p);
+    setCarregandoMedida(true);
+    setTextoMedida(p.tabelaMedidasOverride ?? "");
+    try {
+      const variantes = await listarVariantesDoProduto(p.id);
+      const tamanhos = variantes.map((v) => v.tamanho).filter(Boolean);
+      const sugestao = montarTabelaMedidas({ marca: p.marca, tamanhos, override: p.tabelaMedidasOverride });
+      setTextoMedida((p.tabelaMedidasOverride ?? "").trim() || sugestao.tabela);
+    } catch {
+      /* mantém o que tiver */
+    } finally {
+      setCarregandoMedida(false);
+    }
+  }
+
+  async function salvarMedidas() {
+    if (!medindo || salvandoMedida) return;
+    setSalvandoMedida(true);
+    try {
+      await atualizarProduto(medindo.id, { tabelaMedidasOverride: textoMedida.trim() });
+      setMedindo(null);
+      reload();
+    } finally {
+      setSalvandoMedida(false);
+    }
+  }
 
   async function importarDoML(modo: "substituir" | "novos") {
     if (importandoML) return;
@@ -229,12 +263,21 @@ export default function ClienteProdutos() {
                       )}
                     </Td>
                     <Td>
-                      <Link
-                        href="/cliente/otimizar"
-                        className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
-                      >
-                        <Wand2 size={12} /> Otimizar
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => abrirMedidas(p)}
+                          title="Tabela de medidas deste produto"
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 transition-colors hover:border-white/20"
+                        >
+                          <Ruler size={12} /> Medidas
+                        </button>
+                        <Link
+                          href="/cliente/otimizar"
+                          className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
+                        >
+                          <Wand2 size={12} /> Otimizar
+                        </Link>
+                      </div>
                     </Td>
                   </tr>
                 );
@@ -242,6 +285,55 @@ export default function ClienteProdutos() {
             )}
           </Table>
         </>
+      )}
+
+      {medindo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setMedindo(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-xl border border-white/10 bg-[#0e0e16] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
+                  <Ruler size={15} className="text-violet-400" /> Tabela de medidas
+                </p>
+                <p className="mt-0.5 truncate text-xs text-zinc-500">{medindo.nome}</p>
+              </div>
+              <button onClick={() => setMedindo(null)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-zinc-500">
+              Editável só quando este produto foge do padrão da marca. Sugerimos a tabela abaixo a
+              partir dos tamanhos e da marca — ajuste os comprimentos (cm) se precisar.
+            </p>
+
+            <textarea
+              value={carregandoMedida ? "Carregando…" : textoMedida}
+              onChange={(e) => setTextoMedida(e.target.value)}
+              disabled={carregandoMedida}
+              rows={10}
+              className="mt-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+            />
+
+            <div className="mt-3 flex items-center gap-2">
+              <Button onClick={salvarMedidas} disabled={salvandoMedida || carregandoMedida}>
+                {salvandoMedida ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
+              </Button>
+              <button
+                onClick={() => setTextoMedida("")}
+                className="text-xs text-zinc-500 hover:text-zinc-300"
+              >
+                Limpar (voltar ao padrão da marca)
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

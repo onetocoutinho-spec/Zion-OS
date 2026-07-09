@@ -127,6 +127,11 @@ export interface Produto {
   margem?: number;
   /** Confiança do custo (fonte): alta | media | baixa. */
   confiancaCusto?: "alta" | "media" | "baixa" | "";
+  /**
+   * Override da tabela de medidas DESTE produto (texto). Quando preenchido,
+   * vence a tabela da marca. Use só quando o produto foge do padrão.
+   */
+  tabelaMedidasOverride?: string;
 }
 
 export type VarianteStatus = "Ativa" | "Pausada" | "Sem estoque" | "Arquivada";

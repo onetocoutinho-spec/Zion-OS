@@ -67,6 +67,7 @@ export interface ProdutoRow {
   preco_minimo?: number | null;
   margem?: number | null;
   confianca_custo?: string | null;
+  tabela_medidas?: string | null;
   clientes?: { empresa: string } | null;
 }
 

@@ -3,6 +3,7 @@
 // entidades já carregadas e devolvem texto estruturado em Markdown.
 
 import { formatBRL, formatDate } from "./format";
+import { montarTabelaMedidas } from "./data/tabelasMedidas";
 import type { Anuncio, Cliente, Produto, ProdutoVariante } from "./types";
 
 export function contextoDoCliente(c: Cliente): string {
@@ -84,12 +85,38 @@ export interface EntidadesContexto {
   variantes?: ProdutoVariante[] | null;
 }
 
+/** Tabela de medidas (numeração → cm) resolvida por override/marca/padrão. */
+export function contextoDaTabelaMedidas(produto: Produto, variantes: ProdutoVariante[]): string {
+  const tamanhos = variantes.map((v) => v.tamanho).filter(Boolean);
+  const r = montarTabelaMedidas({
+    marca: produto.marca,
+    tamanhos,
+    override: produto.tabelaMedidasOverride,
+  });
+  if (r.fonte === "vazio" || !r.tabela) return "";
+  const nota =
+    r.fonte === "padrao"
+      ? "(referência padrão BR — confira antes de publicar)"
+      : r.fonte === "marca"
+        ? "(tabela da marca)"
+        : "(informada para este produto)";
+  return [
+    `## Tabela de medidas ${nota}`,
+    "Use ESTA tabela de medidas — não peça como pendência.",
+    r.tabela,
+    "",
+    r.comoMedir,
+  ].join("\n");
+}
+
 /** Junta as seções presentes num único bloco de contexto. */
 export function montarContexto({ cliente, produto, anuncio, variantes }: EntidadesContexto): string {
+  const vs = variantes ?? [];
   return [
     cliente ? contextoDoCliente(cliente) : null,
     produto ? contextoDoProduto(produto) : null,
-    variantes && variantes.length > 0 ? contextoDasVariacoes(variantes) : null,
+    vs.length > 0 ? contextoDasVariacoes(vs) : null,
+    produto ? contextoDaTabelaMedidas(produto, vs) || null : null,
     anuncio ? contextoDoAnuncio(anuncio) : null,
   ]
     .filter(Boolean)
