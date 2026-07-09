@@ -62,20 +62,24 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
       n.startsWith("produto") ||
       n.startsWith("descricao")
   );
+  const hEan = achaPor(
+    (n) => n === "ean" || n === "gtin" || n === "ean13" || n.startsWith("codigo_barras") || n.startsWith("cod_barras")
+  );
   const hCusto = achaPor(
     (n) => n.startsWith("custo") || ["cost", "preco_custo", "valor_custo", "custounit"].includes(n)
   );
-  if (!hCusto || (!hSku && !hNome)) {
+  if (!hCusto || (!hSku && !hNome && !hEan)) {
     return {
       produtos: 0,
       variantes: 0,
       naoEncontrados: 0,
       linhasCsv: linhas.length,
-      aviso: "A planilha precisa da coluna 'custo' e de 'sku' e/ou 'nome/produto'.",
+      aviso: "A planilha precisa da coluna 'custo' e de 'sku', 'ean' e/ou 'nome/produto'.",
     };
   }
 
   const porSku = new Map<string, number>();
+  const porEan = new Map<string, number>();
   const porNomeExato = new Map<string, number>();
   const entradasNome: EntradaNome[] = [];
   for (const row of linhas) {
@@ -85,6 +89,10 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
       const sku = norm(row[hSku] ?? "");
       if (sku) porSku.set(sku, custo);
     }
+    if (hEan) {
+      const ean = (row[hEan] ?? "").replace(/\D/g, "");
+      if (ean) porEan.set(ean, custo);
+    }
     if (hNome) {
       const nome = (row[hNome] ?? "").trim();
       if (nome) {
@@ -93,7 +101,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
       }
     }
   }
-  if (porSku.size === 0 && porNomeExato.size === 0) {
+  if (porSku.size === 0 && porEan.size === 0 && porNomeExato.size === 0) {
     return { produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, aviso: "Nenhum custo válido na planilha." };
   }
 
@@ -111,11 +119,16 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   const custosPorProduto = new Map<string, number[]>();
   const usados = new Set<string>();
 
-  // 1) Variações por SKU.
+  // 1) Variações por SKU ou EAN.
   for (const v of todasVar) {
-    const c = porSku.get(norm(v.sku));
+    let c = porSku.get(norm(v.sku));
+    if (c != null) usados.add(norm(v.sku));
+    if (c == null && v.ean) {
+      const ean = v.ean.replace(/\D/g, "");
+      c = porEan.get(ean);
+      if (c != null) usados.add(ean);
+    }
     if (c == null) continue;
-    usados.add(norm(v.sku));
     idVarCasada.add(v.id);
     varAtualizadas.push({ ...v, custo: c });
     const arr = custosPorProduto.get(v.produtoId) ?? [];
@@ -189,6 +202,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
 
   let naoEncontrados = 0;
   for (const sku of porSku.keys()) if (!usados.has(sku)) naoEncontrados++;
+  for (const ean of porEan.keys()) if (!usados.has(ean)) naoEncontrados++;
 
   return {
     produtos: prodAtualizados.length,
