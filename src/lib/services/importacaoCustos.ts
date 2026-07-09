@@ -23,6 +23,8 @@ export interface ResultadoCustos {
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
+/** Remove zeros à esquerda (Excel dropa "01003335" → "1003335"). */
+const semZeros = (s: string) => s.replace(/^0+/, "");
 const normNome = (s: string) =>
   s
     .normalize("NFD")
@@ -87,7 +89,11 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     if (custo <= 0) continue;
     if (hSku) {
       const sku = norm(row[hSku] ?? "");
-      if (sku) porSku.set(sku, custo);
+      if (sku) {
+        porSku.set(sku, custo);
+        const z = semZeros(sku);
+        if (z && z !== sku) porSku.set(z, custo);
+      }
     }
     if (hEan) {
       const ean = (row[hEan] ?? "").replace(/\D/g, "");
@@ -121,8 +127,9 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
 
   // 1) Variações por SKU ou EAN.
   for (const v of todasVar) {
-    let c = porSku.get(norm(v.sku));
-    if (c != null) usados.add(norm(v.sku));
+    const skuV = norm(v.sku);
+    let c = porSku.get(skuV) ?? porSku.get(semZeros(skuV));
+    if (c != null) usados.add(skuV);
     if (c == null && v.ean) {
       const ean = v.ean.replace(/\D/g, "");
       c = porEan.get(ean);
@@ -159,10 +166,10 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
   const prodAtualizados: Produto[] = [];
   for (const p of produtos) {
-    let custo = porSku.get(norm(p.sku));
+    let custo = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
     if (custo != null) usados.add(norm(p.sku));
     if (custo == null && p.codErp) {
-      custo = porSku.get(norm(p.codErp));
+      custo = porSku.get(norm(p.codErp)) ?? porSku.get(semZeros(norm(p.codErp)));
       if (custo != null) usados.add(norm(p.codErp));
     }
     let porNome = false;
