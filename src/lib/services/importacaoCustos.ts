@@ -47,10 +47,24 @@ interface EntradaNome {
 
 export async function importarCustos(clienteId: string, planilha: PlanilhaLida): Promise<ResultadoCustos> {
   const { headers, linhas } = planilha;
-  const acha = (nomes: string[]) => headers.find((h) => nomes.includes(normalizarHeader(h)));
-  const hSku = acha(["sku", "codigo", "cod", "seller_sku", "sku_variacao", "codigo_sku"]);
-  const hNome = acha(["nome", "produto", "descricao", "titulo", "nome_produto", "descricao_produto", "item"]);
-  const hCusto = acha(["custo", "custo_unitario", "custounit", "preco_custo", "cost", "valor_custo", "custo_produto"]);
+  const achaPor = (teste: (n: string) => boolean) => headers.find((h) => teste(normalizarHeader(h)));
+  // Detecção tolerante: "Custo (R$)" vira "custo_r", "SKU Pai" vira "sku_pai" etc.
+  const hSku = achaPor(
+    (n) =>
+      n === "sku" ||
+      n.startsWith("sku") ||
+      ["codigo", "cod", "seller_sku", "codigo_sku", "cod_erp", "codigo_erp", "sku_erp"].includes(n)
+  );
+  const hNome = achaPor(
+    (n) =>
+      ["nome", "produto", "descricao", "titulo", "nome_produto", "descricao_produto", "item"].includes(n) ||
+      n.startsWith("nome") ||
+      n.startsWith("produto") ||
+      n.startsWith("descricao")
+  );
+  const hCusto = achaPor(
+    (n) => n.startsWith("custo") || ["cost", "preco_custo", "valor_custo", "custounit"].includes(n)
+  );
   if (!hCusto || (!hSku && !hNome)) {
     return {
       produtos: 0,
