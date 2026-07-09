@@ -12,6 +12,7 @@ import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedor
 import { montarContexto } from "@/lib/contexto";
 import { produtoParaApp, anuncioGeradoParaBanco } from "@/lib/supabase/mappers";
 import type { ProdutoRow } from "@/lib/supabase/database.types";
+import type { Produto } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 300; // Vercel Pro
@@ -56,6 +57,31 @@ function montarMensagem(contexto: string): string {
   ].join("\n");
 }
 
+/**
+ * Roda a esteira e devolve o anúncio. O Gemini às vezes corta o JSON no meio
+ * ("Unterminated string") — como é não-determinístico, tentamos de novo antes
+ * de desistir. Erros de rede/quota (429) NÃO são engolidos aqui: sobem para o
+ * chamador tratar (backoff/requeue).
+ */
+async function gerarAnuncio(produto: Produto): Promise<AnuncioGerado> {
+  const mensagem = montarMensagem(montarContexto({ produto }));
+  let ultimoParse = "";
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    const { json } = await chamarIAEstruturada({
+      system: montarSystemPromptEsteira(),
+      mensagem,
+      schema: ESQUEMA_ANUNCIO,
+      maxTokens: 24000,
+    });
+    try {
+      return JSON.parse(json) as AnuncioGerado;
+    } catch (e) {
+      ultimoParse = e instanceof Error ? e.message : String(e);
+    }
+  }
+  throw new Error(`IA devolveu JSON inválido após 3 tentativas: ${ultimoParse}`);
+}
+
 async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Resultado> {
   try {
     const { data: prodRow } = await admin
@@ -66,13 +92,7 @@ async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Result
     if (!prodRow) throw new Error("Produto não encontrado.");
 
     const produto = produtoParaApp(prodRow as ProdutoRow);
-    const { json } = await chamarIAEstruturada({
-      system: montarSystemPromptEsteira(),
-      mensagem: montarMensagem(montarContexto({ produto })),
-      schema: ESQUEMA_ANUNCIO,
-      maxTokens: 16000,
-    });
-    const anuncio = JSON.parse(json) as AnuncioGerado;
+    const anuncio = await gerarAnuncio(produto);
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({
