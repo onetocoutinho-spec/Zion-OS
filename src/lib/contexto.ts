@@ -62,6 +62,22 @@ export function contextoDasVariacoes(vs: ProdutoVariante[]): string {
   ].join("\n");
 }
 
+/** Composição do kit/combo — para a IA descrever como conjunto. */
+export function contextoDoKit(produto: Produto): string {
+  const cs = produto.componentes ?? [];
+  const ehKit = produto.tipoProduto === "kit" || produto.tipoProduto === "combo";
+  if (!ehKit || cs.length === 0) return "";
+  const linhas = cs.map(
+    (c) =>
+      `- ${c.quantidade}x ${c.nome}${c.sku ? ` (SKU ${c.sku})` : ""}${c.brinde ? " — BRINDE (grátis)" : ""}`
+  );
+  return [
+    `## Kit / combo (${produto.tipoProduto})`,
+    "Este anúncio é um CONJUNTO — descreva como kit, deixe claro tudo o que vem incluso e destaque o brinde, se houver. O preço é do kit inteiro.",
+    ...linhas,
+  ].join("\n");
+}
+
 export function contextoDoAnuncio(a: Anuncio): string {
   return [
     `## Anúncio`,
@@ -130,6 +146,7 @@ export function montarContexto({
   return [
     cliente ? contextoDoCliente(cliente) : null,
     produto ? contextoDoProduto(produto) : null,
+    produto ? contextoDoKit(produto) || null : null,
     vs.length > 0 ? contextoDasVariacoes(vs) : null,
     produto ? contextoDaTabelaMedidas(produto, vs, tabelasMedidas ?? []) || null : null,
     anuncio ? contextoDoAnuncio(anuncio) : null,

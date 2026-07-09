@@ -68,6 +68,7 @@ export interface ProdutoRow {
   margem?: number | null;
   confianca_custo?: string | null;
   tabela_medidas?: string | null;
+  componentes?: { produtoId?: string; nome: string; sku?: string; quantidade: number; brinde?: boolean }[] | null;
   clientes?: { empresa: string } | null;
 }
 

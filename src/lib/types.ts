@@ -77,6 +77,17 @@ export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Co
  */
 export type TipoProduto = "simples" | "com_variacao" | "kit" | "combo" | "catalogo";
 
+/** Item que compõe um kit/combo (produto da base ou item livre). */
+export interface KitComponente {
+  /** Referência opcional a um produto da base. */
+  produtoId?: string;
+  nome: string;
+  sku?: string;
+  quantidade: number;
+  /** Item grátis/brinde incluso. */
+  brinde?: boolean;
+}
+
 /**
  * Produto = **produto pai**. Os campos cor/tamanho/custo/precoVenda/estoque/sku
  * permanecem como atalho do "produto simples" (sem variação). Produtos com
@@ -132,6 +143,8 @@ export interface Produto {
    * vence a tabela da marca. Use só quando o produto foge do padrão.
    */
   tabelaMedidasOverride?: string;
+  /** Componentes do kit/combo (quando tipoProduto = "kit" | "combo"). */
+  componentes?: KitComponente[];
 }
 
 /** Uma linha de tabela de medidas: rótulo (numeração/tamanho) → valor (medida). */

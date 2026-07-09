@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -19,7 +19,7 @@ import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
 import { toneFor } from "@/lib/status";
-import type { Produto } from "@/lib/types";
+import type { Produto, KitComponente } from "@/lib/types";
 
 const MARKETPLACES = ["Mercado Livre", "TikTok Shop", "Shopee", "Amazon"] as const;
 const STATUS = ["Otimizado", "Em revisão", "Sem otimização"] as const;
@@ -72,6 +72,50 @@ export default function ClienteProdutos() {
       reload();
     } finally {
       setSalvandoMedida(false);
+    }
+  }
+
+  // --- Kit / combo ---
+  const [kitProd, setKitProd] = useState<Produto | null>(null);
+  const [kitTipo, setKitTipo] = useState<"nenhum" | "kit" | "combo">("kit");
+  const [kitItens, setKitItens] = useState<KitComponente[]>([]);
+  const [salvandoKit, setSalvandoKit] = useState(false);
+
+  function abrirKit(p: Produto) {
+    setKitProd(p);
+    setKitTipo(p.tipoProduto === "combo" ? "combo" : p.tipoProduto === "kit" ? "kit" : "kit");
+    setKitItens((p.componentes ?? []).map((c) => ({ ...c })));
+  }
+  function addItemKit(base?: Produto) {
+    setKitItens((v) => [
+      ...v,
+      base
+        ? { produtoId: base.id, nome: base.nome, sku: base.sku || base.codErp || "", quantidade: 1, brinde: false }
+        : { nome: "", sku: "", quantidade: 1, brinde: false },
+    ]);
+  }
+  function setItemKit(i: number, patch: Partial<KitComponente>) {
+    setKitItens((v) => v.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  }
+  async function salvarKit() {
+    if (!kitProd || salvandoKit) return;
+    setSalvandoKit(true);
+    try {
+      const itens = kitItens.filter((c) => c.nome.trim());
+      const tipoProduto =
+        kitTipo === "nenhum"
+          ? kitProd.tipoProduto === "kit" || kitProd.tipoProduto === "combo"
+            ? "simples"
+            : kitProd.tipoProduto
+          : kitTipo;
+      await atualizarProduto(kitProd.id, {
+        tipoProduto,
+        componentes: kitTipo === "nenhum" ? [] : itens,
+      });
+      setKitProd(null);
+      reload();
+    } finally {
+      setSalvandoKit(false);
     }
   }
 
@@ -265,6 +309,17 @@ export default function ClienteProdutos() {
                     <Td>
                       <div className="flex items-center gap-1.5">
                         <button
+                          onClick={() => abrirKit(p)}
+                          title="Montar kit/combo com este produto"
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${
+                            p.tipoProduto === "kit" || p.tipoProduto === "combo"
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                              : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20"
+                          }`}
+                        >
+                          <Boxes size={12} /> {p.tipoProduto === "kit" || p.tipoProduto === "combo" ? "Kit ✓" : "Kit"}
+                        </button>
+                        <button
                           onClick={() => abrirMedidas(p)}
                           title="Tabela de medidas deste produto"
                           className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 transition-colors hover:border-white/20"
@@ -330,6 +385,128 @@ export default function ClienteProdutos() {
                 className="text-xs text-zinc-500 hover:text-zinc-300"
               >
                 Limpar (voltar ao padrão da marca)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {kitProd && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setKitProd(null)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl border border-white/10 bg-[#0e0e16] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
+                  <Boxes size={15} className="text-amber-300" /> Kit / combo
+                </p>
+                <p className="mt-0.5 truncate text-xs text-zinc-500">{kitProd.nome}</p>
+              </div>
+              <button onClick={() => setKitProd(null)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={16} />
+              </button>
+            </div>
+
+            <label className="mt-3 block text-xs text-zinc-400">
+              Tipo
+              <select
+                value={kitTipo}
+                onChange={(e) => setKitTipo(e.target.value as "nenhum" | "kit" | "combo")}
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+              >
+                <option value="kit">Kit (várias unidades / itens)</option>
+                <option value="combo">Combo (produtos diferentes)</option>
+                <option value="nenhum">Não é kit</option>
+              </select>
+            </label>
+
+            {kitTipo !== "nenhum" && (
+              <>
+                <p className="mt-3 text-xs text-zinc-500">
+                  O que vem no kit. Preço do kit é o preço deste produto ({formatBRL(kitProd.precoVenda)}).
+                </p>
+
+                <div className="mt-2 space-y-2">
+                  {kitItens.length === 0 && (
+                    <p className="rounded-lg border border-dashed border-white/10 px-3 py-3 text-center text-xs text-zinc-500">
+                      Nenhum item ainda. Adicione abaixo.
+                    </p>
+                  )}
+                  {kitItens.map((c, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-2">
+                      <input
+                        type="number"
+                        min={1}
+                        value={c.quantidade}
+                        onChange={(e) => setItemKit(i, { quantidade: Math.max(1, Number(e.target.value) || 1) })}
+                        className="w-14 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                      />
+                      <input
+                        value={c.nome}
+                        onChange={(e) => setItemKit(i, { nome: e.target.value })}
+                        placeholder="Item"
+                        className="min-w-[8rem] flex-1 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                      />
+                      <input
+                        value={c.sku ?? ""}
+                        onChange={(e) => setItemKit(i, { sku: e.target.value })}
+                        placeholder="SKU"
+                        className="w-24 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                      />
+                      <button
+                        onClick={() => setItemKit(i, { brinde: !c.brinde })}
+                        title="Brinde (grátis)"
+                        className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs ${
+                          c.brinde ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-white/10 text-zinc-400"
+                        }`}
+                      >
+                        <Gift size={12} /> Brinde
+                      </button>
+                      <button
+                        onClick={() => setKitItens((v) => v.filter((_, idx) => idx !== i))}
+                        className="rounded p-1 text-zinc-500 hover:text-red-400"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Button variant="ghost" onClick={() => addItemKit()}>
+                    <Plus size={14} /> Item livre
+                  </Button>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const p = (produtos ?? []).find((x) => x.id === e.target.value);
+                      if (p) addItemKit(p);
+                      e.target.value = "";
+                    }}
+                    className="rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/50"
+                  >
+                    <option value="">+ item da base…</option>
+                    {(produtos ?? []).slice(0, 300).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div className="mt-4 flex items-center gap-2 border-t border-white/5 pt-3">
+              <Button onClick={salvarKit} disabled={salvandoKit}>
+                {salvandoKit ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
+              </Button>
+              <button onClick={() => setKitProd(null)} className="text-xs text-zinc-500 hover:text-zinc-300">
+                Cancelar
               </button>
             </div>
           </div>

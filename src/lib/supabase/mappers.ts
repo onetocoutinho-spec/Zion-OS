@@ -147,6 +147,7 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     margem: row.margem != null ? Number(row.margem) : undefined,
     confiancaCusto: (row.confianca_custo ?? "") as Produto["confiancaCusto"],
     tabelaMedidasOverride: row.tabela_medidas ?? "",
+    componentes: Array.isArray(row.componentes) ? row.componentes : [],
   };
 }
 
@@ -182,6 +183,7 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.margem !== undefined) r.margem = d.margem;
   if (d.confiancaCusto !== undefined) r.confianca_custo = d.confiancaCusto;
   if (d.tabelaMedidasOverride !== undefined) r.tabela_medidas = d.tabelaMedidasOverride;
+  if (d.componentes !== undefined) r.componentes = d.componentes;
   return r;
 }
 
