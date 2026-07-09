@@ -17,10 +17,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const maxDuration = 300; // Vercel Pro
 export const dynamic = "force-dynamic";
 
-const CONCORRENCIA = 3; // itens em paralelo (respeita o rate limit do Gemini)
+const CONCORRENCIA = 1; // 1 por vez — a esteira é pesada e a quota do Gemini é por minuto
+const PAUSA_MS = 2_000; // respiro entre itens (suaviza o rate limit)
 const ORCAMENTO_MS = 250_000; // para antes dos 300s
 const MAX_TENTATIVAS = 3;
 const STALE_MIN = 10; // "processando" preso volta pra fila
+
+type Resultado = "ok" | "erro" | "rate";
+
+/** Erro de quota/limite do provedor de IA (recuperável no próximo ciclo). */
+function ehRateLimit(msg: string): boolean {
+  return /429|resource_exhausted|quota|rate.?limit|exceeded/i.test(msg);
+}
 
 interface FilaRow {
   id: string;
@@ -48,7 +56,7 @@ function montarMensagem(contexto: string): string {
   ].join("\n");
 }
 
-async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<boolean> {
+async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Resultado> {
   try {
     const { data: prodRow } = await admin
       .from("produtos")
@@ -95,9 +103,18 @@ async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<boolea
       .from("fila_otimizacao_produto")
       .update({ status: "concluido", anuncio_id: ins?.id ?? null, erro: "" })
       .eq("id", fila.id);
-    return true;
+    return "ok";
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao otimizar.";
+    // Rate limit: devolve pra fila SEM gastar tentativa — o próximo ciclo do
+    // cron retoma quando a quota do minuto renovar.
+    if (ehRateLimit(msg)) {
+      await admin
+        .from("fila_otimizacao_produto")
+        .update({ status: "pendente", erro: msg.slice(0, 500) })
+        .eq("id", fila.id);
+      return "rate";
+    }
     const novaTent = fila.tentativas + 1;
     // Retenta (volta pra "pendente") até MAX_TENTATIVAS; depois desiste ("erro").
     await admin
@@ -108,7 +125,7 @@ async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<boolea
         tentativas: novaTent,
       })
       .eq("id", fila.id);
-    return false;
+    return "erro";
   }
 }
 
@@ -131,6 +148,7 @@ async function rodar(): Promise<Response> {
 
   let ok = 0;
   let falhas = 0;
+  let rate = false;
   while (Date.now() - inicio < ORCAMENTO_MS) {
     const { data: pend } = await admin
       .from("fila_otimizacao_produto")
@@ -149,10 +167,18 @@ async function rodar(): Promise<Response> {
       .in("id", lote.map((f) => f.id));
 
     const res = await Promise.all(lote.map((f) => processarUm(admin, f)));
-    for (const sucesso of res) sucesso ? ok++ : falhas++;
+    for (const r of res) {
+      if (r === "ok") ok++;
+      else if (r === "erro") falhas++;
+      else rate = true;
+    }
+    // Bateu na quota do Gemini: para este ciclo e deixa o próximo cron retomar
+    // (o item já voltou pra fila). Evita queimar o resto todo com 429.
+    if (rate) break;
+    await new Promise((r) => setTimeout(r, PAUSA_MS));
   }
 
-  return Response.json({ processados: ok, falhas, ms: Date.now() - inicio });
+  return Response.json({ processados: ok, falhas, rate, ms: Date.now() - inicio });
 }
 
 export async function GET(req: Request) {
