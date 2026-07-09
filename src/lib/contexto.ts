@@ -95,11 +95,13 @@ export function contextoDaTabelaMedidas(produto: Produto, variantes: ProdutoVari
   });
   if (r.fonte === "vazio" || !r.tabela) return "";
   const nota =
-    r.fonte === "padrao"
-      ? "(referência padrão BR — confira antes de publicar)"
+    r.fonte === "override"
+      ? "(informada para este produto)"
       : r.fonte === "marca"
-        ? "(tabela da marca)"
-        : "(informada para este produto)";
+        ? r.oficial
+          ? "(tabela oficial da marca)"
+          : "(tabela da marca — referência, confirmar no modelo)"
+        : "(referência padrão BR — confira antes de publicar)";
   return [
     `## Tabela de medidas ${nota}`,
     "Use ESTA tabela de medidas — não peça como pendência.",
