@@ -244,13 +244,17 @@ export default function ClienteOtimizar() {
     }
   }
   async function refazer() {
-    if (!registro) return;
-    setBusy(true);
-    try {
-      await rejeitarAnuncioGerado(registro.id, "Refazer solicitado pelo cliente.");
-    } finally {
-      setBusy(false);
+    if (!produto || rodando) return;
+    // Rejeita o anúncio atual e gera um NOVO com o contexto de agora
+    // (variações + tabela de medidas + kit). O novo vira o mais recente.
+    if (registro) {
+      try {
+        await rejeitarAnuncioGerado(registro.id, "Refazer solicitado pelo cliente.");
+      } catch {
+        /* segue para regenerar mesmo assim */
+      }
     }
+    await gerar();
   }
 
   const produtosFiltrados = useMemo(() => {
