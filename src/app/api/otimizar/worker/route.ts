@@ -10,9 +10,9 @@ import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira, type AnuncioGerado } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
-import { produtoParaApp, anuncioGeradoParaBanco } from "@/lib/supabase/mappers";
-import type { ProdutoRow } from "@/lib/supabase/database.types";
-import type { Produto } from "@/lib/types";
+import { produtoParaApp, varianteParaApp, anuncioGeradoParaBanco } from "@/lib/supabase/mappers";
+import type { ProdutoRow, ProdutoVarianteRow } from "@/lib/supabase/database.types";
+import type { Produto, ProdutoVariante } from "@/lib/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 300; // Vercel Pro
@@ -63,8 +63,8 @@ function montarMensagem(contexto: string): string {
  * de desistir. Erros de rede/quota (429) NÃO são engolidos aqui: sobem para o
  * chamador tratar (backoff/requeue).
  */
-async function gerarAnuncio(produto: Produto): Promise<AnuncioGerado> {
-  const mensagem = montarMensagem(montarContexto({ produto }));
+async function gerarAnuncio(produto: Produto, variantes: ProdutoVariante[]): Promise<AnuncioGerado> {
+  const mensagem = montarMensagem(montarContexto({ produto, variantes }));
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     const { json } = await chamarIAEstruturada({
@@ -92,7 +92,12 @@ async function processarUm(admin: SupabaseClient, fila: FilaRow): Promise<Result
     if (!prodRow) throw new Error("Produto não encontrado.");
 
     const produto = produtoParaApp(prodRow as ProdutoRow);
-    const anuncio = await gerarAnuncio(produto);
+    const { data: varRows } = await admin
+      .from("produto_variantes")
+      .select("*")
+      .eq("produto_id", fila.produto_id);
+    const variantes = ((varRows ?? []) as ProdutoVarianteRow[]).map(varianteParaApp);
+    const anuncio = await gerarAnuncio(produto, variantes);
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({

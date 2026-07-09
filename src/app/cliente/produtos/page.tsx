@@ -37,25 +37,21 @@ export default function ClienteProdutos() {
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarImport, setMostrarImport] = useState(false);
+  const [escolhendoML, setEscolhendoML] = useState(false);
   const [importandoML, setImportandoML] = useState(false);
   const [msgML, setMsgML] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
-  async function importarDoML() {
+  async function importarDoML(modo: "substituir" | "novos") {
     if (importandoML) return;
-    if (
-      !window.confirm(
-        "Importar do Mercado Livre substitui a importação anterior do ML (produtos e anúncios vindos do ML) e traz tudo de novo, agrupado. Continuar?"
-      )
-    )
-      return;
+    setEscolhendoML(false);
     setImportandoML(true);
     setMsgML(null);
     try {
-      const r = await importarAnunciosDoCliente(clienteId, nome);
+      const r = await importarAnunciosDoCliente(clienteId, nome, modo);
       if (r.produtos === 0) {
-        setMsgML({ tipo: "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
+        setMsgML({ tipo: r.pulados > 0 ? "ok" : "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
       } else {
-        const base = `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}.`;
+        const base = `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
         setMsgML({ tipo: r.aviso ? "erro" : "ok", texto: r.aviso ? `${base} ${r.aviso}` : base });
         reload();
       }
@@ -116,7 +112,7 @@ export default function ClienteProdutos() {
         subtitulo="Sua base de produtos. Otimize cada um com a IA para vender melhor."
         acao={
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={importarDoML} disabled={importandoML} title="Puxar os anúncios já cadastrados na sua conta do Mercado Livre">
+            <Button variant="ghost" onClick={() => setEscolhendoML((v) => !v)} disabled={importandoML} title="Puxar os anúncios já cadastrados na sua conta do Mercado Livre">
               {importandoML ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}{" "}
               {importandoML ? "Importando…" : "Importar do ML"}
             </Button>
@@ -132,6 +128,41 @@ export default function ClienteProdutos() {
           </div>
         }
       />
+
+      {escolhendoML && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4">
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
+            <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
+          </p>
+          <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => importarDoML("novos")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-emerald-500/40"
+            >
+              <p className="text-sm font-medium text-emerald-400">Só os anúncios novos</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Mantém o que já está aqui e traz apenas os anúncios ainda não importados. Ideal no dia a dia.
+              </p>
+            </button>
+            <button
+              onClick={() => importarDoML("substituir")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-violet-500/40"
+            >
+              <p className="text-sm font-medium text-violet-300">Importar tudo de novo</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Apaga a importação anterior do ML e traz tudo de novo, reagrupado. Use se algo ficou errado.
+              </p>
+            </button>
+          </div>
+          <button
+            onClick={() => setEscolhendoML(false)}
+            className="mt-2 text-xs text-zinc-500 hover:text-zinc-300"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
 
       {msgML && (
         <p

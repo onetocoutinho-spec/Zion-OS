@@ -33,6 +33,7 @@ import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { montarContexto } from "@/lib/contexto";
 import { listarProdutos } from "@/lib/services/produtos";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
   criarAnuncioGerado,
   listarAnunciosGeradosDoCliente,
@@ -178,8 +179,9 @@ export default function ClienteOtimizar() {
     setErro(null);
     setResultadoAgente(null);
     try {
+      const variantes = await listarVariantesDoProduto(produto.id);
       const r = await rodarAgentePortal(ferramenta.agente, {
-        contexto: montarContexto({ produto }),
+        contexto: montarContexto({ produto, variantes }),
         produto: produto.nome,
       });
       setResultadoAgente(r);
@@ -195,8 +197,9 @@ export default function ClienteOtimizar() {
     setRodando(true);
     setErro(null);
     try {
+      const variantes = await listarVariantesDoProduto(produto.id);
       const r = await rodarEsteira("", {
-        contexto: montarContexto({ produto }),
+        contexto: montarContexto({ produto, variantes }),
         produto: produto.nome,
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

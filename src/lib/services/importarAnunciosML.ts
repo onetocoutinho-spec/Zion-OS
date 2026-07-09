@@ -18,6 +18,7 @@ import { criarVariantesBulk } from "./produtoVariantes";
 import {
   criarAnunciosGeradosBulk,
   excluirAnunciosImportadosML,
+  listarAnunciosGeradosDoCliente,
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
@@ -27,6 +28,12 @@ import type { ProdutoVariante, ImagemProduto } from "../types";
 
 /** Máximo de fotos importadas por produto (o ML permite ~10-12 por anúncio). */
 const MAX_FOTOS = 10;
+
+/**
+ * "substituir" = apaga a importação anterior do ML e traz tudo de novo.
+ * "novos" = mantém o que já existe e só adiciona os anúncios (MLBs) inéditos.
+ */
+export type ModoImportacao = "substituir" | "novos";
 
 export interface ResultadoImportacaoAnuncios {
   produtos: number;
@@ -222,7 +229,8 @@ function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
 
 export async function importarAnunciosDoCliente(
   clienteId: string,
-  cliente: string
+  cliente: string,
+  modo: ModoImportacao = "substituir"
 ): Promise<ResultadoImportacaoAnuncios> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
   if (!canal?.refreshToken) {
@@ -244,16 +252,29 @@ export async function importarAnunciosDoCliente(
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
   }
 
-  const anuncios = (dados.anuncios ?? []).filter((a) => a.mlb);
-  if (anuncios.length === 0) {
+  const todos = (dados.anuncios ?? []).filter((a) => a.mlb);
+  if (todos.length === 0) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
   }
 
-  // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
-  // variações em cascata) antes de reimportar — evita duplicar e não depende
-  // de limpar via SQL. Só mexe no que foi importado do ML.
-  await excluirAnunciosImportadosML(clienteId);
-  await excluirProdutosImportadosML(clienteId);
+  let anuncios = todos;
+  let pulados = 0;
+  if (modo === "substituir") {
+    // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
+    // variações em cascata) antes de reimportar — evita duplicar e não depende
+    // de limpar via SQL. Só mexe no que foi importado do ML.
+    await excluirAnunciosImportadosML(clienteId);
+    await excluirProdutosImportadosML(clienteId);
+  } else {
+    // NOVOS: mantém o que já existe; só traz os MLBs ainda não importados.
+    const existentes = await listarAnunciosGeradosDoCliente(clienteId);
+    const jaTem = new Set(existentes.map((e) => e.mlItemId).filter(Boolean));
+    anuncios = todos.filter((a) => !jaTem.has(a.mlb));
+    pulados = todos.length - anuncios.length;
+    if (anuncios.length === 0) {
+      return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, aviso: "Nenhum anúncio novo — tudo já estava importado." };
+    }
+  }
 
   // Agrupa por família/título → 1 produto por grupo.
   const grupos = agrupar(anuncios);
@@ -347,7 +368,7 @@ export async function importarAnunciosDoCliente(
     anuncios: anunciosOk,
     variacoes: variantes.length,
     imagens: imagensOk,
-    pulados: 0,
+    pulados,
     aviso: avisoParcial,
   };
 }

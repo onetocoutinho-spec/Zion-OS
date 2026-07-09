@@ -3,7 +3,7 @@
 // entidades já carregadas e devolvem texto estruturado em Markdown.
 
 import { formatBRL, formatDate } from "./format";
-import type { Anuncio, Cliente, Produto } from "./types";
+import type { Anuncio, Cliente, Produto, ProdutoVariante } from "./types";
 
 export function contextoDoCliente(c: Cliente): string {
   return [
@@ -38,6 +38,29 @@ export function contextoDoProduto(p: Produto): string {
     .join("\n");
 }
 
+/** Grade de variações (cor/tamanho/SKU/EAN/estoque/preço) já cadastradas. */
+export function contextoDasVariacoes(vs: ProdutoVariante[]): string {
+  if (vs.length === 0) return "";
+  const linhas = vs.slice(0, 80).map((v) => {
+    const partes = [
+      v.cor ? `Cor: ${v.cor}` : null,
+      v.tamanho ? `Tam: ${v.tamanho}` : null,
+      v.sku ? `SKU: ${v.sku}` : null,
+      v.ean ? `EAN: ${v.ean}` : null,
+      `Estoque: ${v.estoque}`,
+      v.precoBase ? `Preço: ${formatBRL(v.precoBase)}` : null,
+    ].filter(Boolean);
+    return `- ${partes.join(" · ")}`;
+  });
+  const extra = vs.length > 80 ? [`- …(+${vs.length - 80} variações)`] : [];
+  return [
+    `## Variações cadastradas (${vs.length})`,
+    "Estas são as variações reais já cadastradas — use-as; não peça como pendência.",
+    ...linhas,
+    ...extra,
+  ].join("\n");
+}
+
 export function contextoDoAnuncio(a: Anuncio): string {
   return [
     `## Anúncio`,
@@ -58,13 +81,15 @@ export interface EntidadesContexto {
   cliente?: Cliente | null;
   produto?: Produto | null;
   anuncio?: Anuncio | null;
+  variantes?: ProdutoVariante[] | null;
 }
 
 /** Junta as seções presentes num único bloco de contexto. */
-export function montarContexto({ cliente, produto, anuncio }: EntidadesContexto): string {
+export function montarContexto({ cliente, produto, anuncio, variantes }: EntidadesContexto): string {
   return [
     cliente ? contextoDoCliente(cliente) : null,
     produto ? contextoDoProduto(produto) : null,
+    variantes && variantes.length > 0 ? contextoDasVariacoes(variantes) : null,
     anuncio ? contextoDoAnuncio(anuncio) : null,
   ]
     .filter(Boolean)
