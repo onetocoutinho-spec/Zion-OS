@@ -55,13 +55,13 @@ export async function statusFila(clienteId: string): Promise<StatusFila> {
   return s;
 }
 
-/** Remove os itens já concluídos da fila do cliente (limpeza opcional). */
+/** Remove os itens finalizados (concluídos e com erro) da fila do cliente. */
 export async function limparConcluidos(clienteId: string): Promise<void> {
   if (!supabaseConfigurado) return;
   const { error } = await getSupabase()
     .from("fila_otimizacao_produto")
     .delete()
     .eq("cliente_id", clienteId)
-    .eq("status", "concluido");
+    .in("status", ["concluido", "erro"]);
   if (error) throw new Error(error.message);
 }

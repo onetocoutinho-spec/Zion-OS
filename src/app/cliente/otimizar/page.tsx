@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Wand2,
@@ -111,7 +111,7 @@ const FERRAMENTAS: Ferramenta[] = [
 export default function ClienteOtimizar() {
   const { clienteId, nome } = useClientPortal();
   const { data: produtos } = useLiveQuery(listarProdutos);
-  const { data: anuncios } = useLiveQuery(
+  const { data: anuncios, reload: recarregarAnuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
   );
@@ -329,6 +329,7 @@ export default function ClienteOtimizar() {
           produtos={produtos ?? []}
           otimizados={otimizadosReais}
           restante={quota?.restante ?? 0}
+          onConcluido={recarregarAnuncios}
         />
       )}
       {passo === 1 && (
@@ -417,12 +418,15 @@ function OtimizarEmMassa({
   produtos,
   otimizados,
   restante,
+  onConcluido,
 }: {
   clienteId: string;
   produtos: Produto[];
   /** IDs de produtos que JÁ têm otimização real (feita pela IA). */
   otimizados: Set<string>;
   restante: number;
+  /** Chamado quando a fila termina — recarrega os anúncios (sem F5). */
+  onConcluido: () => void;
 }) {
   const pendentes = useMemo(
     () => produtos.filter((p) => !otimizados.has(p.id)),
@@ -432,6 +436,7 @@ function OtimizarEmMassa({
   const [enfileirando, setEnfileirando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const ativosAntes = useRef(0);
 
   // Acompanha a fila (o worker processa no servidor) — atualiza a cada 4s.
   useEffect(() => {
@@ -439,7 +444,13 @@ function OtimizarEmMassa({
     async function tick() {
       try {
         const s = await statusFila(clienteId);
-        if (vivo) setFila(s);
+        if (!vivo) return;
+        setFila(s);
+        // Transição "processando → vazio": a fila terminou → recarrega os
+        // anúncios sozinho (some a necessidade de F5).
+        const ativos = s.pendente + s.processando;
+        if (ativosAntes.current > 0 && ativos === 0) onConcluido();
+        ativosAntes.current = ativos;
       } catch {
         /* ignora falha de polling */
       }
@@ -450,7 +461,7 @@ function OtimizarEmMassa({
       vivo = false;
       clearInterval(id);
     };
-  }, [clienteId]);
+  }, [clienteId, onConcluido]);
 
   async function enfileirar(lista: Produto[]) {
     const alvo = lista.slice(0, Math.max(0, restante));
@@ -543,15 +554,15 @@ function OtimizarEmMassa({
               <span className="ml-auto flex items-center gap-1 text-violet-300">
                 <Sparkles size={12} className="animate-pulse" /> processando no servidor…
               </span>
-            ) : fila.concluido > 0 ? (
+            ) : fila.concluido > 0 || fila.erro > 0 ? (
               <button onClick={limpar} className="ml-auto text-zinc-500 hover:text-zinc-300">
-                Limpar concluídos
+                Limpar finalizados
               </button>
             ) : null}
           </div>
           {ativos === 0 && feito > 0 && (
-            <p className="mt-2 text-xs text-zinc-500">
-              Terminou. Atualize a página para ver os anúncios em{" "}
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-emerald-400">
+              <CheckCircle2 size={13} /> Terminou — anúncios atualizados. Revise em{" "}
               <span className="text-zinc-300">Meus Anúncios</span>.
             </p>
           )}
