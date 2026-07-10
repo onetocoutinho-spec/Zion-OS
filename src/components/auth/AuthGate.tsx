@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/form";
 import { RealtimeSync } from "./RealtimeSync";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
+import { decidirRota } from "@/lib/auth/roteamentoPapel";
 
 type EstadoSessao = "carregando" | "logado" | "deslogado";
 
@@ -207,38 +208,36 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // Não cai mais para a casca da equipe (R1).
   if (supabaseConfigurado && perfil === null) return <TelaSemAcesso />;
 
-  // Cliente → Portal do Cliente (rotas /cliente/*), nunca a casca da equipe.
-  if (perfil?.papel === "cliente") {
-    return (
-      <>
-        {supabaseConfigurado && <RealtimeSync />}
-        <ClienteGate>{children}</ClienteGate>
-      </>
-    );
-  }
-
-  // Equipe (ou modo demo) → app completo.
+  // A partir daqui há perfil válido (ou modo demo). Em demo (sem Supabase)
+  // tratamos como equipe. O RoteadorPapel separa Painel da Agência × Portal
+  // do Cliente conforme o papel + a rota atual.
+  const perfilEfetivo: Perfil = perfil ?? { papel: "equipe", clienteId: null, nome: "" };
   return (
     <>
       {supabaseConfigurado && <RealtimeSync />}
-      {children}
+      <RoteadorPapel perfil={perfilEfetivo}>{children}</RoteadorPapel>
     </>
   );
 }
 
 /**
- * Mantém o cliente sempre dentro de /cliente/*. Se ele cair em qualquer rota
- * da equipe (ex.: "/"), mostramos o carregamento e redirecionamos — assim ele
- * nunca vê o painel interno, nem por um instante.
+ * Redireciona conforme o papel (regra pura em decidirRota):
+ *   - equipe dentro de /cliente/*  → volta para o Painel da Agência ("/").
+ *   - cliente fora de /cliente/*   → volta para o Portal do Cliente ("/cliente").
+ *   - cliente sem empresa / inativo→ tela "Acesso não liberado".
+ * Enquanto redireciona, mostra o carregamento (sem piscar a casca errada).
  */
-function ClienteGate({ children }: { children: React.ReactNode }) {
+function RoteadorPapel({ perfil, children }: { perfil: Perfil; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const noPortal = pathname === "/cliente" || pathname.startsWith("/cliente/");
+  const decisao = decidirRota(perfil, pathname);
+  const alvo = decisao.tipo === "redirect" ? decisao.para : null;
 
   useEffect(() => {
-    if (!noPortal) router.replace("/cliente");
-  }, [noPortal, router]);
+    if (alvo) router.replace(alvo);
+  }, [alvo, router]);
 
-  return noPortal ? <>{children}</> : <TelaCarregando />;
+  if (decisao.tipo === "sem_acesso") return <TelaSemAcesso />;
+  if (alvo) return <TelaCarregando />;
+  return <>{children}</>;
 }

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
+import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -73,8 +74,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // O Portal do Cliente (/cliente/*) tem a própria casca (ClientPortalShell).
   // Aqui renderizamos só o conteúdo, sem a navegação interna da equipe.
+  // ⚠️ estaNoPortalCliente usa a barra final: NÃO confunde com a rota da
+  // equipe "/clientes" (lista), que também começa com "/cliente".
   // (depois de todos os hooks acima, para não alterar a ordem de hooks.)
-  if (pathname.startsWith("/cliente")) return <>{children}</>;
+  if (estaNoPortalCliente(pathname)) return <>{children}</>;
 
   async function sair() {
     await getSupabase().auth.signOut();
