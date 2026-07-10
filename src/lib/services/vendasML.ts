@@ -4,7 +4,8 @@
 // com os custos dos produtos (que já temos, escopados por RLS) para calcular o
 // lucro líquido. O refresh_token rotacionado é persistido.
 
-import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
+import { buscarCanal } from "./canaisMarketplace";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import type { Produto } from "../types";
 import type { PedidoML } from "../marketplaces/mercadolivre";
 
@@ -42,25 +43,22 @@ export async function buscarVendasDoCliente(
   opcoes: { dias?: number } = {}
 ): Promise<{ pedidos: PedidoML[]; aviso?: string }> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
-  if (!canal?.refreshToken) {
+  if (!canal?.ativo) {
     return { pedidos: [], aviso: "Cliente não conectado ao Mercado Livre." };
   }
   const dias = opcoes.dias ?? 30;
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
 
+  // O refresh_token fica no servidor (R3): enviamos só o clienteId + a sessão.
   const resposta = await fetch("/api/ml/vendas", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken: canal.refreshToken, sellerId: canal.sellerId, desde }),
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+    body: JSON.stringify({ clienteId, desde }),
   });
   const dados = (await resposta.json()) as {
     pedidos?: PedidoML[];
-    refreshToken?: string;
     erro?: string;
   };
-  if (dados.refreshToken) {
-    await atualizarRefreshToken(clienteId, dados.refreshToken, "Mercado Livre");
-  }
   if (!resposta.ok) {
     return { pedidos: [], aviso: dados.erro ?? "Falha ao buscar vendas." };
   }

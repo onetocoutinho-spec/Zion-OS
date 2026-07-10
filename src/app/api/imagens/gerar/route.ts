@@ -5,6 +5,7 @@
 // Gemini fica só no servidor. Retorna a imagem gerada em base64.
 
 import { gerarImagemGemini, imagemIAConfigurada } from "@/lib/agentes/provedorImagem";
+import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 60;
 
@@ -37,6 +38,12 @@ function montarPrompt(c: Corpo): string {
 }
 
 export async function POST(request: Request) {
+  try {
+    await exigirAutenticado(request);
+  } catch (e) {
+    return respostaErroAutorizacao(e);
+  }
+
   if (!imagemIAConfigurada()) {
     return Response.json(
       { erro: "GEMINI_API_KEY não configurada no servidor.", configurado: false },

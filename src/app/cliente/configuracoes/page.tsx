@@ -86,7 +86,7 @@ export default function ClienteConfiguracoes() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-sm text-zinc-200">Mercado Livre</p>
-              {canal?.ativo && canal?.refreshToken ? (
+              {canal?.ativo ? (
                 <Pill tone="green">
                   <CheckCircle2 size={12} /> Conectado
                 </Pill>

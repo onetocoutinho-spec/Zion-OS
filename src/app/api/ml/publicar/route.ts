@@ -1,24 +1,28 @@
 // Publicação no Mercado Livre (Fase 3) — SOMENTE SERVIDOR.
 //
-// Recebe o payload JÁ MONTADO pelo cliente (o builder é puro e sem segredo),
-// renova o access token com o refresh_token do cliente + o segredo do APP ML
-// (env, nunca exposto), prediz a categoria se faltar, e publica em /items.
+// Recebe o payload JÁ MONTADO pelo cliente (o builder é puro e sem segredo) +
+// o `clienteId`. Autoriza no servidor, BUSCA o refresh_token do canal (nunca
+// vem do navegador — R3), renova o access token com o segredo do APP ML (env),
+// prediz a categoria se faltar, e publica em /items.
 //
 // Segurança: ML_CLIENT_ID / ML_CLIENT_SECRET vivem só no .env do servidor.
-// O refresh_token do cliente chega no corpo (a equipe já o lê via RLS) e o
-// novo refresh_token rotacionado volta para o cliente persistir.
+// O refresh_token do cliente é lido e rotacionado SÓ no servidor; nunca é
+// enviado nem devolvido ao navegador.
 
 import { renovarToken, preverCategoria, criarItem } from "@/lib/marketplaces/mercadolivre";
+import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 60s = limite do plano grátis da Vercel.
 export const maxDuration = 60;
 
 interface Corpo {
+  clienteId: string;
   payload: Record<string, unknown>;
-  refreshToken: string;
   go: boolean;
   /** Usado para prever a categoria quando o payload não traz category_id. */
   tituloParaCategoria?: string;
+  marketplace?: string;
 }
 
 export async function POST(request: Request) {
@@ -41,60 +45,72 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Corpo inválido." }, { status: 400 });
   }
 
-  if (!corpo?.refreshToken) {
-    return Response.json(
-      { erro: "Cliente sem refresh_token do ML. Conecte a conta do cliente primeiro." },
-      { status: 400 }
-    );
+  if (!corpo?.clienteId) {
+    return Response.json({ erro: "clienteId ausente." }, { status: 400 });
   }
   if (!corpo?.payload || typeof corpo.payload !== "object") {
     return Response.json({ erro: "Payload do anúncio ausente." }, { status: 400 });
   }
 
+  // Autorização server-side: o usuário precisa poder operar este cliente.
+  let ctx;
   try {
-    // 1) Renova o token (e captura o refresh_token rotacionado).
-    const tokens = await renovarToken({
-      clientId,
-      clientSecret,
-      refreshToken: corpo.refreshToken,
-    });
+    ctx = await exigirAcessoAoCliente(request, corpo.clienteId);
+  } catch (e) {
+    return respostaErroAutorizacao(e);
+  }
+  if (!ctx.supabase) {
+    return Response.json({ erro: "Supabase não configurado no servidor." }, { status: 503 });
+  }
 
-    // 2) Garante category_id (prevê pelo título quando não veio).
+  const marketplace = corpo.marketplace ?? "Mercado Livre";
+
+  try {
+    // 1) Busca o refresh_token do canal NO SERVIDOR (via RLS).
+    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    if (!canal?.refreshToken) {
+      return Response.json(
+        { erro: "Cliente não conectado ao Mercado Livre. Conecte a conta antes de publicar." },
+        { status: 400 }
+      );
+    }
+
+    // 2) Renova o token (e captura o refresh_token rotacionado).
+    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    // Persiste o refresh_token rotacionado imediatamente (mesmo se publicar falhar depois).
+    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+
+    // 3) Garante category_id (prevê pelo título quando não veio).
     const payload = { ...corpo.payload };
     if (!payload.category_id && corpo.tituloParaCategoria) {
       const cat = await preverCategoria(tokens.accessToken, corpo.tituloParaCategoria);
       if (cat) payload.category_id = cat;
     }
 
-    // 3) go=false → valida credenciais + categoria, SEM publicar.
+    // 4) go=false → valida credenciais + categoria, SEM publicar. (Sem refresh_token na resposta.)
     if (!corpo.go) {
       return Response.json({
         dry: true,
         categoryId: payload.category_id ?? null,
-        refreshToken: tokens.refreshToken,
-        sellerId: tokens.userId ?? null,
+        sellerId: canal.sellerId ?? tokens.userId ?? null,
       });
     }
 
     if (!payload.category_id) {
       return Response.json(
-        {
-          erro: "Não foi possível determinar a categoria do ML. Informe uma categoria manualmente.",
-          refreshToken: tokens.refreshToken,
-        },
+        { erro: "Não foi possível determinar a categoria do ML. Informe uma categoria manualmente." },
         { status: 422 }
       );
     }
 
-    // 4) Publica de verdade.
+    // 5) Publica de verdade.
     const item = await criarItem(tokens.accessToken, payload);
     return Response.json({
       dry: false,
       id: item.id,
       permalink: item.permalink,
       status: item.status,
-      refreshToken: tokens.refreshToken,
-      sellerId: tokens.userId ?? null,
+      sellerId: canal.sellerId ?? tokens.userId ?? null,
     });
   } catch (e) {
     return Response.json(

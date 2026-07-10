@@ -14,28 +14,34 @@ export interface Perfil {
 
 const EQUIPE: Perfil = { papel: "equipe", clienteId: null, nome: "" };
 
-export async function meuPerfil(): Promise<Perfil> {
-  if (!supabaseConfigurado) return EQUIPE;
-  // Qualquer falha (sessão inválida, tabela perfis inexistente, rede) NUNCA
-  // pode travar o app — cai para equipe (fail-safe).
-  try {
-    const sb = getSupabase();
-    const { data: auth } = await sb.auth.getUser();
-    if (!auth.user) return EQUIPE;
-    const { data } = await sb
-      .from("perfis")
-      .select("papel, cliente_id, nome")
-      .eq("id", auth.user.id)
-      .maybeSingle();
-    if (!data) return EQUIPE; // sem perfil = equipe (fail-safe)
-    return {
-      papel: data.papel === "cliente" ? "cliente" : "equipe",
-      clienteId: (data.cliente_id as string | null) ?? null,
-      nome: (data.nome as string | null) ?? "",
-    };
-  } catch {
-    return EQUIPE;
-  }
+/**
+ * Perfil do usuário logado. NEGA POR PADRÃO (R1):
+ *   * modo demo (sem Supabase)         -> equipe (não há login no demo)
+ *   * sem sessão / sem perfil / inativo -> null (SEM ACESSO)
+ *   * erro real de banco/rede           -> propaga (o AuthGate trata),
+ *     NUNCA vira "equipe" silenciosamente.
+ *
+ * O corte de acesso de verdade é o RLS (migração 016); aqui é só a leitura
+ * para a casca decidir qual portal mostrar (e barrar quem não tem perfil).
+ */
+export async function meuPerfil(): Promise<Perfil | null> {
+  if (!supabaseConfigurado) return EQUIPE; // demo: sem Auth, tudo é equipe
+  const sb = getSupabase();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth.user) return null; // não autenticado = sem acesso
+  const { data, error } = await sb
+    .from("perfis")
+    .select("papel, cliente_id, nome, ativo")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (error) throw error; // erro real sobe — não vira acesso indevido
+  if (!data) return null; // sem perfil = SEM ACESSO (antes era equipe)
+  if (data.ativo === false) return null; // perfil inativo = SEM ACESSO
+  return {
+    papel: data.papel === "cliente" ? "cliente" : "equipe",
+    clienteId: (data.cliente_id as string | null) ?? null,
+    nome: (data.nome as string | null) ?? "",
+  };
 }
 
 // ---- Leituras do Portal (via funções portal_* do banco) ----

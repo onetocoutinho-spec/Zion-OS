@@ -116,6 +116,40 @@ function TelaLogin() {
   );
 }
 
+function TelaSemAcesso() {
+  const [saindo, setSaindo] = useState(false);
+  async function sair() {
+    setSaindo(true);
+    try {
+      if (supabaseConfigurado) await getSupabase().auth.signOut();
+    } finally {
+      window.location.reload();
+    }
+  }
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#08080d] px-4">
+      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600">
+          <Zap size={22} className="text-white" />
+        </div>
+        <h1 className="text-base font-semibold text-white">Acesso não liberado</h1>
+        <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+          Sua conta está autenticada, mas ainda não tem um perfil de acesso no
+          Zion OS. Fale com a equipe da Zion para liberar o seu acesso.
+        </p>
+        <div className="mt-6 flex flex-col gap-2">
+          <Button onClick={() => window.location.reload()} variant="ghost">
+            Tentar de novo
+          </Button>
+          <Button onClick={sair} disabled={saindo}>
+            {saindo ? "Saindo…" : "Sair"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [estado, setEstado] = useState<EstadoSessao>(
     supabaseConfigurado ? "carregando" : "logado"
@@ -136,16 +170,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         return;
       }
       setEstado("logado");
-      // Descobre o papel, mas NUNCA trava: se demorar/falhar, entra como equipe.
-      const equipe: Perfil = { papel: "equipe", clienteId: null, nome: "" };
+      // NEGA POR PADRÃO (R1): sem perfil / inativo / falha => SEM ACESSO (null),
+      // nunca mais "equipe" por omissão. Um timeout também vira sem-acesso
+      // (a tela oferece "Tentar de novo"). O corte real é o RLS (migração 016).
       try {
-        const p = await Promise.race<Perfil>([
+        const p = await Promise.race<Perfil | null>([
           meuPerfil(),
-          new Promise<Perfil>((res) => setTimeout(() => res(equipe), 5000)),
+          new Promise<Perfil | null>((_, rej) =>
+            setTimeout(() => rej(new Error("timeout ao carregar perfil")), 8000)
+          ),
         ]);
         setPerfil(p);
       } catch {
-        setPerfil(equipe);
+        setPerfil(null);
       }
     }
 
@@ -166,6 +203,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (estado === "deslogado") return <TelaLogin />;
   // Logado, mas ainda descobrindo o papel.
   if (supabaseConfigurado && perfil === undefined) return <TelaCarregando />;
+  // Logado, porém SEM perfil válido/ativo (ou falha ao resolver) = sem acesso.
+  // Não cai mais para a casca da equipe (R1).
+  if (supabaseConfigurado && perfil === null) return <TelaSemAcesso />;
 
   // Cliente → Portal do Cliente (rotas /cliente/*), nunca a casca da equipe.
   if (perfil?.papel === "cliente") {

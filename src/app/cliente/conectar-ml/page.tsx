@@ -9,6 +9,7 @@ import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarCanal, salvarCanal } from "@/lib/services/canaisMarketplace";
+import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 type Estado = "idle" | "processando" | "ok" | "erro";
 
@@ -41,29 +42,25 @@ export default function ConectarML() {
       setEstado("processando");
       setMsg(null);
       try {
+        // O servidor troca o code e SALVA o refresh_token no canal (R3): o
+        // navegador só envia o code + clienteId e a sessão; nunca vê o token.
         const resp = await fetch("/api/ml/conectar", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
           body: JSON.stringify({
             code,
+            clienteId,
             redirectUri: `${window.location.origin}/cliente/conectar-ml`,
           }),
         });
         const dados = (await resp.json()) as {
-          refreshToken?: string;
+          ok?: boolean;
           sellerId?: string | null;
           erro?: string;
         };
-        if (!resp.ok || !dados.refreshToken) {
+        if (!resp.ok || !dados.ok) {
           throw new Error(dados.erro ?? "Não foi possível concluir a conexão.");
         }
-        await salvarCanal({
-          clienteId,
-          marketplace: "Mercado Livre",
-          refreshToken: dados.refreshToken,
-          sellerId: dados.sellerId ?? null,
-          ativo: true,
-        });
         setEstado("ok");
         setMsg("Conta do Mercado Livre conectada com sucesso!");
         reload();
@@ -75,7 +72,7 @@ export default function ConectarML() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
 
-  const conectado = Boolean(canal?.ativo && canal?.refreshToken);
+  const conectado = Boolean(canal?.ativo);
 
   function conectar() {
     window.location.href = `/api/ml/autorizar?clienteId=${encodeURIComponent(clienteId)}`;
@@ -86,7 +83,6 @@ export default function ConectarML() {
       await salvarCanal({
         clienteId,
         marketplace: "Mercado Livre",
-        refreshToken: null,
         ativo: false,
       });
       setEstado("idle");

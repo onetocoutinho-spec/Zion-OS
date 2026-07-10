@@ -12,7 +12,8 @@
 // SUBSTITUI: cada importação limpa a importação anterior do ML do cliente e
 // reimporta tudo agrupado (sem depender de apagar via SQL, sem duplicar).
 
-import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
+import { buscarCanal } from "./canaisMarketplace";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { criarProdutos, excluirProdutosImportadosML } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
 import {
@@ -233,21 +234,20 @@ export async function importarAnunciosDoCliente(
   modo: ModoImportacao = "substituir"
 ): Promise<ResultadoImportacaoAnuncios> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
-  if (!canal?.refreshToken) {
+  if (!canal?.ativo) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Cliente não conectado ao Mercado Livre." };
   }
 
+  // O refresh_token fica no servidor (R3): enviamos só o clienteId + a sessão.
   const resposta = await fetch("/api/ml/importar-anuncios", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken: canal.refreshToken, sellerId: canal.sellerId }),
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+    body: JSON.stringify({ clienteId }),
   });
   const dados = (await resposta.json()) as {
     anuncios?: AnuncioML[];
-    refreshToken?: string;
     erro?: string;
   };
-  if (dados.refreshToken) await atualizarRefreshToken(clienteId, dados.refreshToken, "Mercado Livre");
   if (!resposta.ok) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
   }

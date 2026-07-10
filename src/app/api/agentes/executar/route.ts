@@ -5,6 +5,7 @@
 // frontend cai para a execução simulada (comportamento das versões anteriores).
 
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
+import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;
@@ -103,6 +104,12 @@ function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
 }
 
 export async function POST(request: Request) {
+  try {
+    await exigirAutenticado(request);
+  } catch (e) {
+    return respostaErroAutorizacao(e);
+  }
+
   if (!provedorConfigurado()) {
     return Response.json(
       {

@@ -7,6 +7,7 @@
 
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
+import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
 // ~25–40s. Em plano pago dá para subir para 300.
@@ -31,6 +32,14 @@ function montarMensagem(briefing: string, contexto: string): string {
 }
 
 export async function POST(request: Request) {
+  // Autorização: só usuário autenticado (no modo demo, libera). Evita que a
+  // rota de IA (paga) seja chamada sem sessão.
+  try {
+    await exigirAutenticado(request);
+  } catch (e) {
+    return respostaErroAutorizacao(e);
+  }
+
   if (!provedorConfigurado()) {
     return Response.json(
       {
