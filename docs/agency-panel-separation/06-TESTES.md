@@ -45,14 +45,18 @@ npm run lint   → 0 errors, 49 warnings (pré-existentes, não introduzidos aqu
 | 9 | Equipe vê todos os clientes | inalterado — RLS `eh_equipe()` (016) + rotas da agência |
 | 10 | Cliente vê só a própria empresa | inalterado — RLS `cliente_do_usuario()` + redirect |
 
-## Não executado aqui (precisa de staging — sem acesso nesta máquina)
-Teste manual ponta a ponta (o ambiente atual não tem staging acessível e o `.env.local` aponta para o Supabase de produção, que não deve ser tocado):
+## Teste manual em staging — ✅ EXECUTADO E APROVADO
+Executado no **Supabase Staging + Vercel Preview** (branch `fix/multitenancy-security`), nunca em produção. Detalhe/veredito em [`docs/implementation-phase-1-security/10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md`](../implementation-phase-1-security/10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md).
+
 ```
-Login Agência  → deve cair no Painel da Agência (/)
-Login Cliente A → deve cair no Portal do Cliente (/cliente), só dados de A
-Login Cliente B → deve cair no Portal do Cliente (/cliente), só dados de B
-Equipe abrindo /cliente manualmente → volta para /
-Cliente abrindo /clientes ou /financeiro → volta para /cliente
-Usuário sem perfil / inativo → tela "Acesso não liberado"
+[APROVADO] Login Agência    → Painel da Agência (/)
+[APROVADO] Login Cliente A  → Portal do Cliente (/cliente), só dados de A
+[APROVADO] Login Cliente B  → Portal do Cliente (/cliente), só dados de B
+[APROVADO] Equipe abrindo /cliente        → volta para /
+[APROVADO] Cliente abrindo rota admin     → volta para /cliente
+[APROVADO] /clientes NÃO é confundido com /cliente
+[APROVADO] Usuário sem perfil / inativo   → tela "Acesso não liberado"
+[APROVADO] Isolamento Empresa A × Empresa B no fluxo real
 ```
-Use o Preview de staging da branch (ver `docs/staging-setup/`). Estes passos **não foram executados** — apenas os testes puros + typecheck + lint acima.
+
+> A separação Painel da Agência × Portal do Cliente foi confirmada no fluxo real de staging. A parte de **credenciais/fluxos do Mercado Livre** da Etapa 1 continua **pendente** (ver doc 10) — mas não afeta esta separação de rotas/layout, que está aprovada.

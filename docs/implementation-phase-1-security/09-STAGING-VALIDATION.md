@@ -1,30 +1,29 @@
 # 09 — Validação em Staging (Etapa 1)
 
-> **Status: NÃO EXECUTADA — BLOQUEADA POR AMBIENTE.**
-> A validação de staging **não pôde ser executada** porque não há ambiente de staging comprovável nem ferramentas de banco disponíveis nesta máquina. Conforme a Parte 1 do roteiro ("caso não seja possível comprovar que o banco é staging, interrompa a execução e informe"), a execução foi **interrompida** e nada foi rodado contra o banco. **Nenhuma alteração foi feita em produção.**
+> **Status ATUALIZADO: AUTENTICAÇÃO E ISOLAMENTO MULTIEMPRESA APROVADOS EM STAGING.**
+> Um ambiente de staging (Supabase Staging + Vercel Preview) foi provisionado e a validação de **autenticação, redirecionamento por papel e isolamento multiempresa foi executada e APROVADA**. A validação de **credenciais e fluxos do Mercado Livre permanece PENDENTE**. **Nenhum teste foi feito em produção.**
+>
+> Detalhe completo do isolamento em [10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md](./10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md). O histórico de "bloqueio por ambiente" abaixo fica registrado para rastreabilidade (era o estado antes de o staging existir).
 
 ## Metadados
 
 | Campo | Valor |
 |-------|-------|
-| Data/hora | 2026-07-10 (halt na Parte 1) |
+| Ambiente validado | **Supabase Staging + Vercel Preview** (nunca produção) |
 | Branch | `fix/multitenancy-security` |
-| Commit | `3c0e0c731d94b64c5bcacef218af55811a81da08` (presente e conferido) |
-| Ambiente validado | **Nenhum** (sem staging comprovável) |
-| Migração 016 aplicada | **Não** (em lugar nenhum) |
-| Rollback | **Não executado** (documentado abaixo) |
+| Migrações base + 001–015 | **Aplicadas em staging** ✅ |
+| Migração 016 | **Aplicada em staging** ✅ (só staging) |
+| Autenticação + isolamento | **Aprovados em staging** ✅ |
+| Fluxos do Mercado Livre | **Pendentes** ⏳ |
+| Rollback | Documentado (bloco no 016 + [07-ROLLBACK](./07-ROLLBACK.md)) |
 
-## Por que foi bloqueada (fatos, sem expor segredos)
+## Histórico (estado anterior — antes de o staging existir)
 
-Levantamento feito nesta máquina:
-- **Um único ambiente configurado:** `.env.local` com `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `GEMINI_API_KEY`. (Valores não exibidos.)
-- **Sem `.env.staging`** e **sem diretório `supabase/`** (não há projeto de staging nem runner de migração local).
-- **Sem `psql`** e **sem Supabase CLI** instalados → **não há como executar SQL** (nem os `database/checks/*.sql`, nem a migração 016, nem o rollback) contra qualquer banco.
-- **Sem `DATABASE_URL`/conexão direta** no ambiente.
-- O histórico do projeto indica que o único Supabase configurado é o de **produção** (domínio `zioncompany.online`; migrações 008–015 já aplicadas em produção). **Não foi possível comprovar que seja staging** — a evidência aponta para produção.
-- Não há app de staging publicado para exercer sessões reais, OAuth do ML e inspeção de DevTools.
+O bloco a seguir era verdadeiro **antes** de o ambiente de staging ser provisionado, e fica aqui só para rastreabilidade:
+- **Um único ambiente configurado** nesta máquina de trabalho: `.env.local` (Supabase de produção). Sem `.env.staging`, sem `psql`/Supabase CLI locais.
+- Por isso a validação foi **inicialmente interrompida** (não se tocava produção nem se reportava resultado não medido).
 
-Como o roteiro proíbe qualquer ação em produção e exige confirmar staging antes de rodar SQL, a única ação correta foi **interromper**. Não foram executados os `check-*.sql`, a migração 016, nem os testes de rota — para não tocar o único banco alcançável (produção) e para não reportar resultado que não foi medido.
+Depois disso, o operador provisionou o **Supabase Staging** e o **Vercel Preview**, aplicou as migrações e executou a validação — cujos resultados reais estão registrados abaixo e no doc 10.
 
 ## O que JÁ está validado (da etapa anterior, sem banco)
 
@@ -34,28 +33,36 @@ Estes não dependem de staging e foram executados de verdade (ver [06-TESTES](./
 - `npm run lint` → 0 erros (49 warnings pré-existentes).
 - Varredura de segredos no commit → nenhum valor real de token.
 
-## Checklist de aprovação — estado atual
+## Checklist de aprovação — estado atual (staging)
 
-Todos **NÃO EXECUTADOS** (bloqueados por falta de staging):
+Autenticação e isolamento — **APROVADOS**; fluxos do Mercado Livre — **PENDENTES**:
 
 ```
-[BLOQUEADO] Sem sessão → 401
-[BLOQUEADO] Sem perfil → 403
-[BLOQUEADO] Perfil inativo → 403
-[BLOQUEADO] Cliente A não acessa Empresa B
-[BLOQUEADO] Cliente B não acessa Empresa A
-[BLOQUEADO] clienteId forjado não burla autorização
-[BLOQUEADO] Equipe continua com acesso
-[BLOQUEADO] Refresh token não aparece no navegador
-[BLOQUEADO] Refresh token não aparece nas respostas
-[BLOQUEADO] Refresh token não aparece nos logs
-[BLOQUEADO] OAuth continua funcionando
-[BLOQUEADO] Importação continua funcionando
-[BLOQUEADO] Vendas continuam funcionando
-[BLOQUEADO] Dry-run continua funcionando
-[BLOQUEADO] Migração 016 aplicada apenas em staging
-[PARCIAL   ] Rollback documentado (bloco no arquivo 016 + 07-ROLLBACK); NÃO validado em execução
+[APROVADO] Migrações base e 001–015 aplicadas no Supabase Staging
+[APROVADO] Migração 016 aplicada no Supabase Staging (apenas staging)
+[APROVADO] Usuário da equipe continua com acesso
+[APROVADO] Equipe é direcionada ao Painel da Agência em /
+[APROVADO] Equipe acessa todos os clientes e produtos
+[APROVADO] Equipe em /cliente é redirecionada para /
+[APROVADO] Cliente A acessa somente Empresa A e Produto A
+[APROVADO] Cliente B acessa somente Empresa B e Produto B
+[APROVADO] Cliente em rota administrativa é redirecionado para /cliente
+[APROVADO] Usuário sem perfil recebe "Acesso não liberado"
+[APROVADO] Perfil com ativo=false recebe "Acesso não liberado"
+[APROVADO] /clientes não é confundido com /cliente
+[APROVADO] Isolamento multiempresa funcionando no fluxo real
+
+[PENDENTE] Conectar uma conta Mercado Livre de teste no staging
+[PENDENTE] Confirmar no DevTools que refresh_token não aparece nas requisições
+[PENDENTE] Confirmar que refresh_token não aparece nas respostas
+[PENDENTE] Confirmar que refresh_token não aparece nos logs
+[PENDENTE] Validar OAuth do Mercado Livre
+[PENDENTE] Validar importação de anúncios
+[PENDENTE] Validar consulta de vendas
+[PENDENTE] Validar dry-run e publicação controlada
 ```
+
+> A matriz completa de perfis/redirecionamentos/isolamento está em [10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md](./10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md). O runbook abaixo continua válido para executar as etapas **pendentes** do Mercado Livre.
 
 ---
 
@@ -125,10 +132,15 @@ Confirmar: OAuth conecta; callback salva o canal no servidor; frontend recebe s�
 Executar o bloco "REVERTER" do fim de `016-*.sql` (recria `eh_equipe`/`cliente_do_usuario` antigas; `perfis.ativo` pode ficar). Confirmar que **nenhum** usuário/cliente/perfil é removido. Reaplicar a 016 se o staging deve seguir atualizado. Ver [07-ROLLBACK](./07-ROLLBACK.md).
 
 ## Falhas encontradas
-Nenhuma **de código** (o bloqueio é de ambiente). Os testes que rodam sem banco passaram.
+Nenhuma na validação de autenticação/isolamento em staging — todos os itens aprovados. Os fluxos do Mercado Livre ainda não foram exercidos (pendentes), então não há resultado a reportar sobre eles.
 
 ## Correções necessárias
-Nenhuma no código. Necessário **prover um ambiente de staging** (Supabase + deploy + app ML de teste) e as ferramentas de execução de SQL para completar a validação.
+Nenhuma no código. Falta apenas **executar as etapas pendentes do Mercado Livre** em staging (conectar conta de teste, DevTools do refresh_token, OAuth/importação/vendas/dry-run) — ver runbook acima.
 
 ## Veredito
-**NÃO CONCLUÍDA — BLOQUEADA (sem ambiente de staging).** Não é possível marcar como aprovada sem executar; e não há defeito de código que justifique reprovação. A execução foi interrompida na Parte 1, conforme o próprio roteiro determina.
+```
+ETAPA 1 — AUTENTICAÇÃO E ISOLAMENTO MULTIEMPRESA APROVADOS EM STAGING
+
+A validação de credenciais e fluxos do Mercado Livre permanece pendente.
+```
+Autenticação, redirecionamento por papel e isolamento multiempresa: **aprovados em staging**. Credenciais/fluxos do ML: **pendentes**. Nada foi testado em produção. Detalhe em [10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md](./10-VALIDACAO-ISOLAMENTO-CONCLUIDA.md).
