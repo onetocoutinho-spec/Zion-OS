@@ -77,3 +77,19 @@ Logado como **equipe**, em `/usuarios/novo`:
 7. **Autorização**: logado como **cliente**, chamar `POST /api/usuarios` → **403**; sem sessão → **401**.
 8. **DevTools/Network**: a resposta **nunca** contém senha/token/service_role.
 9. Conferir no Supabase que o usuário do Auth tem a linha correspondente em `perfis` (sem órfãos).
+
+## Aceitação do convite (definir senha) — complemento
+Auditoria do fluxo de aceitação: o `inviteUserByEmail` não tinha `redirectTo` e **não existia página de definição de senha** (cenário E: página faltando + redirect não configurado). Correção mínima adicionada:
+
+- **Página pública `/definir-senha`** (`src/app/definir-senha/page.tsx`): só funciona com a sessão criada pelo convite (o supabase-js detecta o token da URL); campos nova senha + confirmação (mín. 8, com conferência); botão bloqueado no envio; atualiza via `supabase.auth.updateUser({ password })` **no cliente** (a senha **nunca** vai a nenhuma API própria nem a logs); após o sucesso, carrega o perfil e redireciona (**equipe → `/`**, **cliente → `/cliente`**); link inválido/expirado → mensagem genérica.
+- **`redirectTo` server-side**: montado por `montarRedirectConvite(process.env.NEXT_PUBLIC_APP_URL)` — usa só a **origin** da env + a rota fixa `/definir-senha`, rejeita esquemas não-http(s) e valores inválidos (retorna null → Supabase usa o Site URL). Nunca vem de valor livre do navegador → **sem open redirect**.
+- **Allowlist**: `/definir-senha` é isenta do gate de perfil (`AuthGate`) e da casca da equipe (`AppShell`), para o convidado não cair no painel antes de definir a senha.
+- **Env nova**: `NEXT_PUBLIC_APP_URL` (documentada em `.env.example` e `.env.staging.example`, placeholders). Em staging, apontar para a **URL do Vercel Preview** — nunca produção.
+
+**Configuração necessária no Supabase Staging** (Authentication → URL Configuration → Redirect URLs), sem alterar o dashboard aqui:
+```
+<VERCEL_PREVIEW_URL>/definir-senha
+```
+(e o Site URL = `<VERCEL_PREVIEW_URL>`). Substituir `<VERCEL_PREVIEW_URL>` pela URL estável do Preview da branch.
+
+Testes adicionados (`src/lib/auth/definirSenha.test.ts`, 9): senha curta → erro; confirmação diferente → erro; válida → ok; equipe → `/`; cliente → `/cliente`; redirectTo usa a origin + rota fixa; ignora path/query arbitrário; env vazia → null; URL inválida/esquema não-http(s) → null. (Convite-sem-sessão, sucesso e link-expirado são comportamentos de runtime da página — no roteiro manual.)

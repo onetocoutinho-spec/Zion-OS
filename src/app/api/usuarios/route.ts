@@ -12,6 +12,7 @@ import {
   criarUsuarioComPerfil,
   type DepsCriacaoUsuario,
 } from "@/lib/services/usuarios";
+import { montarRedirectConvite } from "@/lib/auth/definirSenha";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 30;
@@ -30,7 +31,13 @@ function montarDeps(admin: SupabaseClient): DepsCriacaoUsuario {
       return achado ? { id: achado.id } : null;
     },
     async convidarAuthUser(email, nome) {
-      const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { data: { nome } });
+      // redirectTo controlado no SERVIDOR (env), nunca vindo do navegador. Se a
+      // env não for uma URL http(s) válida, cai para o Site URL do Supabase.
+      const redirectTo = montarRedirectConvite(process.env.NEXT_PUBLIC_APP_URL) ?? undefined;
+      const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: { nome },
+        redirectTo,
+      });
       if (error || !data?.user) throw new Error(error?.message ?? "Falha ao convidar usuário.");
       return { id: data.user.id };
     },

@@ -225,7 +225,11 @@ function TelaErroPerfil({ onTentar }: { onTentar: () => void }) {
   );
 }
 
+/** Rota pública de aceitação de convite: gerencia a própria sessão. */
+const ROTA_DEFINIR_SENHA = "/definir-senha";
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   // Estados EXPLÍCITOS (A-01): a sessão e o carregamento do perfil são fases
   // separadas — erro/timeout NUNCA vira "sem acesso".
   const [faseSessao, setFaseSessao] = useState<FaseSessao>(
@@ -314,6 +318,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       listener.subscription.unsubscribe();
     };
   }, [carregar]);
+
+  // A página de definir senha (convite) é pública e não passa pelo gate de
+  // perfil — assim o convidado não é mandado ao painel antes de definir a senha.
+  if (pathname === ROTA_DEFINIR_SENHA) return <>{children}</>;
 
   const estado = decidirEstadoAuth(faseSessao, fasePerfil);
 
