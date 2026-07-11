@@ -82,9 +82,15 @@ Logado como **equipe**, em `/usuarios/novo`:
 Auditoria do fluxo de aceitação: o `inviteUserByEmail` não tinha `redirectTo` e **não existia página de definição de senha** (cenário E: página faltando + redirect não configurado). Correção mínima adicionada:
 
 - **Página pública `/definir-senha`** (`src/app/definir-senha/page.tsx`): só funciona com a sessão criada pelo convite (o supabase-js detecta o token da URL); campos nova senha + confirmação (mín. 8, com conferência); botão bloqueado no envio; atualiza via `supabase.auth.updateUser({ password })` **no cliente** (a senha **nunca** vai a nenhuma API própria nem a logs); após o sucesso, carrega o perfil e redireciona (**equipe → `/`**, **cliente → `/cliente`**); link inválido/expirado → mensagem genérica.
-- **`redirectTo` server-side**: montado por `montarRedirectConvite(process.env.NEXT_PUBLIC_APP_URL)` — usa só a **origin** da env + a rota fixa `/definir-senha`, rejeita esquemas não-http(s) e valores inválidos (retorna null → Supabase usa o Site URL). Nunca vem de valor livre do navegador → **sem open redirect**.
+- **`redirectTo` server-side OBRIGATÓRIO** (endurecido): montado por `montarRedirectConvite(process.env.APP_URL)` — usa só a **origin** da env + a rota fixa `/definir-senha`, **exige https** e rejeita path/query/fragment/valores inválidos. Nunca vem de valor livre do navegador → **sem open redirect**.
 - **Allowlist**: `/definir-senha` é isenta do gate de perfil (`AuthGate`) e da casca da equipe (`AppShell`), para o convidado não cair no painel antes de definir a senha.
-- **Env nova**: `NEXT_PUBLIC_APP_URL` (documentada em `.env.example` e `.env.staging.example`, placeholders). Em staging, apontar para a **URL do Vercel Preview** — nunca produção.
+
+### Endurecimento da URL de convite (por que trocamos `NEXT_PUBLIC_APP_URL` por `APP_URL`)
+- `NEXT_PUBLIC_*` é **embutida no build** do Next. Se a variável faltasse (ou o Preview fosse antigo), `process.env.NEXT_PUBLIC_APP_URL` virava `undefined`, `redirectTo` ficava `undefined` e o convite caía **silenciosamente no Site URL** (base, sem `/definir-senha`).
+- Agora usamos **`APP_URL`** — **server-only** (sem `NEXT_PUBLIC_`, nunca vai ao navegador; confirmado que nenhum componente cliente a usava). O endpoint só é **SOMENTE SERVIDOR**.
+- **Falha segura:** se `APP_URL` estiver ausente/ inválida/ não-https, o handler **não** chama `inviteUserByEmail`, **não** cria usuário no Auth nem perfil, e responde **503** com a mensagem pública genérica *"O envio de convites está temporariamente indisponível."*, registrando só o código sanitizado **`APP_URL_INVALIDA`** (sem o valor). `redirectTo` **nunca** é `undefined`.
+- **Configuração na Vercel (escopo Preview):** `APP_URL=https://<VERCEL_PREVIEW_URL>` (https, só a origin, sem barra no fim) e **Redeploy** (env server-side também é lida no runtime, mas o deploy precisa existir a partir do commit desta correção). Nunca a URL de produção no staging.
+- **Configuração no Supabase Staging:** adicionar `https://<VERCEL_PREVIEW_URL>/definir-senha` em Authentication → URL Configuration → **Redirect URLs** (e Site URL = `https://<VERCEL_PREVIEW_URL>`), senão o Supabase ignora o `redirectTo` e usa o Site URL.
 
 **Configuração necessária no Supabase Staging** (Authentication → URL Configuration → Redirect URLs), sem alterar o dashboard aqui:
 ```

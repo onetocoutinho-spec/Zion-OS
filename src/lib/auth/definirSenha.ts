@@ -24,22 +24,24 @@ export function destinoAposSenha(papel: "equipe" | "cliente" | null | undefined)
   return papel === "cliente" ? "/cliente" : "/";
 }
 
+/** Rota fixa de aceitação de convite (nunca vem do navegador). */
+export const ROTA_DEFINIR_SENHA = "/definir-senha";
+
 /**
- * Monta o redirectTo do convite a partir da URL do app (env, server-side).
- * Usa SOMENTE a ORIGIN da URL configurada + a rota fixa — ignora path/query
- * arbitrário e rejeita esquemas não-http(s). Retorna null quando a env não é
- * uma URL http(s) válida (aí o Supabase usa o Site URL). Impede open redirect
- * e não aceita domínio vindo do navegador.
+ * Monta o redirectTo do convite a partir da URL do app (env `APP_URL`,
+ * SERVER-SIDE). Usa SOMENTE a ORIGIN da URL + a rota fixa `/definir-senha`:
+ * ignora path/query/fragment arbitrário e **exige protocolo https** (Preview/
+ * Production). Retorna `null` quando a env é ausente/ inválida/ não-https — nesse
+ * caso o convite NÃO deve ser enviado (o chamador falha de forma segura, sem
+ * cair silenciosamente no Site URL). Impede open redirect e nunca aceita
+ * domínio vindo do navegador.
  */
-export function montarRedirectConvite(
-  appUrl: string | undefined | null,
-  rota = "/definir-senha"
-): string | null {
+export function montarRedirectConvite(appUrl: string | undefined | null): string | null {
   if (!appUrl) return null;
   try {
     const u = new URL(appUrl);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    return `${u.origin}${rota}`;
+    if (u.protocol !== "https:") return null; // só https em Preview/Production
+    return `${u.origin}${ROTA_DEFINIR_SENHA}`; // só a origin + rota fixa (normaliza barra)
   } catch {
     return null;
   }

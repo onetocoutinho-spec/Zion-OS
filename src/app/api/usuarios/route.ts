@@ -17,8 +17,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const maxDuration = 30;
 
-/** Monta as dependências reais a partir do Supabase Admin (service_role). */
-function montarDeps(admin: SupabaseClient): DepsCriacaoUsuario {
+/**
+ * Monta as dependências reais a partir do Supabase Admin (service_role).
+ * `redirectConvite` já vem VALIDADO (https + origin + /definir-senha) — nunca
+ * undefined; o handler recusa a operação antes se APP_URL for inválida.
+ */
+function montarDeps(admin: SupabaseClient, redirectConvite: string): DepsCriacaoUsuario {
   return {
     async empresaExiste(clienteId) {
       const { data } = await admin.from("clientes").select("id").eq("id", clienteId).maybeSingle();
@@ -31,12 +35,10 @@ function montarDeps(admin: SupabaseClient): DepsCriacaoUsuario {
       return achado ? { id: achado.id } : null;
     },
     async convidarAuthUser(email, nome) {
-      // redirectTo controlado no SERVIDOR (env), nunca vindo do navegador. Se a
-      // env não for uma URL http(s) válida, cai para o Site URL do Supabase.
-      const redirectTo = montarRedirectConvite(process.env.NEXT_PUBLIC_APP_URL) ?? undefined;
+      // redirectTo SEMPRE definido (validado no handler). Server-side, nunca do navegador.
       const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
         data: { nome },
-        redirectTo,
+        redirectTo: redirectConvite,
       });
       if (error || !data?.user) throw new Error(error?.message ?? "Falha ao convidar usuário.");
       return { id: data.user.id };
@@ -78,18 +80,30 @@ export async function POST(request: Request) {
     return Response.json({ erro: validacao.erro, campo: validacao.campo }, { status: 400 });
   }
 
-  // 3) Fluxo consistente com compensação.
+  // 3) URL de convite server-side OBRIGATÓRIA (APP_URL, https). Sem ela, NÃO
+  //    enviamos convite (nada de cair silenciosamente no Site URL) e NÃO criamos
+  //    usuário/perfil. Registra só um código sanitizado — nunca o valor.
+  const redirectConvite = montarRedirectConvite(process.env.APP_URL);
+  if (!redirectConvite) {
+    console.error("[usuarios] APP_URL_INVALIDA");
+    return Response.json(
+      { erro: "O envio de convites está temporariamente indisponível." },
+      { status: 503 }
+    );
+  }
+
+  // 4) Fluxo consistente com compensação.
   const admin = getSupabaseAdmin();
   let resultado;
   try {
-    resultado = await criarUsuarioComPerfil(montarDeps(admin), validacao.dados);
+    resultado = await criarUsuarioComPerfil(montarDeps(admin, redirectConvite), validacao.dados);
   } catch {
     // Erro inesperado (ex.: convite/SMTP, rede). Mensagem genérica — sem detalhe do Supabase.
     console.error("[usuarios] falha inesperada na criação", { papel: validacao.dados.papel });
     return Response.json({ erro: "Não foi possível criar o usuário agora. Tente novamente." }, { status: 500 });
   }
 
-  // 4) Resposta sanitizada por tipo (nunca senha/token/sessão).
+  // 5) Resposta sanitizada por tipo (nunca senha/token/sessão/APP_URL).
   switch (resultado.tipo) {
     case "convidado":
       console.info("[usuarios] convite criado", { papel: validacao.dados.papel });
