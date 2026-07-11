@@ -36,7 +36,14 @@ yarn-error.log*
 !.env.staging.example
 
 # credenciais / segredos (NUNCA versionar)
+# .env, .env.local e .env.*.local já são cobertos por ".env*" acima
+# (com exceção só para os *.example). Aqui cobrimos variações de nome de
+# arquivos de credenciais/segredos. NÃO ignore *.example.
 credenciais*
+credentials.md
+secrets.md
+senhas.md
+chaves.md
 *.secret
 *.secrets
 segredos*
