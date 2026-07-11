@@ -18,6 +18,7 @@ import {
   Workflow,
   ShieldCheck,
   Sparkles,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +31,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Clientes", href: "/clientes", icon: Users },
+  { label: "Novo Usuário", href: "/usuarios/novo", icon: UserPlus },
   { label: "Onboarding", href: "/onboarding", icon: Rocket },
   { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Templates", href: "/templates", icon: Layers },
