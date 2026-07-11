@@ -44,6 +44,42 @@ export async function meuPerfil(): Promise<Perfil | null> {
   };
 }
 
+/**
+ * Resultado DETALHADO da carga do perfil, para o AuthGate distinguir os
+ * estados (A-01): sem sessão × sem perfil × inativo × ok. **Lança** em erro
+ * real (rede/banco) — o chamador classifica como "erro temporário", nunca
+ * como "sem acesso". Não confunde falha com ausência de permissão.
+ */
+export type CargaPerfil =
+  | { tipo: "sem_sessao" }
+  | { tipo: "sem_perfil" }
+  | { tipo: "inativo" }
+  | { tipo: "ok"; perfil: Perfil };
+
+export async function carregarPerfil(): Promise<CargaPerfil> {
+  if (!supabaseConfigurado) return { tipo: "ok", perfil: EQUIPE }; // demo
+  const sb = getSupabase();
+  const { data: auth, error: erroAuth } = await sb.auth.getUser();
+  if (erroAuth) throw erroAuth; // erro de auth (rede/servidor) → temporário
+  if (!auth.user) return { tipo: "sem_sessao" }; // sessão ausente/expirada
+  const { data, error } = await sb
+    .from("perfis")
+    .select("papel, cliente_id, nome, ativo")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (error) throw error; // erro de banco → temporário (não "sem acesso")
+  if (!data) return { tipo: "sem_perfil" };
+  if (data.ativo === false) return { tipo: "inativo" };
+  return {
+    tipo: "ok",
+    perfil: {
+      papel: data.papel === "cliente" ? "cliente" : "equipe",
+      clienteId: (data.cliente_id as string | null) ?? null,
+      nome: (data.nome as string | null) ?? "",
+    },
+  };
+}
+
 // ---- Leituras do Portal (via funções portal_* do banco) ----
 
 export interface PortalResumo {
