@@ -2,7 +2,7 @@
 -- Zion OS — STAGING (SQL EDITOR) · Criar o PRIMEIRO perfil de EQUIPE
 --
 -- ⚠️ RODE SOMENTE no projeto zion-os-staging. NUNCA em produção.
--- ⚠️ TEMPLATE: substitua TODAS as ocorrências de <STAGING_TEAM_USER_UUID>
+-- ⚠️ TEMPLATE: substitua TODAS as ocorrências de 4538daaa-15ff-4de3-b29c-9f591a474902
 --    pelo UUID do usuário criado no Supabase Auth (Authentication → Users →
 --    Add user → copie o User UID). SEM substituir, o script ABORTA.
 --

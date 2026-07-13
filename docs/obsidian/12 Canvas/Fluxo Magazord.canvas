@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    { "id": "t", "type": "text", "text": "# 🏭 Fluxo Magazord (ERP) — Fase 1\ncadastro + espelho estoque/custo", "x": -560, "y": -260, "width": 420, "height": 80 },
+    { "id": "pm", "type": "file", "file": "obsidian/03 Produto/Produto Mestre.md", "x": -560, "y": -20, "width": 240, "height": 90 },
+    { "id": "sdk", "type": "file", "file": "obsidian/04 Integrações/Connector SDK.md", "x": -260, "y": -160, "width": 240, "height": 90 },
+    { "id": "conn", "type": "file", "file": "obsidian/04 Integrações/Magazord.md", "x": -260, "y": 20, "width": 240, "height": 90 },
+    { "id": "erp", "type": "text", "text": "**Magazord (ERP)**\nestoque · custo · fiscal · nota", "x": 60, "y": 20, "width": 240, "height": 90 },
+    { "id": "variante", "type": "file", "file": "obsidian/03 Produto/Variante.md", "x": -560, "y": 180, "width": 240, "height": 90 },
+    { "id": "bus", "type": "text", "text": "**Event Bus**\nerp.estoque.mudou\nerp.custo.mudou\nerp.nota.emitida", "x": 60, "y": 200, "width": 240, "height": 110 }
+  ],
+  "edges": [
+    { "id": "e1", "fromNode": "pm", "toNode": "conn", "fromSide": "right", "toSide": "left", "label": "produto_mestre.criado" },
+    { "id": "e2", "fromNode": "sdk", "toNode": "conn", "fromSide": "bottom", "toSide": "top", "label": "contrato ErpConnector" },
+    { "id": "e3", "fromNode": "conn", "toNode": "erp", "fromSide": "right", "toSide": "left", "label": "cadastra → erp_sku" },
+    { "id": "e4", "fromNode": "erp", "toNode": "bus", "fromSide": "bottom", "toSide": "top", "label": "emite eventos" },
+    { "id": "e5", "fromNode": "bus", "toNode": "variante", "fromSide": "left", "toSide": "right", "label": "espelha (read-only)" }
+  ]
+}
