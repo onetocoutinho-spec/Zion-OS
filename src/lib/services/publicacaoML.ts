@@ -5,7 +5,8 @@
 // segredo do APP ML) levando o refresh_token do canal do cliente.
 
 import { montarItemML } from "../marketplaces/mlPayload";
-import { buscarCanal, atualizarRefreshToken } from "./canaisMarketplace";
+import { buscarCanal } from "./canaisMarketplace";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { marcarAnuncioPublicado } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
 import type { AnuncioGeradoRegistro } from "../types";
@@ -81,18 +82,21 @@ export async function publicarNoML(
   if (!go) return { dry: true, payload };
 
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
-  if (!canal?.refreshToken) {
+  if (!canal?.ativo) {
     throw new Error(
-      "Cliente não conectado ao Mercado Livre. Conecte a conta (refresh token) em Configurações do canal antes de publicar."
+      "Cliente não conectado ao Mercado Livre. Conecte a conta em Configurações do canal antes de publicar."
     );
   }
 
+  // O refresh_token NÃO trafega pelo navegador (R3): o servidor lê o token do
+  // canal pelo clienteId, valida o acesso e rotaciona/persiste sozinho.
   const resposta = await fetch("/api/ml/publicar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
+      clienteId: registro.clienteId,
+      marketplace: registro.marketplace,
       payload,
-      refreshToken: canal.refreshToken,
       go: true,
       tituloParaCategoria: registro.anuncio?.tituloOtimizado,
     }),
@@ -101,14 +105,8 @@ export async function publicarNoML(
   const dados = (await resposta.json()) as {
     id?: string;
     permalink?: string;
-    refreshToken?: string;
     erro?: string;
   };
-
-  // Persiste o refresh_token rotacionado mesmo se a publicação falhar depois.
-  if (dados.refreshToken) {
-    await atualizarRefreshToken(registro.clienteId, dados.refreshToken, registro.marketplace);
-  }
 
   if (!resposta.ok || !dados.id) {
     throw new Error(dados.erro ?? "Falha ao publicar no Mercado Livre.");

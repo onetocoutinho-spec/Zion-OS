@@ -1,0 +1,13 @@
+{
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest",
+  "useMarkdownLinks": false,
+  "attachmentFolderPath": "obsidian/_attachments",
+  "newFileLocation": "folder",
+  "newFileFolderPath": "obsidian/15 Inbox",
+  "showUnsupportedFiles": false,
+  "userIgnoreFilters": [
+    "node_modules/",
+    "obsidian/_attachments/"
+  ]
+}

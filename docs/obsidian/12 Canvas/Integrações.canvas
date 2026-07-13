@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "t",
+      "type": "text",
+      "text": "# 🔌 Integrações\num contrato · N canais",
+      "x": -640,
+      "y": -300,
+      "width": 320,
+      "height": 80
+    },
+    {
+      "id": "sdk",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/Connector SDK.md",
+      "x": -640,
+      "y": -40,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "pm",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Produto Mestre.md",
+      "x": -640,
+      "y": 180,
+      "width": 240,
+      "height": 90
+    },
+    {
+      "id": "magazord",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/Magazord.md",
+      "x": -320,
+      "y": -180,
+      "width": 240,
+      "height": 90
+    },
+    {
+      "id": "erp",
+      "type": "file",
+      "file": "docs/obsidian/08 ERP/ERP.md",
+      "x": 0,
+      "y": -180,
+      "width": 220,
+      "height": 90
+    },
+    {
+      "id": "engine",
+      "type": "file",
+      "file": "docs/obsidian/07 Marketplace/Marketplace Engine.md",
+      "x": -320,
+      "y": 60,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "adapter",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/Marketplace Adapter.md",
+      "x": 0,
+      "y": 60,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "ml",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/Mercado Livre.md",
+      "x": 340,
+      "y": -60,
+      "width": 220,
+      "height": 90
+    },
+    {
+      "id": "tiktok",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/TikTok Shop.md",
+      "x": 340,
+      "y": 60,
+      "width": 220,
+      "height": 80
+    },
+    {
+      "id": "shopee",
+      "type": "file",
+      "file": "docs/obsidian/04 Integrações/Shopee.md",
+      "x": 340,
+      "y": 170,
+      "width": 220,
+      "height": 80
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "fromNode": "sdk",
+      "toNode": "magazord",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "ErpConnector"
+    },
+    {
+      "id": "e2",
+      "fromNode": "sdk",
+      "toNode": "adapter",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "label": "MarketplaceConnector"
+    },
+    {
+      "id": "e3",
+      "fromNode": "magazord",
+      "toNode": "erp",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "cadastra / espelha"
+    },
+    {
+      "id": "e4",
+      "fromNode": "pm",
+      "toNode": "engine",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e5",
+      "fromNode": "engine",
+      "toNode": "adapter",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "orquestra"
+    },
+    {
+      "id": "e6",
+      "fromNode": "adapter",
+      "toNode": "ml",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e7",
+      "fromNode": "adapter",
+      "toNode": "tiktok",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e8",
+      "fromNode": "adapter",
+      "toNode": "shopee",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ]
+}
