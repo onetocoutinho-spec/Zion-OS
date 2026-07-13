@@ -34,7 +34,7 @@ aliases: [Produto, Product Master, Produto canônico]
 
 Modelo persistido: [[Modelo de Dados — Produto Mestre]] · Compliance: [[010-database-compliance|010]].
 
-Ver também: [[Variante]] · [[EAN]] · [[Workflow]] · [[Fluxo Produto Mestre.canvas|Canvas]]
+Ver também: [[Variante]] · [[EAN]] · [[Workflow]] · [[Produto Mestre.canvas|Canvas]]
 
 ---
 ◀ [[Produto]] · [[Glossário]]

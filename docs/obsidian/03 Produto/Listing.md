@@ -25,7 +25,7 @@ aliases: [Anúncio, Listing Variante]
 - **Emite (via Adapter):** `marketplace.listing.estado`, `venda.recebida`, `pergunta.recebida`.
 - **Consome:** `listing.publicar.solicitado`, `listing.atualizar.solicitado`.
 
-Ver também: [[Mercado Livre]] · [[Marketplace Engine]] · [[Marketplace Adapter]] · [[Fluxo Marketplace.canvas|Canvas]]
+Ver também: [[Mercado Livre]] · [[Marketplace Engine]] · [[Marketplace Adapter]] · [[Integrações.canvas|Canvas · Integrações]]
 
 ---
 ◀ [[Produto]] · [[Glossário]]

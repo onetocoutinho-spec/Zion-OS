@@ -1,0 +1,20 @@
+{
+	"nodes":[
+		{"id":"t","type":"text","text":"# 🗄️ Banco\nmodelo de dados · governança","x":-560,"y":-280,"width":340,"height":210},
+		{"id":"schema","type":"file","file":"docs/obsidian/05 Banco/Schema.md","x":-560,"y":-60,"width":240,"height":280},
+		{"id":"pm","type":"file","file":"docs/obsidian/05 Banco/Modelo de Dados — Produto Mestre.md","x":-220,"y":-160,"width":260,"height":100},
+		{"id":"variante","type":"file","file":"docs/obsidian/03 Produto/Variante.md","x":120,"y":-160,"width":220,"height":90},
+		{"id":"versao","type":"file","file":"docs/obsidian/05 Banco/Versionamento.md","x":-220,"y":-40,"width":260,"height":260},
+		{"id":"bus","type":"text","text":"**Event Bus (tabelas)**\nevento · entrega\ndead-letter · replay","x":120,"y":20,"width":220,"height":110},
+		{"id":"rls","type":"file","file":"docs/obsidian/05 Banco/RLS.md","x":-580,"y":340,"width":240,"height":280},
+		{"id":"migr","type":"file","file":"docs/obsidian/05 Banco/Migrations.md","x":-240,"y":250,"width":260,"height":310}
+	],
+	"edges":[
+		{"id":"e1","fromNode":"schema","fromSide":"right","toNode":"pm","toSide":"left"},
+		{"id":"e2","fromNode":"pm","fromSide":"right","toNode":"variante","toSide":"left","label":"1 → N"},
+		{"id":"e3","fromNode":"pm","fromSide":"bottom","toNode":"versao","toSide":"top","label":"gera versão"},
+		{"id":"e4","fromNode":"schema","fromSide":"bottom","toNode":"rls","toSide":"top","label":"isola (tenant)"},
+		{"id":"e5","fromNode":"schema","fromSide":"right","toNode":"migr","toSide":"left"},
+		{"id":"e6","fromNode":"versao","fromSide":"right","toNode":"bus","toSide":"left","label":"evento + histórico"}
+	]
+}

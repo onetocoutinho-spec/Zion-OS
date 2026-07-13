@@ -28,7 +28,7 @@ area: integracoes
 - `limites()` + retry/backoff por conta; idempotência obrigatória.
 - Toda operação gera evento ([[004-event-bus|Event Bus]]) e é reconciliada por webhook.
 
-Ver mapas: [[Fluxo Magazord.canvas|Canvas · Magazord]] · [[Fluxo Marketplace.canvas|Canvas · Marketplace]]
+Ver o mapa em [[Integrações.canvas|Canvas · Integrações]].
 
 ---
 ◀ [[Home]] · [[Glossário]]

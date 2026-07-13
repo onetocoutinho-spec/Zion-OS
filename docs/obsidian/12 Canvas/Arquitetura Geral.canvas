@@ -1,27 +1,27 @@
 {
-  "nodes": [
-    { "id": "titulo", "type": "text", "text": "# 🏛️ Arquitetura Geral\nCamadas 000–006 · Fonte da Verdade: docs/architecture", "x": -640, "y": -360, "width": 460, "height": 90 },
-    { "id": "origem", "type": "text", "text": "**Origem do Produto**\nCatálogo (Excel/CSV/XML/PDF/B2B)", "x": -840, "y": -40, "width": 240, "height": 100 },
-    { "id": "intake", "type": "file", "file": "architecture/006-capability-000-zion-intake.md", "x": -520, "y": -40, "width": 260, "height": 100 },
-    { "id": "pm", "type": "file", "file": "architecture/001-product-master.md", "x": -160, "y": -40, "width": 260, "height": 100 },
-    { "id": "sdk", "type": "file", "file": "architecture/003-connector-sdk.md", "x": -160, "y": -240, "width": 260, "height": 90 },
-    { "id": "adapter", "type": "file", "file": "architecture/002-marketplace-adapter.md", "x": 220, "y": -160, "width": 260, "height": 90 },
-    { "id": "engine", "type": "file", "file": "architecture/005-marketplace-engine.md", "x": 220, "y": 40, "width": 260, "height": 90 },
-    { "id": "erp", "type": "text", "text": "**ERP (Magazord)**\nestoque · custo · fiscal · nota\n(Fonte da Verdade)", "x": -160, "y": 200, "width": 260, "height": 110 },
-    { "id": "mkt", "type": "text", "text": "**Marketplaces**\nMercado Livre · TikTok · Shopee", "x": 560, "y": -60, "width": 240, "height": 100 },
-    { "id": "bus", "type": "file", "file": "architecture/004-event-bus.md", "x": -520, "y": 220, "width": 260, "height": 90 },
-    { "id": "dominio", "type": "file", "file": "architecture/000-business-domain.md", "x": -840, "y": -240, "width": 240, "height": 90 }
-  ],
-  "edges": [
-    { "id": "e1", "fromNode": "origem", "toNode": "intake", "fromSide": "right", "toSide": "left" },
-    { "id": "e2", "fromNode": "intake", "toNode": "pm", "fromSide": "right", "toSide": "left", "label": "promove" },
-    { "id": "e3", "fromNode": "sdk", "toNode": "adapter", "fromSide": "right", "toSide": "left", "label": "especializa" },
-    { "id": "e4", "fromNode": "pm", "toNode": "engine", "fromSide": "right", "toSide": "left", "label": "orquestra" },
-    { "id": "e5", "fromNode": "engine", "toNode": "adapter", "fromSide": "top", "toSide": "bottom" },
-    { "id": "e6", "fromNode": "adapter", "toNode": "mkt", "fromSide": "right", "toSide": "left", "label": "publica" },
-    { "id": "e7", "fromNode": "pm", "toNode": "erp", "fromSide": "bottom", "toSide": "top", "label": "cadastra / espelha" },
-    { "id": "e8", "fromNode": "bus", "toNode": "intake", "fromSide": "top", "toSide": "bottom", "label": "eventos" },
-    { "id": "e9", "fromNode": "bus", "toNode": "pm", "fromSide": "right", "toSide": "bottom" },
-    { "id": "e10", "fromNode": "dominio", "toNode": "sdk", "fromSide": "bottom", "toSide": "top", "label": "linguagem" }
-  ]
+	"nodes":[
+		{"id":"titulo","type":"text","text":"# 🏛️ Arquitetura Geral\nCamadas 000–006","x":-520,"y":-420,"width":360,"height":80},
+		{"id":"dominio","type":"file","file":"docs/architecture/000-business-domain.md","x":-520,"y":-220,"width":260,"height":150},
+		{"id":"origem","type":"text","text":"**Origem do Produto**\nCatálogo bruto","x":-860,"y":40,"width":200,"height":90},
+		{"id":"intake","type":"file","file":"docs/architecture/006-capability-000-zion-intake.md","x":-560,"y":40,"width":260,"height":110},
+		{"id":"pm","type":"file","file":"docs/architecture/001-product-master.md","x":-220,"y":40,"width":260,"height":110},
+		{"id":"sdk","type":"file","file":"docs/architecture/003-connector-sdk.md","x":-220,"y":-160,"width":260,"height":100},
+		{"id":"adapter","type":"file","file":"docs/architecture/002-marketplace-adapter.md","x":160,"y":-120,"width":260,"height":100},
+		{"id":"engine","type":"file","file":"docs/architecture/005-marketplace-engine.md","x":160,"y":80,"width":260,"height":100},
+		{"id":"bus","type":"file","file":"docs/architecture/004-event-bus.md","x":-560,"y":280,"width":260,"height":100},
+		{"id":"erp","type":"text","text":"**ERP (Magazord)**\nestoque · custo · fiscal · nota","x":-220,"y":280,"width":260,"height":90},
+		{"id":"mkt","type":"text","text":"**Marketplaces**\nMercado Livre · TikTok · Shopee","x":540,"y":-30,"width":220,"height":90}
+	],
+	"edges":[
+		{"id":"e10","fromNode":"dominio","fromSide":"bottom","toNode":"sdk","toSide":"top","label":"linguagem oficial"},
+		{"id":"e1","fromNode":"origem","fromSide":"right","toNode":"intake","toSide":"left"},
+		{"id":"e2","fromNode":"intake","fromSide":"right","toNode":"pm","toSide":"left","label":"promove"},
+		{"id":"e3","fromNode":"sdk","fromSide":"right","toNode":"adapter","toSide":"left","label":"especializa"},
+		{"id":"e4","fromNode":"pm","fromSide":"right","toNode":"engine","toSide":"left","label":"orquestra"},
+		{"id":"e5","fromNode":"engine","fromSide":"top","toNode":"adapter","toSide":"bottom"},
+		{"id":"e6","fromNode":"adapter","fromSide":"right","toNode":"mkt","toSide":"left","label":"publica"},
+		{"id":"e7","fromNode":"pm","fromSide":"bottom","toNode":"erp","toSide":"top","label":"cadastra / espelha"},
+		{"id":"e8","fromNode":"bus","fromSide":"top","toNode":"intake","toSide":"bottom","label":"eventos"},
+		{"id":"e9","fromNode":"bus","fromSide":"right","toNode":"pm","toSide":"bottom"}
+	]
 }

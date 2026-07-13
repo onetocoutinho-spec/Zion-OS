@@ -24,7 +24,7 @@ area: marketplace
 
 `[[Produto Mestre]] → [[Marketplace Engine|Engine]] (fila+idempotência) → [[Marketplace Adapter|Adapter]] → canal → webhook → reconciliação`
 
-Ver o mapa em [[Fluxo Marketplace.canvas|Canvas · Fluxo Marketplace]].
+Ver o mapa em [[Integrações.canvas|Canvas · Integrações]].
 
 ---
 ◀ [[Home]] · [[Glossário]]

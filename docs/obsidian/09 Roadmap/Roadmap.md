@@ -14,8 +14,8 @@ area: roadmap
 
 ```mermaid
 flowchart LR
-  F0["Fase 0<br/>Foundation<br/>PR-001..007"] --> F1["Fase 1<br/>Magazord<br/>PR-008..009"]
-  F0 --> F2["Fase 2<br/>Mercado Livre<br/>PR-010..016"]
+  F0["✅ Fase 0<br/>Foundation<br/>PR-001..007"] --> F1["🔜 Fase 1<br/>Magazord<br/>PR-008..009"]
+  F0 --> F2["🔜 Fase 2<br/>Mercado Livre<br/>PR-010..016"]
   F1 --> F2
   F1 --> F3["Fase 3<br/>Zion Intake<br/>PR-017..021"]
   F2 --> F3
@@ -26,19 +26,36 @@ flowchart LR
   F1 --> F5
   F2 --> F6["Fase 6<br/>Shopee<br/>PR-028..029"]
   F1 --> F6
+  classDef done fill:#2f9e44,stroke:#2b8a3e,color:#fff;
+  classDef next fill:#1971c2,stroke:#1864ab,color:#fff;
+  class F0 done;
+  class F1,F2 next;
 ```
+
+**Fase atual:** ✅ Fundação concluída · **Próxima fase:** 🔜 Fluxos Operacionais (Magazord + Mercado Livre).
 
 ## Fases, status e dependências
 
 | Fase | Entrega | Depende de | Status | PRs |
 |------|---------|-----------|--------|-----|
-| **0 · Foundation** | [[Produto Mestre]], [[004-event-bus\|Event Bus]], [[Connector SDK]], [[Marketplace Adapter]], Observabilidade | — | 🔴 não iniciado | [[PRs\|PR-001..007]] |
-| **1 · Magazord** | [[ERP]]: cadastro + espelho estoque/custo | Fase 0 | 🔴 | [[PRs\|PR-008..009]] |
-| **2 · Mercado Livre** | [[Marketplace Engine\|Engine]] + Adapter [[Mercado Livre\|ML]] (User Products, PUT preço/estoque, webhooks, assíncrono) | Fase 0, Fase 1 | 🔴 | [[PRs\|PR-010..016]] |
-| **3 · Zion Intake** | [[Zion Intake\|Intake]]: catálogo → Pré-Produto → conciliação → promoção | Fase 0/1/2 | 🔴 | [[PRs\|PR-017..021]] |
-| **4 · AI Workforce** | Esteira [[IA\|A0–A12]] + gateway + ledger + trava A10 | Fase 3, Fase 0 | 🔴 | [[PRs\|PR-022..025]] |
-| **5 · TikTok Shop** | Adapter [[TikTok Shop]] + fan-out | Fase 2, Fase 1 | 🔴 | [[PRs\|PR-026..027]] |
-| **6 · Shopee** | Adapter [[Shopee]] + fan-out completo | Fase 2, Fase 1 | 🔴 | [[PRs\|PR-028..029]] |
+| **0 · Foundation** | [[Produto Mestre]], [[004-event-bus\|Event Bus]], [[Connector SDK]], [[Marketplace Adapter]], Observabilidade | — | 🟢 **concluída** | [[PRs\|PR-001..007]] ✔ |
+| **1 · Magazord** | [[ERP]]: cadastro + espelho estoque/custo | Fase 0 ✔ | 🔜 próxima | [[PRs\|PR-008..009]] |
+| **2 · Mercado Livre** | [[Marketplace Engine\|Engine]] + Adapter [[Mercado Livre\|ML]] (User Products, PUT preço/estoque, webhooks, assíncrono) | Fase 0 ✔, Fase 1 | 🔜 próxima | [[PRs\|PR-010..016]] |
+| **3 · Zion Intake** | [[Zion Intake\|Intake]]: catálogo → Pré-Produto → conciliação → promoção | Fase 0/1/2 | 🔴 planejada | [[PRs\|PR-017..021]] |
+| **4 · AI Workforce** | Esteira [[IA\|A0–A12]] + gateway + ledger + trava A10 | Fase 3, Fase 0 ✔ | 🔴 planejada | [[PRs\|PR-022..025]] |
+| **5 · TikTok Shop** | Adapter [[TikTok Shop]] + fan-out | Fase 2, Fase 1 | 🔴 planejada | [[PRs\|PR-026..027]] |
+| **6 · Shopee** | Adapter [[Shopee]] + fan-out completo | Fase 2, Fase 1 | 🔴 planejada | [[PRs\|PR-028..029]] |
+
+## Blocos do Roadmap
+
+Agrupamento das fases por trilha, para leitura executiva:
+
+| Bloco | Fases | Estado | Entrega |
+|-------|-------|--------|---------|
+| 🧱 **Fundação** | Fase 0 | 🟢 concluída | Contratos e núcleo: [[Produto Mestre]], [[004-event-bus\|Event Bus]], [[Connector SDK]], [[Marketplace Adapter]], [[Versionamento]], Observabilidade ([[PRs\|PR-001..007]]). |
+| ⚙️ **Operação** | Fase 1 · Fase 3 | 🔜 em foco (Fase 1) | Dados reais operando: [[ERP]] (estoque/custo) e [[Zion Intake]] (catálogo → Produto Mestre). |
+| 🛒 **Marketplaces** | Fase 2 · Fase 5 · Fase 6 | 🔜 em foco (Fase 2) | Publicação em escala: [[Mercado Livre]], depois [[TikTok Shop]] e [[Shopee]] (reuso do [[Marketplace Adapter\|Adapter]]/[[Marketplace Engine\|Engine]]). |
+| 🤖 **IA** | Fase 4 | 🔴 planejada | Enriquecimento [[IA\|A0–A12]] + gateway + ledger + trava A10. |
 
 ## Operação viva (precede o plano canônico)
 

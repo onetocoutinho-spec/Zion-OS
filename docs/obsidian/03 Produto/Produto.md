@@ -22,7 +22,7 @@ area: produto
 
 `[[Origem do Produto]] → [[Catálogo]] → (Pré-Produto) → [[Produto Mestre]] → [[Variante]] → [[Listing]]`
 
-Ver o mapa em [[Fluxo Produto Mestre.canvas|Canvas · Fluxo do Produto Mestre]].
+Ver o mapa em [[Produto Mestre.canvas|Canvas · Produto Mestre]].
 
 ---
 ◀ [[Home]] · [[Glossário]]

@@ -1,0 +1,156 @@
+{
+  "nodes": [
+    {
+      "id": "t",
+      "type": "text",
+      "text": "# 📦 Produto Mestre\nda Origem ao anúncio",
+      "x": -640,
+      "y": -260,
+      "width": 340,
+      "height": 80
+    },
+    {
+      "id": "origem",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Origem do Produto.md",
+      "x": -640,
+      "y": -40,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "catalogo",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Catálogo.md",
+      "x": -340,
+      "y": -40,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "intake",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Zion Intake.md",
+      "x": -40,
+      "y": -40,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "pre",
+      "type": "text",
+      "text": "**Pré-Produto**\nstaging · normalização\nconciliação SKU → EAN",
+      "x": -40,
+      "y": 120,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "ia",
+      "type": "file",
+      "file": "docs/obsidian/06 IA/IA.md",
+      "x": -340,
+      "y": 130,
+      "width": 240,
+      "height": 90
+    },
+    {
+      "id": "pm",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Produto Mestre.md",
+      "x": 300,
+      "y": -40,
+      "width": 240,
+      "height": 100
+    },
+    {
+      "id": "variante",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Variante.md",
+      "x": 300,
+      "y": 140,
+      "width": 240,
+      "height": 90
+    },
+    {
+      "id": "listing",
+      "type": "file",
+      "file": "docs/obsidian/03 Produto/Listing.md",
+      "x": 620,
+      "y": -140,
+      "width": 220,
+      "height": 90
+    },
+    {
+      "id": "erp",
+      "type": "file",
+      "file": "docs/obsidian/08 ERP/ERP.md",
+      "x": 620,
+      "y": 60,
+      "width": 220,
+      "height": 90
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "fromNode": "origem",
+      "toNode": "catalogo",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e2",
+      "fromNode": "catalogo",
+      "toNode": "intake",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "e3",
+      "fromNode": "intake",
+      "toNode": "pre",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e4",
+      "fromNode": "ia",
+      "toNode": "pre",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "enriquece (A0–A12)"
+    },
+    {
+      "id": "e5",
+      "fromNode": "intake",
+      "toNode": "pm",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "promove"
+    },
+    {
+      "id": "e6",
+      "fromNode": "pm",
+      "toNode": "variante",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e7",
+      "fromNode": "pm",
+      "toNode": "listing",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "publica"
+    },
+    {
+      "id": "e8",
+      "fromNode": "pm",
+      "toNode": "erp",
+      "fromSide": "right",
+      "toSide": "left",
+      "label": "cadastra / espelha"
+    }
+  ]
+}

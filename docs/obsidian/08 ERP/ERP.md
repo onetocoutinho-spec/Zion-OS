@@ -31,7 +31,7 @@ Via `ErpConnector` ([[Connector SDK]]) → ver [[Magazord]] para o conector, ép
 **Emite:** `erp.produto.propagado`, `erp.estoque.mudou`, `erp.custo.mudou`, `erp.nota.emitida`.
 **Consome:** `produto_mestre.criado`/`.atualizado`.
 
-Ver também: [[Magazord]] · [[Produto Mestre]] · [[Variante]] · [[Fluxo Magazord.canvas|Canvas]]
+Ver também: [[Magazord]] · [[Produto Mestre]] · [[Variante]] · [[Integrações.canvas|Canvas · Integrações]]
 
 ---
 ◀ [[Home]] · [[Glossário]]

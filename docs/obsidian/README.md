@@ -19,6 +19,9 @@ Este diretório é a **camada de conhecimento** da Zion Platform: um Centro de C
 3. Abra **[[Home]]** (`obsidian/00 Dashboard/Home.md`) — é o painel principal.
 4. Recomendado ativar os core plugins: **Graph View**, **Canvas**, **Templates** (pasta de templates → `obsidian/13 Templates`), **Outgoing/Backlinks** e **Tag pane**.
 
+> [!warning] Cartões de Canvas mostrando "arquivo não encontrado"?
+> É o sintoma de ter aberto a **pasta errada** como Vault. Os Canvas resolvem caminhos a partir de `docs/` (ex.: `architecture/001-…`, `obsidian/03 Produto/…`). Se você abriu `zion-os` (a raiz do repo), esses caminhos quebram **e** o Graph enche de +1000 `.md` de `node_modules` (incluindo 387 `README.md` que colidem com os links). **Correção:** feche a Vault atual e faça **Open folder as vault → `docs/`**. Nada nos arquivos precisa mudar — só a pasta de abertura.
+
 ## Estrutura da Vault
 
 | Pasta | Função |

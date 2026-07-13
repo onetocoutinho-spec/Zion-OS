@@ -7,19 +7,22 @@ area: engenharia
 
 > Índice navegável do **Plano de PRs** definido em [[007-execution-roadmap|007 · Execution Roadmap]]. Este documento **não** é a fonte da verdade — é um mapa. Cada PR é pequeno, revisável, reversível e atrás de feature-flag quando toca runtime. Um PR nunca mistura duas capabilities. Ver [[Definition of Done]] e [[Template PR]].
 
-**Legenda de status:** 🔴 não iniciado · 🟡 em andamento · 🟢 mergeado em produção
+**Legenda de status:** 🔴 não iniciado · 🟡 em andamento · 🟢 concluído
+
+> [!success] Fundação concluída
+> **Fase 0 (PR-001 → PR-007) entregue.** Foco atual: Fase 1 ([[Magazord]]) e Fase 2 ([[Mercado Livre]]) — os Fluxos Operacionais.
 
 ## Fase 0 — Foundation
 
 | PR | Título | Depende de | Status |
 |----|--------|-----------|--------|
-| PR-001 | Foundation — esquema [[Produto Mestre]] + [[Variante]] + Preço | — | 🔴 |
-| PR-002 | [[Versionamento]]/Histórico do Produto Mestre | PR-001 | 🔴 |
-| PR-003 | [[004-event-bus\|Event Bus]] — outbox + `evento`/`entrega` + relay | — | 🔴 |
-| PR-004 | Event Bus — dead-letter + replay + métricas de lag | PR-003 | 🔴 |
-| PR-005 | [[Connector SDK]] — contratos + registro + erros/limites | — | 🔴 |
-| PR-006 | [[Marketplace Adapter]] — contrato base + fábrica (stub) | PR-005 | 🔴 |
-| PR-007 | Observabilidade — AuditLog + logging estruturado | PR-001, PR-003 | 🔴 |
+| PR-001 | Foundation — esquema [[Produto Mestre]] + [[Variante]] + Preço | — | 🟢 |
+| PR-002 | [[Versionamento]]/Histórico do Produto Mestre | PR-001 | 🟢 |
+| PR-003 | [[004-event-bus\|Event Bus]] — outbox + `evento`/`entrega` + relay | — | 🟢 |
+| PR-004 | Event Bus — dead-letter + replay + métricas de lag | PR-003 | 🟢 |
+| PR-005 | [[Connector SDK]] — contratos + registro + erros/limites | — | 🟢 |
+| PR-006 | [[Marketplace Adapter]] — contrato base + fábrica (stub) | PR-005 | 🟢 |
+| PR-007 | Observabilidade — AuditLog + logging estruturado | PR-001, PR-003 | 🟢 |
 
 ## Fase 1 — Magazord (ERP)
 

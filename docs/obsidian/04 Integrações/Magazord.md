@@ -22,7 +22,7 @@ aliases: [ErpConnector Magazord]
 
 [[PRs|PR-008]] (auth + cadastro) · [[PRs|PR-009]] (espelho estoque/custo + reconciliação).
 
-Ver também: [[ERP]] · [[Produto Mestre]] · [[Fluxo Magazord.canvas|Canvas · Fluxo Magazord]]
+Ver também: [[ERP]] · [[Produto Mestre]] · [[Integrações.canvas|Canvas · Integrações]]
 
 ---
 ◀ [[Integrações]] · [[Glossário]]

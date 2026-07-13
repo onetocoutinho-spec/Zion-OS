@@ -6,10 +6,10 @@ status: Proposed
 
 # ADR-NNNN — <título da decisão>
 
-- **Status:** Proposed | Accepted | Deprecated | Superseded por [[ADR-XXXX]]
+- **Status:** Proposed | Accepted | Deprecated | Superseded por `ADR-XXXX`
 - **Data:** <AAAA-MM-DD>
 - **Decisores:** <nomes/papéis>
-- **Área:** [[Arquitetura]] · conceitos afetados: [[...]]
+- **Área:** [[Arquitetura]] · conceitos afetados: _(liste os conceitos usando WikiLinks)_
 
 ## Contexto
 
