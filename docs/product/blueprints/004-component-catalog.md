@@ -53,12 +53,78 @@ O catálogo consolida os componentes de **001/002/003** em três decisões:
 
 | Camada | O que é | Componentes |
 |--------|---------|-------------|
-| **Átomos** | peças mínimas, sem lógica de domínio | `OriginBadge`, `PrecisionBadge`, `StatusChip`, `PriorityBadge`, `HealthMeter`, `EmptyState`, `LoadingSkeleton` |
+| **Interaction Controls** | componentes **universais** que capturam a **intenção humana**. Sem domínio, sem origem de dados. Contratos em **[§14](#14-catálogo--interaction-controls)**. | `Button`, `IconButton`, `Input`, `TextArea`, `Select`, `Checkbox`, `Switch` |
+| **Átomos** (Semantic Atoms) | componentes mínimos que **apresentam significado do domínio Zion** | `OriginBadge`, `PrecisionBadge`, `StatusChip`, `PriorityBadge`, `HealthMeter`, `EmptyState`, `LoadingSkeleton` |
 | **Moléculas (Cards)** | cards com propósito e origem de dados | `CoachCard`, `HealthCard`, `MissionCard`, `TimelineCard`, `AnalyticsCard`, `ApprovalCard`, `TeamCard`, `ResultCard`, `OpportunityCard`, `ConversationCard`, `VersionCard`, `CommercialCard`, `ERPCard`, `MarketplaceCard`, `ContentCard`, `MediaCard`, `SEOCard`, `VariantsCard`, `IdentityCard`, `CompanyOverviewCard` |
 | **Organismos / Painéis** | composições e áreas persistentes | `ActionPanel`, `QuickActions`, `WorkspaceHeader` |
 | **Shell** | moldura global da aplicação | `TopBar`, `Sidebar`, `TenantSwitcher`, `CommandPalette`, `NotificationTray` |
 
+**Hierarquia oficial** — do mais primitivo ao mais composto:
+
+```
+Interaction Controls   →   Semantic Atoms   →   Molecules   →   Organisms   →   Shell
+   capturam intenção        apresentam           compõem        persistem      emolduram
+                            significado
+```
+
 Este catálogo detalha os **transversais** (usados em ≥2 Blueprints). Os **específicos de uma tela** (ex.: `ERPCard`, `VariantsCard`, `CompanyOverviewCard`) permanecem especificados no seu Blueprint de origem e são apenas **listados** aqui na matriz ([§9](#9-matriz-componente--blueprint)).
+
+### 3.1 Definições Oficiais
+
+> **Átomos (Semantic Atoms)**
+> *"Átomos são componentes mínimos responsáveis por apresentar significado do domínio Zion. Eles nunca capturam intenção do usuário. Eles apenas apresentam informações produzidas pela plataforma."*
+
+> **Interaction Controls**
+> *"Interaction Controls são componentes universais responsáveis por capturar intenção humana. Nunca carregam significado de domínio. Nunca produzem informação da plataforma. São reutilizáveis por qualquer produto. Apenas transformam intenção do usuário em interação."*
+
+> [!important] Princípio permanente do Component Catalog
+> **Interaction Controls representam a parte universal da plataforma.**
+> **Semantic Atoms representam a identidade da Zion.**
+> **Os primeiros capturam intenção.**
+> **Os segundos apresentam significado.**
+>
+> Esta é a fronteira mais importante do catálogo: ela torna visível, na própria árvore de componentes, a linha que governa toda a arquitetura — **a plataforma apresenta a verdade; o humano decide** ([L06](../system/002-product-laws.md) · [L07](../system/002-product-laws.md) · [L16](../system/002-product-laws.md)).
+
+### 3.2 Como classificar um novo componente
+
+**Teste obrigatório antes da criação de qualquer novo componente.**
+
+```
+                    ┌─────────────────────────────────────────┐
+                    │  1. O componente captura intenção       │
+                    │     humana?                             │
+                    └─────────────────────────────────────────┘
+                            │                     │
+                          SIM                    NÃO
+                            │                     │
+                            ▼                     ▼
+                 ┌──────────────────┐   ┌─────────────────────────────────┐
+                 │ INTERACTION      │   │ 2. O componente apresenta uma   │
+                 │ CONTROL          │   │    verdade produzida pela       │
+                 └──────────────────┘   │    plataforma?                  │
+                                        └─────────────────────────────────┘
+                                                │                 │
+                                              SIM                NÃO
+                                                │                 │
+                                                ▼                 ▼
+                                     ┌──────────────────┐  ┌──────────────────────┐
+                                     │ SEMANTIC ATOM    │  │ O componente         │
+                                     └──────────────────┘  │ PROVAVELMENTE NÃO    │
+                                                           │ DEVE EXISTIR         │
+                                                           └──────────────────────┘
+```
+
+| Passo | Pergunta | Resposta | Classificação |
+|:--:|---|:--:|---|
+| **1** | O componente **captura intenção humana**? | **SIM** | → **Interaction Control** |
+| | | NÃO | → siga para o passo 2 |
+| **2** | O componente **apresenta uma verdade produzida pela plataforma**? | **SIM** | → **Semantic Atom** |
+| | | NÃO | → **o componente provavelmente não deve existir** |
+
+**Teste auxiliar (objetivo):** um componente que declara **"Origem dos dados"** apontando para uma Capability é **semântico**. Um que declara `—` e captura intenção é **Interaction Control**. Se não declara origem **e** não captura intenção, ele não tem responsabilidade — e cai no terceiro ramo.
+
+> [!important] Criar é sempre a última opção
+> O terceiro ramo do teste não é um acidente: é a defesa contra a **inflação da biblioteca**. Herda a [Architecture Methodology (meta/000 §8)](../../meta/000-architecture-methodology.md) — *"criar é sempre a última opção; expandir e reusar vêm primeiro"* — e a Lei [L3](../system/002-product-laws.md) (*"nenhum componente novo sem necessidade"*). Antes de criar, verifique se **é variação de um existente** ([§2](#2-escopo-e-método), [§10](#10-reconciliação-de-nomenclatura)).
 
 ---
 
@@ -282,6 +348,12 @@ Princípio de shell: **poucos destinos, muita busca** ([003](../003-navigation.m
 | `CommandPalette` / `TopBar` / `NotificationTray` | ✅ | ✅ | ✅ |
 | `Sidebar` / `TenantSwitcher` | ✅ | ✅ | — (cliente) |
 | `QueueCard` | ✅ | — | — |
+| **Interaction Controls** ([§14](#14-catálogo--interaction-controls)) | | | |
+| `Button` / `IconButton` | ✅ | ✅ | ✅ |
+| `Input` / `Select` | ✅ (⌘K, filtros) | ✅ (edição) | ◻ conforme tela |
+| `TextArea` | — | ✅ (descrição) | ✅ (conversas) |
+| `Checkbox` | ✅ (lote) | ◻ | — |
+| `Switch` | ◻ (config) | ◻ (políticas) | — |
 | Específicos de tela | `TeamPanel` | `ERPCard`, `CommercialCard`, `MarketplaceCard`, `ContentCard`, `MediaCard`, `SEOCard`, `VariantsCard`, `VersionCard`, `IdentityCard`, `WorkspaceHeader` | `CompanyOverviewCard`, `SharedMissionCard`→`MissionCard[kind=shared]`, `ResultCard`, `OpportunityCard`, `ConversationCard` |
 
 ---
@@ -355,6 +427,145 @@ O que este catálogo **entrega** ao 007 e o que **deixa** para ele.
 
 ---
 
+## 14. Catálogo — Interaction Controls
+
+> **A camada mais primitiva** ([§3](#3-taxonomia)). Componentes **universais**: capturam intenção humana, **nunca** carregam domínio, **nunca** declaram Origem dos dados. Consomem exclusivamente `interaction.*`, `state.*`, `border.focus`, `radius.sm`, `text.on-accent` e `type.label` ([system/004](../system/004-design-tokens.md)) — **jamais** `health.*`, `priority.*`, `origin.*`, `precision.*` ou `feedback.*`.
+
+> [!note] Por que esta seção é a §14 e não a §5
+> A hierarquia coloca Interaction Controls **antes** dos Átomos ([§3](#3-taxonomia)) — mas as seções §4–§13 são **citadas por número em outros documentos** (`system/001` → *004 §9/§10*; `system/004`, estabilizado → *Catalog §4/§5*). Renumerar tornaria esses textos factualmente errados e exigiria editar documentos fora do escopo desta evolução. **A ordem física do arquivo não é a hierarquia; a hierarquia está declarada na [§3](#3-taxonomia).**
+
+### 14.1 `Button`
+- **Objetivo:** capturar a decisão do usuário de executar uma ação.
+- **Responsabilidade:** apresentar uma ação disponível e transformar o clique em intenção. **Nunca** decide o que a ação faz.
+- **Comportamento:** ao ser acionado, emite a intenção ao componente hospedeiro e devolve feedback imediato ([L14](../system/002-product-laws.md)). Ação irreversível **declara-se** antes de confirmar. Enquanto processa, assume `LOADING` e bloqueia reentrada.
+- **Estados:** `DEFAULT`, `HOVER`, `FOCUS`, `PRESSED`, `LOADING`, `DISABLED` (**sempre com motivo visível** — [§4](#4-estados-canônicos)).
+- **Variantes:** `variant = primary | secondary | ghost | link`
+  - `primary` — a **única** ação principal do contexto (no máximo uma por card).
+  - `secondary` — ações de apoio.
+  - `ghost` — ações discretas que não competem (ex.: "Dispensar" do `CoachCard`).
+  - `link` — navegação para contexto (ex.: "ver tudo" do `TimelineCard`).
+- **Eventos:** emite a intenção do hospedeiro (`ui.*`). **Não** consome eventos de domínio.
+- **Acessibilidade:** foco de teclado obrigatório com anel visível (`state.focus.ring`, `a11y.focus.ring` 2+2); alvo ≥ **44×44** (`a11y.target.min`); acionável por `Enter`/`Space`; `DISABLED` comunica o motivo por texto, nunca só por opacidade; rótulo é verbo de ação, nunca "OK"/"Clique aqui".
+- **Dependências:** nenhuma. *(Pode hospedar um ícone — quando o ícone é o único conteúdo, use `IconButton`.)*
+- **O que nunca faz:** nunca calcula · nunca decide regra de negócio · nunca carrega token de domínio · nunca nomeia domínio (`ApproveButton` é proibido: é `Button[primary]` **dentro** do `ApprovalCard`) · nunca esconde ação em menu secundário · nunca executa irreversível sem declarar.
+- **Exemplos de uso:** `MissionCard` "Agir" (`primary`) · `CoachCard` "Ver Missão" (`secondary`) + "Dispensar" (`ghost`) · `EmptyState[not-started]` "Importar catálogo" (`primary`) · `ApprovalCard` Aprovar/Editar/Rejeitar · `TimelineCard` "ver tudo" (`link`).
+- **Exemplos incorretos:** dois `primary` no mesmo card (viola "uma prioridade máxima") · `DISABLED` sem motivo · botão que apaga em massa sem aviso ([L14](../system/002-product-laws.md)) · rótulo "OK" · botão colorido por `health.critical`.
+
+### 14.2 `IconButton`
+- **Objetivo:** capturar uma ação cujo significado é **inequívoco por ícone**, onde não cabe rótulo.
+- **Responsabilidade:** oferecer ação compacta em áreas de alta densidade (Shell). **Nunca** substitui `Button` por economia de espaço em conteúdo.
+- **Comportamento:** idêntico ao `Button`; o rótulo textual migra para `aria-label` + tooltip.
+- **Estados:** `DEFAULT`, `HOVER`, `FOCUS`, `PRESSED`, `LOADING`, `DISABLED` (com motivo).
+- **Variantes:** nenhuma. *(Se precisar de ênfase, o caso é `Button`.)*
+- **Eventos:** emite a intenção do hospedeiro (`ui.*`).
+- **Acessibilidade:** **`aria-label` obrigatório** — sem ele o botão é mudo para leitor de tela; tooltip no hover/focus; alvo ≥ 44×44 mesmo com ícone de 16–20; foco visível.
+- **Dependências:** o conjunto oficial de ícones ([system/004 §11](../system/004-design-tokens.md)).
+- **O que nunca faz:** nunca existe sem `aria-label` · nunca usa ícone ambíguo · nunca carrega domínio · nunca é a ação principal de um card (essa é `Button[primary]`, com rótulo).
+- **Exemplos de uso:** `TopBar` (notificações, IA, perfil) · `NotificationTray` (fechar) · `ActionPanel` (colapsar) · `Sidebar` (recolher).
+- **Exemplos incorretos:** ícone sem rótulo acessível · "Agir" reduzido a um ícone · alvo de 20×20.
+
+### 14.3 `Input`
+- **Objetivo:** capturar um valor curto digitado pelo usuário.
+- **Responsabilidade:** receber texto e devolvê-lo ao hospedeiro. **Nunca** valida regra de negócio (isso é do Capability); pode sinalizar formato inválido.
+- **Comportamento:** aceita entrada, sinaliza `ERROR` com mensagem que **explica e não culpa** ([L14](../system/002-product-laws.md)); o hospedeiro decide quando persistir (gerando Versão/evento — [L10](../system/002-product-laws.md)).
+- **Estados:** `DEFAULT`, `FOCUS`, `FILLED`, `ERROR`, `DISABLED` (com motivo), `READ_ONLY`.
+- **Variantes:** nenhuma. *(Um campo de valor monetário/numérico é o mesmo `Input`; formatação é do hospedeiro.)*
+- **Eventos:** emite mudança de valor ao hospedeiro. **Não** consome eventos de domínio.
+- **Acessibilidade:** **rótulo persistente** (nunca só *placeholder*); erro associado por `aria-describedby` e anunciado; foco visível; `READ_ONLY` distinto de `DISABLED`.
+- **Dependências:** nenhuma.
+- **O que nunca faz:** nunca **inventa valor** ([L05](../system/002-product-laws.md) — ausência é pendência, jamais preenchimento automático silencioso) · nunca calcula ([L06](../system/002-product-laws.md)) · nunca usa placeholder como rótulo · nunca exibe origem/precisão (isso é `OriginBadge`/`PrecisionBadge` **ao lado**).
+- **Exemplos de uso:** `CommandPalette` (⌘K) · `ContentCard[EDITING]` (título) · `CommercialCard` (preço).
+- **Exemplos incorretos:** placeholder "Preço" sem rótulo · preencher um EAN plausível para "completar" · o campo calcular a margem.
+
+### 14.4 `TextArea`
+- **Objetivo:** capturar um texto longo, de múltiplas linhas.
+- **Responsabilidade:** receber conteúdo extenso com espaço de leitura adequado.
+- **Comportamento:** cresce com o conteúdo até um teto; preserva quebras; o hospedeiro decide a persistência.
+- **Estados:** `DEFAULT`, `FOCUS`, `FILLED`, `ERROR`, `DISABLED` (com motivo), `READ_ONLY`.
+- **Variantes:** nenhuma.
+- **Eventos:** emite mudança de valor ao hospedeiro.
+- **Acessibilidade:** rótulo persistente; medida de linha confortável ([system/004 §6](../system/004-design-tokens.md)); contador de limite anunciado quando existir; foco visível.
+- **Dependências:** nenhuma.
+- **O que nunca faz:** nunca gera conteúdo sozinho (sugestão de IA chega **pelo hospedeiro**, revisável — [L07](../system/002-product-laws.md)) · nunca aplica sugestão sem confirmação humana · nunca carrega domínio.
+- **Exemplos de uso:** `ContentCard` (descrição do produto) · `ConversationCard` (mensagem).
+- **Exemplos incorretos:** a IA sobrescrever a descrição sem revisão · caixa de 2 linhas para uma descrição longa.
+
+### 14.5 `Select`
+- **Objetivo:** capturar **uma escolha** dentro de um conjunto conhecido e fechado.
+- **Responsabilidade:** apresentar opções válidas e devolver a escolhida.
+- **Comportamento:** abre a lista, permite escolha, fecha. Conjunto vazio comunica o porquê (nunca lista morta).
+- **Estados:** `DEFAULT`, `FOCUS`, `OPEN`, `SELECTED`, `EMPTY`, `ERROR`, `DISABLED` (com motivo).
+- **Variantes:** nenhuma. *(Busca dentro da lista é comportamento, não variante.)*
+- **Eventos:** emite a escolha ao hospedeiro.
+- **Acessibilidade:** navegável por teclado (setas, `Enter`, `Esc`); estado expandido anunciado (`aria-expanded`); rótulo persistente; opção selecionada anunciada.
+- **Dependências:** nenhuma.
+- **O que nunca faz:** nunca inventa opções · nunca esconde o total quando trunca · nunca substitui navegação (destino é `Button[link]`) · nunca carrega domínio.
+- **Exemplos de uso:** `CommercialCard` (política de preço) · `VariantsCard` (atributo) · filtros de lista.
+- **Exemplos incorretos:** `Select` com 2 opções booleanas (é `Switch`) · lista truncada em silêncio.
+
+### 14.6 `Checkbox`
+- **Objetivo:** capturar **seleção múltipla** ou um consentimento binário explícito.
+- **Responsabilidade:** marcar/desmarcar itens; sustentar a **ação em lote**.
+- **Comportamento:** alterna marcado/desmarcado; suporta `INDETERMINATE` para seleção parcial de um grupo. **A ação só ocorre no `Button` que a confirma** — marcar nunca executa.
+- **Estados:** `DEFAULT`, `CHECKED`, `INDETERMINATE`, `FOCUS`, `DISABLED` (com motivo), `ERROR`.
+- **Variantes:** nenhuma.
+- **Eventos:** emite a mudança de seleção ao hospedeiro.
+- **Acessibilidade:** rótulo clicável associado; `Space` alterna; estado anunciado; `INDETERMINATE` com semântica `aria-checked="mixed"`; alvo ≥ 44×44.
+- **Dependências:** nenhuma.
+- **O que nunca faz:** **nunca executa ao marcar** (marcar ≠ agir — [L14](../system/002-product-laws.md)) · nunca contorna trava de qualidade (a A10 é do [Workflow (019)](../../architecture/019-workflow-engine.md)) · nunca vem pré-marcado em ação irreversível · nunca carrega domínio.
+- **Exemplos de uso:** `QueueCard` — selecionar 42 produtos para "Aprovar em lote".
+- **Exemplos incorretos:** marcar dispara a publicação · "selecionar todos" pré-marcado numa rejeição em massa.
+
+### 14.7 `Switch`
+- **Objetivo:** capturar a decisão de **ligar ou desligar** um comportamento contínuo.
+- **Responsabilidade:** expressar um estado binário **que vale a partir de agora**.
+- **Comportamento:** alterna e **aplica imediatamente** (difere do `Checkbox`, que aguarda confirmação). Efeito relevante é confirmado; reversão sempre disponível ([L16](../system/002-product-laws.md)).
+- **Estados:** `ON`, `OFF`, `FOCUS`, `DISABLED` (com motivo), `PENDING` (aplicando).
+- **Variantes:** nenhuma. *(Ver [§14.8](#148-controles-oficialmente-rejeitados) sobre `Toggle`.)*
+- **Eventos:** emite a mudança ao hospedeiro, que a converte em política/autonomia.
+- **Acessibilidade:** `role="switch"` com `aria-checked`; rótulo diz o **comportamento**, não o estado ("Publicação automática", não "Ligado"); estado nunca depende só de cor ([L02](../system/002-product-laws.md)); alvo ≥ 44×44.
+- **Dependências:** nenhuma.
+- **O que nunca faz:** nunca liga automação sem política ([L11](../system/002-product-laws.md)) · nunca é irreversível · nunca eleva autonomia de IA sem confirmação explícita ([L07](../system/002-product-laws.md)/[L16](../system/002-product-laws.md)) · nunca carrega domínio.
+- **Exemplos de uso:** Configurações (política de preço) · autonomia da IA N0–N4 ([ZIOS 017](../../architecture/017-zion-intelligence-operating-system.md)) · regras do [Workflow (019)](../../architecture/019-workflow-engine.md).
+- **Exemplos incorretos:** ligar automação de preço sem regra de margem · switch sem rótulo do comportamento · elevar a IA a N4 sem confirmar.
+
+### 14.8 Controles oficialmente **rejeitados**
+
+Registro permanente. Rejeição é decisão de arquitetura — reabrir exige processo, não preferência.
+
+| Controle | Veredito | Motivação arquitetural |
+|---|:--:|---|
+| **`SplitButton`** | ❌ **rejeitado** | **Zero evidência** em Product/Blueprints. Esconde ações num menu secundário: colide com [L14](../system/002-product-laws.md) (*"toda ação tem consequência conhecida"*) e com *"uma decisão por vez"* ([DS 003 §7](../system/003-design-system.md)). É um padrão de **densidade**; a Zion otimiza para **clareza**. |
+| **`Radio`** | ❌ **rejeitado** | Zero evidência. `Select` já cobre escolha única dentro de conjunto fechado. Criá-lo seria inflar a biblioteca por simetria — não por necessidade ([L3](../system/002-product-laws.md)). |
+| **`Toggle`** | ❌ **rejeitado como componente** | Mesma responsabilidade de `Switch` (ligar/desligar) → seria **duplicata** (Anti-Lei [§10](#10-reconciliação-de-nomenclatura) · [L12](../system/002-product-laws.md)/[L20](../system/002-product-laws.md)). **Se um caso real aparecer, nasce como variante futura de `Switch`** (`Switch[variant=…]`), nunca como componente próprio. |
+| **`GhostButton`** | ❌ **não é componente** | É **`Button[variant=ghost]`** ([§2](#2-escopo-e-método)). |
+| **`LinkButton`** | ❌ **não é componente** | É **`Button[variant=link]`** ([§2](#2-escopo-e-método)). |
+
+> [!note] O "toggle Minha visão / Equipe"
+> O [Blueprint 001 §10](./001-operation-center-blueprint.md) menciona um *"toggle Minha visão / Equipe"*. Ele **não é booleano** — é um seletor de visão com dois rótulos. Resolve-se com **dois `Button[variant=secondary]`**. Um controle segmentado só se justificaria diante de um **segundo** caso real — *criar é a última opção*.
+
+> [!important] Nenhum controle carrega domínio
+> `ApproveButton`, `PublishButton`, `HealthSwitch` e afins são **proibidos**. Um botão que aprova é `Button[variant=primary]` **dentro** do `ApprovalCard`: o domínio vive no hospedeiro, o controle permanece universal. É o que mantém os Interaction Controls reutilizáveis por qualquer produto — e a identidade da Zion concentrada onde ela pertence.
+
+---
+
+## 15. Decisão Arquitetural — por que Interaction Controls nasceu
+
+**Contexto.** Durante a construção da **Zion Design Library** (Sprint 2 — Atoms), ao concluir os 7 Átomos oficiais e preparar as Molecules, identificou-se que **`MissionCard` não podia ser construído**: sua ação "Agir" não tinha componente. A auditoria seguinte revelou que **nenhum controle de interação existia na documentação da Zion** — a palavra "Button" aparecia **zero vezes** em todo o corpo documental. As menções encontradas eram prosa (*"botão de agir"*), nome de evento (`cost.missing_input`) ou SQL (`select`).
+
+**A lacuna.** Havia um vão estrutural **entre os Design Tokens e os Semantic Atoms**. A camada de tokens **já sabia** que controles existiam — `radius.sm` é descrito como *"inputs, botões pequenos · controles"*, `type.label` como *"rótulos, botões, badges"*, e existem `interaction.*`, `state.hover/pressed/focus/disabled`, `a11y.focus.ring` e `a11y.target.min` (44×44). O [system/004](../system/004-design-tokens.md) provisionava um andar que o Catálogo nunca construiu.
+
+**Por que passou despercebido.** Os Blueprints foram escritos **de cima para baixo**, a partir do *significado* (Missão, Health, Precisão, Origem). A camada mais primitiva — a mecânica universal — foi assumida como óbvia e, por isso, nunca especificada. Some-se a isso que o [Workspace (005)](../005-product-workspace.md) **rejeita ativamente** a linguagem de formulário (*"nunca um formulário"*, *"nunca um CRUD"*) — rejeição correta da **moldura**, que acabou levando junto o vocabulário dos **controles**.
+
+**A decisão.** Em vez de acrescentar componentes soltos aos Átomos — o que teria contaminado a categoria com peças sem domínio —, criou-se a categoria **Interaction Controls**, tornando explícita a fronteira que já governava a arquitetura sem ter expressão estrutural: **a plataforma apresenta a verdade; o humano decide**. A definição de Átomos foi corrigida no mesmo ato, porque dizia *"sem lógica de domínio"* enquanto **5 dos 7 declaravam Origem dos dados** apontando para uma Capability.
+
+> [!important] A arquitetura evoluiu antes da implementação
+> **Nenhum componente foi construído antes desta evolução.** A lacuna foi identificada na construção, mas **não foi remendada na construção**: parou-se a Sprint, analisou-se a taxonomia, evoluiu-se o Catálogo — e só então se autorizou a implementação. Improvisar um botão teria funcionado; teria também custado a fronteira que hoje separa a identidade da Zion daquilo que qualquer produto tem.
+>
+> Este registro existe para preservar o **raciocínio**, não apenas o resultado. Quem ler o catálogo daqui a dez anos precisa saber que a categoria não nasceu de gosto — nasceu de uma lacuna real, medida, entre os Tokens e os Átomos.
+
+---
+
 ## Seção especial — Mapa de Componentes (visão única)
 
 ```mermaid
@@ -400,4 +611,6 @@ flowchart TB
 
 > **Registro oficial:** **O Catálogo de Componentes é a Fonte da Verdade dos contratos de componente da Zion — a ponte entre os Blueprints de tela e o Design System. Um componente, uma responsabilidade, variações declaradas.**
 
-> **Status:** `product/blueprints/004` — Component Catalog **v1.0 (Draft)**. Consolida os componentes de [001](./001-operation-center-blueprint.md)/[002](./002-product-workspace-blueprint.md)/[003](./003-client-portal-blueprint.md) sob a [Constituição (000)](./000-blueprint-guide.md), resolve as divergências de nomenclatura e prepara o terreno para o Design System. **Próximo documento sugerido:** `product/007-design-system.md` (o Design System da Zion — os **tokens** (cor, tipografia, espaçamento, elevação), a materialização visual dos componentes deste catálogo, o sistema de cores de Health/Precisão/Prioridade acessível (cor+texto+ícone), estados visuais canônicos e as regras que garantem que cockpit, workspace e portal pareçam — de fato — o mesmo produto; este Catálogo entrega o **o quê/comportamento**, e o `007` entrega o **como/aparência**).
+> **v1.1 — evolução arquitetural: Interaction Controls.** Aditiva. Introduz a categoria **Interaction Controls** ([§3](#3-taxonomia)) com 7 contratos completos ([§14](#14-catálogo--interaction-controls)), as **definições oficiais** de Semantic Atoms e Interaction Controls ([§3.1](#31-definições-oficiais)), o **teste obrigatório de classificação** ([§3.2](#32-como-classificar-um-novo-componente)), o registro dos **controles rejeitados** ([§14.8](#148-controles-oficialmente-rejeitados)) e a **Decisão Arquitetural** que preserva o raciocínio ([§15](#15-decisão-arquitetural--por-que-interaction-controls-nasceu)). **Nenhum contrato existente foi alterado; nenhum componente mudou de responsabilidade.** Única correção não-aditiva, aprovada: a definição de Átomos em [§3](#3-taxonomia) dizia *"sem lógica de domínio"* — falso, pois 5 dos 7 declaram Origem dos dados; passa a *"apresentam significado do domínio Zion"*.
+
+> **Status:** `product/blueprints/004` — Component Catalog **v1.1**. Consolida os componentes de [001](./001-operation-center-blueprint.md)/[002](./002-product-workspace-blueprint.md)/[003](./003-client-portal-blueprint.md) sob a [Constituição (000)](./000-blueprint-guide.md), resolve as divergências de nomenclatura e prepara o terreno para o Design System. **Próximo documento sugerido:** `product/007-design-system.md` (o Design System da Zion — os **tokens** (cor, tipografia, espaçamento, elevação), a materialização visual dos componentes deste catálogo, o sistema de cores de Health/Precisão/Prioridade acessível (cor+texto+ícone), estados visuais canônicos e as regras que garantem que cockpit, workspace e portal pareçam — de fato — o mesmo produto; este Catálogo entrega o **o quê/comportamento**, e o `007` entrega o **como/aparência**).
