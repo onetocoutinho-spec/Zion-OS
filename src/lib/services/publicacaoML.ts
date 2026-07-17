@@ -5,6 +5,7 @@
 // segredo do APP ML) levando o refresh_token do canal do cliente.
 
 import { montarItemML } from "../marketplaces/mlPayload";
+import { montarBundleUserProducts } from "../marketplaces/mlUserProducts";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { marcarAnuncioPublicado } from "./anunciosGerados";
@@ -81,6 +82,15 @@ export async function publicarNoML(
   const payload = montarPreviewML(registro, { ...opcoes, pictures });
   if (!go) return { dry: true, payload };
 
+  // Ingredientes do fluxo User Products (calçado). Vão SEMPRE que dá para
+  // montá-los; o servidor só os usa se a categoria prevista exigir esse modelo.
+  // Se a categoria for clássica, o bundle é ignorado — o payload acima manda.
+  const bundleUP = montarBundleUserProducts(registro.anuncio, {
+    pictures,
+    tipoAnuncio: opcoes.tipoAnuncio,
+  });
+  const userProducts = bundleUP.ok ? bundleUP.bundle : undefined;
+
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
   if (!canal?.ativo) {
     throw new Error(
@@ -95,10 +105,12 @@ export async function publicarNoML(
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       clienteId: registro.clienteId,
+      registroId: registro.id,
       marketplace: registro.marketplace,
       payload,
       go: true,
       tituloParaCategoria: registro.anuncio?.tituloOtimizado,
+      userProducts,
     }),
   });
 
