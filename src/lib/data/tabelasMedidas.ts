@@ -198,6 +198,19 @@ const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
   })
 );
 
+/**
+ * Mapa ESTRUTURADO numeração → comprimento do pé (cm) de uma marca — a
+ * contraparte de `montarTabelaMedidas` (que devolve Markdown). Usado pela
+ * publicação User Products para montar a guia de tamanhos do ML (FOOT_LENGTH).
+ * Marca conhecida → tabela da marca; caso contrário → grade de referência BR.
+ * As chaves seguem o formato canônico do `normalizarTamanho` (pares "33/34"
+ * ou individuais "38"), então o join com as variações é direto.
+ */
+export function medidasDaMarca(marca: string): Record<string, number> {
+  const key = normalizarMarca(marca ?? "");
+  return TABELAS_MARCA[key] ?? PADRAO_REFERENCIA;
+}
+
 /** Parece grade de calçado? (evita montar tabela para não-calçado.) */
 function ehCalcado(tamanhos: string[]): boolean {
   return tamanhos.some((t) => {
