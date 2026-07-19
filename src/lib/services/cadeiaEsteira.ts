@@ -14,6 +14,7 @@
 
 import { AGENTES, ORDEM_ESTEIRA, type AgenteDef } from "../agentes/catalogo";
 import { anuncioSimulado, type AnuncioGerado } from "../agentes/esteira";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 
 export type StatusPasso = "pendente" | "rodando" | "ok" | "erro" | "pulado";
 
@@ -50,7 +51,7 @@ async function rodarAgenteTexto(
 ): Promise<{ markdown: string; simulado: boolean }> {
   const resposta = await fetch("/api/agentes/executar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       agente: {
         nome: `${agente.codigo} — ${agente.nome}`,
@@ -126,7 +127,7 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
 
   const resposta = await fetch("/api/agentes/esteira", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({ briefing: dossie, contexto, produto: opcoes.produto }),
   });
 
