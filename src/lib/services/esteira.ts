@@ -1,4 +1,5 @@
 import { anuncioSimulado, type AnuncioGerado } from "../agentes/esteira";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 
 export interface ResultadoEsteira {
   anuncio: AnuncioGerado;
@@ -23,7 +24,7 @@ export async function rodarEsteira(
 ): Promise<ResultadoEsteira> {
   const resposta = await fetch("/api/agentes/esteira", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       briefing,
       contexto: opcoes.contexto,
