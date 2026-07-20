@@ -30,6 +30,40 @@ async function extrairErro(resposta: Response): Promise<string> {
   }
 }
 
+/**
+ * Normaliza o nome da guia SÓ para comparação (idempotência). Não altera o nome
+ * usado na criação — aplica trim + colapso de espaços internos dos dois lados
+ * (nome desejado e names["MLB"] retornado pela API), tornando o match estável a
+ * despeito de espaços duplicados/finais (ex.: "Sandália ... Modare ").
+ */
+function normalizarNomeGuia(s: string | undefined | null): string {
+  return (s ?? "").trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Extrai mensagem de erro de um corpo JÁ lido como texto (quando a Response não
+ * pode ser reconsumida). Lê message/error/cause[]/errors[] — inclusive o
+ * `errors[]` que a API de charts usa (ex.: filters_validation_error).
+ */
+function mensagemErroTexto(texto: string, status: number): string {
+  try {
+    const j = JSON.parse(texto) as {
+      message?: string;
+      error?: string;
+      cause?: { message?: string }[];
+      errors?: { message?: string }[];
+    };
+    const partes = [
+      j.message || j.error,
+      ...(j.cause ?? []).map((c) => c.message),
+      ...(j.errors ?? []).map((e) => e.message),
+    ].filter(Boolean);
+    return partes.join(" — ") || `HTTP ${status}`;
+  } catch {
+    return `HTTP ${status}`;
+  }
+}
+
 /** Troca o `code` do OAuth (authorization_code) pelo primeiro par de tokens. */
 export async function trocarCodigoPorToken(cred: {
   clientId: string;
@@ -380,35 +414,167 @@ export async function criarGuiaTamanhos(
     generoId: string;
     generoNome: string;
     linhas: LinhaGuiaTamanho[];
+    /** Vendedor (seller_id). Habilita a busca de guia reutilizável (idempotência). */
+    sellerId?: string | number;
+    /** Correlação de logs com a publicação (observabilidade). */
+    publishId?: string;
   }
 ): Promise<GuiaTamanhos> {
   const siteId = dados.siteId ?? "MLB";
-  const rows = dados.linhas.map((l) => ({
-    attributes: [
-      { id: "MANUFACTURER_SIZE", values: [{ name: String(l.tamanho) }] },
-      { id: "BR_SIZE", values: [{ name: `${l.tamanho} BR` }] },
-      { id: "FOOT_LENGTH", values: [{ name: `${(l.footLengthCm - 0.2).toFixed(1)} cm` }] },
-      { id: "FOOT_LENGTH_TO", values: [{ name: `${(l.footLengthCm + 0.2).toFixed(1)} cm` }] },
-    ],
-  }));
 
-  const body = {
-    names: { [siteId]: dados.nome },
-    domain_id: dados.domainId,
-    site_id: siteId,
-    type: "SPECIFIC",
-    main_attribute: { attributes: [{ site_id: siteId, id: "MANUFACTURER_SIZE" }] },
-    attributes: [{ id: "GENDER", values: [{ id: dados.generoId, name: dados.generoNome }] }],
-    rows,
+  // ── IDEMPOTÊNCIA das Size Charts criadas pelo ZION ──────────────────────────
+  // Recriar a guia a cada publish colide (chart_name_unavailable) porque o nome
+  // é determinístico (marca + família) e o ML impõe nome ÚNICO por
+  // (seller, domínio, características). Solução: DESCOBRIR via o endpoint oficial
+  // POST /catalog/charts/search se já existe uma guia NOSSA equivalente e
+  // reutilizá-la; só criar se não existir. GET/rows/createItem abaixo ficam
+  // inalterados — muda apenas a decisão "reutilizar" vs "criar".
+  //
+  // Contrato empírico da API (conta real, SANDALS_AND_CLOGS):
+  //  • sucesso = { paging:{total,offset,limit}, charts:[…] }; GENDER é OBRIGATÓRIO;
+  //  • a busca devolve a CLASSE inteira (N guias) → paginação real (limit=100);
+  //  • item traz names["MLB"], main_attribute_id, attributes, rows;
+  //  • guia LEGADA (painel ML) usa main_attribute_id="BR_SIZE"; a NOSSA usa
+  //    "MANUFACTURER_SIZE" → é esse o filtro anti-legado (este PR NÃO reutiliza
+  //    guia legada nem adapta BR_SIZE/SIZE; isso é outro PR).
+
+  const nomeComparado = normalizarNomeGuia(dados.nome);
+
+  type ChartBusca = {
+    id?: string;
+    names?: Record<string, string>;
+    main_attribute_id?: string;
   };
+  interface RespostaBusca {
+    encontrada: string | null;
+    buscaStatus: string;
+    candidatos: number;
+    paginasConsultadas: number;
+    paginaAtual: number | null;
+  }
 
-  const r = await fetch(`${API}/catalog/charts`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`Falha ao criar a guia de tamanhos: ${await extrairErro(r)}`);
-  const chartId = ((await r.json()) as { id: string }).id;
+  // Busca PAGINADA por uma guia NOSSA cujo nome (normalizado) bate com o desejado.
+  // Itera offset/limit até achar ou esgotar paging.total.
+  async function buscarGuiaZion(): Promise<RespostaBusca> {
+    if (dados.sellerId == null || !String(dados.sellerId).trim()) {
+      return { encontrada: null, buscaStatus: "ignorada_sem_seller", candidatos: 0, paginasConsultadas: 0, paginaAtual: null };
+    }
+    const limit = 100;
+    let offset = 0;
+    let total = Infinity;
+    let candidatos = 0;
+    let paginas = 0;
+    const MAX_PAGINAS = 100; // trava de segurança (10k guias) — não deve ser atingida.
+    while (offset < total && paginas < MAX_PAGINAS) {
+      let resp: Response;
+      try {
+        resp = await fetch(`${API}/catalog/charts/search?limit=${limit}&offset=${offset}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            site_id: siteId,
+            domain_id: dados.domainId,
+            seller_id: dados.sellerId,
+            type: "SPECIFIC",
+            attributes: [{ id: "GENDER", values: [{ id: dados.generoId }] }],
+          }),
+        });
+      } catch {
+        return { encontrada: null, buscaStatus: "erro_rede", candidatos, paginasConsultadas: paginas, paginaAtual: null };
+      }
+      if (!resp.ok) {
+        return { encontrada: null, buscaStatus: `http_${resp.status}`, candidatos, paginasConsultadas: paginas, paginaAtual: null };
+      }
+      const j = (await resp.json()) as { paging?: { total?: number }; charts?: ChartBusca[] };
+      const charts = j.charts ?? [];
+      total = j.paging?.total ?? offset + charts.length;
+      paginas++;
+      for (const c of charts) {
+        candidatos++;
+        // Filtro anti-legado: só considera guias do PADRÃO ZION.
+        if (c.main_attribute_id !== "MANUFACTURER_SIZE") continue;
+        if (c.id && normalizarNomeGuia(c.names?.[siteId]) === nomeComparado) {
+          return { encontrada: c.id, buscaStatus: "ok", candidatos, paginasConsultadas: paginas, paginaAtual: paginas };
+        }
+      }
+      if (charts.length === 0) break; // defensivo: página vazia encerra.
+      offset += limit;
+    }
+    return { encontrada: null, buscaStatus: "ok", candidatos, paginasConsultadas: paginas, paginaAtual: null };
+  }
+
+  // 1) Tenta REUTILIZAR uma guia nossa.
+  const busca1 = await buscarGuiaZion();
+  let chartId: string | null = busca1.encontrada;
+  let origem: "reuse" | "create" = chartId ? "reuse" : "create";
+  let motivo = chartId ? "guia_existente" : "produto_novo";
+  let buscaStatus = busca1.buscaStatus;
+  let candidatosEncontrados = busca1.candidatos;
+  let paginasConsultadas = busca1.paginasConsultadas;
+  let paginaAtual = busca1.paginaAtual;
+
+  // 2) Não achou → CRIA. Se colidir (corrida concorrente criou entre a busca e o
+  //    create), REBUSCA e reutiliza; só falha se realmente não existir.
+  if (!chartId) {
+    const rows = dados.linhas.map((l) => ({
+      attributes: [
+        { id: "MANUFACTURER_SIZE", values: [{ name: String(l.tamanho) }] },
+        { id: "BR_SIZE", values: [{ name: `${l.tamanho} BR` }] },
+        { id: "FOOT_LENGTH", values: [{ name: `${(l.footLengthCm - 0.2).toFixed(1)} cm` }] },
+        { id: "FOOT_LENGTH_TO", values: [{ name: `${(l.footLengthCm + 0.2).toFixed(1)} cm` }] },
+      ],
+    }));
+
+    const body = {
+      names: { [siteId]: dados.nome },
+      domain_id: dados.domainId,
+      site_id: siteId,
+      type: "SPECIFIC",
+      main_attribute: { attributes: [{ site_id: siteId, id: "MANUFACTURER_SIZE" }] },
+      attributes: [{ id: "GENDER", values: [{ id: dados.generoId, name: dados.generoNome }] }],
+      rows,
+    };
+
+    const r = await fetch(`${API}/catalog/charts`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (r.ok) {
+      chartId = ((await r.json()) as { id: string }).id;
+      origem = "create";
+      motivo = "criada";
+    } else {
+      // Corpo lido como TEXTO: detecta o code de forma robusta (independe do
+      // envelope) e evita reconsumir a Response.
+      const corpoErro = await r.text();
+      if (/chart_name_unavailable/i.test(corpoErro)) {
+        // Outra execução concorrente criou a guia entre a nossa busca e o create.
+        const busca2 = await buscarGuiaZion();
+        buscaStatus = busca2.buscaStatus;
+        candidatosEncontrados = busca2.candidatos;
+        paginasConsultadas = busca2.paginasConsultadas;
+        paginaAtual = busca2.paginaAtual;
+        if (busca2.encontrada) {
+          chartId = busca2.encontrada;
+          origem = "reuse";
+          motivo = "rebusca_pos_colisao";
+        } else {
+          throw new Error(
+            `chart_name_unavailable, mas a rebusca não localizou a guia (nome="${nomeComparado}").`
+          );
+        }
+      } else {
+        throw new Error(
+          `Falha ao criar a guia de tamanhos: ${mensagemErroTexto(corpoErro, r.status)}`
+        );
+      }
+    }
+  }
+
+  // Id definido (reuse ou create) — const estável para o closure abaixo.
+  const gridId: string = chartId;
 
   // O ML NÃO garante os row ids na resposta do POST (a guia é validada de forma
   // assíncrona). A fonte OFICIAL é o GET /catalog/charts/{id}. Buscamos os rows
@@ -421,7 +587,7 @@ export async function criarGuiaTamanhos(
   async function buscarRowsOficiais(): Promise<RowGuia[]> {
     for (let tentativa = 0; tentativa < 3; tentativa++) {
       if (tentativa > 0) await new Promise((res) => setTimeout(res, 400));
-      const g = await fetch(`${API}/catalog/charts/${chartId}`, {
+      const g = await fetch(`${API}/catalog/charts/${gridId}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!g.ok) continue;
@@ -450,22 +616,31 @@ export async function criarGuiaTamanhos(
       rowIdPorTamanho[String(l.tamanho)] = oficial;
     } else {
       // Rede de segurança: só quando o GET falha / não tem rows / tamanho ausente.
-      rowIdPorTamanho[String(l.tamanho)] = `${chartId}:${i + 1}`;
+      rowIdPorTamanho[String(l.tamanho)] = `${gridId}:${i + 1}`;
       viaFallback++;
     }
   });
 
-  // Observabilidade: origem dos ids (GET oficial vs fallback) — não confie no
-  // formato para inferir isso, pois o id real também é "<chartId>:<n>".
+  // Observabilidade completa da decisão (create|reuse) + origem dos row ids.
+  // `origem:"reuse"` confirma a idempotência; `motivo` distingue produto novo,
+  // guia existente e rebusca pós-colisão concorrente.
   console.log(
     JSON.stringify({
       src: "ml.guia",
-      chartId,
+      publishId: dados.publishId ?? null,
+      chartId: gridId,
+      origem,
+      motivo,
+      buscaStatus,
+      candidatosEncontrados,
+      paginaAtual,
+      paginasConsultadas,
+      nomeComparado,
       source: viaFallback === 0 && rowsOficiais.length > 0 ? "GET" : "fallback",
       tamanhos: dados.linhas.length,
       viaFallback,
     })
   );
 
-  return { gridId: chartId, rowIdPorTamanho };
+  return { gridId, rowIdPorTamanho };
 }

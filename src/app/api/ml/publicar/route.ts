@@ -185,6 +185,11 @@ export async function POST(request: Request) {
         generoId: bundle.generoId,
         generoNome: bundle.generoNome,
         linhas: bundle.guiaLinhas,
+        // Habilita a idempotência: com o seller_id, criarGuiaTamanhos procura
+        // uma guia equivalente (search paginado) e reutiliza em vez de recriar.
+        sellerId: canal.sellerId ?? tokens.userId ?? undefined,
+        // Correlaciona os logs ml.guia com esta publicação.
+        publishId,
       });
       // Detecta (só leitura) rowIds sintéticos: o ML não devolveu a linha e o
       // builder caiu no fallback `${gridId}:${i+1}` → itens tendem a ser rejeitados.
