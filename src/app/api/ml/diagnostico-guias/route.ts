@@ -7,13 +7,17 @@
 // Ela APENAS OBSERVA E REGISTRA. NÃO decide, NÃO cria guia, NÃO reutiliza guia,
 // NÃO altera o fluxo de publicação. É um espelho de leitura do contexto real.
 //
-// Como invocar (logado no app, no domínio de produção, DevTools console):
+// Descoberta empírica: o /catalog/charts/search EXIGE o filtro GENDER. Como não
+// sabemos o id do gênero de antemão, esta rota descobre os valores de GENDER da
+// categoria (GET /categories/{cat}/attributes) e roda a busca PARA CADA gênero.
+//
+// Como invocar (logado no app, produção, DevTools console):
 //   const k = Object.keys(localStorage).find(k => k.includes('-auth-token'));
 //   const tok = JSON.parse(localStorage.getItem(k)).access_token;
 //   const r = await fetch('/api/ml/diagnostico-guias', {
 //     method: 'POST',
 //     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-//     body: JSON.stringify({ clienteId: 'COLE_O_CLIENTE_ID' }),
+//     body: JSON.stringify({ clienteId: '5074ae56-5f3a-4bc2-a3ad-d9f79ac8d53c' }),
 //   });
 //   console.log(JSON.stringify(await r.json(), null, 2));
 //
@@ -29,11 +33,57 @@ export const maxDuration = 60;
 
 interface Corpo {
   clienteId: string;
-  /** Domínio de tamanhos. Default = o do piloto (calçado). */
   domain?: string;
-  /** Opcional: id do gênero, para medir o efeito do filtro GENDER. */
+  categoryId?: string;
+  /** Opcional: força um único gênero. Se ausente, descobre todos da categoria. */
   generoId?: string;
   marketplace?: string;
+}
+
+/** Disseca um envelope de resposta do search — sem tomar NENHUMA decisão. */
+function dissecar(bruto: unknown, ehJson: boolean) {
+  const obj = bruto && typeof bruto === "object" ? (bruto as Record<string, unknown>) : null;
+  const ehArray = Array.isArray(bruto);
+  const chavesTopo = ehArray ? null : obj ? Object.keys(obj) : null;
+
+  const lista: unknown = ehArray
+    ? bruto
+    : (obj?.results ?? obj?.charts ?? obj?.data ?? obj?.size_charts ?? null);
+  const listaEhArray = Array.isArray(lista);
+  const quantidade = listaEhArray ? (lista as unknown[]).length : null;
+
+  const primeiro =
+    listaEhArray && (lista as unknown[]).length > 0 ? (lista as unknown[])[0] : null;
+  const primeiroObj =
+    primeiro && typeof primeiro === "object" ? (primeiro as Record<string, unknown>) : null;
+
+  return {
+    envelope: ehArray ? "array" : obj ? "objeto" : ehJson ? "primitivo" : "nao_json",
+    chavesDeTopo: chavesTopo,
+    temPaging: (obj?.paging ?? null) != null,
+    paging: obj?.paging ?? null,
+    quantidadeResultados: quantidade,
+    chaveDaLista: ehArray
+      ? "(array na raiz)"
+      : obj?.results != null
+        ? "results"
+        : obj?.charts != null
+          ? "charts"
+          : obj?.data != null
+            ? "data"
+            : obj?.size_charts != null
+              ? "size_charts"
+              : "(nao_localizada)",
+    chavesDoItem: primeiroObj ? Object.keys(primeiroObj) : null,
+    temNames: primeiroObj ? "names" in primeiroObj : null,
+    names: primeiroObj?.names ?? null,
+    temAttributes: primeiroObj ? "attributes" in primeiroObj : null,
+    attributes: primeiroObj?.attributes ?? null,
+    temId: primeiroObj ? "id" in primeiroObj : null,
+    temType: primeiroObj ? "type" in primeiroObj : null,
+    temDomainId: primeiroObj ? "domain_id" in primeiroObj : null,
+    temSiteId: primeiroObj ? "site_id" in primeiroObj : null,
+  };
 }
 
 export async function POST(request: Request) {
@@ -53,7 +103,6 @@ export async function POST(request: Request) {
     return Response.json({ erro: "clienteId ausente." }, { status: 400 });
   }
 
-  // Mesma autorização server-side de uma publicação.
   let ctx;
   try {
     ctx = await exigirAcessoAoCliente(request, corpo.clienteId);
@@ -66,121 +115,92 @@ export async function POST(request: Request) {
 
   const marketplace = corpo.marketplace ?? "Mercado Livre";
   const domainId = corpo.domain ?? "SANDALS_AND_CLOGS";
+  const categoryId = corpo.categoryId ?? "MLB273770";
   const siteId = "MLB";
 
   try {
-    // 1) Mesmo canal + OAuth de uma publicação (renova e persiste o refresh
-    //    rotacionado, idêntico ao publicar — não desincroniza a conta).
+    // Mesmo canal + OAuth de uma publicação.
     const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
     const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
-
+    const auth = { Authorization: `Bearer ${tokens.accessToken}` };
     const sellerId = canal.sellerId ?? tokens.userId ?? null;
 
-    // 2) A MESMA chamada que a reutilização faria — mas só para observar.
-    const buscaBody: Record<string, unknown> = {
-      site_id: siteId,
-      domain_id: domainId,
-      seller_id: sellerId,
-      type: "SPECIFIC",
-    };
+    // 1) Descobre os valores de GENDER da categoria (a busca EXIGE esse filtro).
+    let generos: { id: string; nome: string }[] = [];
+    let generosOrigem = "categoria";
     if (corpo.generoId) {
-      buscaBody.attributes = [{ id: "GENDER", values: [{ id: corpo.generoId }] }];
+      generos = [{ id: corpo.generoId, nome: "(fornecido)" }];
+      generosOrigem = "fornecido";
+    } else {
+      const at = await fetch(`${API}/categories/${categoryId}/attributes`, { headers: auth });
+      if (at.ok) {
+        const attrs = (await at.json()) as {
+          id?: string;
+          values?: { id?: string; name?: string }[];
+        }[];
+        const gender = attrs.find((a) => a.id === "GENDER");
+        generos = (gender?.values ?? [])
+          .filter((v) => v.id)
+          .map((v) => ({ id: String(v.id), nome: v.name ?? "" }));
+      }
     }
 
-    const resp = await fetch(`${API}/catalog/charts/search`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${tokens.accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify(buscaBody),
-    });
+    // 2) Roda a busca PARA CADA gênero e disseca cada resposta.
+    const resultados: unknown[] = [];
+    for (const g of generos) {
+      const buscaBody = {
+        site_id: siteId,
+        domain_id: domainId,
+        seller_id: sellerId,
+        type: "SPECIFIC",
+        attributes: [{ id: "GENDER", values: [{ id: g.id }] }],
+      };
+      const resp = await fetch(`${API}/catalog/charts/search`, {
+        method: "POST",
+        headers: { ...auth, "Content-Type": "application/json" },
+        body: JSON.stringify(buscaBody),
+      });
+      const status = resp.status;
+      const texto = await resp.text();
+      let bruto: unknown;
+      let ehJson = true;
+      try {
+        bruto = JSON.parse(texto);
+      } catch {
+        ehJson = false;
+        bruto = texto;
+      }
+      const analise = dissecar(bruto, ehJson);
 
-    const status = resp.status;
-    const texto = await resp.text();
-    let bruto: unknown;
-    let ehJson = true;
-    try {
-      bruto = JSON.parse(texto);
-    } catch {
-      ehJson = false;
-      bruto = texto;
+      console.log(
+        JSON.stringify({
+          src: "ml.diag.guias",
+          clienteId: corpo.clienteId,
+          sellerId,
+          domainId,
+          genero: g,
+          status,
+          ehJson,
+          ...analise,
+          ts: new Date().toISOString(),
+        })
+      );
+
+      resultados.push({ genero: g, status, ehJson, analise, envelopeCru: bruto });
     }
 
-    // 3) Dissecação do envelope — sem tomar NENHUMA decisão.
-    const obj = bruto && typeof bruto === "object" ? (bruto as Record<string, unknown>) : null;
-    const ehArray = Array.isArray(bruto);
-    const chavesTopo = ehArray ? null : obj ? Object.keys(obj) : null;
-
-    const lista: unknown = ehArray
-      ? bruto
-      : (obj?.results ?? obj?.charts ?? obj?.data ?? obj?.size_charts ?? null);
-    const listaEhArray = Array.isArray(lista);
-    const quantidade = listaEhArray ? (lista as unknown[]).length : null;
-    const paging = obj?.paging ?? null;
-
-    const primeiro =
-      listaEhArray && (lista as unknown[]).length > 0 ? (lista as unknown[])[0] : null;
-    const primeiroObj =
-      primeiro && typeof primeiro === "object" ? (primeiro as Record<string, unknown>) : null;
-    const chavesItem = primeiroObj ? Object.keys(primeiroObj) : null;
-
-    const analise = {
-      // Q1 — envelope
-      envelope: ehArray ? "array" : obj ? "objeto" : ehJson ? "primitivo" : "nao_json",
-      chavesDeTopo: chavesTopo,
-      // Q2/Q8 — paginação
-      temPaging: paging != null,
-      paging,
-      // Q5 — quantas vieram
-      quantidadeResultados: quantidade,
-      chaveDaLista: ehArray
-        ? "(array na raiz)"
-        : obj?.results != null
-          ? "results"
-          : obj?.charts != null
-            ? "charts"
-            : obj?.data != null
-              ? "data"
-              : obj?.size_charts != null
-                ? "size_charts"
-                : "(nao_localizada)",
-      // Q3/Q4 — estrutura de um item
-      chavesDoItem: chavesItem,
-      temNames: primeiroObj ? "names" in primeiroObj : null,
-      names: primeiroObj?.names ?? null,
-      temAttributes: primeiroObj ? "attributes" in primeiroObj : null,
-      attributes: primeiroObj?.attributes ?? null,
-      temId: primeiroObj ? "id" in primeiroObj : null,
-      temType: primeiroObj ? "type" in primeiroObj : null,
-      temDomainId: primeiroObj ? "domain_id" in primeiroObj : null,
-      temSiteId: primeiroObj ? "site_id" in primeiroObj : null,
-    };
-
-    // Log estruturado (aparece nos Runtime Logs como src:"ml.diag.guias").
-    console.log(
-      JSON.stringify({
-        src: "ml.diag.guias",
-        clienteId: corpo.clienteId,
-        sellerId,
-        domainId,
-        comGenero: Boolean(corpo.generoId),
-        status,
-        ehJson,
-        ...analise,
-        ts: new Date().toISOString(),
-      })
-    );
-
-    // Devolve TUDO — inclusive o envelope cru — para inspeção direta.
     return Response.json({
       diagnostico: true,
-      requisicao: { ...buscaBody },
-      status,
-      ehJson,
-      analise,
-      envelopeCru: bruto,
+      sellerId,
+      domainId,
+      categoryId,
+      generosOrigem,
+      generosDescobertos: generos,
+      resultados,
     });
   } catch (e) {
     return Response.json(
