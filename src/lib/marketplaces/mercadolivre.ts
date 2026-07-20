@@ -408,11 +408,64 @@ export async function criarGuiaTamanhos(
     body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(`Falha ao criar a guia de tamanhos: ${await extrairErro(r)}`);
-  const j = (await r.json()) as { id: string; rows?: { id?: string }[] };
-  const gridId = j.id;
+  const chartId = ((await r.json()) as { id: string }).id;
+
+  // O ML NÃO garante os row ids na resposta do POST (a guia é validada de forma
+  // assíncrona). A fonte OFICIAL é o GET /catalog/charts/{id}. Buscamos os rows
+  // com retry curto e mapeamos por MANUFACTURER_SIZE — nunca por índice.
+  type RowGuia = {
+    id?: string;
+    attributes?: { id: string; values?: { name?: string }[] }[];
+  };
+
+  async function buscarRowsOficiais(): Promise<RowGuia[]> {
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      if (tentativa > 0) await new Promise((res) => setTimeout(res, 400));
+      const g = await fetch(`${API}/catalog/charts/${chartId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!g.ok) continue;
+      const gj = (await g.json()) as { rows?: RowGuia[] };
+      const rows = gj.rows ?? [];
+      if (rows.length > 0 && rows.every((x) => Boolean(x.id))) return rows;
+    }
+    return [];
+  }
+
+  const rowsOficiais = await buscarRowsOficiais();
+
+  // MANUFACTURER_SIZE (o tamanho que enviamos) → row id oficial do ML.
+  const idPorTamanhoOficial: Record<string, string> = {};
+  for (const row of rowsOficiais) {
+    const ms = row.attributes?.find((a) => a.id === "MANUFACTURER_SIZE");
+    const nome = ms?.values?.[0]?.name;
+    if (nome && row.id) idPorTamanhoOficial[String(nome)] = row.id;
+  }
+
   const rowIdPorTamanho: Record<string, string> = {};
+  let viaFallback = 0;
   dados.linhas.forEach((l, i) => {
-    rowIdPorTamanho[String(l.tamanho)] = j.rows?.[i]?.id ?? `${gridId}:${i + 1}`;
+    const oficial = idPorTamanhoOficial[String(l.tamanho)];
+    if (oficial) {
+      rowIdPorTamanho[String(l.tamanho)] = oficial;
+    } else {
+      // Rede de segurança: só quando o GET falha / não tem rows / tamanho ausente.
+      rowIdPorTamanho[String(l.tamanho)] = `${chartId}:${i + 1}`;
+      viaFallback++;
+    }
   });
-  return { gridId, rowIdPorTamanho };
+
+  // Observabilidade: origem dos ids (GET oficial vs fallback) — não confie no
+  // formato para inferir isso, pois o id real também é "<chartId>:<n>".
+  console.log(
+    JSON.stringify({
+      src: "ml.guia",
+      chartId,
+      source: viaFallback === 0 && rowsOficiais.length > 0 ? "GET" : "fallback",
+      tamanhos: dados.linhas.length,
+      viaFallback,
+    })
+  );
+
+  return { gridId: chartId, rowIdPorTamanho };
 }
