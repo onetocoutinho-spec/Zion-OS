@@ -24,8 +24,10 @@ import {
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
-// 60s = limite do plano grátis da Vercel.
-export const maxDuration = 60;
+// Publicação User Products encadeia várias chamadas ao ML (renovar token,
+// prever categoria, criar guia, criar 1 item por tamanho). 60s (Hobby) estoura;
+// a conta é Pro (o worker já usa 300), então damos a mesma folga aqui.
+export const maxDuration = 300;
 
 interface Corpo {
   clienteId: string;
