@@ -31,6 +31,10 @@ export async function GET(request: Request) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
+  // offline_access é OBRIGATÓRIO para o ML devolver refresh_token (sem ele, o
+  // servidor não consegue renovar o token e publicar). read/write cobrem
+  // leitura e publicação/edição de anúncios.
+  url.searchParams.set("scope", "offline_access read write");
   if (state) url.searchParams.set("state", state);
 
   return Response.redirect(url.toString(), 302);
