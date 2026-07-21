@@ -34,7 +34,7 @@ começa**.
 | `serverAuthorization.ts` | **SIM** |
 | `mercadolivre.ts` | **NÃO** |
 | `mlPayload.ts` | **SIM** (8 testes — R12, Release 015) |
-| `canalServidor.ts` | **NÃO** |
+| `canalServidor.ts` | **SIM** (12 testes — R2, Release 016) |
 | `publicacaoML.ts` | **NÃO** |
 | `tabelasMedidas.ts` | **NÃO** |
 
@@ -169,10 +169,13 @@ exige preparação.*
 
 - **Origem:** `canalServidor.ts` · **Destino:** `modules/integration` — Connection
   (infraestrutura)
-- **Estado:** **Não iniciada** · **Release prevista:** 012
-- **Por que NÃO pode migrar ainda:** sem teste próprio; **6 consumidores** (acoplamento
-  **alto** no Mapeamento), cinco deles rotas.
-- **Pré-requisitos:** linha de base local.
+- **Estado:** **Não iniciada** · **Release prevista:** 012 · **Categoria A** — linha de
+  base própria institucionalizada
+- **Pré-requisito — CONCLUÍDO (Release 016):** linha de base local. O motivo que impedia a
+  migração — *sem teste próprio* — deixou de existir: `canalServidor.test.ts`
+  institucionaliza **12 testes** protegendo os **4 símbolos públicos** e os **8
+  invariantes** da responsabilidade, com detecção de regressão comprovada por mutação
+  (14 de 14). Registro em `engineering/linha-de-base-r2.md`.
 - **Evidências mínimas:** 6 consumidores atualizados; build; auditoria de commit.
 - **Dependências:** nenhuma.
 - **Risco:** **Médio** · **Complexidade:** **Média**
@@ -314,7 +317,7 @@ linha de base (nenhuma possui teste próprio).
 | **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
 | **R12** | ✅ Concluída | — | 010 | Migrada, comportamento preservado | Nenhuma |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
-| **R2** | Não iniciada | Sem linha de base | 012 | Aguardando preparação | Criar linha de base |
+| **R2** | Não iniciada | Nenhum | 012 | Linha de base pronta (Release 016) | Executar Pré-Abertura |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R4** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R8** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
