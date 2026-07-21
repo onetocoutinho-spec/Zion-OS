@@ -64,14 +64,21 @@ Produzem evidência e orientam o trabalho; **não regem**.
 - [Plano de Refatoração Arquitetural 001](engineering/plano-refatoracao-001-organizacao-dos-modulos.md)
 - [Plano de Encerramento da Sprint 0](engineering/plano-encerramento-sprint-0.md)
 - [Plano de Versionamento da Arquitetura Oficial](engineering/plano-versionamento-arquitetura-oficial.md)
+- [Avaliação Arquitetural da R15](engineering/avaliacao-arquitetural-r15.md)
 
 ### `governance/` — as decisões e o processo
 
 A memória de **por que** a plataforma é como é.
 
 - [ADR-007 — Deliberação da RFC-001](governance/ADR-007-deliberacao-da-rfc-001.md)
+- [ADR-009 — Estratégia de Ports e Escopo da R2](governance/ADR-009-estrategia-de-ports-e-escopo-da-r2.md)
 - [RFC-001 — Ciclo de Vida da Publication](governance/RFC-001-ciclo-de-vida-da-publication.md)
 - [Revalidação Arquitetural do ADR-007](governance/revalidacao-arquitetural-adr-007.md)
+
+Pareceres de pré-abertura ficam em
+[`docs/releases/pre-abertura/`](../releases/pre-abertura/) — incluindo a
+[Pré-Abertura da Release 012 (R2)](../releases/pre-abertura/release-012-checklist-r2.md),
+cujo parecer `NÃO ELEGÍVEL` originou o ADR-009.
 
 ---
 
