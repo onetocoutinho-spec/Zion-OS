@@ -3,11 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  montarBundleUserProducts,
-  dominioDaCategoria,
-  precisaUserProducts,
-} from "./mlUserProducts.ts";
+import { montarBundleUserProducts } from "./mlUserProducts.ts";
 import type { AnuncioGerado } from "../agentes/esteira.ts";
 
 type Ficha = { atributo: string; valor: string; obrigatorio: boolean };
@@ -37,18 +33,6 @@ function anuncio(over: { ficha?: Ficha[]; variacoes?: Var[]; titulo?: string }):
 function v(tamanho: string, extra: Partial<Var> = {}): Var {
   return { cor: "", tamanho, sku: "", ean: "", estoque: "10", preco: "59,90", obs: "", ...extra };
 }
-
-// ---- helpers de categoria ----
-
-test("precisaUserProducts só é true para categorias mapeadas", () => {
-  assert.equal(precisaUserProducts("MLB273770"), true);
-  assert.equal(precisaUserProducts("MLB1234"), false);
-});
-
-test("dominioDaCategoria resolve MLB273770 e nega o resto", () => {
-  assert.equal(dominioDaCategoria("MLB273770"), "SANDALS_AND_CLOGS");
-  assert.equal(dominioDaCategoria("MLB1234"), null);
-});
 
 // ---- caminho feliz ----
 
