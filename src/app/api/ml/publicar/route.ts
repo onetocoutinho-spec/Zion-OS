@@ -15,10 +15,8 @@ import {
   criarItem,
   criarGuiaTamanhos,
 } from "@/lib/marketplaces/mercadolivre";
-import {
-  montarItensUserProducts,
-  type BundleUserProducts,
-} from "@/lib/marketplaces/mlUserProducts";
+import { montarItensUserProducts } from "@/lib/marketplaces/mlUserProducts";
+import type { BundleUserProducts } from "@/modules/publication/domain/composicaoConteudo";
 import {
   precisaUserProducts,
   dominioDaCategoria,
