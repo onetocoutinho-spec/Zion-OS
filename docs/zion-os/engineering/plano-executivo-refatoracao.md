@@ -8,6 +8,11 @@
 > Arquitetural · governança vigente · bloqueios registrados · evidências já produzidas.
 >
 > **Documento vivo.** Deve ser atualizado a cada release de refatoração.
+>
+> **Nota de Revisão.** Revisão documental realizada para alinhar a numeração das Releases
+> previstas no roadmap ao histórico efetivamente executado após a institucionalização do
+> Plano Executivo na Release 005. Nenhuma decisão técnica, arquitetural ou de governança
+> foi alterada.
 
 ---
 
@@ -58,7 +63,7 @@ deliberada registrada na Release 002.
 
 - **Origem:** `mlUserProducts.ts` (l. 47–153) · **Destino:** `modules/integration` —
   Capability
-- **Estado:** **Não iniciada** · **Release prevista:** 005
+- **Estado:** **Não iniciada** · **Release prevista:** 007
 - **Por que PODE migrar:** *(a)* não vive em `mercadolivre.ts` nem em
   `publicar/route.ts` — o bloqueio de governança, em sua redação, não a alcança; *(b)*
   possui linha de base — `mlUserProducts.test.ts`, 9 testes; *(c)* o Mapeamento
@@ -85,7 +90,7 @@ exige preparação.*
 ### R10 — Conhecimento de medidas por marca
 
 - **Origem:** `tabelasMedidas.ts` · **Destino:** `modules/catalog`
-- **Estado:** **Não iniciada** · **Release prevista:** 006
+- **Estado:** **Não iniciada** · **Release prevista:** 008
 - **Por que NÃO pode migrar ainda:** não possui teste próprio (verificado); o Protocolo
   (Fase 1) exige linha de base mensurável.
 - **Pré-requisitos:** criar linha de base local para `medidasDaMarca`.
@@ -100,7 +105,7 @@ exige preparação.*
 
 - **Origem:** `mlUserProducts.ts` (l. 238–310) · **Destino:** `modules/publication` —
   domínio
-- **Estado:** **Não iniciada** · **Release prevista:** 007
+- **Estado:** **Não iniciada** · **Release prevista:** 009
 - **Por que NÃO pode migrar ainda:** o Mapeamento classifica seu acoplamento como
   **alto** — depende de R9 (✔ migrada), **R10 (não migrada)** e do tipo `AnuncioGerado`
   da esteira; e sua estratégia exige **dividir** o arquivo entre dois módulos, o que o
@@ -116,7 +121,7 @@ exige preparação.*
 
 - **Origem:** `mlUserProducts.ts` (l. 90) e `mlPayload.ts` · **Destino:**
   `modules/integration` — Tradutor
-- **Estado:** **Não iniciada** · **Release prevista:** 008
+- **Estado:** **Não iniciada** · **Release prevista:** 010
 - **Por que NÃO pode migrar ainda:** linha de base **parcial** — `mlUserProducts.ts` tem
   testes, `mlPayload.ts` **não**; o Mapeamento registra acoplamento **médio** e 2
   consumidores.
@@ -131,7 +136,7 @@ exige preparação.*
 ### R15 — Montagem e disparo no cliente
 
 - **Origem:** `publicacaoML.ts` · **Destino:** `modules/publication` — Aplicação
-- **Estado:** **Não iniciada** · **Release prevista:** 009
+- **Estado:** **Não iniciada** · **Release prevista:** 011
 - **Por que NÃO pode migrar ainda:** sem teste próprio; o Mapeamento registra **alto
   acoplamento de saída** (6 dependências) e estratégia de **mover para o servidor**, o
   que ultrapassa uma migração de localização.
@@ -145,7 +150,7 @@ exige preparação.*
 
 - **Origem:** `canalServidor.ts` · **Destino:** `modules/integration` — Connection
   (infraestrutura)
-- **Estado:** **Não iniciada** · **Release prevista:** 010
+- **Estado:** **Não iniciada** · **Release prevista:** 012
 - **Por que NÃO pode migrar ainda:** sem teste próprio; **6 consumidores** (acoplamento
   **alto** no Mapeamento), cinco deles rotas.
 - **Pré-requisitos:** linha de base local.
@@ -232,7 +237,7 @@ Mapeamento: **R3 → R4 → R8 → R1 → R6 → R7 → R17 → R14**.
 > Sequência derivada dos grupos, das dependências registradas e das prioridades do
 > Mapeamento. **Uma responsabilidade por migração**, conforme o Protocolo.
 
-### Release 005 — R11 (Exigência do modelo do canal)
+### Release 007 — R11 (Exigência do modelo do canal)
 - **Justificativa:** única responsabilidade do Grupo A; linha de base existente,
   acoplamento baixo, consumidor único, sem bloqueio.
 - **Risco:** Baixo.
@@ -241,7 +246,7 @@ Mapeamento: **R3 → R4 → R8 → R1 → R6 → R7 → R17 → R14**.
 - **Conclusão:** R11 em `modules/integration`, testes idênticos, build verde, escopo
   igual ao declarado.
 
-### Release 006 — R10 (Medidas por marca)
+### Release 008 — R10 (Medidas por marca)
 - **Justificativa:** desbloqueia R13; sem bloqueio de governança.
 - **Pré-requisito:** criação de linha de base local.
 - **Risco:** Médio — 5 consumidores.
@@ -249,25 +254,25 @@ Mapeamento: **R3 → R4 → R8 → R1 → R6 → R7 → R17 → R14**.
   build; auditoria de commit.
 - **Conclusão:** R10 em `modules/catalog`; nenhum consumidor quebrado.
 
-### Release 007 — R13 (Composição do conteúdo)
+### Release 009 — R13 (Composição do conteúdo)
 - **Justificativa:** com R10 migrada, a dependência registrada é satisfeita.
 - **Risco:** Alto — exige **dividir** um arquivo entre dois módulos.
 - **Evidências obrigatórias:** 9 testes antes e depois; demonstração de que a divisão não
   alterou lógica; build; auditoria de commit.
 - **Conclusão:** composição em Publication, tradução permanecendo em Integration.
 
-### Release 008 — R12 (Payload do canal)
+### Release 010 — R12 (Payload do canal)
 - **Justificativa:** completa a separação iniciada em R13.
 - **Pré-requisito:** linha de base para `mlPayload.ts`.
 - **Risco:** Médio.
 - **Conclusão:** tradução consolidada em Integration.
 
-### Release 009 — R15 (Montagem no cliente)
+### Release 011 — R15 (Montagem no cliente)
 - **Pré-requisito:** linha de base local **e** decisão sobre a mudança de camada, não
   coberta por este plano.
 - **Risco:** Médio-alto.
 
-### Release 010 — R2 (Vínculo do canal)
+### Release 012 — R2 (Vínculo do canal)
 - **Pré-requisito:** linha de base local.
 - **Risco:** Médio — 6 consumidores.
 
@@ -285,12 +290,12 @@ linha de base (nenhuma possui teste próprio).
 | Resp. | Estado | Bloqueio | Release | Situação atual | Próxima ação |
 |---|---|---|---|---|---|
 | **R9** | ✅ Concluída | — | 003 | Migrada, comportamento preservado | Nenhuma |
-| **R11** | Não iniciada | Nenhum | **005** | Pronta para migrar | Executar migração |
-| **R10** | Não iniciada | Sem linha de base | 006 | Aguardando preparação | Criar linha de base |
-| **R13** | Não iniciada | Depende de R10 | 007 | Aguardando R10 | Aguardar Release 006 |
-| **R12** | Não iniciada | Linha de base parcial | 008 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
-| **R15** | Não iniciada | Sem linha de base + mudança de camada | 009 | Aguardando definição | Criar linha de base |
-| **R2** | Não iniciada | Sem linha de base | 010 | Aguardando preparação | Criar linha de base |
+| **R11** | Não iniciada | Nenhum | **007** | Pronta para migrar | Executar migração |
+| **R10** | Não iniciada | Sem linha de base | 008 | Aguardando preparação | Criar linha de base |
+| **R13** | Não iniciada | Depende de R10 | 009 | Aguardando R10 | Aguardar Release 008 |
+| **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
+| **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
+| **R2** | Não iniciada | Sem linha de base | 012 | Aguardando preparação | Criar linha de base |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R4** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R8** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
