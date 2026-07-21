@@ -129,12 +129,17 @@ exige preparação.*
 - **Risco:** **Alto** · **Complexidade:** **Alta**
 - **Estratégia:** dividir de R11/R12; mover a parcela de composição para Publication.
 
-### R12 — Montagem do payload no formato do canal
+### R12 — Montagem do payload no formato do canal ✅
 
-- **Origem:** `mlUserProducts.ts` (l. 90) e `mlPayload.ts` · **Destino:**
-  `modules/integration` — Tradutor
-- **Estado:** **Não iniciada** · **Release prevista:** 010 · **Categoria A** — linha de
-  base própria institucionalizada
+- **Origem:** `mlUserProducts.ts` e `mlPayload.ts` · **Destino:**
+  `modules/integration/domain/` — Tradutor ✔
+- **Estado:** **CONCLUÍDA** · **Release:** 010 · **Data:** 21 de julho de 2026
+- **Justificativa da mudança de estado:** **movimento integral de quatro arquivos** com
+  `git mv` — similaridades **R100** (`mlUserProducts.ts` e seu teste, SHA-256 idêntico),
+  **R097** e **R099** (`mlPayload.ts` e seu teste, diferença exclusivamente de caminho de
+  import), todas idênticas às previstas na Pré-Abertura. Assinatura pública conservada
+  (7 exports), **16 testes** e **231** da suíte verdes antes e depois, build íntegro,
+  3 consumidores alterados apenas em linha de import.
 - **Pré-requisito — CONCLUÍDO (Release 015):** linha de base para `mlPayload.ts`. A
   cobertura deixou de ser **parcial**: `mlPayload.test.ts` e `mlUserProducts.test.ts`
   institucionalizam **16 testes** protegendo os **7 símbolos públicos** de R12 nos dois
@@ -307,7 +312,7 @@ linha de base (nenhuma possui teste próprio).
 | **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
 | **R10** | ✅ Concluída | — | 008 | Migrada, comportamento preservado | Nenhuma |
 | **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
-| **R12** | Não iniciada | Nenhum | 010 | Linha de base pronta (Release 015) | Executar Pré-Abertura |
+| **R12** | ✅ Concluída | — | 010 | Migrada, comportamento preservado | Nenhuma |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
 | **R2** | Não iniciada | Sem linha de base | 012 | Aguardando preparação | Criar linha de base |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
@@ -321,7 +326,7 @@ linha de base (nenhuma possui teste próprio).
 | **R5** | Bloqueada | Domínio inexistente | — | Sem destino arquitetural | Especificar Vendas/Pedidos |
 | **R16** | Bloqueada | Módulo inexistente | — | Linha de base já disponível | Especificar Identity & Access |
 
-**Resumo:** 4 concluídas · 3 aguardando engenharia adicional · 8 bloqueadas por
+**Resumo:** 5 concluídas · 2 aguardando engenharia adicional · 8 bloqueadas por
 governança · 2 sem destino.
 
 ---
