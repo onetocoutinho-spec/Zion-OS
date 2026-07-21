@@ -155,12 +155,20 @@ exige preparação.*
 ### R15 — Montagem e disparo no cliente
 
 - **Origem:** `publicacaoML.ts` · **Destino:** `modules/publication` — Aplicação
-- **Estado:** **Não iniciada** · **Release prevista:** 011
+- **Estado:** **BLOQUEADA — decisão arquitetural** · **Release prevista:** 011
 - **Por que NÃO pode migrar ainda:** sem teste próprio; o Mapeamento registra **alto
   acoplamento de saída** (6 dependências) e estratégia de **mover para o servidor**, o
   que ultrapassa uma migração de localização.
+- **Premissa reavaliada (Release 017):** a **Avaliação Arquitetural da R15** reexaminou a
+  premissa sobre o `HEAD` posterior às cinco migrações e concluiu que ela **permanece
+  válida**. Registrou que seu **escopo estreitou** — as duas dependências puras (R12 e R13)
+  migraram, restando acoplada ao navegador **apenas a E/S** — e identificou um **novo
+  impedimento**: o Mapeamento classifica **R14 e R15 juntas como *Orquestração*** (§6),
+  e R14 está bloqueada por governança e pela inexistência do Operation Center. Registro em
+  `engineering/avaliacao-arquitetural-r15.md`.
 - **Pré-requisitos:** linha de base local; decisão sobre a mudança de camada
-  (cliente→servidor) — **não coberta** por este plano.
+  (cliente→servidor) — **não coberta** por este plano. **Exige ADR aprovado**; nenhum
+  existe. **R15 é a única responsabilidade do Grupo B bloqueada por decisão arquitetural.**
 - **Evidências mínimas:** a definir na Fase 1 da respectiva migração.
 - **Dependências:** R12, R13.
 - **Risco:** **Médio-alto** · **Complexidade:** **Alta**
@@ -176,6 +184,17 @@ exige preparação.*
   institucionaliza **12 testes** protegendo os **4 símbolos públicos** e os **8
   invariantes** da responsabilidade, com detecção de regressão comprovada por mutação
   (14 de 14). Registro em `engineering/linha-de-base-r2.md`.
+- **Ambiguidade de estratégia — RESOLVIDA (ADR-009, aprovado):** a Pré-Abertura da Release
+  012 produziu parecer **NÃO ELEGÍVEL** porque a estratégia registrada no Mapeamento —
+  *"Mover atrás de porta"* — admitia dois escopos arquiteturalmente distintos. O
+  **ADR-009** fixou que a expressão significa **preservar o ponto único de acesso**, e não
+  construir artefato; determinou que **Ports não integram a arquitetura do Zion OS**; e
+  autorizou o escopo: **movimento integral para `modules/integration/infrastructure/`**,
+  sem Port, sem abstração e sem alterar contrato. Registros em
+  `governance/ADR-009-estrategia-de-ports-e-escopo-da-r2.md` e
+  `docs/releases/pre-abertura/release-012-checklist-r2.md`.
+  *O campo **Estratégia** desta entrada será preenchido **dentro da Release 012**, conforme
+  §6.3 e §9 do ADR-009.*
 - **Evidências mínimas:** 6 consumidores atualizados; build; auditoria de commit.
 - **Dependências:** nenhuma.
 - **Risco:** **Médio** · **Complexidade:** **Média**
@@ -316,8 +335,8 @@ linha de base (nenhuma possui teste próprio).
 | **R10** | ✅ Concluída | — | 008 | Migrada, comportamento preservado | Nenhuma |
 | **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
 | **R12** | ✅ Concluída | — | 010 | Migrada, comportamento preservado | Nenhuma |
-| **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
-| **R2** | Não iniciada | Nenhum | 012 | Linha de base pronta (Release 016) | Executar Pré-Abertura |
+| **R15** | 🔒 Bloqueada | Decisão arquitetural (sem ADR) | 011 | Premissa confirmada na Release 017 | Deliberar ADR de camada |
+| **R2** | Não iniciada | Nenhum | 012 | Estratégia fixada pelo ADR-009 | Reexecutar Pré-Abertura |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R4** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R8** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
