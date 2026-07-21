@@ -8,8 +8,8 @@
 // A fonte da verdade dos atributos obrigatórios continua sendo
 // GET /categories/{id}/attributes no momento do cadastro.
 
-import type { AnuncioGerado } from "../agentes/esteira";
-import type { Produto } from "../types";
+import type { AnuncioGerado } from "../../../lib/agentes/esteira";
+import type { Produto } from "../../../lib/types";
 
 /** Premium = mais exposição (gold_pro); Clássico = gold_special. */
 export function listingTypeId(tipoAnuncio: string): string {

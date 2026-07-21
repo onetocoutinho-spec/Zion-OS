@@ -4,7 +4,7 @@
 // payload antes. A publicação real vai para /api/ml/publicar (que detém o
 // segredo do APP ML) levando o refresh_token do canal do cliente.
 
-import { montarItemML } from "../marketplaces/mlPayload";
+import { montarItemML } from "../../modules/integration/domain/mlPayload";
 import { montarBundleUserProducts } from "../../modules/publication/domain/composicaoConteudo";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
