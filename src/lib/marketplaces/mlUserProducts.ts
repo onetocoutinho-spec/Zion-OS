@@ -15,7 +15,7 @@
 import { listingTypeId } from "./mlPayload.ts";
 import type { AnuncioGerado } from "../agentes/esteira";
 import type { LinhaGuiaTamanho } from "./mercadolivre";
-import { normalizarTamanho } from "./normalizarTamanho.ts";
+import { normalizarTamanho } from "../../modules/publication/domain/normalizarTamanho.ts";
 import { medidasDaMarca } from "../data/tabelasMedidas.ts";
 
 // ---- Value-ids reais (categoria MLB273770 / domain SANDALS_AND_CLOGS) ----
