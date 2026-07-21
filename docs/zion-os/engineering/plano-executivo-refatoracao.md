@@ -95,9 +95,11 @@ exige preparação.*
 
 - **Origem:** `tabelasMedidas.ts` · **Destino:** `modules/catalog`
 - **Estado:** **Não iniciada** · **Release prevista:** 008
-- **Por que NÃO pode migrar ainda:** não possui teste próprio (verificado); o Protocolo
-  (Fase 1) exige linha de base mensurável.
-- **Pré-requisitos:** criar linha de base local para `medidasDaMarca`.
+- **Pré-requisito — CONCLUÍDO (Release 014):** criar linha de base local. O motivo que
+  impedia a migração — *não possuir teste próprio* — deixou de existir:
+  `tabelasMedidas.test.ts` institucionaliza **14 testes** cobrindo os **9 símbolos
+  públicos**, com detecção de regressão comprovada por mutação (7 de 7). Registro em
+  `engineering/linha-de-base-r10.md`.
 - **Evidências mínimas:** linha de base criada e verde antes da migração; 5 consumidores
   atualizados; build.
 - **Dependências:** nenhuma. **Bloqueia:** R13 (o Mapeamento registra R10 entre suas
@@ -295,7 +297,7 @@ linha de base (nenhuma possui teste próprio).
 |---|---|---|---|---|---|
 | **R9** | ✅ Concluída | — | 003 | Migrada, comportamento preservado | Nenhuma |
 | **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
-| **R10** | Não iniciada | Sem linha de base | 008 | Aguardando preparação | Criar linha de base |
+| **R10** | Não iniciada | Nenhum | 008 | Linha de base pronta (Release 014) | Executar Pré-Abertura |
 | **R13** | Não iniciada | Depende de R10 | 009 | Aguardando R10 | Aguardar Release 008 |
 | **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
