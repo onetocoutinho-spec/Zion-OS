@@ -3,8 +3,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { montarBundleUserProducts } from "./mlUserProducts.ts";
-import type { AnuncioGerado } from "../agentes/esteira.ts";
+import { montarBundleUserProducts } from "./composicaoConteudo.ts";
+import type { AnuncioGerado } from "../../../lib/agentes/esteira.ts";
 
 type Ficha = { atributo: string; valor: string; obrigatorio: boolean };
 type Var = { cor: string; tamanho: string; sku: string; ean: string; estoque: string; preco: string; obs: string };

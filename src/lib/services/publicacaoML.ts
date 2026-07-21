@@ -5,7 +5,7 @@
 // segredo do APP ML) levando o refresh_token do canal do cliente.
 
 import { montarItemML } from "../marketplaces/mlPayload";
-import { montarBundleUserProducts } from "../marketplaces/mlUserProducts";
+import { montarBundleUserProducts } from "../../modules/publication/domain/composicaoConteudo";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { marcarAnuncioPublicado } from "./anunciosGerados";
