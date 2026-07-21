@@ -112,19 +112,20 @@ exige preparação.*
 - **Risco:** **Médio** — 5 consumidores, três deles telas · **Complexidade:** **Média**
 - **Estratégia:** mover arquivo inteiro; atualizar 5 importadores.
 
-### R13 — Composição do conteúdo pretendido
+### R13 — Composição do conteúdo pretendido ✅
 
-- **Origem:** `mlUserProducts.ts` (l. 238–310) · **Destino:** `modules/publication` —
-  domínio
-- **Estado:** **Não iniciada** · **Release prevista:** 009
-- **Por que NÃO pode migrar ainda:** o Mapeamento classifica seu acoplamento como
-  **alto** — depende de R9 (✔ migrada), **R10 (não migrada)** e do tipo `AnuncioGerado`
-  da esteira; e sua estratégia exige **dividir** o arquivo entre dois módulos, o que o
-  Mapeamento marca como risco **alto**.
-- **Pré-requisitos:** R10 migrada.
-- **Evidências mínimas:** 9 testes de `mlUserProducts` antes e depois; **divisão sem
+- **Origem:** `mlUserProducts.ts` · **Destino:**
+  `modules/publication/domain/composicaoConteudo.ts` ✔
+- **Estado:** **CONCLUÍDA** · **Release:** 009 · **Data:** 21 de julho de 2026
+- **Justificativa da mudança de estado:** extraída com preservação comprovada — **SHA-256
+  idêntico** nos dois blocos extraídos, assinatura pública conservada (9 exports = 4 na
+  origem + 5 no destino), **7 testes** e **215** da suíte verdes antes e depois, build
+  íntegro, 2 consumidores alterados apenas em linha de import. R12 permaneceu intacta e
+  `VariacaoUP` permaneceu **único**, importado pelo novo módulo.
+- **Pré-requisitos — CONCLUÍDOS:** R9 (Release 003) e **R10 (Release 008)** migradas.
+- **Evidências mínimas:** 7 testes antes e depois; **divisão sem
   alteração de lógica** demonstrada; build; auditoria de commit.
-- **Dependências:** **R10**.
+- **Dependências:** **R10** — satisfeita.
 - **Risco:** **Alto** · **Complexidade:** **Alta**
 - **Estratégia:** dividir de R11/R12; mover a parcela de composição para Publication.
 
@@ -140,7 +141,7 @@ exige preparação.*
   separa composição de tradução no mesmo arquivo.
 - **Evidências mínimas:** linhas de base de ambos os arquivos; 2 consumidores
   atualizados; build.
-- **Dependências:** **R13** (recomendável, para não dividir o mesmo arquivo duas vezes).
+- **Dependências:** **R13** — satisfeita (Release 009).
 - **Risco:** **Médio** · **Complexidade:** **Média**
 - **Estratégia:** mover e separar de R13.
 
@@ -303,7 +304,7 @@ linha de base (nenhuma possui teste próprio).
 | **R9** | ✅ Concluída | — | 003 | Migrada, comportamento preservado | Nenhuma |
 | **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
 | **R10** | ✅ Concluída | — | 008 | Migrada, comportamento preservado | Nenhuma |
-| **R13** | Não iniciada | Depende de R10 | 009 | Aguardando R10 | Aguardar Release 008 |
+| **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
 | **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
 | **R2** | Não iniciada | Sem linha de base | 012 | Aguardando preparação | Criar linha de base |
@@ -318,7 +319,7 @@ linha de base (nenhuma possui teste próprio).
 | **R5** | Bloqueada | Domínio inexistente | — | Sem destino arquitetural | Especificar Vendas/Pedidos |
 | **R16** | Bloqueada | Módulo inexistente | — | Linha de base já disponível | Especificar Identity & Access |
 
-**Resumo:** 3 concluídas · 4 aguardando engenharia adicional · 8 bloqueadas por
+**Resumo:** 4 concluídas · 3 aguardando engenharia adicional · 8 bloqueadas por
 governança · 2 sem destino.
 
 ---
