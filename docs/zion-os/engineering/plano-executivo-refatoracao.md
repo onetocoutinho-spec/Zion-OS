@@ -30,10 +30,10 @@ começa**.
 
 | Arquivo de origem | Teste próprio |
 |---|---|
-| `mlUserProducts.ts` | **SIM** (9 testes) |
+| `mlUserProducts.ts` | **SIM** (8 testes — R12, Release 015) |
 | `serverAuthorization.ts` | **SIM** |
 | `mercadolivre.ts` | **NÃO** |
-| `mlPayload.ts` | **NÃO** |
+| `mlPayload.ts` | **SIM** (8 testes — R12, Release 015) |
 | `canalServidor.ts` | **NÃO** |
 | `publicacaoML.ts` | **NÃO** |
 | `tabelasMedidas.ts` | **NÃO** |
@@ -133,14 +133,16 @@ exige preparação.*
 
 - **Origem:** `mlUserProducts.ts` (l. 90) e `mlPayload.ts` · **Destino:**
   `modules/integration` — Tradutor
-- **Estado:** **Não iniciada** · **Release prevista:** 010
-- **Por que NÃO pode migrar ainda:** linha de base **parcial** — `mlUserProducts.ts` tem
-  testes, `mlPayload.ts` **não**; o Mapeamento registra acoplamento **médio** e 2
-  consumidores.
-- **Pré-requisitos:** linha de base para `mlPayload.ts`; preferencialmente após R13, que
-  separa composição de tradução no mesmo arquivo.
-- **Evidências mínimas:** linhas de base de ambos os arquivos; 2 consumidores
-  atualizados; build.
+- **Estado:** **Não iniciada** · **Release prevista:** 010 · **Categoria A** — linha de
+  base própria institucionalizada
+- **Pré-requisito — CONCLUÍDO (Release 015):** linha de base para `mlPayload.ts`. A
+  cobertura deixou de ser **parcial**: `mlPayload.test.ts` e `mlUserProducts.test.ts`
+  institucionalizam **16 testes** protegendo os **7 símbolos públicos** de R12 nos dois
+  arquivos que a implementam, com detecção de regressão comprovada por mutação (14 de 14).
+  Registro em `engineering/linha-de-base-r12.md`. A dependência de R13 foi satisfeita na
+  Release 009.
+- **Evidências mínimas:** linhas de base de ambos os arquivos — **disponíveis**;
+  consumidores atualizados; build.
 - **Dependências:** **R13** — satisfeita (Release 009).
 - **Risco:** **Médio** · **Complexidade:** **Média**
 - **Estratégia:** mover e separar de R13.
@@ -305,7 +307,7 @@ linha de base (nenhuma possui teste próprio).
 | **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
 | **R10** | ✅ Concluída | — | 008 | Migrada, comportamento preservado | Nenhuma |
 | **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
-| **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
+| **R12** | Não iniciada | Nenhum | 010 | Linha de base pronta (Release 015) | Executar Pré-Abertura |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
 | **R2** | Não iniciada | Sem linha de base | 012 | Aguardando preparação | Criar linha de base |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
