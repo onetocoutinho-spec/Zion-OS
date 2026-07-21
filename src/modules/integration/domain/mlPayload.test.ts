@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { listingTypeId, montarItemML } from "./mlPayload.ts";
-import type { AnuncioGerado } from "../agentes/esteira.ts";
+import type { AnuncioGerado } from "../../../lib/agentes/esteira.ts";
 
 type Ficha = { atributo: string; valor: string; obrigatorio: boolean };
 type Var = { cor: string; tamanho: string; sku: string; ean: string; estoque: string; preco: string; obs: string };

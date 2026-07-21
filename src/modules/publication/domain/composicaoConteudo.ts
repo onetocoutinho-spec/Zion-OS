@@ -6,7 +6,7 @@
 
 import type { AnuncioGerado } from "../../../lib/agentes/esteira";
 import type { LinhaGuiaTamanho } from "../../../lib/marketplaces/mercadolivre";
-import type { VariacaoUP } from "../../../lib/marketplaces/mlUserProducts";
+import type { VariacaoUP } from "../../integration/domain/mlUserProducts";
 import { normalizarTamanho } from "./normalizarTamanho.ts";
 import { medidasDaMarca } from "../../catalog/domain/tabelasMedidas.ts";
 
