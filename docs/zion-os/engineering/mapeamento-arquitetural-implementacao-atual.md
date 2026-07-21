@@ -326,6 +326,22 @@ dele não quebra dependências internas; apenas realoca consumidores.
 | R16 Autorização | `serverAuthorization.ts` | Capacidade transversal | Manter | **Baixo** | Já isolada |
 | R14 Orquestração | `publicar/route.ts` | Interface + OC + Integration | Dividir por último | **Alto** | Depende de 7 responsabilidades |
 
+> **Nota de interpretação institucional — R2 (ADR-009, aprovado).** A estratégia registrada
+> acima para R2, *"Mover atrás de porta"*, **permanece inalterada nesta matriz** — é
+> registro factual e não é removida. O **ADR-009** fixou seu **significado normativo**:
+> *mover a responsabilidade preservando sua propriedade de ser o **ponto único de acesso**
+> ao vínculo do canal — **não** construir artefato*. Fundamento: este mesmo documento
+> emprega *porta* nesse sentido em outras duas passagens — §2, entrada de R2
+> (*"é a única porta de leitura do canal"*) e §5, achado **A2**.
+>
+> O ADR-009 determinou ainda que **Ports não integram a arquitetura do Zion OS**: os
+> diretórios `ports/` e `adapters/` permanecem reservados e vazios. A abstração adotada
+> pela arquitetura é o **Repositório**.
+>
+> Aplicado na **Release 012**, que migrou R2 para
+> `src/modules/integration/infrastructure/` por movimento integral, com **R100** em ambos
+> os arquivos.
+
 ---
 
 ## 8. Observações de linha de base

@@ -6,7 +6,7 @@
 // rotacionado e persistido SÓ no servidor; nunca é devolvido ao navegador.
 
 import { renovarToken, buscarPedidosML } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 60;

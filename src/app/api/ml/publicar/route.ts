@@ -21,7 +21,7 @@ import {
   precisaUserProducts,
   dominioDaCategoria,
 } from "@/modules/integration/domain/exigenciaModeloCanal";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 60s = limite do plano grátis da Vercel.
