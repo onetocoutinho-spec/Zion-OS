@@ -8,7 +8,7 @@
 // ⚠️ O refresh_token NUNCA é devolvido ao navegador (R3).
 
 import { trocarCodigoPorToken } from "@/lib/marketplaces/mercadolivre";
-import { salvarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { salvarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 30;

@@ -173,10 +173,15 @@ exige preparação.*
 - **Dependências:** R12, R13.
 - **Risco:** **Médio-alto** · **Complexidade:** **Alta**
 
-### R2 — Persistência do vínculo do canal
+### R2 — Persistência do vínculo do canal ✅
 
-- **Origem:** `canalServidor.ts` · **Destino:** `modules/integration` — Connection
-  (infraestrutura)
+- **Origem:** `canalServidor.ts` · **Destino:**
+  `modules/integration/infrastructure/canalServidor.ts` — Connection ✔
+- **Estado da migração:** **CONCLUÍDA** · **Release:** 012 · **Data:** 21 de julho de 2026
+- **Justificativa da mudança de estado:** movimento integral com `git mv` — **R100 em
+  ambos os arquivos**, SHA-256 idêntico antes e depois, **zero linhas de conteúdo
+  alteradas**, assinatura pública inalterada (4 exports), **12 testes** e **243** da suíte
+  verdes antes e depois, build íntegro, 5 consumidores alterados apenas em linha de import.
 - **Estado:** **Não iniciada** · **Release prevista:** 012 · **Categoria A** — linha de
   base própria institucionalizada
 - **Pré-requisito — CONCLUÍDO (Release 016):** linha de base local. O motivo que impedia a
@@ -198,6 +203,13 @@ exige preparação.*
 - **Evidências mínimas:** 6 consumidores atualizados; build; auditoria de commit.
 - **Dependências:** nenhuma.
 - **Risco:** **Médio** · **Complexidade:** **Média**
+- **Estratégia (fixada pelo ADR-009 §5.1 e §5.3):** **movimento integral** dos dois
+  arquivos — `canalServidor.ts` e `canalServidor.test.ts` — com `git mv`, para
+  `src/modules/integration/infrastructure/`, **sem introduzir Port**, sem criar abstração
+  e **sem alterar contrato**. A expressão do Mapeamento *"Mover atrás de porta"* significa
+  **preservar o ponto único de acesso** ao vínculo do canal, e está cumprida enquanto os
+  consumidores obtiverem esse vínculo de um único ponto. Atualizar o caminho de import dos
+  **5 consumidores de produção**, preservando o alias `@/`.
 - **Observação do Mapeamento:** prioridade de extração **baixa** — "coeso e estável;
   mover cedo traria risco sem ganho proporcional".
 
@@ -336,7 +348,7 @@ linha de base (nenhuma possui teste próprio).
 | **R13** | ✅ Concluída | — | 009 | Migrada, comportamento preservado | Nenhuma |
 | **R12** | ✅ Concluída | — | 010 | Migrada, comportamento preservado | Nenhuma |
 | **R15** | 🔒 Bloqueada | Decisão arquitetural (sem ADR) | 011 | Premissa confirmada na Release 017 | Deliberar ADR de camada |
-| **R2** | Não iniciada | Nenhum | 012 | Estratégia fixada pelo ADR-009 | Reexecutar Pré-Abertura |
+| **R2** | ✅ Concluída | — | 012 | Migrada, comportamento preservado | Nenhuma |
 | **R3** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R4** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
 | **R8** | Bloqueada | Governança | — | Aguardando validação operacional | Aguardar desbloqueio |
@@ -348,7 +360,7 @@ linha de base (nenhuma possui teste próprio).
 | **R5** | Bloqueada | Domínio inexistente | — | Sem destino arquitetural | Especificar Vendas/Pedidos |
 | **R16** | Bloqueada | Módulo inexistente | — | Linha de base já disponível | Especificar Identity & Access |
 
-**Resumo:** 5 concluídas · 2 aguardando engenharia adicional · 8 bloqueadas por
+**Resumo:** 6 concluídas · 1 bloqueada por decisão arquitetural · 8 bloqueadas por
 governança · 2 sem destino.
 
 ---

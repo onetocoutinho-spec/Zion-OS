@@ -24,7 +24,7 @@
 // Depois de rodar UMA vez em produção e me mandar o JSON, apague este arquivo.
 
 import { renovarToken } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 const API = "https://api.mercadolibre.com";

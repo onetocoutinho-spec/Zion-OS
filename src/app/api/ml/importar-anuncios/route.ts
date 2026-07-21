@@ -6,7 +6,7 @@
 // e grava (RLS). O refresh_token é rotacionado e persistido SÓ no servidor.
 
 import { renovarToken, buscarAnunciosDoVendedor } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 60;
