@@ -16,11 +16,13 @@ import {
   criarGuiaTamanhos,
 } from "@/lib/marketplaces/mercadolivre";
 import {
-  precisaUserProducts,
-  dominioDaCategoria,
   montarItensUserProducts,
   type BundleUserProducts,
 } from "@/lib/marketplaces/mlUserProducts";
+import {
+  precisaUserProducts,
+  dominioDaCategoria,
+} from "@/modules/integration/domain/exigenciaModeloCanal";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/lib/marketplaces/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
