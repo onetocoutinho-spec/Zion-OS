@@ -3,7 +3,7 @@
 // entidades já carregadas e devolvem texto estruturado em Markdown.
 
 import { formatBRL, formatDate } from "./format";
-import { montarTabelaMedidas } from "./data/tabelasMedidas";
+import { montarTabelaMedidas } from "../modules/catalog/domain/tabelasMedidas";
 import type { Anuncio, Cliente, Produto, ProdutoVariante, TabelaMedida } from "./types";
 
 export function contextoDoCliente(c: Cliente): string {

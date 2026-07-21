@@ -25,7 +25,7 @@ import {
   excluirTabelaMedida,
   criarTabelasBulk,
 } from "@/lib/services/tabelasMedidasCliente";
-import { MODELOS_PADRAO } from "@/lib/data/tabelasMedidas";
+import { MODELOS_PADRAO } from "@/modules/catalog/domain/tabelasMedidas";
 import { normalizarHeader } from "@/lib/csv";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import type { LinhaMedida, TabelaMedida } from "@/lib/types";

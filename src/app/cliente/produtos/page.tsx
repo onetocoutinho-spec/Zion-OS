@@ -12,7 +12,7 @@ import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
-import { montarTabelaMedidas } from "@/lib/data/tabelasMedidas";
+import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { importarCustos } from "@/lib/services/importacaoCustos";
 import { lerPlanilha } from "@/lib/planilha";
