@@ -91,10 +91,15 @@ deliberada registrada na Release 002.
 *Sem bloqueio de governança, porém sem linha de base própria ou com acoplamento que
 exige preparação.*
 
-### R10 — Conhecimento de medidas por marca
+### R10 — Conhecimento de medidas por marca ✅
 
-- **Origem:** `tabelasMedidas.ts` · **Destino:** `modules/catalog`
-- **Estado:** **Não iniciada** · **Release prevista:** 008
+- **Origem:** `tabelasMedidas.ts` · **Destino:**
+  `modules/catalog/domain/tabelasMedidas.ts` ✔
+- **Estado:** **CONCLUÍDA** · **Release:** 008 · **Data:** 21 de julho de 2026
+- **Justificativa da mudança de estado:** movimentação integral com `git mv` — **rename
+  100% (R100)** em produção e teste, SHA-256 idêntico antes e depois, assinatura pública
+  inalterada (9 exports), **14 testes** e **215** da suíte verdes antes e depois, build
+  íntegro, 4 consumidores alterados apenas em linha de import.
 - **Pré-requisito — CONCLUÍDO (Release 014):** criar linha de base local. O motivo que
   impedia a migração — *não possuir teste próprio* — deixou de existir:
   `tabelasMedidas.test.ts` institucionaliza **14 testes** cobrindo os **9 símbolos
@@ -297,7 +302,7 @@ linha de base (nenhuma possui teste próprio).
 |---|---|---|---|---|---|
 | **R9** | ✅ Concluída | — | 003 | Migrada, comportamento preservado | Nenhuma |
 | **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
-| **R10** | Não iniciada | Nenhum | 008 | Linha de base pronta (Release 014) | Executar Pré-Abertura |
+| **R10** | ✅ Concluída | — | 008 | Migrada, comportamento preservado | Nenhuma |
 | **R13** | Não iniciada | Depende de R10 | 009 | Aguardando R10 | Aguardar Release 008 |
 | **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
 | **R15** | Não iniciada | Sem linha de base + mudança de camada | 011 | Aguardando definição | Criar linha de base |
@@ -313,7 +318,7 @@ linha de base (nenhuma possui teste próprio).
 | **R5** | Bloqueada | Domínio inexistente | — | Sem destino arquitetural | Especificar Vendas/Pedidos |
 | **R16** | Bloqueada | Módulo inexistente | — | Linha de base já disponível | Especificar Identity & Access |
 
-**Resumo:** 2 concluídas · 5 aguardando engenharia adicional · 8 bloqueadas por
+**Resumo:** 3 concluídas · 4 aguardando engenharia adicional · 8 bloqueadas por
 governança · 2 sem destino.
 
 ---
