@@ -59,11 +59,15 @@ deliberada registrada na Release 002.
 
 *Linha de base suficiente · baixo risco · baixo acoplamento · sem bloqueio de governança.*
 
-### R11 — Determinação de exigência do modelo do canal
+### R11 — Determinação de exigência do modelo do canal ✅
 
-- **Origem:** `mlUserProducts.ts` (l. 47–153) · **Destino:** `modules/integration` —
-  Capability
-- **Estado:** **Não iniciada** · **Release prevista:** 007
+- **Origem:** `mlUserProducts.ts` (l. 47–153) · **Destino:**
+  `modules/integration/domain/exigenciaModeloCanal.ts` — Capability ✔
+- **Estado:** **CONCLUÍDA** · **Release:** 007 · **Data:** 21 de julho de 2026
+- **Justificativa da mudança de estado:** migrada por extração com preservação comprovada
+  — conteúdo extraído com **sha256 idêntico** ao da origem, assinatura pública inalterada,
+  **9 testes** verdes antes e depois (2 no destino, 7 na origem), build íntegro, consumidor
+  alterado apenas em linhas de import. R12 e R13 permaneceram intactas.
 - **Por que PODE migrar:** *(a)* não vive em `mercadolivre.ts` nem em
   `publicar/route.ts` — o bloqueio de governança, em sua redação, não a alcança; *(b)*
   possui linha de base — `mlUserProducts.test.ts`, 9 testes; *(c)* o Mapeamento
@@ -290,7 +294,7 @@ linha de base (nenhuma possui teste próprio).
 | Resp. | Estado | Bloqueio | Release | Situação atual | Próxima ação |
 |---|---|---|---|---|---|
 | **R9** | ✅ Concluída | — | 003 | Migrada, comportamento preservado | Nenhuma |
-| **R11** | Não iniciada | Nenhum | **007** | Pronta para migrar | Executar migração |
+| **R11** | ✅ Concluída | — | 007 | Migrada, comportamento preservado | Nenhuma |
 | **R10** | Não iniciada | Sem linha de base | 008 | Aguardando preparação | Criar linha de base |
 | **R13** | Não iniciada | Depende de R10 | 009 | Aguardando R10 | Aguardar Release 008 |
 | **R12** | Não iniciada | Linha de base parcial | 010 | Aguardando preparação | Criar linha de base p/ `mlPayload` |
@@ -307,8 +311,8 @@ linha de base (nenhuma possui teste próprio).
 | **R5** | Bloqueada | Domínio inexistente | — | Sem destino arquitetural | Especificar Vendas/Pedidos |
 | **R16** | Bloqueada | Módulo inexistente | — | Linha de base já disponível | Especificar Identity & Access |
 
-**Resumo:** 1 concluída · 1 pronta para migrar · 5 aguardando engenharia adicional · 8
-bloqueadas por governança · 2 sem destino.
+**Resumo:** 2 concluídas · 5 aguardando engenharia adicional · 8 bloqueadas por
+governança · 2 sem destino.
 
 ---
 
