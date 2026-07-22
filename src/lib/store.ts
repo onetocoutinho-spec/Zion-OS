@@ -192,6 +192,24 @@ export function updateItem<T extends { id: string }>(
   return atualizado;
 }
 
+/**
+ * Insere ou substitui um item pelo seu id (upsert), RESPEITANDO o id fornecido.
+ * A identidade é do domínio: nada é gerado aqui. Insere se ausente, substitui se
+ * presente — idempotente por id. Primitivo interno (irmão de createItem/updateItem);
+ * os consumidores usam criarRepositorio().salvar().
+ */
+export function upsertItem<T extends { id: string }>(
+  collection: CollectionName,
+  item: T
+): T {
+  const items = read<T>(collection);
+  const index = items.findIndex((i) => i.id === item.id);
+  const proximos =
+    index === -1 ? [item, ...items] : items.map((i, n) => (n === index ? item : i));
+  write(collection, proximos);
+  return item;
+}
+
 export function removeItem(collection: CollectionName, id: string): void {
   write(
     collection,
