@@ -88,6 +88,11 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 ## EPIC E4 — AIL: da detecção à sugestão `P1`
 *A AIL está a uma release de devolver valor visível. Arquitetura congelada — implementar, não redesenhar.*
 
+### Feature E4.0 — Pattern Browser (Runtime da AIL, leitura) `✅ (2026-07-22)`
+- [x] Camada de leitura (`application/pattern-browser.ts`): view models puros + consultas sobre as projeções — zero recomputação, zero persistência nova
+- [x] `/ail/padroes` (memória por slot, disputa sinalizada) + `/ail/padroes/[id]` (cadeia de explicabilidade: confiança com o porquê derivado dos limiares, evidências com autor, concorrentes)
+- [x] Nível 1 da régua de delegação (o sistema explica); nunca aprende, nunca decide — [relatório](executions/e40-pattern-browser-report.md)
+
 ### Feature E4.1 — Superfície oficial da projeção (pré-R-SE-1)
 - **Task E4.1.1 — Invocação controlada de `projetarPadroes()`**
   - [ ] Decidir a forma (rota autenticada da equipe OU integração ao worker/cron existente — reusar o padrão `fila_otimizacao`)
