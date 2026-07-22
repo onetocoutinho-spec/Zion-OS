@@ -55,7 +55,9 @@ export interface ReposDeLeitura {
   };
 }
 
-const reposPadrao: ReposDeLeitura = { padroes: repoPadroes, decisoes: repoDecisoes };
+/** Os repositórios de leitura padrão da AIL (compartilhados pelos consumidores). */
+export const reposLeituraPadrao: ReposDeLeitura = { padroes: repoPadroes, decisoes: repoDecisoes };
+const reposPadrao = reposLeituraPadrao;
 
 // ── ViewModels — cada campo com origem declarada ─────────────────────────────
 
