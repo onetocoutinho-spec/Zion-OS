@@ -1,0 +1,37 @@
+# CI mínimo do Zion OS — PR-001 (EPIC E1.1).
+#
+# Gate de qualidade em todo push no master e em todo pull request:
+#   typecheck (tsc --noEmit) + suíte completa (node:test via tsx).
+#
+# Node 22 LTS por decisão do programa (alinhamento com produção/Vercel;
+# a versão local da máquina de dev NÃO é referência arquitetural).
+#
+# Lint NÃO é gate ainda — existem 9 erros conhecidos (backlog E1.1.4);
+# será promovido ao pipeline obrigatório após zerá-los.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes
+        run: npm test
