@@ -6,8 +6,9 @@
 # Node 22 LTS por decisão do programa (alinhamento com produção/Vercel;
 # a versão local da máquina de dev NÃO é referência arquitetural).
 #
-# Lint NÃO é gate ainda — existem 9 erros conhecidos (backlog E1.1.4);
-# será promovido ao pipeline obrigatório após zerá-los.
+# Lint promovido ao gate no PR-005 (E1.1.4): zero erros no código do app
+# (os "9 erros" eram vazamento de escopo — plugin minificado do Obsidian).
+# Warnings são tolerados (eslint retorna 0 com warnings-only).
 
 name: CI
 
@@ -32,6 +33,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
 
       - name: Testes
         run: npm test
