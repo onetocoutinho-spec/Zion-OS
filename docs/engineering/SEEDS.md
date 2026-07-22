@@ -16,6 +16,15 @@
 | S-04 | **Tenant embutido na AIL desde o design** — toda Decision/Pattern já carrega `empresa`; quando Identity amadurecer, a memória organizacional particiona sem migração | colunas `empresa` em `decisoes`/`padroes` | **Organizational Memory (Z2)** · AIL (Z5) |
 | S-05 | **Migração-como-release** — pré-requisito, verificação e rollback embutidos no próprio artefato | padrão da migração 016 | **Exoesqueleto** — governança operacional (regra dos 3 artefatos) |
 
+## Registradas no PR-003 (2026-07-22)
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-06 | **Sonda de estado aplicado** — detector artesanal de "migração aplicada?" que virou a fonte do baseline do ledger | `database/checks/diagnostico-migracoes-producao.sql` | Observabilidade operacional |
+| S-07 | **Metadados de ambiente no banco** — guardrail de staging via tabela (`environment_metadata`) | `database/staging/sql-editor/01-base-schema.sql` | Família do Migration Ledger |
+| S-08 | **Versionamento de schema client-side** — `VERSAO` com re-seed ao mudar | `src/lib/store.ts` | O mesmo conceito (schema versionado + registro), lado demo |
+| S-09 | **Infrastructure Metadata** *(oportunidade registrada pelo mantenedor)* — `environment_metadata` + `migracoes_aplicadas` pertencem à mesma família e podem um dia convergir num conceito amplo de metadados de infraestrutura | migração 024 + staging kit | Exoesqueleto · memória própria de cada componente ("a AIL tem memória; o Workspace terá; a organização terá; o banco agora tem") |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).
