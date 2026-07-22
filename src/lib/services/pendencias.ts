@@ -3,6 +3,7 @@ import { pendenciaParaApp, pendenciaParaBanco } from "../supabase/mappers";
 import type { PendenciaRow } from "../supabase/database.types";
 import type { Pendencia } from "../types";
 import {
+  capturarDecisao,
   resolverDecisionJournal,
   type DecisionJournal,
 } from "../../modules/adaptive-intelligence/decision-journal.ts";
@@ -71,24 +72,20 @@ export async function resolverPendencia(
 // Rollback trivial: remover este bloco, o parâmetro `journal` e o import da AIL
 // devolve resolverPendencia ao corpo de uma linha anterior, sem resíduo.
 function observarResolucao(pendencia: Pendencia, journal: DecisionJournal): void {
-  if (!pendencia.descricao.trim()) return; // inelegível: sem conteúdo aprendível
-  try {
-    journal.registrarDecisao({
-      id: crypto.randomUUID(),
+  // capturarDecisao aplica as guardas de captura significativa (valor vazio,
+  // sem delta) e o fire-and-forget — a resolução jamais é afetada.
+  capturarDecisao(
+    {
       empresa: pendencia.clienteId,
-      autor: "",
       contexto: "catalogo",
       entidade: { tipo: "pendencia", id: pendencia.id },
       campo: "informacaoPendente",
       valorAnterior: null,
       valorNovo: pendencia.descricao,
       origem: "pendencias.resolverPendencia",
-      timestamp: new Date().toISOString(),
-      correlacao: null,
-    });
-  } catch {
-    // Falha interna do Journal NUNCA afeta a resolução da pendência.
-  }
+    },
+    journal
+  );
 }
 
 export async function reabrirPendencia(id: string): Promise<Pendencia | null> {
