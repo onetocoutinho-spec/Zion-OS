@@ -61,6 +61,18 @@
 | S-24 | **Venda como veredito não-preservado** — o único veredito de **sucesso** (não só aceitação) é buscado (`order.status=paid`), agregado, exibido e **descartado** a cada consulta. Cancelamentos/devoluções nem são lidos | `buscarPedidosML` · `vendasML.ts` | futura ADR (persistir exige caso de uso) |
 | S-25 | **Tensão ledger × efemeridade** *(germinada → resolvida)* — derivar Outcome exige memória da oferta; 002 ("efêmera") × 005 ("ledger") não podiam ser ambas verdadeiras sem ela. **Resolvida por [ADR-001](../zion-os/engineering/ADR-001-suggestion-memory.md)**: ledger = projeção de ofertas append-only × Journal | ADR-001 | Suggestion Engine (pré-requisito) |
 
+## Registradas no PR-010 (2026-07-22) — Delegation Discovery
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-26 | **Decision Delegation** — a Lei da Abstenção já opera: o sistema decide só no vazio ou sob regra externa verificável; nunca sobrescreve escolha humana | fallback de categoria (rota) · defaults · `criarGuiaTamanhos` | Capítulo III |
+| S-27 | **Delegation Policy** — política implícita ("abstenção + regra externa verificável + erro barato"); nunca escrita como artefato | disperso no código | Policy como documento (não engine) |
+| S-28 | **Delegation Confidence** — escada até `Automatizavel` (002 §7, dois gatilhos); gated em Outcomes | RFC-AIL-002 §7 | Suggestion Engine → automação opt-in |
+| S-29 | **Delegation Scope** — substrato pronto: tenant em tudo + capability primitives ([[S-02]]: `eh_equipe`, `cliente_do_usuario`) | RLS (016) | Capabilities (Z6) |
+| S-30 | **Delegation Audit** — humanos assinam (`aprovadoPor/Em`); **as execuções autônomas do sistema não deixam assinatura** | `anunciosGerados.ts` | pré-requisito para subir nível de delegação |
+| S-31 | **Human Override** — invariante praticado: tudo editável (payload dry-run, defaults, Suggestion "editável" — 005 §6.2) | `montarPreviewML` | Suggestion Engine |
+| S-32 | **Rollback Decision** — assimétrico: AIL reversível por construção (005 §10); domínio tem duas operações sem volta (publicar, substituir importados) — a fronteira dura da delegação | `publicacaoML.ts` · `excluirAnunciosImportadosML` | nenhuma das duas sobe de nível sem ADR |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).
