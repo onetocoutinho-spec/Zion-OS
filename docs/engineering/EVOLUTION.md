@@ -122,6 +122,7 @@ agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
 | **AR-001** | **Constitution Consolidation** | revisão estrutural | 12 invariantes extraídos; um padrão arquitetural único; estrutura da Zion Constitution proposta (10 artigos); maturidade por domínio; veredito: consistente, evolui sem mudança estrutural. |
 | **CR-001** | **Knowledge Institutionalization** | consolidação | Cinco ciclos de descoberta transformados em memória permanente (este lote). |
 | **E4.0** | **Pattern Browser** | implementada e validada | O conhecimento organizacional tornou-se **observável**: memória por slot + cadeia de explicabilidade completa (confiança com o porquê, evidências com autor, divergências). Nível 1 da régua — o sistema explica; nunca aprende, nunca decide. |
+| **E4.1** | **Contextual Pattern Matching** | implementada e validada | A memória aparece **onde a decisão acontece**: matching por igualdade canônica de slot (nunca similaridade, nunca score), silencioso sem evidência, sem botão de aplicar — sugestão é evidência, nunca comando. Fronteira do R-SE-1 preservada (sem oferta → ADR-001 não acionada). |
 
 **O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
 declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,
