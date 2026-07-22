@@ -2,6 +2,10 @@ import { criarRepositorio } from "../repositorio";
 import { produtoParaApp, produtoParaBanco } from "../supabase/mappers";
 import type { ProdutoRow } from "../supabase/database.types";
 import type { Produto } from "../types";
+import {
+  capturarDecisao,
+  type DecisionJournal,
+} from "../../modules/adaptive-intelligence/decision-journal.ts";
 
 const repo = criarRepositorio<Produto, ProdutoRow>({
   tabela: "produtos",
@@ -33,11 +37,63 @@ export async function criarProdutos(dados: Omit<Produto, "id">[]): Promise<Produ
   return repo.criarVarios(dados);
 }
 
+// ── Observador lateral · Natural Aggregate PRODUTO (AIL, PR-004) ─────────────
+// atualizarProduto é o funil por onde as decisões de campo do produto passam
+// (ProdutoForm, tela de medidas, editor de kit). Campos observados abaixo:
+// adicionar um campo futuro (atributos, fornecedor…) = acrescentar uma linha.
+// A captura exige DELTA REAL (leitura prévia condicional: só quando o payload
+// contém campo observado) e é fire-and-forget via capturarDecisao — o fluxo
+// de negócio jamais depende da AIL. Ver docs/engineering/AIL_SIGNAL_MAP.md.
+const CAMPOS_OBSERVADOS = [
+  { campo: "categoriaMarketplace", propriedade: "categoriaMarketplaceSugerida", contexto: "catalogo" },
+  { campo: "precoVenda", propriedade: "precoVenda", contexto: "precificacao" },
+  { campo: "tabelaMedidas", propriedade: "tabelaMedidasOverride", contexto: "catalogo" },
+] as const;
+
+type PropriedadeObservada = (typeof CAMPOS_OBSERVADOS)[number]["propriedade"];
+
+/** Valor observável de um campo, como texto canônico simples (null = ausente). */
+function valorObservado(produto: Produto, propriedade: PropriedadeObservada): string | null {
+  const bruto = produto[propriedade];
+  if (bruto === undefined || bruto === null) return null;
+  const texto = String(bruto).trim();
+  return texto ? texto : null;
+}
+
+function observarCorrecoesDoProduto(
+  anterior: Produto,
+  atual: Produto,
+  presentes: readonly (typeof CAMPOS_OBSERVADOS)[number][],
+  journal?: DecisionJournal
+): void {
+  for (const c of presentes) {
+    const valorNovo = valorObservado(atual, c.propriedade);
+    if (valorNovo === null) continue; // limpar um campo não é decisão aprendível
+    capturarDecisao(
+      {
+        empresa: atual.clienteId,
+        contexto: c.contexto,
+        entidade: { tipo: "produto", id: atual.id },
+        campo: c.campo,
+        valorAnterior: valorObservado(anterior, c.propriedade),
+        valorNovo,
+        origem: "produtos.atualizarProduto",
+      },
+      journal
+    );
+  }
+}
+
 export async function atualizarProduto(
   id: string,
-  dados: Partial<Produto>
+  dados: Partial<Produto>,
+  journal?: DecisionJournal
 ): Promise<Produto | null> {
-  return repo.atualizar(id, dados);
+  const presentes = CAMPOS_OBSERVADOS.filter((c) => dados[c.propriedade] !== undefined);
+  const anterior = presentes.length > 0 ? await repo.buscar(id) : null;
+  const resultado = await repo.atualizar(id, dados);
+  if (anterior && resultado) observarCorrecoesDoProduto(anterior, resultado, presentes, journal);
+  return resultado;
 }
 
 export async function excluirProduto(id: string): Promise<void> {
