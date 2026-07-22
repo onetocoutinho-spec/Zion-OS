@@ -30,6 +30,27 @@
 > não um valor humano prévio: o delta significa "o ambiente propôs X, a equipe
 > publicou Y".
 
+## Tipologia dos domínios de valores (PR-007)
+
+> A confiança por contagem pressupõe **domínio de valores fechado**. Tipologia
+> descoberta por evidência — consultar antes de admitir uma nova source:
+
+| Tipo de domínio | Sources | Contagem converge? |
+|---|---|---|
+| Fechado-pequeno (Premium/Clássico) | tipoAnuncio | ✅ rápido |
+| Fechado-grande (ids MLB) | categoriaMarketplace (2 fontes) | ✅ o caso ideal |
+| Semi-fechado (guias nomeadas) | tabelaMedidas | ✅ moderado |
+| **Contínuo** (números) | precoVenda | ❌ estrutural — valores exatos quase nunca recorrem |
+| **Texto livre** | informacaoPendente | ❌ suporte 1 para sempre — vale como métrica, não como sugestão |
+
+## Vereditos NÃO são Signal Sources (PR-008)
+
+> Aceite/veto do ML, veredito A10, aprovação/rejeição humana e pedidos pagos são
+> **Outcomes do domínio** (pergunta 1 do critério: não são decisão humana de
+> correção). Vivem no domínio (`anuncios_gerados.status`/`observacoes`,
+> `vereditoA10`) ou no ambiente (vendas — efêmeras, S-24). A AIL não os lê; se um
+> veredito levar a uma correção humana, ESSA correção é capturada pelas sources.
+
 ## Natural Aggregates oficiais
 
 - **Produto** — Signal Source `atualizarProduto` (lista de campos observados;

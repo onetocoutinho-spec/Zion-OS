@@ -96,9 +96,17 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
   - [ ] Materializar as contagens definidas (decisões por contexto/empresa, campos mais corrigidos) como consultas/projeção — sem dashboard
 
 ### Feature E4.2 — R-SE-1 · Suggestion Engine (pull, opt-in)
+> **Pré-requisitos declarados (CR-001):** (a) **ADR-001 — Suggestion Memory**: o
+> registro append-only da oferta é a primeira entrega do Engine (o "ledger de
+> Outcomes" é projeção `ofertas × Journal`); (b) **critério de prontidão do
+> PR-007**: ≥ 1 Pattern `consistente` em produção (estado na data: 1 Pattern,
+> suporte 1, `observado`); (c) herda a **Lei da Abstenção** (PR-010): oferta
+> editável, nunca sobrescrita de escolha humana.
 - **Task E4.2.1 — Planejamento sob o Freeze** (RFC-AIL-005 §6 já especifica)
   - [ ] Plano de release no padrão consolidado (etapas pequenas, validação entre elas)
   - [ ] Primeiro consumidor: 1 contexto, 1 campo (slot consistente → oferta editável + explicação)
+- **Task E4.2.3 — Dívida de captura: `Decision.autor` (PR-011)**
+  - [ ] Preencher `autor` nos 6 producers (hoje todas as Decisions são anônimas — campo existe desde a 022); barato, alto valor de governança (Accountability)
 - **Task E4.2.2 — Novos Producers (cobertura R-DJ-4)** `✅ PR-004 (2026-07-22)`
   - [x] **5 Signal Sources ativas** (era 1): + categoria, preço, medida (agregado Produto) e tipoAnuncio (Marketplace) — via `capturarDecisao()` com delta real e captura significativa
   - [x] Mapa vivo: [AIL_SIGNAL_MAP.md](AIL_SIGNAL_MAP.md) · Natural Aggregates oficiais (Produto, Marketplace, Pendências; Curadoria identificado)
