@@ -21,6 +21,14 @@
 | Preço de venda ajustado | **Produto** | `atualizarProduto` | valor → valor | `(emp, precificacao, precoVenda, ⟨valor⟩)` | PR-004 |
 | Override de medida | **Produto** | `atualizarProduto` | guia → guia | `(emp, catalogo, tabelaMedidas, ⟨guia⟩)` | PR-004 |
 | Tipo de anúncio por canal | **Marketplace** | `salvarCanal` | proposta → escolha | `(emp, publicacao, tipoAnuncio, ⟨tipo⟩)` | PR-004 |
+| Categoria prevista pelo marketplace → utilizada | **Produto** (mesmo slot) | `publicarNoML` (origem `api/ml/publicar`) | proposta do AMBIENTE → escolha consumada | `(emp, catalogo, categoriaMarketplace, ⟨MLB…⟩)` | PR-006 |
+
+> **Nota (PR-006):** a signal source de categoria da publicação usa o **mesmo slot**
+> do agregado Produto (`catalogo/categoriaMarketplace`) de propósito — correções no
+> cadastro e divergências na publicação **convergem** no mesmo Pattern. Primeiro
+> caso em que o `valorAnterior` é uma **proposta do ambiente** (domain_discovery),
+> não um valor humano prévio: o delta significa "o ambiente propôs X, a equipe
+> publicou Y".
 
 ## Natural Aggregates oficiais
 
@@ -36,7 +44,7 @@
 
 | Sinal | Motivo |
 |---|---|
-| Rejeição de anúncio | motivo é string **hardcoded** na UI → sinal degenerado. **Gargalo registrado:** capturar quando a UI coletar motivo real |
+| Rejeição de anúncio (veto do ML) | **Não é decisão humana** (pergunta 1 = NÃO) → nunca entra na AIL. O gargalo do motivo hardcoded foi **resolvido no PR-006**: `extrairErro` traduz o veredito real (`cause[]` + `errors[]`) e `publicarNoML` o persiste no **domínio** (`observacoes` do anúncio). Se um dia o motivo real levar a uma correção humana, ESSA correção já é capturada pelas sources ativas |
 | Aprovação de anúncio | marco operacional, não decisão aprendível (RFC-AIL-001 §4.3) |
 | Atributos/ficha (`produtoAtributos`) | Médio valor — candidato P2 (entra pela lista do agregado Produto ou origem própria) |
 | Troca de imagem | EVIDÊNCIA INSUFICIENTE (RFC-AIL-001 §4.1) |

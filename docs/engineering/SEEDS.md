@@ -33,6 +33,14 @@
 | S-11 | **Confiança qualificada no domínio** — `confiança do custo: alta/media/baixa` já existe em `Produto` | `types.ts` | **Decision Intelligence** — o domínio já pensa em graus de confiança, como a escada da AIL |
 | S-12 | **Pub/sub embrionário** — `notificarMudanca` + `useLiveQuery` (48 telas) | `store.ts` | **Event Stream / Workspace Intelligence** |
 
+## Registradas no PR-006 (2026-07-22)
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-13 | **Knowledge Source** *(hipótese — evidência parcial)* — o ambiente externo não só fornece dados: ele **propõe** (`preverCategoria`/domain_discovery), **veta** (rejeições com motivo estruturado) e **mede** (vendas/visitas). PR-006 fechou os dois primeiros loops; a generalização "fonte externa de conhecimento" como conceito de primeira classe ainda NÃO tem evidência suficiente — exigiria ADR (Architecture Freeze v1) | `preverCategoria` + `extrairErro` (`mercadolivre.ts`) · loops do `publicacaoML.ts` | **AIL (Z5)** — quando ≥3 marketplaces exibirem o mesmo padrão propor/vetar/medir, promover via ADR |
+| S-14 | **Publish Status como ciclo de vida** — o anúncio já transita `rascunho → aprovado → publicado` e agora carrega o veredito de rejeição nas `observacoes`; estrutura pronta para um estado `rejeitado` explícito quando a operação precisar filtrar por ele | `anuncios_gerados.status` + `observacoes` | **Workspace Intelligence (Z7)** — visão operacional de funil de publicação |
+| S-15 | **External Rules capturadas em código** — regras do ML já vivem como conhecimento executável: categoria decide o modelo (clássico vs User Products), guia de tamanhos tem padrão de nome próprio (`normalizarNomeGuia` + filtro anti-legado), atributos obrigatórios por categoria | `mercadolivre.ts` (charts/User Products) · `mlPayload.ts` | **Organizational Memory (Z2)** — regras externas hoje hardcoded podem um dia ser conhecimento versionado por marketplace |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).
