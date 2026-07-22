@@ -434,3 +434,28 @@ export interface DecisaoRow {
   metadados: Record<string, unknown> | null;
   created_at?: string;
 }
+
+// ---- Pattern Detector (AIL) — rodar a migração 023 ----
+// Linha da tabela `padroes` (projeção materializada do Decision Journal).
+// `id` = PatternId (SHA-256 da PatternKey canônica — identidade nasce no
+// domínio, preservada via Repository.salvar()). `pattern_key` armazena a
+// chave canônica textual para explicabilidade. `updated_at` é controlado
+// pela APLICAÇÃO (sem trigger).
+
+export interface PadraoRow {
+  id: string;
+  pattern_key: string;
+  empresa: string;
+  contexto: string;
+  campo: string;
+  valor: string;
+  ocorrencias: number;
+  confidence: string;
+  estado: string;
+  estado_slot: string;
+  primeira_ocorrencia: string;
+  ultima_ocorrencia: string;
+  decisoes_de_suporte: string[];
+  created_at?: string;
+  updated_at?: string;
+}

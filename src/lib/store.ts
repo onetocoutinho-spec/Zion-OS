@@ -55,7 +55,8 @@ export type CollectionName =
   | "execucoesLote"
   | "anunciosGerados"
   | "tabelasMedidas"
-  | "decisoes";
+  | "decisoes"
+  | "padroes";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -94,6 +95,9 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   // Decision Journal (AIL): log de decisões observadas. Nasce vazio — é
   // produção real, não demo (nenhuma decisão de exemplo é semeada).
   decisoes: [],
+  // Pattern Detector (AIL): projeção materializada de padrões. Nasce vazia —
+  // é derivada do log de decisões, nunca semeada.
+  padroes: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----
