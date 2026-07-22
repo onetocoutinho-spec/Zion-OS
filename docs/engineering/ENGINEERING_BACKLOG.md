@@ -69,11 +69,14 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 - **Task E3.1.1 — Publicação por família idempotente**
   - [ ] Retry após falha parcial não duplica itens (marcar progresso por tamanho/publishId)
   - [ ] Persistir TODOS os MLBs da família (hoje só o 1º) — vínculo SKU↔MLB por tamanho
-- **Task E3.1.2 — Reuso de guia de tamanhos**
-  - [ ] Buscar guia existente por nome antes de criar (resolve `chart_name_unavailable`)
-  - [ ] Nome determinístico estável OU sufixo único documentado
-- **Task E3.1.3 — Diagnóstico de erros do ML**
-  - [ ] `extrairErro` lê também `errors[]` (hoje só `cause[]`) — erros específicos nos logs
+- **Task E3.1.2 — Reuso de guia de tamanhos** ✅ *(invalidada por evidência — PR-006)*
+  - [x] Já implementado no código: `criarGuiaTamanhos` busca guia ZION equivalente
+    via `POST /catalog/charts/search` paginado antes de criar (`buscarGuiaZion`)
+  - [x] Nome comparado por `normalizarNomeGuia` (normalização só para comparação) +
+    filtro anti-legado — determinismo documentado no próprio arquivo
+- **Task E3.1.3 — Diagnóstico de erros do ML** ✅ *(PR-006)*
+  - [x] `extrairErro` lê `cause[]` E `errors[]` (aninhados) — exportada e testada;
+    motivo real agora persiste no domínio (`observacoes` do anúncio)
 
 ### Feature E3.2 — Normalização de tamanhos das variações
 - **Task E3.2.1 — Saneamento dos dados importados**

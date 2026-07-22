@@ -8,9 +8,17 @@ import { montarItemML } from "../../modules/integration/domain/mlPayload";
 import { montarBundleUserProducts } from "../../modules/publication/domain/composicaoConteudo";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
-import { marcarAnuncioPublicado } from "./anunciosGerados";
+import {
+  atualizarAnuncioGerado,
+  buscarAnuncioGerado,
+  marcarAnuncioPublicado,
+} from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
 import type { AnuncioGeradoRegistro } from "../types";
+import {
+  capturarDecisao,
+  type CapturaDeDecisao,
+} from "../../modules/adaptive-intelligence/decision-journal.ts";
 
 function num(v: string | number | undefined | null): number {
   if (typeof v === "number") return v;
@@ -59,6 +67,44 @@ export interface ResultadoPublicacao {
   id?: string;
   permalink?: string;
   payload: Record<string, unknown>;
+}
+
+// ── Learning Loop · PR-006 ───────────────────────────────────────────────────
+// Dois feedbacks do ambiente deixam de ser perdidos:
+//  (1) ambiente PROPÕE (categoriaPrevista) → humano DECIDE (categoriaUsada)
+//      → Decision Journal (só com delta; fire-and-forget);
+//  (2) ambiente VETA (motivo real da rejeição) → DOMÍNIO (observacoes do
+//      anúncio — estrutura existente; a AIL não é tocada: veto não é decisão).
+
+/** Builder PURO da Decision do par proposta-do-ambiente → escolha-consumada. */
+export function montarCapturaCategoriaPublicada(
+  registro: { id: string; clienteId: string },
+  prevista: string | null,
+  usada: string | null
+): CapturaDeDecisao | null {
+  if (!usada) return null;
+  return {
+    empresa: registro.clienteId,
+    contexto: "catalogo",
+    campo: "categoriaMarketplace", // mesmo slot do agregado Produto — os padrões convergem
+    entidade: { tipo: "anuncio", id: registro.id },
+    valorAnterior: prevista, // o que o AMBIENTE propôs (null = não propôs)
+    valorNovo: usada, // a escolha consumada na publicação
+    origem: "api/ml/publicar",
+  };
+}
+
+/**
+ * Anexa o veredito do ambiente às observações SEM destruir o conteúdo atual
+ * (o prefixo "Importado do " é marcador da reimportação — apêndice o preserva).
+ */
+export function comporObservacoesComFalha(
+  existente: string | undefined | null,
+  motivo: string
+): string {
+  const veredito = `[Publicação ML rejeitada] ${motivo}`;
+  const atual = (existente ?? "").trim();
+  return atual ? `${atual}\n${veredito}` : veredito;
 }
 
 /**
@@ -118,12 +164,35 @@ export async function publicarNoML(
     id?: string;
     permalink?: string;
     erro?: string;
+    categoriaPrevista?: string | null;
+    categoriaUsada?: string | null;
   };
 
   if (!resposta.ok || !dados.id) {
-    throw new Error(dados.erro ?? "Falha ao publicar no Mercado Livre.");
+    const motivo = dados.erro ?? "Falha ao publicar no Mercado Livre.";
+    // Learning Loop (2): o VETO do ambiente entra no domínio. Nunca pode
+    // mascarar a falha original — qualquer erro aqui é engolido.
+    try {
+      const atual = await buscarAnuncioGerado(registro.id);
+      await atualizarAnuncioGerado(registro.id, {
+        observacoes: comporObservacoesComFalha(atual?.observacoes, motivo),
+      });
+    } catch {
+      // persistir o motivo jamais encobre o erro real de publicação
+    }
+    throw new Error(motivo);
   }
 
   await marcarAnuncioPublicado(registro.id, { itemId: dados.id, permalink: dados.permalink });
+
+  // Learning Loop (1): ambiente propôs → humano decidiu → memória.
+  // capturarDecisao garante delta real e fire-and-forget.
+  const captura = montarCapturaCategoriaPublicada(
+    registro,
+    dados.categoriaPrevista ?? null,
+    dados.categoriaUsada ?? null
+  );
+  if (captura) capturarDecisao(captura);
+
   return { dry: false, id: dados.id, permalink: dados.permalink, payload };
 }

@@ -125,15 +125,19 @@ export async function POST(request: Request) {
     // Persiste o refresh_token rotacionado imediatamente (mesmo se publicar falhar depois).
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
 
-    // 3) Garante category_id (prevê pelo título quando não veio).
+    // 3) Categoria — Learning Loop (PR-006): SEMPRE prevê quando há título.
+    //    A previsão é a PROPOSTA DO AMBIENTE, usada para comparação com a
+    //    escolha humana. A ESCOLHA não muda: a prevista só preenche o payload
+    //    quando ele não trouxe categoria (comportamento idêntico ao anterior).
+    //    Falha na previsão → null → nada muda, nada captura.
     const payload = { ...corpo.payload };
-    if (!payload.category_id && corpo.tituloParaCategoria) {
-      const cat = await preverCategoria(tokens.accessToken, corpo.tituloParaCategoria);
-      if (cat) payload.category_id = cat;
-    }
+    const categoriaPrevista = corpo.tituloParaCategoria
+      ? await preverCategoria(tokens.accessToken, corpo.tituloParaCategoria)
+      : null;
+    if (!payload.category_id && categoriaPrevista) payload.category_id = categoriaPrevista;
     const categoriaLog = typeof payload.category_id === "string" ? payload.category_id : null;
-    if (categoriaLog) log("info", "categoria", { categoryId: categoriaLog });
-    else log("warn", "categoria", { categoryId: null, status: "nao_prevista" });
+    if (categoriaLog) log("info", "categoria", { categoryId: categoriaLog, prevista: categoriaPrevista });
+    else log("warn", "categoria", { categoryId: null, prevista: categoriaPrevista, status: "nao_prevista" });
 
     // 3.5) Bifurcação: categorias que exigem o modelo User Products (ex.: calçado
     // MLB273770) NÃO aceitam o payload clássico. Aqui montamos a guia de tamanhos
@@ -272,6 +276,9 @@ export async function POST(request: Request) {
         modelo: "user_products",
         itens: criados,
         sellerId: canal.sellerId ?? tokens.userId ?? null,
+        // Learning Loop: o par proposta-do-ambiente → escolha-consumada.
+        categoriaPrevista,
+        categoriaUsada: categoria,
       });
     }
 
@@ -305,6 +312,9 @@ export async function POST(request: Request) {
       permalink: item.permalink,
       status: item.status,
       sellerId: canal.sellerId ?? tokens.userId ?? null,
+      // Learning Loop: o par proposta-do-ambiente → escolha-consumada.
+      categoriaPrevista,
+      categoriaUsada: payload.category_id,
     });
   } catch (e) {
     log("error", "erro", {
