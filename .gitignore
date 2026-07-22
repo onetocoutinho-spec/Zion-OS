@@ -57,3 +57,6 @@ segredos*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Obsidian (estado do app na raiz — pessoal, nao versionar)
+/.obsidian/
