@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Fora do escopo do app (PR-005): estado pessoal do Obsidian (plugins
+    // minificados geravam TODOS os "erros" de lint) e o workspace congelado
+    // da plataforma (tem eslint próprio).
+    ".obsidian/**",
+    "platform/**",
   ]),
   // Regras novas do React Compiler (eslint-plugin-react-hooks recente): úteis,
   // mas NÃO devem barrar o build/deploy. Ficam como aviso até limparmos.
