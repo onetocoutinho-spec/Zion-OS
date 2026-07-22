@@ -54,7 +54,8 @@ export type CollectionName =
   | "filaOtimizacao"
   | "execucoesLote"
   | "anunciosGerados"
-  | "tabelasMedidas";
+  | "tabelasMedidas"
+  | "decisoes";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -90,6 +91,9 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   // Anúncios gerados pela esteira: nasce vazio (é produção real, não demo).
   anunciosGerados: [],
   tabelasMedidas: [],
+  // Decision Journal (AIL): log de decisões observadas. Nasce vazio — é
+  // produção real, não demo (nenhuma decisão de exemplo é semeada).
+  decisoes: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

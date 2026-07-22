@@ -411,3 +411,26 @@ export interface AnuncioGeradoRow {
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;
 }
+
+// ---- Decision Journal (AIL) — rodar a migração 022 ----
+// Linha da tabela `decisoes` (log append-only). A identidade (id) nasce no
+// DOMÍNIO e é preservada via Repository.salvar() (contrato R-INF-001).
+// `decidido_em` = Decision.timestamp (domínio); `created_at` = instante de
+// persistência (infra) — created_at NUNCA representa a decisão de negócio.
+
+export interface DecisaoRow {
+  id: string;
+  empresa: string;
+  autor: string;
+  contexto: string;
+  entidade_tipo: string;
+  entidade_id: string;
+  campo: string;
+  valor_anterior: string | null;
+  valor_novo: string;
+  origem: string;
+  decidido_em: string;
+  correlacao: string | null;
+  metadados: Record<string, unknown> | null;
+  created_at?: string;
+}
