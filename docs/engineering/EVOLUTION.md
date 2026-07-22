@@ -91,15 +91,37 @@ primeiro.)*
 
 ---
 
-# Capítulo II — Learning Platform *(visão)*
+# Capítulo II — Learning Platform *(2026-07-22)*
 
-Capacidades esperadas — registradas apenas como direção, sem detalhe de
-implementação:
+O capítulo em que a plataforma **fechou o primeiro ciclo de aprendizado com o
+mundo externo** — e, ao investigar a própria confiança, encontrou e corrigiu a
+primeira inconsistência da arquitetura congelada.
 
-- **Pattern Confidence** — padrões amadurecendo com dados reais até níveis
-  acionáveis
-- **Explainability** — toda oferta responde "por quê", derivado das decisões
-- **Suggestion Engine** — o conhecimento acumulado volta como oferta editável
-- **Decision Intelligence** — a plataforma entende como a organização decide
+| PR | Capability | Natureza | Resultado Permanente |
+|---|---|---|---|
+| **PR-006** | **Closed Learning Loop** | implementada e validada | O ambiente propõe (`categoriaPrevista`) → o humano decide → a memória captura; o ambiente veta → o motivo real persiste no domínio. Dois feedbacks que evaporavam agora ensinam. |
+| **PR-007** | **Pattern Confidence (mapa real)** | conhecimento institucionalizado | O lifecycle verdadeiro dos Patterns (nunca morrem; única força descendente é a disputa); a tipologia dos domínios de valores (contagem exige domínio fechado); confirmação descartada na porta; reversão invisível por teorema. Critério de prontidão do Engine: ≥1 Pattern `consistente`. |
+| **PR-008** | **Outcome Model** | conhecimento institucionalizado | "Outcome" são 3 conceitos; 4 produtores de veredito (ambiente, sistema, humano, mercado); o ciclo de feedback já roda com humano no meio; a venda é o único veredito de sucesso — e evapora. |
+| **PR-009** | **ADR-001 — Suggestion Memory** | decisão arquitetural | Primeira ADR sob o Freeze: a oferta é efêmera, o fato dela é histórico; o "ledger de Outcomes" é projeção. O Freeze foi testado e funcionou. |
 
-*O Capítulo II começa quando a memória tiver massa crítica — e nem um dia antes.*
+**Princípio consolidado no capítulo:** *Preserve Facts, Derive Knowledge* — todo
+subsistema que aprende segue o mesmo padrão: fatos append-only → projeção pura →
+estado derivado.
+
+---
+
+# Capítulo III — Decision Intelligence *(em curso, 2026-07-22)*
+
+A pergunta central mudou de "o que a Zion aprende?" para **"quando a Zion pode
+agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
+
+| PR | Capability | Natureza | Resultado Permanente |
+|---|---|---|---|
+| **PR-010** | **Delegation Map** | conhecimento institucionalizado | Os 6 níveis de delegação já existem dispersos no código; a **Lei da Abstenção** (o sistema só decide no vazio); os 5 saberes da delegação; a fronteira dura: o irreversível não sobe de nível. |
+| **PR-011** | **Authority Map** | conhecimento institucionalizado | Toda autoridade do sistema é emprestada, escopada e revogável; o OAuth é um protocolo completo de transferência; a revogação é destrutiva e não desfaz o passado; **as Decisions são anônimas** e o sistema não assina — a única lacuna constitucional aberta (Accountability). |
+| **AR-001** | **Constitution Consolidation** | revisão estrutural | 12 invariantes extraídos; um padrão arquitetural único; estrutura da Zion Constitution proposta (10 artigos); maturidade por domínio; veredito: consistente, evolui sem mudança estrutural. |
+| **CR-001** | **Knowledge Institutionalization** | consolidação | Cinco ciclos de descoberta transformados em memória permanente (este lote). |
+
+**O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
+declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,
+e a Lei da Abstenção como contrato de comportamento.
