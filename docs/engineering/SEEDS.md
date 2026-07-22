@@ -73,6 +73,15 @@
 | S-31 | **Human Override** — invariante praticado: tudo editável (payload dry-run, defaults, Suggestion "editável" — 005 §6.2) | `montarPreviewML` | Suggestion Engine |
 | S-32 | **Rollback Decision** — assimétrico: AIL reversível por construção (005 §10); domínio tem duas operações sem volta (publicar, substituir importados) — a fronteira dura da delegação | `publicacaoML.ts` · `excluirAnunciosImportadosML` | nenhuma das duas sobe de nível sem ADR |
 
+## Registradas no PR-011 (2026-07-22) — Authority Discovery
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-33 | **Authority Lifecycle** — conceder→escopar→exercer→renovar→auditar→revogar, com 5 de 6 elos vivos; o elo ausente é *Responder* (accountability) | OAuth · RLS · rotação · desconexão | Capabilities (Z6) · Capítulo III |
+| S-34 | **Canal como grant materializado** — o agregado-autoridade: custodia o token, `ativo` (interruptor), rotação (renovação) e desconexão **destrutiva** (`ativo=false → refresh_token = null`) | `canaisMarketplace.ts` | modelo de referência para toda delegação futura |
+| S-35 | **Autor tipado adormecido** — a fundação E5.1 já modela `Autor{tipo, id, agenteCodigo, confianca}` persistido (`autor_tipo`/`agente_codigo`); é a planta pronta para "o sistema assina" ([[S-30]]) | `src/application` · `produto-mestre-db-mapper.ts` | Accountability — acordar exige o ciclo E5.1 |
+| S-36 | **Decisions anônimas** — `Decision.autor` existe desde a 022 e nenhum produtor o preenche (`autor: ""`); dívida de captura barata com alto valor de governança | `capturarDecisao` + 6 producers | preencher `autor` (implementação futura) |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).
