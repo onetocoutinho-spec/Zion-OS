@@ -18,6 +18,7 @@ import {
   notificarMudanca,
   removeItem,
   updateItem,
+  upsertItem,
 } from "./store";
 
 /** Filtro de igualdade aplicável nos dois modos. */
@@ -215,5 +216,28 @@ export function criarRepositorio<T extends { id: string }, Row>(
     notificarMudanca();
   }
 
-  return { listar, buscar, criar, criarVarios, atualizar, atualizarVarios, excluir, excluirPorFiltro };
+  /**
+   * Persiste uma entidade RESPEITANDO um id que já existe no domínio (upsert por
+   * id). O domínio é a autoridade da identidade — `salvar` NUNCA a gera nem altera.
+   * Insere se ausente; atualiza (sobrescreve os campos mapeados) se presente;
+   * idempotente por id. Contraste com `criar()`, onde a persistência cunha o id.
+   * Retorna a REPRESENTAÇÃO PERSISTIDA (não necessariamente a instância recebida);
+   * os campos escritos pelo mapper passam a ser a fonte de verdade.
+   * Semântica observável idêntica entre Supabase (upsert onConflict:"id") e demo.
+   */
+  async function salvar(entidade: T): Promise<T> {
+    if (!supabaseConfigurado) {
+      return upsertItem<T>(colecao, entidade);
+    }
+    const { data, error } = await getSupabase()
+      .from(tabela)
+      .upsert({ ...paraBanco(entidade), id: entidade.id }, { onConflict: "id" })
+      .select(selecao)
+      .single();
+    if (error) erroSupabase(`salvar registro em ${tabela}`, error.message);
+    notificarMudanca();
+    return paraApp(data as Row);
+  }
+
+  return { listar, buscar, criar, criarVarios, atualizar, atualizarVarios, excluir, excluirPorFiltro, salvar };
 }
