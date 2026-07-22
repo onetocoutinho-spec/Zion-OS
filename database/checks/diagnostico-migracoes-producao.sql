@@ -46,9 +46,13 @@ union all select '2-perfis', 'emails_sem_perfil',
 
 -- ── Seção 3: entidades de topo ───────────────────────────────
 union all select '3-entidades', 'clientes', count(*)::text from public.clientes
+-- Nota: tabelas possivelmente AUSENTES não podem ser referenciadas direto
+-- (o parser resolve relações antes de executar). Usamos pg_class (estimativa).
 union all select '3-entidades', 'organizacoes',
-  case when to_regclass('public.organizacoes') is null then 'tabela ausente (017 nao aplicada)'
-       else (select count(*)::text from public.organizacoes) end
+  coalesce(
+    (select greatest(coalesce(nullif(c.reltuples, -1), 0), 0)::bigint::text || ' (estimativa)'
+       from pg_class c where c.oid = to_regclass('public.organizacoes')),
+    'tabela ausente (017 nao aplicada)')
 
 -- ── Seção 4: migrações 015–023 aplicadas? ────────────────────
 union all select '4-migracoes', '015 kit-componentes (produtos.componentes)',
