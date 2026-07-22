@@ -41,6 +41,26 @@
 | S-14 | **Publish Status como ciclo de vida** — o anúncio já transita `rascunho → aprovado → publicado` e agora carrega o veredito de rejeição nas `observacoes`; estrutura pronta para um estado `rejeitado` explícito quando a operação precisar filtrar por ele | `anuncios_gerados.status` + `observacoes` | **Workspace Intelligence (Z7)** — visão operacional de funil de publicação |
 | S-15 | **External Rules capturadas em código** — regras do ML já vivem como conhecimento executável: categoria decide o modelo (clássico vs User Products), guia de tamanhos tem padrão de nome próprio (`normalizarNomeGuia` + filtro anti-legado), atributos obrigatórios por categoria | `mercadolivre.ts` (charts/User Products) · `mlPayload.ts` | **Organizational Memory (Z2)** — regras externas hoje hardcoded podem um dia ser conhecimento versionado por marketplace |
 
+## Registradas no PR-007 (2026-07-22) — Pattern Confidence Discovery
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-16 | **Pattern Conflict** *(parcialmente germinada)* — `em_disputa` implementado e testado; falta nome/leitura para o concorrente isolado | `estadoDoSlot` (`pattern.ts`) | Exception Detection |
+| S-17 | **Pattern Reinforcement** — convergência de fontes no mesmo slot (cadastro + publicação em `categoriaMarketplace`); a confirmação (`prevista === usada`) chega à porta do `capturarDecisao` e é descartada pela guarda de delta | PR-006 · `chaveDe` | Confidence acima de Consistente |
+| S-18 | **Pattern Confidence além da contagem** — escada completa congelada (RFC-AIL-002 §7); níveis superiores gated em Outcomes | `confidenceDe` + fronteira dura (004 §4.3) | Suggestion Engine (E4) |
+| S-19 | **Pattern Decay** — sinal cru pronto (`decidido_em`, `ultima_ocorrencia` armazenados, nunca lidos); política deferida com EVIDÊNCIA INSUFICIENTE | migrações 022/023 · RFC-AIL-004 §6.4 | R-AIL-5 (reaprendizado) |
+| S-20 | **Exception Detection** — o Journal guarda a trajetória (`valor_anterior` + `decidido_em`); o Detector é cego a ela **por teorema** (confluência §7.3), não por lacuna. Será leitura do Journal, nunca mudança no Detector | 022 · `pattern-detector.ts` | Decision Intelligence |
+
+## Registradas no PR-008 (2026-07-22) — Outcome Discovery
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-21 | **Outcome Source** — 4 produtores de veredito identificados: ambiente (aceite/veto ML), sistema (veredito A10), humano (curadoria), mercado (pedidos pagos). "Outcome" são 3 conceitos que as RFCs distinguem (destino-de-Suggestion · vereditos do domínio · resultados de infra) | `anunciosGerados.ts` · `esteira.ts` · `vendasML.ts` | Suggestion Engine · Explainability |
+| S-22 | **Outcome History** — apêndice append-only textual de vereditos (`comporObservacoesComFalha` preserva sem destruir); `Decision.correlacao` existe e está **ocioso** | `publicacaoML.ts` · 022 | histórico de vereditos estruturado |
+| S-23 | **Outcome Aggregation** — `calcularMetricas` já agrega outcomes (pedidos → métricas) como função pura; sobre dados efêmeros | `vendasML.ts` | Decision Intelligence |
+| S-24 | **Venda como veredito não-preservado** — o único veredito de **sucesso** (não só aceitação) é buscado (`order.status=paid`), agregado, exibido e **descartado** a cada consulta. Cancelamentos/devoluções nem são lidos | `buscarPedidosML` · `vendasML.ts` | futura ADR (persistir exige caso de uso) |
+| S-25 | **Tensão ledger × efemeridade** *(germinada → resolvida)* — derivar Outcome exige memória da oferta; 002 ("efêmera") × 005 ("ledger") não podiam ser ambas verdadeiras sem ela. **Resolvida por [ADR-001](../zion-os/engineering/ADR-001-suggestion-memory.md)**: ledger = projeção de ofertas append-only × Journal | ADR-001 | Suggestion Engine (pré-requisito) |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).
