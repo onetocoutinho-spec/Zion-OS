@@ -26,9 +26,13 @@ Prioridades: **P0** = antes de qualquer feature nova · **P1** = próximo ciclo 
         possui intenção documentada (Signal/Decision/Mission/Action/Result) alinhada a
         Capabilities/Workspace Intelligence. Decisão do programa: manter, não implementar ainda,
         não remover. (Aplicação da regra de remoção — as 5 perguntas.)
-- **Task E1.1.4 — Lint no gate** *(nova — descoberta na implementação do PR-001)*
-  - [ ] Zerar os **9 erros** de `npm run lint` (109 warnings ficam como estão por ora)
-  - [ ] Promover `lint` ao workflow de CI como passo obrigatório
+- **Task E1.1.4 — Lint no gate** `✅ PR-005 (2026-07-22)`
+  - [x] Erros zerados — **evidência derrubou a suposição**: os 9 erros nunca estiveram no
+        código do app; eram vazamento de escopo do linter para `.obsidian/plugins/*` (plugin
+        minificado) e `platform/`. Correção = `globalIgnores` (2 linhas), não 9 edições
+  - [x] `lint` promovido ao CI como passo obrigatório (warnings tolerados; 109 continuam
+        como aviso — limpeza oportunista)
+  - **EPIC E1 COMPLETO** (resta só o clique de *branch protection* no GitHub — ação do mantenedor)
 
 ### Feature E1.2 — Rastreabilidade operacional de migrações `✅ PR-003 (2026-07-22)`
 - **Task E1.2.1 — Migration Ledger (a memória operacional do banco)** ✅
