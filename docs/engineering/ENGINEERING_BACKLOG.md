@@ -37,17 +37,21 @@ Prioridades: **P0** = antes de qualquer feature nova · **P1** = próximo ciclo 
 
 ---
 
-## EPIC E2 — Segurança Multi-tenant `P0`
-*Risco nº 1 da auditoria: `eh_equipe()` permissivo ainda ativo em produção (016 parcial).*
+## EPIC E2 — Segurança Multi-tenant `P0` `✅ CONCLUÍDA — PR-002 (2026-07-22)`
+*Risco nº 1 da auditoria eliminado: deny-by-default ATIVO em produção. Operação com os 3
+artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-snapshot.md) ·
+[relatório](executions/2026-07-22-pr002-security-report.md).*
 
-### Feature E2.1 — Aplicação completa da migração 016
-- **Task E2.1.1 — Pré-condições** (runbook já existe: `docs/implementation-phase-1-security/`)
-  - [ ] Rodar `database/checks/check-users-without-profile.sql` em produção
-  - [ ] Backfill de perfis de TODA a equipe (template `fix-missing-profiles-template.sql`)
-- **Task E2.1.2 — Aplicar e validar**
-  - [ ] Aplicar o restante da 016 (deny-by-default + `perfis.ativo`)
-  - [ ] Validar em produção: equipe loga; cliente só vê o próprio tenant; usuário sem perfil bloqueado
-  - [ ] Smoke com 2 empresas (checklist de `docs/security-validation-checklist.md`)
+### Feature E2.1 — Aplicação completa da migração 016 ✅
+- **Task E2.1.1 — Pré-condições** ✅
+  - [x] Diagnóstico read-only (`diagnostico-migracoes-producao.sql`, novo no PR-002) — 1 órfão encontrado
+  - [x] Backfill do perfil de equipe faltante (template oficial, papel confirmado)
+- **Task E2.1.2 — Aplicar e validar** ✅
+  - [x] 016 completa aplicada (verificação embutida: ✓ deny-by-default ✓ ativo)
+  - [x] Validação em produção: 2 contas equipe + 1 cliente — todas com o painel esperado
+  - [ ] Smoke com 2ª empresa (fica pendente até existir um 2º cliente real — sem bloqueio)
+- **Achado registrado:** migrações **017–021 nunca aplicadas** em produção — 020/021 são da
+  fundação morta (decisão → E5.1); 017/018/019 aplicar quando as features ativarem (→ E1.2).
 
 ---
 
