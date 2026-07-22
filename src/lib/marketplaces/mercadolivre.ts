@@ -16,15 +16,29 @@ export interface TokensML {
   userId?: string;
 }
 
-async function extrairErro(resposta: Response): Promise<string> {
+/**
+ * Destila o VEREDITO do Mercado Livre em uma mensagem específica (PR-006).
+ * O ML espalha o detalhe em DOIS formatos: `cause[]` (clássico) e `errors[]`
+ * (com `message` e `cause[]` aninhados) — ler só um deles produzia erros
+ * genéricos ("Chart validation errors found") e o feedback real do ambiente
+ * era perdido. Exportada: é a tradutora de fronteira do veredito externo
+ * (proto-Knowledge-Source — ver SEEDS S-13) e testável puramente.
+ */
+export async function extrairErro(resposta: Response): Promise<string> {
   try {
     const j = (await resposta.json()) as {
       message?: string;
       error?: string;
       cause?: { message?: string }[];
+      errors?: { message?: string; cause?: { message?: string }[] }[];
     };
-    const causas = (j.cause ?? []).map((c) => c.message).filter(Boolean).join("; ");
-    return [j.message || j.error, causas].filter(Boolean).join(" — ") || `HTTP ${resposta.status}`;
+    const causas = (j.cause ?? []).map((c) => c.message);
+    const detalhados = (j.errors ?? []).flatMap((e) => [
+      e.message,
+      ...(e.cause ?? []).map((c) => c.message),
+    ]);
+    const detalhe = [...causas, ...detalhados].filter(Boolean).join("; ");
+    return [j.message || j.error, detalhe].filter(Boolean).join(" — ") || `HTTP ${resposta.status}`;
   } catch {
     return `HTTP ${resposta.status}`;
   }
