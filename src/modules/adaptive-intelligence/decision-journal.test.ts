@@ -12,6 +12,7 @@ import { resolverDecisionJournal } from "./decision-journal.ts";
 import type { DecisionJournal, Decision } from "./decision-journal.ts";
 import { NoOpDecisionJournal } from "./infrastructure/decision-journal.noop.ts";
 import { InMemoryDecisionJournal } from "./infrastructure/decision-journal.memory.ts";
+import { RepositoryDecisionJournal } from "./infrastructure/decision-journal.repository.ts";
 
 function decisaoExemplo(over: Partial<Decision> = {}): Decision {
   return {
@@ -30,9 +31,9 @@ function decisaoExemplo(over: Partial<Decision> = {}): Decision {
   };
 }
 
-test("a factory resolve a implementação NoOp em R-DJ-1", () => {
+test("a factory resolve a implementação persistente desde R-DJ-3", () => {
   const journal = resolverDecisionJournal();
-  assert.ok(journal instanceof NoOpDecisionJournal);
+  assert.ok(journal instanceof RepositoryDecisionJournal);
 });
 
 test("o contrato é respeitado: registrarDecisao existe e retorna void", () => {

@@ -48,32 +48,40 @@ export async function resolverPendencia(
   return resultado;
 }
 
-// ── Observador lateral · Adaptive Intelligence Layer (R-DJ-2) ────────────────
-// Registra a resolução de uma pendência como uma Decision no Decision Journal.
-// É estritamente fire-and-forget: roda DEPOIS da persistência bem-sucedida,
-// nunca altera o valor de retorno e — pelo contrato do Port e pelo try/catch
-// abaixo — nunca propaga exceção. Em R-DJ-2 a implementação ativa (via Factory)
-// é o NoOpDecisionJournal, que descarta tudo: nenhum comportamento observável.
+// ── Observador lateral · Adaptive Intelligence Layer (R-DJ-2 · canônico em R-DJ-3) ──
+// Registra a resolução de uma pendência como uma Decision CANÔNICA no Decision
+// Journal. O evento de negócio é "o cliente forneceu a informação pendente do
+// catálogo" (RFC-AIL-001 §4.1) — não o toggle técnico `resolvida`:
+//   contexto      = "catalogo"           Bounded Context canônico (RFC-AIL-003 §5.2)
+//   campo         = "informacaoPendente" assunto substantivo decidido
+//   valorNovo     = pendencia.descricao  a necessidade de informação atendida —
+//                   melhor identificador do domínio (não há código/slug/enum)
+//   valorAnterior = null                 a informação estava AUSENTE (null→valor)
+// Pattern Key resultante: (empresa, "catalogo", "informacaoPendente", ⟨descricao⟩)
+// — estável e imediatamente compatível com o Pattern Detector (RFC-AIL-004).
 //
-// Campos ainda não disponíveis nesta camada permanecem vazios de forma
-// deliberada: `autor` (não há usuário autenticado no serviço) e `correlacao`.
-// `valorAnterior` representa a transição canônica da resolução (false→true) —
-// capturar o estado real anterior exigiria uma leitura extra, acoplamento que
-// R-DJ-2 evita de propósito.
+// Guarda de elegibilidade (RFC-AIL-003 §4.4/§5.3): descrição vazia ou só espaços
+// não emite — um valorNovo sem conteúdo não forma padrão. A resolução em si
+// NUNCA é afetada pela guarda.
+//
+// É estritamente fire-and-forget: roda DEPOIS da persistência bem-sucedida,
+// nunca altera o valor de retorno e nunca propaga exceção. Campos indisponíveis
+// nesta camada permanecem vazios de forma deliberada: `autor` e `correlacao`.
 //
 // Rollback trivial: remover este bloco, o parâmetro `journal` e o import da AIL
 // devolve resolverPendencia ao corpo de uma linha anterior, sem resíduo.
 function observarResolucao(pendencia: Pendencia, journal: DecisionJournal): void {
+  if (!pendencia.descricao.trim()) return; // inelegível: sem conteúdo aprendível
   try {
     journal.registrarDecisao({
       id: crypto.randomUUID(),
       empresa: pendencia.clienteId,
       autor: "",
-      contexto: "pendencia",
+      contexto: "catalogo",
       entidade: { tipo: "pendencia", id: pendencia.id },
-      campo: "resolvida",
-      valorAnterior: "false",
-      valorNovo: "true",
+      campo: "informacaoPendente",
+      valorAnterior: null,
+      valorNovo: pendencia.descricao,
       origem: "pendencias.resolverPendencia",
       timestamp: new Date().toISOString(),
       correlacao: null,
