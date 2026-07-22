@@ -1,18 +1,19 @@
 // Adaptive Intelligence Layer — ponto de entrada e resolução da implementação.
 //
-// Factory que devolve a implementação ATIVA do Port DecisionJournal. Em R-DJ-1
-// a implementação ativa é o NoOpDecisionJournal (não observa nada ainda).
+// Factory que devolve a implementação ATIVA do Port DecisionJournal. Desde
+// R-DJ-3 a implementação ativa é o RepositoryDecisionJournal (persistência real
+// via Repository.salvar(), preservando o DecisionId do domínio — R-INF-001).
 //
-// Trocar a implementação em releases futuras (persistência real) acontece SÓ
-// aqui — os eventuais consumidores (R-DJ-2+) dependem do Port, nunca da
-// implementação concreta.
+// A troca acontece SÓ aqui — os consumidores (Producers) dependem do Port,
+// nunca da implementação concreta; nenhum Producer percebe a mudança.
+// O NoOpDecisionJournal permanece no módulo para rollback e testes.
 
 import type { DecisionJournal } from "./ports/decision-journal.port.ts";
-import { NoOpDecisionJournal } from "./infrastructure/decision-journal.noop.ts";
+import { RepositoryDecisionJournal } from "./infrastructure/decision-journal.repository.ts";
 
-/** Resolve a implementação ativa do Decision Journal. R-DJ-1: no-op. */
+/** Resolve a implementação ativa do Decision Journal. R-DJ-3: persistente. */
 export function resolverDecisionJournal(): DecisionJournal {
-  return new NoOpDecisionJournal();
+  return new RepositoryDecisionJournal();
 }
 
 export type { DecisionJournal } from "./ports/decision-journal.port.ts";
