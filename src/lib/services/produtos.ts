@@ -1,4 +1,5 @@
 import { criarRepositorio } from "../repositorio";
+import { autorAtual } from "../auth/autorAtual";
 import { produtoParaApp, produtoParaBanco } from "../supabase/mappers";
 import type { ProdutoRow } from "../supabase/database.types";
 import type { Produto } from "../types";
@@ -64,6 +65,7 @@ function observarCorrecoesDoProduto(
   anterior: Produto,
   atual: Produto,
   presentes: readonly (typeof CAMPOS_OBSERVADOS)[number][],
+  autor: string,
   journal?: DecisionJournal
 ): void {
   for (const c of presentes) {
@@ -78,6 +80,7 @@ function observarCorrecoesDoProduto(
         valorAnterior: valorObservado(anterior, c.propriedade),
         valorNovo,
         origem: "produtos.atualizarProduto",
+        autor,
       },
       journal
     );
@@ -92,7 +95,9 @@ export async function atualizarProduto(
   const presentes = CAMPOS_OBSERVADOS.filter((c) => dados[c.propriedade] !== undefined);
   const anterior = presentes.length > 0 ? await repo.buscar(id) : null;
   const resultado = await repo.atualizar(id, dados);
-  if (anterior && resultado) observarCorrecoesDoProduto(anterior, resultado, presentes, journal);
+  // Autoria (E4.2.3): resolvida só quando haverá captura — autorAtual nunca lança.
+  if (anterior && resultado)
+    observarCorrecoesDoProduto(anterior, resultado, presentes, await autorAtual(), journal);
   return resultado;
 }
 

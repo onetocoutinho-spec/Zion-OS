@@ -14,6 +14,7 @@ import {
   marcarAnuncioPublicado,
 } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
+import { autorAtual } from "../auth/autorAtual";
 import type { AnuncioGeradoRegistro } from "../types";
 import {
   capturarDecisao,
@@ -186,13 +187,14 @@ export async function publicarNoML(
   await marcarAnuncioPublicado(registro.id, { itemId: dados.id, permalink: dados.permalink });
 
   // Learning Loop (1): ambiente propôs → humano decidiu → memória.
-  // capturarDecisao garante delta real e fire-and-forget.
+  // capturarDecisao garante delta real e fire-and-forget. Autoria (E4.2.3):
+  // quem publicou é quem decidiu — o autor da sessão; o builder segue puro.
   const captura = montarCapturaCategoriaPublicada(
     registro,
     dados.categoriaPrevista ?? null,
     dados.categoriaUsada ?? null
   );
-  if (captura) capturarDecisao(captura);
+  if (captura) capturarDecisao({ ...captura, autor: await autorAtual() });
 
   return { dry: false, id: dados.id, permalink: dados.permalink, payload };
 }

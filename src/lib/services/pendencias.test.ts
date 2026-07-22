@@ -50,6 +50,9 @@ test("a Decision registrada é canônica: catalogo/informacaoPendente/descriçã
   assert.equal(d.valorNovo, DESCRICAO_SEED); // a necessidade de informação atendida
   assert.equal(d.empresa, CLIENTE_SEED); // tenant vem do resultado da persistência
   assert.equal(d.origem, "pendencias.resolverPendencia");
+  // Autoria (E4.2.3): em ambiente sem Supabase, autorAtual → "" (retrocompat.
+  // demo); em produção é o e-mail da sessão. O campo é SEMPRE preenchido.
+  assert.equal(d.autor, "");
   assert.equal(d.correlacao, null);
   assert.ok(d.id.length > 0, "id da Decision deve ser gerado");
   assert.ok(!Number.isNaN(Date.parse(d.timestamp)), "timestamp deve ser ISO válido");

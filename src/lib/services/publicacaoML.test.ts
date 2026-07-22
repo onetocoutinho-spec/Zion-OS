@@ -57,6 +57,17 @@ test("DoD: capturarDecisao só dispara quando a categoria MUDA", () => {
   assert.equal(journal.recebidas.length, 2);
 });
 
+test("autoria (E4.2.3): o spread do wiring leva o autor até a Decision", () => {
+  // publicarNoML faz `capturarDecisao({ ...captura, autor: await autorAtual() })`
+  // — quem publicou é quem decidiu. Cobre o caminho real com o builder real.
+  const journal = new InMemoryDecisionJournal();
+  const captura = montarCapturaCategoriaPublicada(registro, "MLB111111", "MLB273770");
+  assert.ok(captura);
+  capturarDecisao({ ...captura, autor: "equipe@zion.com" }, journal);
+  assert.equal(journal.recebidas.length, 1);
+  assert.equal(journal.recebidas[0].autor, "equipe@zion.com");
+});
+
 test("veredito da rejeição: anexado sem destruir observações existentes", () => {
   assert.equal(
     comporObservacoesComFalha("", "attribute GTIN is required"),

@@ -39,6 +39,8 @@ test("corrigir a categoria captura EXATAMENTE uma Decision canônica", async () 
   assert.equal(d.empresa, "cli-01");
   assert.deepEqual(d.entidade, { tipo: "produto", id: ID_SEED });
   assert.equal(d.origem, "produtos.atualizarProduto");
+  // Autoria (E4.2.3): demo/teste → ""; produção → e-mail da sessão.
+  assert.equal(d.autor, "");
 });
 
 test("DoD: valor igual ao atual → NENHUMA captura (delta real obrigatório)", async () => {
