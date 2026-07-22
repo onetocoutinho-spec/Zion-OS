@@ -30,10 +30,13 @@ Prioridades: **P0** = antes de qualquer feature nova · **P1** = próximo ciclo 
   - [ ] Zerar os **9 erros** de `npm run lint` (109 warnings ficam como estão por ora)
   - [ ] Promover `lint` ao workflow de CI como passo obrigatório
 
-### Feature E1.2 — Rastreabilidade operacional de migrações
-- **Task E1.2.1 — Registro de migração aplicada**
-  - [ ] Convenção mínima: tabela `public.migracoes_aplicadas` (nº, data) alimentada pelo próprio SQL de cada migração futura
-  - [ ] Checklist de release: "migrações pendentes conferidas ANTES do merge" (lição do incidente `perfis.ativo`)
+### Feature E1.2 — Rastreabilidade operacional de migrações `✅ PR-003 (2026-07-22)`
+- **Task E1.2.1 — Migration Ledger (a memória operacional do banco)** ✅
+  - [x] Tabela `migracoes_aplicadas` (migração 024) + baseline **por evidência** — aplicada e validada em produção (zero drift; [relatório](executions/2026-07-22-pr003-ledger-report.md))
+  - [x] Convenção permanente: toda migração ≥024 termina com o próprio INSERT; migrações anteriores são documentos históricos (intocadas)
+  - [x] Diagnóstico v2 = **detector permanente de drift** (ledger × objetos) + sentinela de regressão da 016
+  - [x] Checklist de release coberto: "migrações pendentes" agora é uma consulta (`5-ledger`)
+- **Pendências conhecidas registradas no ledger:** 017–021 (017/018/019 → quando as features ativarem; 020/021 → decisão na colheita E5.1)
 
 ---
 
