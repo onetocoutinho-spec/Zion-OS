@@ -25,6 +25,14 @@
 | S-08 | **Versionamento de schema client-side** — `VERSAO` com re-seed ao mudar | `src/lib/store.ts` | O mesmo conceito (schema versionado + registro), lado demo |
 | S-09 | **Infrastructure Metadata** *(oportunidade registrada pelo mantenedor)* — `environment_metadata` + `migracoes_aplicadas` pertencem à mesma família e podem um dia convergir num conceito amplo de metadados de infraestrutura | migração 024 + staging kit | Exoesqueleto · memória própria de cada componente ("a AIL tem memória; o Workspace terá; a organização terá; o banco agora tem") |
 
+## Registradas no PR-004 (2026-07-22)
+
+| # | Semente | Onde vive hoje | Aponta para |
+|---|---|---|---|
+| S-10 | **Funil de correções** — `atualizarProduto` é o ponto natural por onde decisões de campo convergem (agregado já escalável: campo novo = 1 linha) | `produtos.ts` (CAMPOS_OBSERVADOS) | **Signal Pipeline** sem event bus |
+| S-11 | **Confiança qualificada no domínio** — `confiança do custo: alta/media/baixa` já existe em `Produto` | `types.ts` | **Decision Intelligence** — o domínio já pensa em graus de confiança, como a escada da AIL |
+| S-12 | **Pub/sub embrionário** — `notificarMudanca` + `useLiveQuery` (48 telas) | `store.ts` | **Event Stream / Workspace Intelligence** |
+
 ## Como usar este registro
 
 - Novas sementes: adicionar aqui no PR em que forem descobertas (número sequencial).

@@ -37,3 +37,21 @@ código; deve **preservar ou ampliar** as possibilidades futuras da plataforma.
 **Módulos reservados** — `src/modules/operation-center` é reserva arquitetural deliberada
 (Signal/Decision/Mission/Action/Result; ver `docs/zion-os/modules/`): manter, não implementar
 até o momento certo, não remover.
+
+**Princípio da Captura Significativa** (PR-004) — nem toda alteração merece virar memória.
+Só capturamos alterações que representem **decisão humana com potencial de aprendizado**.
+Exclui: estados transitórios, filas, processamento interno, tarefas automáticas.
+*A memória da Zion representa conhecimento, não atividade.*
+
+**Organizational Memory First** (PR-004) — quando surgir oportunidade de registrar
+conhecimento organizacional com baixo acoplamento e baixo risco, ela tem prioridade sobre
+funcionalidades inteligentes que dependam desse conhecimento. *Memória vem antes de
+Inteligência.*
+
+**Admissão de Signal Sources** — as 5 perguntas (todas SIM): decisão humana? delta
+observável? potencial de repetição? repetição gera aprendizado? captura sem alterar
+comportamento? Mapa vivo: [AIL_SIGNAL_MAP.md](AIL_SIGNAL_MAP.md).
+
+**Operações de produção** — regra dos 3 artefatos: Plano · Snapshot anterior · Relatório
+posterior (`executions/`). Migrações: toda migração ≥024 termina registrando-se no
+Migration Ledger; migrações anteriores são documentos históricos (nunca alterar).

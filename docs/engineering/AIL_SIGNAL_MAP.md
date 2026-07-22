@@ -1,0 +1,43 @@
+# AIL Signal Map — Referência Viva das Signal Sources
+
+> Documento vivo (PR-004): **toda** mudança em Signal Sources atualiza este mapa.
+> Fluxo canônico: `Signal Source → capturarDecisao() → registrarDecisao() (Port)
+> → persistência (decisoes) → Pattern Detection (padroes)`.
+
+## Critério de admissão (as 5 perguntas — todas devem ser SIM)
+
+1. Existe uma **decisão humana**?
+2. Existe um **delta observável** (anterior → novo)?
+3. Existe **potencial de repetição**?
+4. Essa repetição pode **gerar aprendizado**?
+5. A captura pode acontecer **sem alterar o comportamento** do sistema?
+
+## Signal Sources ATIVAS
+
+| Signal | Natural Aggregate | Origem | Delta | Pattern Key | Desde |
+|---|---|---|---|---|---|
+| Informação pendente fornecida | **Pendências** | `resolverPendencia` | ausente → descrição | `(emp, catalogo, informacaoPendente, ⟨descricao⟩)` | R-DJ-2/3 |
+| Categoria marketplace corrigida | **Produto** | `atualizarProduto` | MLB → MLB | `(emp, catalogo, categoriaMarketplace, ⟨MLB…⟩)` | PR-004 |
+| Preço de venda ajustado | **Produto** | `atualizarProduto` | valor → valor | `(emp, precificacao, precoVenda, ⟨valor⟩)` | PR-004 |
+| Override de medida | **Produto** | `atualizarProduto` | guia → guia | `(emp, catalogo, tabelaMedidas, ⟨guia⟩)` | PR-004 |
+| Tipo de anúncio por canal | **Marketplace** | `salvarCanal` | proposta → escolha | `(emp, publicacao, tipoAnuncio, ⟨tipo⟩)` | PR-004 |
+
+## Natural Aggregates oficiais
+
+- **Produto** — Signal Source `atualizarProduto` (lista de campos observados;
+  campo novo = 1 linha). Já nasceu escalável: atributos, imagens, componentes,
+  fornecedor, classificação entram sem mudar arquitetura.
+- **Marketplace** — Signal Source `salvarCanal`.
+- **Pendências** — Signal Source `resolverPendencia`.
+- **Curadoria** — Signal Source `tabelasMedidasCliente` · **status: identificado**
+  (guias de medida por marca curadas pelo cliente — Alto valor, próxima onda).
+
+## Sinais conhecidos e NÃO capturados (com motivo)
+
+| Sinal | Motivo |
+|---|---|
+| Rejeição de anúncio | motivo é string **hardcoded** na UI → sinal degenerado. **Gargalo registrado:** capturar quando a UI coletar motivo real |
+| Aprovação de anúncio | marco operacional, não decisão aprendível (RFC-AIL-001 §4.3) |
+| Atributos/ficha (`produtoAtributos`) | Médio valor — candidato P2 (entra pela lista do agregado Produto ou origem própria) |
+| Troca de imagem | EVIDÊNCIA INSUFICIENTE (RFC-AIL-001 §4.1) |
+| Tarefas, reuniões, financeiro, filas, execuções (~20 serviços) | **Princípio da Captura Significativa**: atividade/estado operacional, não conhecimento — nunca capturar |

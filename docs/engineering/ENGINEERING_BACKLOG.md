@@ -92,8 +92,10 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 - **Task E4.2.1 — Planejamento sob o Freeze** (RFC-AIL-005 §6 já especifica)
   - [ ] Plano de release no padrão consolidado (etapas pequenas, validação entre elas)
   - [ ] Primeiro consumidor: 1 contexto, 1 campo (slot consistente → oferta editável + explicação)
-- **Task E4.2.2 — Novos Producers (cobertura R-DJ-4 da RFC-AIL-001 §10)**
-  - [ ] `tipoAnuncio` (canal) e correção de categoria — pontos de Alto valor já mapeados
+- **Task E4.2.2 — Novos Producers (cobertura R-DJ-4)** `✅ PR-004 (2026-07-22)`
+  - [x] **5 Signal Sources ativas** (era 1): + categoria, preço, medida (agregado Produto) e tipoAnuncio (Marketplace) — via `capturarDecisao()` com delta real e captura significativa
+  - [x] Mapa vivo: [AIL_SIGNAL_MAP.md](AIL_SIGNAL_MAP.md) · Natural Aggregates oficiais (Produto, Marketplace, Pendências; Curadoria identificado)
+  - [ ] Onda P2: `tabelasMedidasCliente` (curadoria) e `produtoAtributos`; rejeição quando a UI coletar motivo real
 
 ---
 
