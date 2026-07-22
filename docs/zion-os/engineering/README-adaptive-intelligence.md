@@ -1,8 +1,14 @@
 # Adaptive Intelligence Layer — Documentação Oficial
 
-> **Status:** **Adaptive Intelligence Architecture v1 — Architecture Freeze** (21 de julho de 2026).
-> **Institucionalizado por:** PR-DOC-001. Este é o **ponto de entrada** e o **índice** da
-> documentação arquitetural da Adaptive Intelligence Layer (AIL) do Zion OS.
+## Status
+
+- **Adaptive Intelligence Architecture v1**
+- **Architecture Freeze**
+- **Normative Documentation**
+
+Estes oito documentos formam o **Adaptive Intelligence Documentation Set v1** — o ponto de
+entrada e o índice da documentação arquitetural **normativa** da Adaptive Intelligence Layer
+(AIL) do Zion OS. Institucionalizado por **PR-DOC-001** em 21 de julho de 2026.
 
 ---
 
@@ -22,10 +28,11 @@ volta o que aprendeu — **sem nunca controlar**. Seu invariante central:
 
 **Nada nela é ML.** É memória disciplinada: contagem determinística, explicável e reversível.
 
-## 2. Status oficial — Architecture Freeze v1
+## 2. O Documentation Set congelado
 
-A fase de arquitetura da AIL está **encerrada**. O conjunto congelado é composto por **ARQ-003 +
-RFC-AIL-001…005**, com a **ARCH-REVIEW-001** como revisão de conformidade. A autoridade de
+A fase de arquitetura da AIL está **encerrada**. O **Adaptive Intelligence Documentation Set v1**
+é composto por **ARQ-003 + RFC-AIL-001…005**, com a **ARCH-REVIEW-001** como revisão de
+conformidade. A autoridade de
 consolidação e a declaração formal do congelamento estão na **RFC-AIL-005 §11.3**.
 
 A partir do Freeze v1:
@@ -38,9 +45,10 @@ A partir do Freeze v1:
 3. **Nenhuma RFC nova deve redefinir conceitos já congelados** — ajustes de parâmetro *dentro* do
    modelo e novas implementações não exigem RFC nova; redefinição conceitual, sim (via ADR).
 
-## 3. Índice e mapa de leitura (PASSO 4)
+## 3. Índice e mapa de leitura
 
-A ordem oficial, do fundamento à revisão — cada seta é uma dependência conceitual:
+A ordem oficial do **Adaptive Intelligence Documentation Set v1**, do fundamento à revisão — cada
+seta é uma dependência conceitual:
 
 ```
    ARQ-003            (a arquitetura: a camada, o invariante, o roadmap)
@@ -68,14 +76,14 @@ A ordem oficial, do fundamento à revisão — cada seta é uma dependência con
 | 6 | [RFC-AIL-005 — Adaptive Intelligence Execution Model](RFC-AIL-005-adaptive-intelligence-execution-model.md) | **Consolida** lifecycle, Suggestion, Knowledge, Confidence, explicabilidade e reversibilidade; resolve as pendências; **declara o Architecture Freeze v1**. |
 | — | [ARCH-REVIEW-001 — Architecture Review](ARCH-REVIEW-001-adaptive-intelligence.md) | **Revisão de conformidade** da primeira implementação (R-DJ-1/R-DJ-2): verifica invariantes, dependências, reversibilidade e emite parecer de merge. |
 
-## 4. Ordem recomendada de leitura (PASSO 3)
+## 4. Ordem recomendada de leitura
 
 - **Para entender o "porquê" e o todo:** leia **ARQ-003** e depois **RFC-AIL-005** (a consolidação).
   Esses dois, sozinhos, dão a visão completa da camada congelada.
 - **Para implementar:** siga a cadeia na ordem do índice (§3). Cada RFC pressupõe a anterior.
 - **Para auditar uma implementação:** use **ARCH-REVIEW-001** como modelo de revisão.
 
-## 5. Relação entre os documentos (PASSO 3)
+## 5. Relação entre os documentos
 
 - **ARQ-003** é a raiz — define a camada e o invariante de reversibilidade que todos os demais
   preservam.
@@ -87,7 +95,7 @@ A ordem oficial, do fundamento à revisão — cada seta é uma dependência con
 - **ARCH-REVIEW-001** é transversal: revisa se a implementação real honra o que os documentos
   definem.
 
-## 6. Architecture Freeze v1 — declaração (PASSO 6)
+## 6. Architecture Freeze v1 — declaração
 
 > ## **Adaptive Intelligence Architecture v1 — Architecture Freeze**
 >
@@ -101,7 +109,7 @@ A ordem oficial, do fundamento à revisão — cada seta é uma dependência con
 >
 > Fonte da declaração: RFC-AIL-005 §11.3.
 
-## 7. Verificação de consistência (PASSO 5 — registro)
+## 7. Verificação de consistência
 
 Verificação realizada na institucionalização. **Nenhum conteúdo técnico aprovado foi alterado** —
 os achados abaixo são **registrados**, não corrigidos no conteúdo.
@@ -137,6 +145,6 @@ Epic 00/01, Diagnóstico, Análise Comparativa, Plano de Convergência, Validaç
 
 ---
 
-*Institucionalizado em 21 de julho de 2026 · PR-DOC-001 · documentação oficial · sem alteração de
-código, arquitetura ou comportamento. A próxima release (R-DJ-3) referencia oficialmente estes
-documentos.*
+*Adaptive Intelligence Documentation Set v1 · Architecture Freeze · Institucionalizado em 21 de
+julho de 2026 · PR-DOC-001 · documentação normativa · sem alteração de código, arquitetura ou
+comportamento. A próxima release (R-DJ-3) referencia oficialmente estes documentos.*
