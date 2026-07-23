@@ -27,6 +27,7 @@
 | [CMP-001](CMP-001-mission-component.md) | **Mission Component** | a especificação implementável da Missão: anatomia, contrato, estados, 4 DecisionBodies, aceite |
 | [DS-100](system/003-design-system-foundation.md) | **Design System Foundation** (`system/003`) | a ontologia das 5 camadas visuais (Foundation→Semantic→Component→Pattern→Theme); sem valores |
 | [DS-110](system/004-foundation-values.md) | **Foundation Values** (`system/004`) | a matéria valorada: ~90 tokens dimensionais/temporais (base 4, razão 1.2), serialização DTCG→9 plataformas; hue da Palette = lacuna declarada |
+| [DS-120](system/005-semantic-tokens.md) | **Semantic Tokens** (`system/005`) | a camada do significado: 12 famílias de papéis que referem só Foundation e são resolvidos só por Theme; nunca valores |
 
 **Nota de estratos (PX-006):** existem duas cadeias normativas — a cadeia **PX/UX/DOM/VOC**
 (a experiência e o domínio) e a cadeia **`system/`** (a expressão do design, com raiz na
