@@ -171,7 +171,14 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   mesma regra, modified = contradição observada. **Elevação acima de `consistente`
   estruturalmente bloqueada e declarada** (limiar de `confiável` = dívida de ADR,
   não de código) — [relatório](executions/e53-confidence-evolution-report.md)
-- **E5.4 — Knowledge Promotion** — promoção derivada (motivo/evidências/histórico/reversibilidade)
+- **E5.4 — Promotion Readiness** `✅ (2026-07-22)` *(escopo ajustado: prontidão, não promoção)* —
+  4 perguntas objetivas/binárias (topo da contagem, sem disputa, sobrevive ao desconto E5.3,
+  ∃ Outcomes); bloqueio permanente `decisao_de_promocao_indefinida_adr_002`; as 4 lacunas
+  da promoção DECLARADAS como `DEPENDENCIAS_ADR_002` (quantos outcomes; independência;
+  "confirmação sustentada"; tempo) — lacuna arquitetural não se resolve com código — [relatório](executions/e54-promotion-readiness-report.md)
+- **ADR-002 — Knowledge Promotion Policy** `⏳ GOVERNANÇA (mantenedor)` — decidir as 4
+  dependências acima; a Knowledge Promotion executável (motivo/evidências/histórico/
+  reversibilidade) implementa-se APÓS a ADR
 - **E5.5 — Suggestion Analytics** — projeções de taxas (aceitação/edição/ignoradas) e uso de Patterns
 - **E5.6 — DI Dashboard** — visão operacional sobre as projeções existentes
 - **E5.7 — Reprojection Runtime** — aposenta scripts; reprojeção completa/parcial + auditoria + idempotência (absorve a antiga E4.1.1)
