@@ -21,6 +21,18 @@ import { Mission } from "../../mission/components/Mission.tsx";
 import { useMission } from "../../mission/hooks/useMission.ts";
 import type { MissionPayload } from "../../mission/contracts/mission.ts";
 
+// Composition root (ENG-005): o /z é o único que conhece o Runtime. Mission e
+// Shell NÃO o conhecem — o UserIntent é roteado aqui, por porta.
+import { Runtime } from "../../runtime/Runtime.ts";
+import { DecisionFactory } from "../../runtime/decision/DecisionFactory.ts";
+import { RuntimeDispatcher } from "../../runtime/dispatcher/RuntimeDispatcher.ts";
+import { FakeCapability } from "../../runtime/FakeCapability.ts";
+import type { ShellPort } from "../../runtime/ports/ShellPort.ts";
+
+// ShellPort concreto: publica os RuntimeEvents no console (adaptador de saída).
+const runtimeShell: ShellPort = { publish: (e) => console.log("[RuntimeEvent]", e.type, e) };
+const runtime = new Runtime(new DecisionFactory(), new RuntimeDispatcher(new FakeCapability(), runtimeShell), runtimeShell);
+
 import { Text } from "../../design/ui/index.ts";
 import { fnd } from "../../design/foundation/foundation.generated.ts";
 import { sem } from "../../design/semantic/semantic.generated.ts";
@@ -62,8 +74,13 @@ export default function ZPage() {
   return (
     <MissionProvider
       onEvent={(e) => {
-        if (e.type === "UserIntentEmitted") console.log("[UserIntent]", e.intent);
-        else console.log("[MissionEvent]", e.type, e.missionId);
+        if (e.type === "UserIntentEmitted" && e.intent) {
+          console.log("[UserIntent]", e.intent);
+          // Roteia o UserIntent para o Runtime (única camada que produz Decision).
+          runtime.receive(e.intent);
+        } else {
+          console.log("[MissionEvent]", e.type, e.missionId);
+        }
       }}
     >
       <ShellProvider config={{ navigation: NAV, initialContext: "hoje", contents: [{ contextId: "hoje", node: <MissionTrigger /> }] }}>
