@@ -133,6 +133,7 @@ agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
 | **E5.4** | **Promotion Readiness** | implementada e validada | Pronto para promover, **sem promover**: 4 perguntas binárias (topo da contagem, sem disputa, sobrevive ao eco, testado em campo) + bloqueio permanente até a ADR-002. A fronteira engenharia/governança ficou enumerável: as 4 perguntas respondíveis viraram código; as 4 irrespondíveis viraram o escopo exato da ADR-002. |
 | **E5.5** | **Intelligence Analytics** | implementada e validada | A plataforma mensurável **sem nota**: fatos e bloqueios nomeados no lugar de scores; metodologia obrigatória em toda métrica; o maior bloqueio exibido sem constrangimento (ADR-002 — governança). Inaugura a camada operacional. |
 | **E5.6** | **Decision Intelligence Center** | implementada e validada | A primeira interface operacional: Health + Patterns (atual→projetada, prontidão) + **linha do tempo lógica em 7 etapas** do fato ao veredito, cada etapa com origem. **A transparência não é recurso da interface — é propriedade da arquitetura.** |
+| **E5.7** | **Reprojection Runtime** | implementada e validada | O script morreu; o botão audita: reprojeção oficial (completa/parcial) com diffs, órfãos listados-jamais-apagados e **idempotência verificada a cada execução** (núcleo 2× → idêntico). A confluência virou prova viva em produção. |
 
 **O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
 declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,
