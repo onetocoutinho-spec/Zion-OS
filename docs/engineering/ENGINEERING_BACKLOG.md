@@ -165,7 +165,12 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
 - **E5.2 — Outcome Explainability** `✅ (2026-07-22)` — `OutcomeExplanation`
   serializável: origem/resposta/comparação + cadeia de 3 elos (Offer→Observation→Outcome)
   + nota oficial de auto-reforço; explicar = selecionar fatos, nunca produzir — [relatório](executions/e52-outcome-explainability-report.md)
-- **E5.3 — Confidence Evolution** — Confidence acima de `consistente` via Outcomes (fronteira dura da 004 finalmente cruzada — pelo Engine, como previsto)
+- **E5.3 — Confidence Evolution** `✅ (2026-07-22)` — reavaliação com ZERO números
+  novos: `confidenceDe(suporte INDEPENDENTE, slot independente)` — desconto de
+  auto-reforço (Decisions consumidas por Ofertas confirmadas), concorrentes sob a
+  mesma regra, modified = contradição observada. **Elevação acima de `consistente`
+  estruturalmente bloqueada e declarada** (limiar de `confiável` = dívida de ADR,
+  não de código) — [relatório](executions/e53-confidence-evolution-report.md)
 - **E5.4 — Knowledge Promotion** — promoção derivada (motivo/evidências/histórico/reversibilidade)
 - **E5.5 — Suggestion Analytics** — projeções de taxas (aceitação/edição/ignoradas) e uso de Patterns
 - **E5.6 — DI Dashboard** — visão operacional sobre as projeções existentes

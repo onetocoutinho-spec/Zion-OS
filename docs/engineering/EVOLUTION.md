@@ -129,6 +129,7 @@ agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
 | **E5.0** | **Offer Observation** | implementada e validada | O que aconteceu depois de cada oferta — 3 classes de evidência sobre `ofertas × decisoes`, limites declarados (remoção sem fato; criação sem captura; sem janela). Zero escrita, zero recomputação. |
 | **E5.1** | **Outcome Projection** | implementada e validada | **Outcome não é fato — é projeção** `f(ofertas × Journal)`: pending/confirmed/modified, determinística (sem relógio), idempotente, jamais persistida; a regra do auto-reforço nasce embutida (confirmed nunca é evidência independente). O primeiro ciclo completo de feedback da Decision Intelligence. |
 | **E5.2** | **Outcome Explainability** | implementada e validada | A cadeia de evidências visível e serializável: Offer→Observation→Outcome em 3 elos, origem/resposta/comparação, nota oficial de auto-reforço. **Explicar não é interpretar** — se a função precisa de algo além dos fatos de entrada, ela está interpretando. |
+| **E5.3** | **Confidence Evolution** | implementada e validada | A confiança auditada contra o próprio eco: `confidenceDe(suporte independente)` — as funções congeladas sobre a evidência que **existiria mesmo sem sugestão alguma**. Desconto rastreável, elevação bloqueada e declarada (limiar de `confiável` = ADR futura). **O conhecimento não pode aprender consigo mesmo.** |
 
 **O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
 declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,
