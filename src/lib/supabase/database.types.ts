@@ -458,6 +458,10 @@ export interface OfertaRow {
   autor_da_oferta: string;
   versao_contrato: string;
   origem_explicacao: string;
+  // Assinatura versionada (migração 026 — E5.9): null = oferta pré-versionamento.
+  versao_engine: string | null;
+  versao_confidence: string | null;
+  versao_explainability: string | null;
   correlacao: string | null;
   oferecida_em: string;
   created_at?: string;

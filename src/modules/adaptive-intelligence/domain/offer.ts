@@ -43,6 +43,13 @@ export interface Oferta {
   readonly versaoContrato: string;
   /** De onde veio a explicação exibida (função dos limiares congelados). */
   readonly origemExplicacao: string;
+  // ── Assinatura versionada (E5.9) — null = oferta anterior ao versionamento ──
+  /** Release do componente que gerou a oferta. */
+  readonly versaoEngine: string | null;
+  /** Versão do conjunto de regras de confidence usado no instante. */
+  readonly versaoConfidence: string | null;
+  /** Versão da função de explicação usada no instante. */
+  readonly versaoExplainability: string | null;
   /** Liga ofertas da mesma sessão/tela (dedup futuro — ADR-001 QA3). */
   readonly correlacao: string | null;
 }
