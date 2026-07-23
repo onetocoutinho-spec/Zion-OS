@@ -193,7 +193,11 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   verificada na execução** (núcleo 2× → idêntico — confluência provada a cada uso);
   parcial por empresa segura por construção; botão no DI Center (inclusive vazio);
   absorve a E4.1.1 e aposenta o script — [relatório](executions/e57-reprojection-runtime-report.md)
-- **E5.8 — Typed Author** — materializa o `Autor{tipo,id,…}` adormecido (S-35), retrocompatível
+- **E5.8 — Typed Author** `✅ (2026-07-23)` — `Autor{tipo,id}` como VO de leitura
+  (colheita do CONCEITO da S-35; fundação intocada); sem `confianca` (colisão do
+  GLOSSARY) e sem `agenteCodigo` (YAGNI); parse determinístico de todas as strings
+  gravadas + roundtrip; `rotuloAutor` delega ao VO com as mesmas saídas — zero
+  migração, suíte inteira sem mudança de expectativa — [relatório](executions/e58-typed-author-report.md)
 - **E5.9 — System Authorship** — versões (Engine/contrato/Confidence/Explainability) em toda oferta; autoria explícita de toda ação automática (fecha S-30)
 - **E5.10 — Delegation Runtime** — delegação só com autoridade válida + conhecimento promovido + reversibilidade + auditoria; fatos imutáveis
 

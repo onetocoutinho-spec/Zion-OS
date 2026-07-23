@@ -134,6 +134,7 @@ agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
 | **E5.5** | **Intelligence Analytics** | implementada e validada | A plataforma mensurável **sem nota**: fatos e bloqueios nomeados no lugar de scores; metodologia obrigatória em toda métrica; o maior bloqueio exibido sem constrangimento (ADR-002 — governança). Inaugura a camada operacional. |
 | **E5.6** | **Decision Intelligence Center** | implementada e validada | A primeira interface operacional: Health + Patterns (atual→projetada, prontidão) + **linha do tempo lógica em 7 etapas** do fato ao veredito, cada etapa com origem. **A transparência não é recurso da interface — é propriedade da arquitetura.** |
 | **E5.7** | **Reprojection Runtime** | implementada e validada | O script morreu; o botão audita: reprojeção oficial (completa/parcial) com diffs, órfãos listados-jamais-apagados e **idempotência verificada a cada execução** (núcleo 2× → idêntico). A confluência virou prova viva em produção. |
+| **E5.8** | **Typed Author** | implementada e validada | O `Autor` da fundação acorda **como conceito, não como código**: VO de leitura com parse determinístico sobre as strings já gravadas — zero migração, suíte inteira sem mudança de expectativa. **Colher ≠ ressuscitar.** |
 
 **O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
 declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,
