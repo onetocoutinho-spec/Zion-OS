@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { useLiveQuery } from "@/lib/hooks";
 import { carregarVisaoDoCentro } from "@/modules/adaptive-intelligence/application/intelligence-center";
+import { ReprojecaoPadroes } from "@/components/ail/ReprojecaoPadroes";
 
 const TOM_CONFIDENCE = { observado: "gray", recorrente: "blue", consistente: "green" } as const;
 
@@ -39,6 +40,10 @@ export default function InteligenciaPage() {
           description="O estado da inteligência da plataforma — tudo proveniente de projeções determinísticas; nada é calculado nesta tela."
         />
         <EmptyState mensagem="Nenhum Pattern materializado ainda. O Center acorda junto com a memória — cada seção abaixo passa a existir quando os fatos existirem." />
+        {/* E5.7: a primeira projeção também nasce daqui — sem script. */}
+        <div className="mt-4">
+          <ReprojecaoPadroes />
+        </div>
       </div>
     );
   }
@@ -53,6 +58,11 @@ export default function InteligenciaPage() {
         count={a.patterns.total}
         countLabel="padrões"
       />
+
+      {/* ── Reprojeção oficial (E5.7): gatilho humano, relatório de auditoria ── */}
+      <div className="mb-4">
+        <ReprojecaoPadroes />
+      </div>
 
       {/* ── Platform Health: fatos, nunca nota (E5.5) ── */}
       <Card title="Platform Health — fatos, nunca nota" className="mb-4">
