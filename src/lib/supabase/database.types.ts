@@ -442,6 +442,25 @@ export interface DecisaoRow {
 // chave canônica textual para explicabilidade. `updated_at` é controlado
 // pela APLICAÇÃO (sem trigger).
 
+// ---- Knowledge Maturation (AIL, ADR-002) — rodar a migração 027 ----
+// Linha da tabela `conhecimentos` (fatos append-only de maturação).
+export interface ConhecimentoRow {
+  id: string;
+  pattern_id: string;
+  empresa: string;
+  contexto: string;
+  campo: string;
+  valor: string;
+  tipo: string; // 'promocao' | 'rebaixamento'
+  versao: number;
+  autor_humano: string;
+  motivo: string;
+  fotografia: Record<string, unknown>;
+  versao_politica: string;
+  ocorrido_em: string;
+  created_at?: string;
+}
+
 // ---- Registro de Ofertas (AIL, ADR-001) — rodar a migração 025 ----
 // Linha da tabela `ofertas` (log append-only de sugestões apresentadas).
 export interface OfertaRow {

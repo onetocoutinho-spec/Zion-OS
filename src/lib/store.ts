@@ -57,7 +57,8 @@ export type CollectionName =
   | "tabelasMedidas"
   | "decisoes"
   | "padroes"
-  | "ofertas";
+  | "ofertas"
+  | "conhecimentos";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -102,6 +103,9 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   // Registro de Ofertas (AIL, ADR-001): fatos append-only de sugestões
   // apresentadas. Nasce vazio — auditoria real, jamais semeada.
   ofertas: [],
+  // Knowledge Maturation (AIL, ADR-002): fatos append-only de promoção/
+  // rebaixamento do conhecimento institucional. Nasce vazio — jamais semeado.
+  conhecimentos: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----
