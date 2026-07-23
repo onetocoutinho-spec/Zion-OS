@@ -35,6 +35,10 @@ export interface OutcomeExplanation {
     patternId: string;
     confidenceCongelada: string; // a confidence NO INSTANTE da oferta
     origemExplicacao: string;
+    /** Assinatura versionada (E5.9) — null = oferta pré-versionamento. */
+    versaoEngine: string | null;
+    versaoConfidence: string | null;
+    versaoExplainability: string | null;
   };
   /** RESPOSTA: a Decision que respondeu (null quando pending). */
   resposta: {
@@ -91,6 +95,9 @@ export function explicarOutcome(outcome: Outcome, oferta: Oferta): OutcomeExplan
       patternId: oferta.patternId,
       confidenceCongelada: oferta.confidenceUtilizada,
       origemExplicacao: oferta.origemExplicacao,
+      versaoEngine: oferta.versaoEngine ?? null,
+      versaoConfidence: oferta.versaoConfidence ?? null,
+      versaoExplainability: oferta.versaoExplainability ?? null,
     },
     resposta:
       outcome.decisionId && outcome.author && outcome.respondedAt !== null

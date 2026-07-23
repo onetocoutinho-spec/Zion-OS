@@ -20,7 +20,8 @@
 
 import { criarRepositorio } from "../../../lib/repositorio.ts";
 import type { OfertaRow } from "../../../lib/supabase/database.types.ts";
-import { AUTOR_OFERTA, VERSAO_CONTRATO_OFERTA, type Oferta } from "../domain/offer.ts";
+import { type Oferta } from "../domain/offer.ts";
+import { ASSINATURA_SUGGESTION_ENGINE } from "../domain/system-authorship.ts";
 import { ofertaParaApp, ofertaParaBanco } from "../infrastructure/offer.mapper.ts";
 import { reposLeituraPadrao, type ReposDeLeitura, type VisaoPadrao } from "./pattern-browser.ts";
 import { localizarMemoria, type ContextoDeDecisao, type MemoriaContextual } from "./pattern-matching.ts";
@@ -112,9 +113,13 @@ export function montarOferta(
     valorOferecido: top.valor,
     confidenceUtilizada: top.confidence,
     ocorrenciasNoMomento: top.ocorrencias,
-    autorDaOferta: AUTOR_OFERTA,
-    versaoContrato: VERSAO_CONTRATO_OFERTA,
+    // Assinatura versionada do sistema (E5.9) — quem agiu E qual versão de quê.
+    autorDaOferta: ASSINATURA_SUGGESTION_ENGINE.autor,
+    versaoContrato: ASSINATURA_SUGGESTION_ENGINE.versaoContrato,
     origemExplicacao: ORIGEM_EXPLICACAO,
+    versaoEngine: ASSINATURA_SUGGESTION_ENGINE.versaoEngine,
+    versaoConfidence: ASSINATURA_SUGGESTION_ENGINE.versaoConfidence,
+    versaoExplainability: ASSINATURA_SUGGESTION_ENGINE.versaoExplainability,
     correlacao: ctx.correlacao ?? null,
   };
 }

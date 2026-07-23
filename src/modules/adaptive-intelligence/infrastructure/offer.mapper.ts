@@ -26,6 +26,10 @@ export function ofertaParaApp(row: OfertaRow): Oferta {
     autorDaOferta: row.autor_da_oferta,
     versaoContrato: row.versao_contrato,
     origemExplicacao: row.origem_explicacao,
+    // E5.9: null = oferta anterior ao versionamento completo (leitura honesta).
+    versaoEngine: row.versao_engine ?? null,
+    versaoConfidence: row.versao_confidence ?? null,
+    versaoExplainability: row.versao_explainability ?? null,
     correlacao: row.correlacao,
   };
 }
@@ -47,6 +51,9 @@ export function ofertaParaBanco(o: Partial<Oferta>): Partial<OfertaRow> {
   if (o.autorDaOferta !== undefined) r.autor_da_oferta = o.autorDaOferta;
   if (o.versaoContrato !== undefined) r.versao_contrato = o.versaoContrato;
   if (o.origemExplicacao !== undefined) r.origem_explicacao = o.origemExplicacao;
+  if (o.versaoEngine !== undefined) r.versao_engine = o.versaoEngine;
+  if (o.versaoConfidence !== undefined) r.versao_confidence = o.versaoConfidence;
+  if (o.versaoExplainability !== undefined) r.versao_explainability = o.versaoExplainability;
   if (o.correlacao !== undefined) r.correlacao = o.correlacao;
   return r;
 }

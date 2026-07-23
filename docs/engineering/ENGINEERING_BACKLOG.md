@@ -202,7 +202,11 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   GLOSSARY) e sem `agenteCodigo` (YAGNI); parse determinístico de todas as strings
   gravadas + roundtrip; `rotuloAutor` delega ao VO com as mesmas saídas — zero
   migração, suíte inteira sem mudança de expectativa — [relatório](executions/e58-typed-author-report.md)
-- **E5.9 — System Authorship** — versões (Engine/contrato/Confidence/Explainability) em toda oferta; autoria explícita de toda ação automática (fecha S-30)
+- **E5.9 — System Authorship** `✅ (2026-07-23)` — `AssinaturaDeSistema` (autor canônico
+  E5.8 + 4 versões = citações de artefatos congelados); toda Oferta assina completo;
+  componentes futuros obrigados via `assinaturaDe()`; legado = NULL honesto (sem backfill).
+  Fecha a S-30 no perímetro da DI (resíduo do domínio registrado) — [relatório](executions/e59-system-authorship-report.md)
+  - [ ] **Pendência operacional:** aplicar a **migração 026** no SQL Editor (até lá o Engine silencia com segurança — registro falha → sem oferta, ADR-001)
 - **E5.10 — Delegation Runtime** — delegação só com autoridade válida + conhecimento promovido + reversibilidade + auditoria; fatos imutáveis
 
 ## EPIC E6 — Self-service: cadastro generalizado por nicho `P2`
