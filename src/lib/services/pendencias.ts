@@ -1,4 +1,5 @@
 import { criarRepositorio } from "../repositorio";
+import { autorAtual } from "../auth/autorAtual";
 import { pendenciaParaApp, pendenciaParaBanco } from "../supabase/mappers";
 import type { PendenciaRow } from "../supabase/database.types";
 import type { Pendencia } from "../types";
@@ -45,7 +46,7 @@ export async function resolverPendencia(
   journal: DecisionJournal = resolverDecisionJournal(),
 ): Promise<Pendencia | null> {
   const resultado = await repo.atualizar(id, { resolvida: true });
-  if (resultado) observarResolucao(resultado, journal);
+  if (resultado) observarResolucao(resultado, await autorAtual(), journal);
   return resultado;
 }
 
@@ -66,12 +67,17 @@ export async function resolverPendencia(
 // NUNCA é afetada pela guarda.
 //
 // É estritamente fire-and-forget: roda DEPOIS da persistência bem-sucedida,
-// nunca altera o valor de retorno e nunca propaga exceção. Campos indisponíveis
-// nesta camada permanecem vazios de forma deliberada: `autor` e `correlacao`.
+// nunca altera o valor de retorno e nunca propaga exceção. Autoria (E4.2.3):
+// `autor` = usuário da sessão (autorAtual — "" em demo, nunca lança);
+// `correlacao` permanece vazio de forma deliberada (indisponível nesta camada).
 //
 // Rollback trivial: remover este bloco, o parâmetro `journal` e o import da AIL
 // devolve resolverPendencia ao corpo de uma linha anterior, sem resíduo.
-function observarResolucao(pendencia: Pendencia, journal: DecisionJournal): void {
+function observarResolucao(
+  pendencia: Pendencia,
+  autor: string,
+  journal: DecisionJournal
+): void {
   // capturarDecisao aplica as guardas de captura significativa (valor vazio,
   // sem delta) e o fire-and-forget — a resolução jamais é afetada.
   capturarDecisao(
@@ -83,6 +89,7 @@ function observarResolucao(pendencia: Pendencia, journal: DecisionJournal): void
       valorAnterior: null,
       valorNovo: pendencia.descricao,
       origem: "pendencias.resolverPendencia",
+      autor,
     },
     journal
   );

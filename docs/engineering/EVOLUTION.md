@@ -121,6 +121,7 @@ agir sozinha?"**. Dois ciclos de descoberta e uma revisão estrutural:
 | **PR-011** | **Authority Map** | conhecimento institucionalizado | Toda autoridade do sistema é emprestada, escopada e revogável; o OAuth é um protocolo completo de transferência; a revogação é destrutiva e não desfaz o passado; **as Decisions são anônimas** e o sistema não assina — a única lacuna constitucional aberta (Accountability). |
 | **AR-001** | **Constitution Consolidation** | revisão estrutural | 12 invariantes extraídos; um padrão arquitetural único; estrutura da Zion Constitution proposta (10 artigos); maturidade por domínio; veredito: consistente, evolui sem mudança estrutural. |
 | **CR-001** | **Knowledge Institutionalization** | consolidação | Cinco ciclos de descoberta transformados em memória permanente (este lote). |
+| **E4.2.3** | **Decision Authorship** | implementada e validada | Toda Decision capturada assina seu autor (e-mail da sessão; "" em demo). Primeiro passo do Artigo VIII (Accountability); Journal antigo intocado — append-only é também honestidade histórica. |
 
 **O que destrava o próximo passo:** o Suggestion Engine (E4) tem pré-requisitos
 declarados — ADR-001 (registro da oferta), ≥1 Pattern `consistente` em produção,

@@ -4,6 +4,12 @@
 > Fluxo canônico: `Signal Source → capturarDecisao() → registrarDecisao() (Port)
 > → persistência (decisoes) → Pattern Detection (padroes)`.
 
+> **Autoria (E4.2.3):** toda captura preenche `autor` = usuário da sessão
+> (`autorAtual()` — e-mail, fallback id; `""` em demo). O tipo de autor é sempre
+> **humano** por definição (RFC-AIL-002 §3.2: Decision = escolha do cliente);
+> não existem producers de sistema/importação — execuções autônomas não são
+> Decisions.
+
 ## Critério de admissão (as 5 perguntas — todas devem ser SIM)
 
 1. Existe uma **decisão humana**?

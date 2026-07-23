@@ -6,6 +6,7 @@
 // PÚBLICOS do canal (status/config) — o "conectado" é derivado de `ativo`.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { autorAtual } from "../auth/autorAtual";
 import {
   capturarDecisao,
   type CapturaDeDecisao,
@@ -128,7 +129,8 @@ export async function salvarCanal(
   const resultado = data ? paraApp(data as CanalRowPublic) : null;
   if (resultado) {
     const capturaTipo = montarCapturaTipoAnuncio(dados, anterior);
-    if (capturaTipo) capturarDecisao(capturaTipo, journal);
+    // Autoria (E4.2.3): resolvida só quando haverá captura; o builder segue puro.
+    if (capturaTipo) capturarDecisao({ ...capturaTipo, autor: await autorAtual() }, journal);
   }
   return resultado;
 }

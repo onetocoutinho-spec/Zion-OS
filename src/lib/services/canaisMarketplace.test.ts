@@ -42,6 +42,17 @@ test("canal novo: decisão ausente→valor, entidade determinística", () => {
   assert.equal(captura.origem, "canaisMarketplace.salvarCanal");
 });
 
+test("autoria (E4.2.3): o spread do wiring leva o autor até a Decision", () => {
+  // salvarCanal faz `capturarDecisao({ ...capturaTipo, autor: await autorAtual() })`
+  // — este teste cobre exatamente esse caminho com o builder real.
+  const journal = new InMemoryDecisionJournal();
+  const captura = montarCapturaTipoAnuncio({ clienteId: "cli-01", tipoAnuncio: "Classic" }, null);
+  assert.ok(captura);
+  capturarDecisao({ ...captura, autor: "equipe@zion.com" }, journal);
+  assert.equal(journal.recebidas.length, 1);
+  assert.equal(journal.recebidas[0].autor, "equipe@zion.com");
+});
+
 test("canal existente: valorAnterior é a proposta vigente do sistema", () => {
   const captura = montarCapturaTipoAnuncio(
     { clienteId: "cli-01", tipoAnuncio: "Classic" },
