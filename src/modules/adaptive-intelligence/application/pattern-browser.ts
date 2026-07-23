@@ -17,6 +17,7 @@
 // Domínio e Detector permanecem intocados (Architecture Freeze v1).
 
 import { criarRepositorio } from "../../../lib/repositorio.ts";
+import { autorDe, rotuloDe } from "../domain/author.ts";
 import type { DecisaoRow, PadraoRow } from "../../../lib/supabase/database.types.ts";
 import type { Decision } from "../domain/decision.ts";
 import type { Padrao } from "../domain/pattern.ts";
@@ -113,9 +114,13 @@ export interface VisaoSlot {
 
 // ── Funções PURAS ────────────────────────────────────────────────────────────
 
-/** Autor legível. As Decisions anteriores à E4.2.3 são anônimas de fato. */
+/**
+ * Autor legível — desde a E5.8, via o Value Object tipado (`autorDe`): mesma
+ * saída de sempre para os fatos existentes (e-mails e ""), e rótulo de sistema
+ * para autoria de componente. As Decisions pré-E4.2.3 são anônimas de fato.
+ */
 export function rotuloAutor(autor: string): string {
-  return autor.trim() ? autor : "não registrado";
+  return rotuloDe(autorDe(autor));
 }
 
 /**
