@@ -1,22 +1,33 @@
 "use client";
 
-// Memória Contextual (E4.1) — o componente de assistência à decisão.
+// Memória Contextual (E4.1) + Sugestão (E4.2) — a superfície única da AIL num
+// campo de decisão.
 //
-// Renderizado DENTRO de um formulário de decisão real, responde em segundos:
-// "já fizemos isso antes? o que normalmente fazemos? quão confiável? quem?".
-// SILENCIOSO quando não há memória (a tela fica exatamente como hoje —
-// aditividade, RFC-AIL-005 §6.2). NUNCA escreve no campo, NUNCA tem botão de
-// aplicar: sugestão é EVIDÊNCIA, nunca comando — o humano sempre decide.
+// Dois níveis, exatamente os do contrato PD-001:
+//   N1 · INFORMAR — existe memória no slot: mostra o mais frequente, a
+//        confidence e o caminho das evidências. Silencioso sem memória.
+//   N2 · SUGERIR — Pattern ELEGÍVEL (consistente ∧ slot sem disputa — RFC-
+//        AIL-005 §6.1) e o campo está VAZIO (Lei da Abstenção: só o vazio é
+//        pré-preenchido; escolha humana jamais é sobrescrita): o Engine
+//        registra a OFERTA (fato imutável — ADR-001) e pré-preenche o campo
+//        com valor editável, removível e substituível.
+//
+// NUNCA bloqueia, NUNCA insiste (uma oferta por montagem; remover não
+// re-oferece), NUNCA esconde origem/confidence/evidências.
 
 import Link from "next/link";
-import { useCallback } from "react";
-import { Brain, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Brain, AlertTriangle, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { useLiveQuery } from "@/lib/hooks";
 import {
   localizarMemoria,
   propostaSegue,
 } from "@/modules/adaptive-intelligence/application/pattern-matching";
+import {
+  gerarSugestao,
+  type Sugestao,
+} from "@/modules/adaptive-intelligence/application/suggestion-engine";
 
 const TOM_CONFIDENCE = { observado: "gray", recorrente: "blue", consistente: "green" } as const;
 
@@ -27,6 +38,14 @@ interface MemoriaContextualProps {
   campo: string;
   /** O valor atualmente no campo — comparado localmente (sem refetch por tecla). */
   proposta?: string;
+  /** Entidade em edição (null/omitido em criação) — vai para o fato-da-oferta. */
+  entidade?: { tipo: string; id: string } | null;
+  /**
+   * Habilita o nível SUGERIR: chamado com o valor oferecido (pré-preenchimento)
+   * e com "" quando o operador remove a sugestão. Sem este callback, o
+   * componente permanece só no nível INFORMAR.
+   */
+  onPreencher?: (valor: string) => void;
 }
 
 function dataCurta(iso: string): string {
@@ -34,21 +53,86 @@ function dataCurta(iso: string): string {
   return Number.isNaN(t) ? iso : new Date(t).toLocaleDateString("pt-BR");
 }
 
-export function MemoriaContextual({ empresa, contexto, campo, proposta }: MemoriaContextualProps) {
+export function MemoriaContextual({
+  empresa,
+  contexto,
+  campo,
+  proposta,
+  entidade,
+  onPreencher,
+}: MemoriaContextualProps) {
   const consulta = useCallback(
-    () =>
-      empresa
-        ? localizarMemoria({ empresa, contexto, campo })
-        : Promise.resolve(null),
+    () => (empresa ? localizarMemoria({ empresa, contexto, campo }) : Promise.resolve(null)),
     [empresa, contexto, campo]
   );
   const { data: memoria } = useLiveQuery(consulta, [empresa, contexto, campo]);
 
-  // Silêncio = a tela de hoje. Sem memória não há nada a revelar.
+  const [sugestao, setSugestao] = useState<Sugestao | null>(null);
+  // Uma tentativa de oferta por (empresa, slot): nunca insistir, nunca re-oferecer.
+  const ofertaTentada = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!empresa || !onPreencher || !memoria?.encontrada) return;
+    const chaveTentativa = `${empresa}|${contexto}|${campo}`;
+    if (ofertaTentada.current === chaveTentativa) return;
+    // Lei da Abstenção: só o VAZIO recebe oferta.
+    if ((proposta ?? "").trim()) return;
+    ofertaTentada.current = chaveTentativa;
+    void gerarSugestao({ empresa, contexto, campo, entidade: entidade ?? null }).then((s) => {
+      if (s) {
+        setSugestao(s);
+        onPreencher(s.valor);
+      }
+    });
+    // proposta deliberadamente fora das deps: a oferta considera o estado no
+    // momento da memória carregada; digitação posterior não dispara ofertas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresa, contexto, campo, memoria, onPreencher, entidade]);
+
   if (!memoria?.encontrada || !memoria.maisFrequente) return null;
   const top = memoria.maisFrequente;
-  const segue = propostaSegue(proposta, { campo: top.campo, valor: top.valor });
 
+  // ── N2 · SUGESTÃO ATIVA (oferta registrada; campo pré-preenchido) ──────────
+  if (sugestao && (proposta ?? "").trim() === sugestao.valor) {
+    return (
+      <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.05] px-3 py-2.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1.5 font-medium text-emerald-300">
+            <Sparkles size={13} /> Sugerido pela memória organizacional
+          </span>
+          <span className="font-mono text-zinc-100">{sugestao.valor}</span>
+          <Badge tone={TOM_CONFIDENCE[sugestao.confidence]}>{sugestao.confidence}</Badge>
+          <span className="text-zinc-400">
+            {sugestao.ocorrencias} decisões · última em {dataCurta(sugestao.ultimaOcorrencia)} · por{" "}
+            {sugestao.ultimoAutor}
+          </span>
+          <Link
+            href={`/ail/padroes/${sugestao.patternId}`}
+            className="ml-auto font-medium text-sky-400 hover:text-sky-300"
+          >
+            Por quê? Ver evidências →
+          </Link>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-3 text-zinc-500">
+          <span>{sugestao.motivoElegibilidade}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setSugestao(null);
+              onPreencher?.("");
+            }}
+            className="flex items-center gap-1 text-zinc-400 hover:text-zinc-200"
+          >
+            <X size={11} /> Remover sugestão
+          </button>
+          <span className="text-zinc-600">— editável e substituível; a decisão é sua.</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ── N1 · INFORMAÇÃO (memória existe; sem oferta ativa) ─────────────────────
+  const segue = propostaSegue(proposta, { campo: top.campo, valor: top.valor });
   return (
     <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.04] px-3 py-2.5 text-xs">
       <div className="flex flex-wrap items-center gap-2">

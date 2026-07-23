@@ -56,7 +56,8 @@ export type CollectionName =
   | "anunciosGerados"
   | "tabelasMedidas"
   | "decisoes"
-  | "padroes";
+  | "padroes"
+  | "ofertas";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -98,6 +99,9 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   // Pattern Detector (AIL): projeção materializada de padrões. Nasce vazia —
   // é derivada do log de decisões, nunca semeada.
   padroes: [],
+  // Registro de Ofertas (AIL, ADR-001): fatos append-only de sugestões
+  // apresentadas. Nasce vazio — auditoria real, jamais semeada.
+  ofertas: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----

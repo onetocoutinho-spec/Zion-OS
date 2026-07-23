@@ -442,6 +442,27 @@ export interface DecisaoRow {
 // chave canônica textual para explicabilidade. `updated_at` é controlado
 // pela APLICAÇÃO (sem trigger).
 
+// ---- Registro de Ofertas (AIL, ADR-001) — rodar a migração 025 ----
+// Linha da tabela `ofertas` (log append-only de sugestões apresentadas).
+export interface OfertaRow {
+  id: string;
+  empresa: string;
+  contexto: string;
+  campo: string;
+  entidade_tipo: string | null;
+  entidade_id: string | null;
+  pattern_id: string;
+  valor_oferecido: string;
+  confidence_utilizada: string;
+  ocorrencias_no_momento: number;
+  autor_da_oferta: string;
+  versao_contrato: string;
+  origem_explicacao: string;
+  correlacao: string | null;
+  oferecida_em: string;
+  created_at?: string;
+}
+
 export interface PadraoRow {
   id: string;
   pattern_key: string;

@@ -112,9 +112,13 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 > PR-007**: ≥ 1 Pattern `consistente` em produção (estado na data: 1 Pattern,
 > suporte 1, `observado`); (c) herda a **Lei da Abstenção** (PR-010): oferta
 > editável, nunca sobrescrita de escolha humana.
-- **Task E4.2.1 — Planejamento sob o Freeze** (RFC-AIL-005 §6 já especifica)
-  - [ ] Plano de release no padrão consolidado (etapas pequenas, validação entre elas)
-  - [ ] Primeiro consumidor: 1 contexto, 1 campo (slot consistente → oferta editável + explicação)
+- **Task E4.2.1 — R-SE-1 · Suggestion Engine** `✅ E4.2 (2026-07-22)`
+  - [x] Descoberta de elegibilidade (PD-001) → contrato citável (silêncio/informar/sugerir)
+  - [x] Engine: elegibilidade EXATA (005 §6.1, zero regra nova) + **Registro de Ofertas** (migração **025**, append-only, base congelada no instante, assinada — ADR-001 materializada; "o fato antes da fala": registro falhou → sem sugestão)
+  - [x] Primeiro consumidor: `catalogo/categoriaMarketplace` no ProdutoForm — pré-preenche SÓ o vazio (Lei da Abstenção), editável/removível/substituível, uma oferta por montagem
+  - [x] Outcome Readiness (identidade da oferta pronta p/ `f(ofertas × Journal)`); dinâmica de auto-reforço registrada como insumo do design de Outcomes — [relatório](executions/e42-suggestion-engine-report.md)
+  - [ ] **Pendência operacional:** aplicar a migração 025 em produção (SQL Editor — até lá o Engine silencia também por indisponibilidade do registro)
+  - [ ] **Pendência de dados:** 1º Pattern `consistente` real (em produção o Engine nasce em silêncio — critério funcionando)
 - **Task E4.2.3 — Dívida de captura: `Decision.autor` (PR-011)** `✅ (2026-07-22)`
   - [x] `autorAtual()` (e-mail da sessão; "" em demo) preenchido nos 4 pontos de captura — nenhuma Decision futura nasce anônima; Decisions existentes intocadas (append-only); 7 testes novos (325 total)
 - **Task E4.2.2 — Novos Producers (cobertura R-DJ-4)** `✅ PR-004 (2026-07-22)`

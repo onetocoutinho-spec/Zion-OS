@@ -69,7 +69,7 @@
 | S-27 | **Delegation Policy** — política implícita ("abstenção + regra externa verificável + erro barato"); nunca escrita como artefato | disperso no código | Policy como documento (não engine) |
 | S-28 | **Delegation Confidence** — escada até `Automatizavel` (002 §7, dois gatilhos); gated em Outcomes | RFC-AIL-002 §7 | Suggestion Engine → automação opt-in |
 | S-29 | **Delegation Scope** — substrato pronto: tenant em tudo + capability primitives ([[S-02]]: `eh_equipe`, `cliente_do_usuario`) | RLS (016) | Capabilities (Z6) |
-| S-30 | **Delegation Audit** — humanos assinam (`aprovadoPor/Em`); **as execuções autônomas do sistema não deixam assinatura** | `anunciosGerados.ts` | pré-requisito para subir nível de delegação |
+| S-30 | **Delegation Audit** *(parcialmente germinada — E4.2)* — humanos assinam (`aprovadoPor/Em`); as execuções autônomas não assinavam. Desde o E4.2 as **ofertas** assinam (`autor_da_oferta = 'suggestion-engine'`, migração 025); as demais execuções autônomas (guia, token, fallback) seguem sem rastro | `anunciosGerados.ts` · `ofertas` | assinar as execuções restantes — pré-requisito para subir nível |
 | S-31 | **Human Override** — invariante praticado: tudo editável (payload dry-run, defaults, Suggestion "editável" — 005 §6.2) | `montarPreviewML` | Suggestion Engine |
 | S-32 | **Rollback Decision** — assimétrico: AIL reversível por construção (005 §10); domínio tem duas operações sem volta (publicar, substituir importados) — a fronteira dura da delegação | `publicacaoML.ts` · `excluirAnunciosImportadosML` | nenhuma das duas sobe de nível sem ADR |
 

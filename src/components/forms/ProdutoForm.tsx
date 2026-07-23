@@ -131,13 +131,17 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
           <Field label="Categoria marketplace sugerida" hint="Ex.: MLB1276 - Calçados > Tênis">
             <Input value={form.categoriaMarketplaceSugerida} onChange={(e) => set("categoriaMarketplaceSugerida", e.target.value)} />
           </Field>
-          {/* Memória Contextual (E4.1): evidência, nunca comando — silenciosa sem memória. */}
+          {/* Memória Contextual (E4.1/E4.2): informa sempre que há memória; SUGERE
+              (pré-preenche o vazio, oferta registrada) só com Pattern elegível.
+              Evidência, nunca comando — silenciosa sem memória. */}
           <div className="sm:col-span-2">
             <MemoriaContextual
               empresa={(clientes ?? []).find((c) => c.empresa === form.cliente)?.id}
               contexto="catalogo"
               campo="categoriaMarketplace"
               proposta={form.categoriaMarketplaceSugerida}
+              entidade={inicial ? { tipo: "produto", id: inicial.id } : null}
+              onPreencher={(valor) => set("categoriaMarketplaceSugerida", valor)}
             />
           </div>
           <Field label="Marca">
