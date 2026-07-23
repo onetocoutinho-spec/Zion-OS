@@ -207,7 +207,15 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   componentes futuros obrigados via `assinaturaDe()`; legado = NULL honesto (sem backfill).
   Fecha a S-30 no perímetro da DI (resíduo do domínio registrado) — [relatório](executions/e59-system-authorship-report.md)
   - [ ] **Pendência operacional:** aplicar a **migração 026** no SQL Editor (até lá o Engine silencia com segurança — registro falha → sem oferta, ADR-001)
-- **E5.10 — Delegation Runtime** — delegação só com autoridade válida + conhecimento promovido + reversibilidade + auditoria; fatos imutáveis
+- **E5.10a — Knowledge Maturation** `✅ (2026-07-23)` — a ADR-002 executada, nunca
+  reinterpretada: fatos append-only (migração **027**) + fotografia congelada; promoção
+  híbrida assinada; rebaixamento por fato; régua recomeça por versão; Etapa 8 no Center
+- **E5.10b — Delegation Runtime** `✅ (2026-07-23)` — grant humano sobre Knowledge
+  VIGENTE (**jamais Confidence** — teste explícito); fatos (migração **028**) com
+  autoridade+assinatura+evidências; execução = oferta assinada pelo runtime → herda a
+  auditoria E5.0→E5.3; rebaixar revoga o futuro; Etapa 9 no Center; delegação precede
+  sugestão no form — **ROADMAP E7 COMPLETO (11/11)** — [relatório](executions/e510-institucionalizacao-report.md)
+  - [ ] **Pendências operacionais (SQL Editor, em ordem):** migrações **026 → 027 → 028** (até lá Engine e Runtime silenciam com segurança)
 
 ## EPIC E6 — Self-service: cadastro generalizado por nicho `P2`
 *O pivot do produto (cliente opera sozinho). Bloco já pedido; fundação pronta no portal.*

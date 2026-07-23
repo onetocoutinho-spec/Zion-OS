@@ -58,7 +58,8 @@ export type CollectionName =
   | "decisoes"
   | "padroes"
   | "ofertas"
-  | "conhecimentos";
+  | "conhecimentos"
+  | "delegacoes";
 
 // Versão do schema no localStorage. Se o formato dos dados mudar em uma
 // versão futura, incrementar aqui força um re-seed limpo.
@@ -106,6 +107,9 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   // Knowledge Maturation (AIL, ADR-002): fatos append-only de promoção/
   // rebaixamento do conhecimento institucional. Nasce vazio — jamais semeado.
   conhecimentos: [],
+  // Delegation Runtime (AIL, E5.10b): fatos append-only de concessão/revogação
+  // de delegação sobre Knowledge vigente. Nasce vazio — jamais semeado.
+  delegacoes: [],
 };
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----
