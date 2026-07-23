@@ -9,6 +9,7 @@ import { CADASTRO_STATUS, ETAPA_STATUS, MARKETPLACES, PRIORIDADES, TIPOS_PRODUTO
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { atualizarProduto, criarProduto } from "@/lib/services/produtos";
+import { MemoriaContextual } from "@/components/ail/MemoriaContextual";
 import type { Produto } from "@/lib/types";
 
 interface ProdutoFormProps {
@@ -130,6 +131,15 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
           <Field label="Categoria marketplace sugerida" hint="Ex.: MLB1276 - Calçados > Tênis">
             <Input value={form.categoriaMarketplaceSugerida} onChange={(e) => set("categoriaMarketplaceSugerida", e.target.value)} />
           </Field>
+          {/* Memória Contextual (E4.1): evidência, nunca comando — silenciosa sem memória. */}
+          <div className="sm:col-span-2">
+            <MemoriaContextual
+              empresa={(clientes ?? []).find((c) => c.empresa === form.cliente)?.id}
+              contexto="catalogo"
+              campo="categoriaMarketplace"
+              proposta={form.categoriaMarketplaceSugerida}
+            />
+          </div>
           <Field label="Marca">
             <Input value={form.marca} onChange={(e) => set("marca", e.target.value)} />
           </Field>
