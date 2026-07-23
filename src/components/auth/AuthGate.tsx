@@ -321,7 +321,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   // A página de definir senha (convite) é pública e não passa pelo gate de
   // perfil — assim o convidado não é mandado ao painel antes de definir a senha.
-  if (pathname === ROTA_DEFINIR_SENHA) return <>{children}</>;
+  // /z (ENG-003) é a superfície pública, de tela cheia, do Shell da Zion — sem
+  // dados nem domínio; o app só hospeda a rota (o Shell não conhece este app).
+  if (pathname === ROTA_DEFINIR_SENHA || pathname === "/z") return <>{children}</>;
 
   const estado = decidirEstadoAuth(faseSessao, fasePerfil);
 

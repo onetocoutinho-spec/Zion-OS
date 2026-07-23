@@ -79,7 +79,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // (depois de todos os hooks acima, para não alterar a ordem de hooks.)
   // /definir-senha (aceitação de convite) é uma tela pública de tela cheia,
   // sem a casca da equipe.
-  if (pathname === "/definir-senha" || estaNoPortalCliente(pathname)) return <>{children}</>;
+  // /z (ENG-003) é a superfície do Shell da Zion — moldura própria, tela cheia;
+  // o app apenas hospeda a rota (o Shell não conhece este app).
+  if (pathname === "/definir-senha" || pathname === "/z" || estaNoPortalCliente(pathname)) return <>{children}</>;
 
   async function sair() {
     await getSupabase().auth.signOut();
