@@ -99,9 +99,9 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 - [x] **Fronteira declarada:** NÃO é o R-SE-1 (sem oferta aplicável → sem fato-de-oferta → ADR-001 não acionada; pré-requisitos intactos) — [relatório](executions/e41-pattern-matching-report.md)
 
 ### Feature E4.1 — Superfície oficial da projeção (pré-R-SE-1)
-- **Task E4.1.1 — Invocação controlada de `projetarPadroes()`**
-  - [ ] Decidir a forma (rota autenticada da equipe OU integração ao worker/cron existente — reusar o padrão `fila_otimizacao`)
-  - [ ] Substituir definitivamente o fluxo de script temporário
+- **Task E4.1.1 — Invocação controlada de `projetarPadroes()`** `✅ E5.7 (2026-07-22)`
+  - [x] Forma decidida por evidência: botão no DI Center (navegador, sessão autenticada, RLS — mesma via de toda a AIL); gatilho sempre humano, sem cron
+  - [x] Script temporário aposentado (`scripts/validar-r-pd-1.ts` sem razão de existir)
 - **Task E4.1.2 — Métricas do Journal (RFC-AIL-001 §9)**
   - [ ] Materializar as contagens definidas (decisões por contexto/empresa, campos mais corrigidos) como consultas/projeção — sem dashboard
 
@@ -188,7 +188,11 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   `/ail/inteligencia/[id]` (linha do tempo lógica em 7 etapas, cada uma com origem);
   analytics embutido idêntico ao E5.5 (testado); termos promovido/confiável
   inexistentes — [relatório](executions/e56-di-center-report.md)
-- **E5.7 — Reprojection Runtime** — aposenta scripts; reprojeção completa/parcial + auditoria + idempotência (absorve a antiga E4.1.1)
+- **E5.7 — Reprojection Runtime** `✅ (2026-07-22)` — `reprojetar({empresa?})` com
+  relatório de auditoria (diffs, órfãos listados-jamais-apagados) e **idempotência
+  verificada na execução** (núcleo 2× → idêntico — confluência provada a cada uso);
+  parcial por empresa segura por construção; botão no DI Center (inclusive vazio);
+  absorve a E4.1.1 e aposenta o script — [relatório](executions/e57-reprojection-runtime-report.md)
 - **E5.8 — Typed Author** — materializa o `Autor{tipo,id,…}` adormecido (S-35), retrocompatível
 - **E5.9 — System Authorship** — versões (Engine/contrato/Confidence/Explainability) em toda oferta; autoria explícita de toda ação automática (fecha S-30)
 - **E5.10 — Delegation Runtime** — delegação só com autoridade válida + conhecimento promovido + reversibilidade + auditoria; fatos imutáveis
