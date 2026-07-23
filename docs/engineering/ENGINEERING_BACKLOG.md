@@ -149,6 +149,27 @@ artefatos: plano (PR-002) · [snapshot](executions/2026-07-22-pr002-security-sna
 
 ---
 
+## EPIC E7 — Decision Intelligence Runtime `P1` *(roadmap 2026-07-22)*
+*Engenharia pura sobre a arquitetura consolidada — sem novas RFCs/ADRs/descobertas.
+Nota de namespace: os itens usam os rótulos E5.x do roadmap do mantenedor (≠ EPIC
+E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
+
+- **E5.0 — Offer Observation** `✅ (2026-07-22)` — 3 classes de evidência
+  (respondida_igual/diferente/sem_resposta) sobre `ofertas × decisoes`; limites
+  declarados (criação não captura; remoção sem fato; sem janela) — [relatório](executions/e50-offer-observation-report.md)
+- **E5.1 — Outcome Projection** — `Outcomes = f(ofertas × Journal)` (ADR-001);
+  herda as classes e limites da E5.0; reconhecer aceitação como *confirmada*
+  (nunca auto-reforço)
+- **E5.2 — Outcome Explainability** — qual Offer/Decision/operador/tempo/alteração
+- **E5.3 — Confidence Evolution** — Confidence acima de `consistente` via Outcomes (fronteira dura da 004 finalmente cruzada — pelo Engine, como previsto)
+- **E5.4 — Knowledge Promotion** — promoção derivada (motivo/evidências/histórico/reversibilidade)
+- **E5.5 — Suggestion Analytics** — projeções de taxas (aceitação/edição/ignoradas) e uso de Patterns
+- **E5.6 — DI Dashboard** — visão operacional sobre as projeções existentes
+- **E5.7 — Reprojection Runtime** — aposenta scripts; reprojeção completa/parcial + auditoria + idempotência (absorve a antiga E4.1.1)
+- **E5.8 — Typed Author** — materializa o `Autor{tipo,id,…}` adormecido (S-35), retrocompatível
+- **E5.9 — System Authorship** — versões (Engine/contrato/Confidence/Explainability) em toda oferta; autoria explícita de toda ação automática (fecha S-30)
+- **E5.10 — Delegation Runtime** — delegação só com autoridade válida + conhecimento promovido + reversibilidade + auditoria; fatos imutáveis
+
 ## EPIC E6 — Self-service: cadastro generalizado por nicho `P2`
 *O pivot do produto (cliente opera sozinho). Bloco já pedido; fundação pronta no portal.*
 
