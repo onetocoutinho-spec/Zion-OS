@@ -19,6 +19,7 @@
 | [UX-003](UX-003-product-experience-architecture.md) | **Experience Architecture** | presença, áreas, navegação-como-continuidade, tempo, confiança percebida |
 | [UI-001](UI-001-interface-object-model.md) | **Interface Object Model** | os 11 objetos (+3 virtuais), grafo, contratos para wireframes |
 | [UX-004](UX-004-structural-wireframes.md) | **Structural Wireframes** | as 6 telas + 1 primeiro-plano; estados; fluxos; ASCII |
+| [UX-010](UX-010-product-navigation-model.md) | **Product Navigation Model** | como o humano percorre a Zion: SO de operações; unidade dupla (Contexto×Missão); taxonomia de navegação; feedback |
 | [CONST-001](CONST-001-zion-constitution.md) | **Zion Constitution** | a porta de entrada: identidade, 15 leis, precedência, algoritmo decisório, §Emenda, manifesto |
 | [VAL-001](VAL-001-constitutional-stress-test.md) | **Stress Test** | o ataque, as 10 emendas (E1–E9 aplicadas), riscos permanentes |
 | [SYS-001](system/002-product-laws.md) | **Product Laws** (`system/002`) | as leis da expressão visual — ocupa oficialmente o elo 002 da cadeia da Ontologia |
