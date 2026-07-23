@@ -79,7 +79,7 @@
 |---|---|---|---|
 | S-33 | **Authority Lifecycle** — conceder→escopar→exercer→renovar→auditar→revogar, com 5 de 6 elos vivos; o elo ausente é *Responder* (accountability) | OAuth · RLS · rotação · desconexão | Capabilities (Z6) · Capítulo III |
 | S-34 | **Canal como grant materializado** — o agregado-autoridade: custodia o token, `ativo` (interruptor), rotação (renovação) e desconexão **destrutiva** (`ativo=false → refresh_token = null`) | `canaisMarketplace.ts` | modelo de referência para toda delegação futura |
-| S-35 | **Autor tipado adormecido** — a fundação E5.1 já modela `Autor{tipo, id, agenteCodigo, confianca}` persistido (`autor_tipo`/`agente_codigo`); é a planta pronta para "o sistema assina" ([[S-30]]) | `src/application` · `produto-mestre-db-mapper.ts` | Accountability — acordar exige o ciclo E5.1 |
+| S-35 | **Autor tipado adormecido** *(germinou — E5.8, 2026-07-23)* — o CONCEITO foi colhido como VO `Autor{tipo, id}` em `domain/author.ts` (deliberadamente sem `confianca`/`agenteCodigo` — GLOSSARY/YAGNI); a fundação (`Autor` completo em `src/application`) segue adormecida, aguardando a colheita E5.1.1 | `domain/author.ts` (vivo) · `src/application` (adormecido) | Accountability ([[S-30]]) — a E5.9 usa o prefixo `sistema:` |
 | S-36 | **Decisions anônimas** — `Decision.autor` existe desde a 022 e nenhum produtor o preenche (`autor: ""`); dívida de captura barata com alto valor de governança | `capturarDecisao` + 6 producers | preencher `autor` (implementação futura) |
 
 ## Como usar este registro
