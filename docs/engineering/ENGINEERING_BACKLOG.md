@@ -179,7 +179,10 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
 - **ADR-002 — Knowledge Promotion Policy** `⏳ GOVERNANÇA (mantenedor)` — decidir as 4
   dependências acima; a Knowledge Promotion executável (motivo/evidências/histórico/
   reversibilidade) implementa-se APÓS a ADR
-- **E5.5 — Suggestion Analytics** — projeções de taxas (aceitação/edição/ignoradas) e uso de Patterns
+- **E5.5 — Intelligence Analytics** `✅ (2026-07-22)` — `DecisionIntelligenceAnalytics`
+  serializável: Patterns/Offers/Outcomes/Confidence/Readiness + **Health sem nota**
+  (fatos + principais bloqueios); metodologia obrigatória em toda seção; composição
+  pura sobre E5.1/3/4 sem recalcular — [relatório](executions/e55-intelligence-analytics-report.md)
 - **E5.6 — DI Dashboard** — visão operacional sobre as projeções existentes
 - **E5.7 — Reprojection Runtime** — aposenta scripts; reprojeção completa/parcial + auditoria + idempotência (absorve a antiga E4.1.1)
 - **E5.8 — Typed Author** — materializa o `Autor{tipo,id,…}` adormecido (S-35), retrocompatível
