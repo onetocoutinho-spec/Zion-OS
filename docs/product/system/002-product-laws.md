@@ -1,10 +1,19 @@
-# SYS-001 — Zion Design System Constitution
+# system/002 — Product Laws (SYS-001 · Zion Design System Constitution)
+
+```
+─────────────────────────────────────────────
+Status:      OCUPA OFICIALMENTE o elo system/002 — Product Laws
+             (decisão do mantenedor, 2026-07-23)
+Precedência: sob a Ontologia Normativa (system/000); acima de toda
+             instanciação (system/004, tokens, plataformas)
+─────────────────────────────────────────────
+```
 
 > As leis da expressão visual — para que qualquer interface, em qualquer
-> plataforma, pareça inevitavelmente Zion. **Posição na cadeia:** sob a
-> Ontologia Normativa (`system/000`); candidato ao elo `system/002 · Product
-> Laws` (decisão do mantenedor). Toda lei daqui é instanciável como Tokens
-> (Posições e Matérias da Ontologia) sem criar conceito novo.
+> plataforma, pareça inevitavelmente Zion. Toda lei daqui é instanciável como
+> Tokens (Posições Foundation/Semantic/Component; Matérias Color, Typography,
+> Spacing, Motion, State, A11y) sem criar conceito novo — como a Ontologia
+> exige.
 
 ## As cinco sensações (filosofia visual)
 

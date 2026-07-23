@@ -21,7 +21,7 @@
 | [UX-004](UX-004-structural-wireframes.md) | **Structural Wireframes** | as 6 telas + 1 primeiro-plano; estados; fluxos; ASCII |
 | [CONST-001](CONST-001-zion-constitution.md) | **Zion Constitution** | a porta de entrada: identidade, 15 leis, precedência, algoritmo decisório, §Emenda, manifesto |
 | [VAL-001](VAL-001-constitutional-stress-test.md) | **Stress Test** | o ataque, as 10 emendas (E1–E9 aplicadas), riscos permanentes |
-| [SYS-001](system/SYS-001-design-system-constitution.md) | **Design System Constitution** | as leis da expressão visual, sob a Ontologia (`system/000`) |
+| [SYS-001](system/002-product-laws.md) | **Product Laws** (`system/002`) | as leis da expressão visual — ocupa oficialmente o elo 002 da cadeia da Ontologia |
 
 **Nota de estratos (PX-006):** existem duas cadeias normativas — a cadeia **PX/UX/DOM/VOC**
 (a experiência e o domínio) e a cadeia **`system/`** (a expressão do design, com raiz na
