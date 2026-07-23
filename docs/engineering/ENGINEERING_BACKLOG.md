@@ -176,9 +176,13 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   ∃ Outcomes); bloqueio permanente `decisao_de_promocao_indefinida_adr_002`; as 4 lacunas
   da promoção DECLARADAS como `DEPENDENCIAS_ADR_002` (quantos outcomes; independência;
   "confirmação sustentada"; tempo) — lacuna arquitetural não se resolve com código — [relatório](executions/e54-promotion-readiness-report.md)
-- **ADR-002 — Knowledge Promotion Policy** `⏳ GOVERNANÇA (mantenedor)` — decidir as 4
-  dependências acima; a Knowledge Promotion executável (motivo/evidências/histórico/
-  reversibilidade) implementa-se APÓS a ADR
+- **ADR-002 — Knowledge Maturation Policy** `✅ ACEITA (2026-07-23, PR #23)` —
+  Knowledge = **agregado próprio** (fatos append-only de maturação + fotografia congelada,
+  referência ao PatternId); promovível = elegível ∧ respondidos ≥2 ∧ última resposta =
+  confirmed (zero números novos; sem janela); promoção **híbrida** (sistema propõe, humano
+  promove assinado); Delegation dependerá de Knowledge VIGENTE, jamais de Confidence.
+  **Destrava:** Knowledge Maturation executável (migração ≥026 + projeção de vigência +
+  botão no Center) e o gate da E5.10 — [ADR-002](../zion-os/engineering/ADR-002-knowledge-maturation-policy.md)
 - **E5.5 — Intelligence Analytics** `✅ (2026-07-22)` — `DecisionIntelligenceAnalytics`
   serializável: Patterns/Offers/Outcomes/Confidence/Readiness + **Health sem nota**
   (fatos + principais bloqueios); metodologia obrigatória em toda seção; composição

@@ -1,6 +1,6 @@
 # ADR-002 — Knowledge Maturation Policy
 
-> **Status:** Proposto (aguarda aceite do mantenedor — o merge é o aceite)
+> **Status:** **ACEITO** (merge do mantenedor em 2026-07-23 — PR #23)
 > **Data:** 2026-07-23 · **Capítulo:** III — Decision Intelligence
 > **Autoridade:** segunda ADR sob o Architecture Freeze v1 (RFC-AIL-002 §14).
 > **Instrução do mantenedor incorporada:** *"Não assuma que a melhor solução é
