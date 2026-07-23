@@ -37,6 +37,13 @@ Dali em diante, a origem é irrelevante.
 | **F6 Demanda** | comprador age → classifica urgência → rascunha com a verdade → "resposta pronta" → **aprovar/editar** (ou combinado: envia) → responde/encaminha → aprende o tom → Diário → atendido |
 | **F7 Evolução** | percepção madura → junta histórico → formula o Combinado → Conversas → **conceder/agora não** → faz sozinha (com volta) → mede a si → Combinados+Diário → um peso a menos |
 
+## Emenda (VAL-001·E3, aprovada 2026-07-23) — a Missão Encomendada
+
+O Cliente pode **iniciar** trabalho: pede (pela Conversa ou de uma consulta —
+"reprecifique a marca X"), a Zion **prepara** como prepara qualquer missão, e a
+encomenda entra na Fila com a **anatomia idêntica**. A Fila aceita encomendas
+do dono; a Zion continua jamais empurrando trabalho cru de volta.
+
 ## Invariantes (idênticas para todos os perfis)
 
 1. A ordem do ciclo · 2. A anatomia da missão (validada: 6 partes, inalterada;

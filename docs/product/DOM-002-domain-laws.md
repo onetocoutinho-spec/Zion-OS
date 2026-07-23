@@ -28,6 +28,15 @@ L1 · Promessa (raiz)
 | **L11** | **do Teste Real** | A verdade só se confirma pela realidade — todo veredito conta; a própria influência não conta | aprendizado sem eco · *anti:* "aceitam nossa categoria sugerida, logo está certa" — aceitaram porque foi sugerida |
 | **L12** | **da Segunda Verdade** | A operação só aprende o que registra — e o que aprende obedece a todas as leis da primeira verdade | explicabilidade como lei, não feature · *anti:* "perfil de preferências" editado à mão, sem origem — boato institucionalizado |
 
+## Emendas (VAL-001, aprovadas 2026-07-23)
+
+- **Nota à L6 (E6):** a Presença pode estar **honestamente defasada** da
+  Verdade — os canais limitam o ritmo de atualização. Defasagem *declarada*
+  não é violação; defasagem *oculta* é.
+- **Fronteira declarada (E7):** **a lei do território precede o Diário** —
+  dados pessoais de Compradores obedecem ao direito ao esquecimento; o rastro
+  operacional anonimizado permanece.
+
 ## Impactos (síntese transversal)
 
 **Engenharia:** proveniência por fato (L2) · histórico supersede-nunca-destroy
