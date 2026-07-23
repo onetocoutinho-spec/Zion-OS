@@ -23,6 +23,11 @@ import {
   promoverConhecimento,
   rebaixarConhecimento,
 } from "@/modules/adaptive-intelligence/application/knowledge-maturation";
+import {
+  carregarDelegacao,
+  concederDelegacao,
+  revogarDelegacao,
+} from "@/modules/adaptive-intelligence/application/delegation-runtime";
 
 const TOM_CONFIDENCE = { observado: "gray", recorrente: "blue", consistente: "green" } as const;
 const TOM_OUTCOME = { pending: "gray", confirmed: "green", modified: "orange" } as const;
@@ -63,6 +68,29 @@ export default function PadraoNoCentroPage() {
     const r = await rebaixarConhecimento(id, motivo);
     if (!r.ok) window.alert(`Rebaixamento negado:\n· ${r.motivos.join("\n· ")}`);
     recarregarConhecimento();
+  }
+
+  // E5.10b: delegação — grant humano sobre Knowledge vigente (jamais Confidence).
+  const consultaDelegacao = useCallback(async () => {
+    const l = await carregarPadraoNoCentro(id);
+    if (!l) return null;
+    return carregarDelegacao(l.padrao.empresa, l.padrao.contexto, l.padrao.campo);
+  }, [id]);
+  const { data: delegacao, reload: recarregarDelegacao } = useLiveQuery(consultaDelegacao, [id]);
+
+  async function delegar() {
+    const motivo = window.prompt("Motivo da delegação (obrigatório):");
+    if (motivo === null) return;
+    const r = await concederDelegacao(id, motivo);
+    if (!r.ok) window.alert(`Delegação negada:\n· ${r.motivos.join("\n· ")}`);
+    recarregarDelegacao();
+  }
+  async function revogar() {
+    const motivo = window.prompt("Motivo da revogação (obrigatório):");
+    if (motivo === null) return;
+    const r = await revogarDelegacao(id, motivo);
+    if (!r.ok) window.alert(`Revogação negada:\n· ${r.motivos.join("\n· ")}`);
+    recarregarDelegacao();
   }
 
   if (!carregando && !linha) {
@@ -232,6 +260,51 @@ export default function PadraoNoCentroPage() {
             </ul>
           </div>
         )}
+      </Etapa>
+
+      <Etapa n={9} titulo="Delegation — o grant de execução (E5.10b · jamais por Confidence)">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {delegacao?.situacao === "vigente" && delegacao.concessaoVigente ? (
+            <>
+              <Badge tone="violet">{`DELEGADO — Knowledge v${delegacao.concessaoVigente.knowledgeVersao}`}</Badge>
+              <span className="text-xs text-zinc-500">
+                por {delegacao.concessaoVigente.delegadoPor} · executor{" "}
+                {delegacao.concessaoVigente.assinatura.autor} ({delegacao.concessaoVigente.assinatura.versaoEngine})
+              </span>
+            </>
+          ) : delegacao?.situacao === "revogada" ? (
+            <Badge tone="gray">delegação revogada (histórico preservado)</Badge>
+          ) : (
+            <Badge tone="gray">sem delegação — exige Knowledge vigente</Badge>
+          )}
+        </div>
+        <div className="mb-2 flex gap-2">
+          {conhecimento?.estado.situacao === "vigente" &&
+            !conhecimento.sobContradicao &&
+            delegacao?.situacao !== "vigente" && (
+              <button
+                type="button"
+                onClick={delegar}
+                className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+              >
+                Delegar (assinado)
+              </button>
+            )}
+          {delegacao?.situacao === "vigente" && (
+            <button
+              type="button"
+              onClick={revogar}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-white/[0.06]"
+            >
+              Revogar (assinado)
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-zinc-500">
+          Execuções delegadas preenchem apenas o vazio (Lei da Abstenção), permanecem editáveis e são
+          auditadas no ledger de ofertas (assinadas por sistema:delegation-runtime) — Outcomes as
+          observam automaticamente. Rebaixar o Knowledge revoga as execuções futuras; o passado permanece.
+        </p>
       </Etapa>
     </div>
   );

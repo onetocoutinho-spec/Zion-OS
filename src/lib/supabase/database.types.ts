@@ -461,6 +461,25 @@ export interface ConhecimentoRow {
   created_at?: string;
 }
 
+// ---- Delegation Runtime (AIL, E5.10b) — rodar a migração 028 ----
+// Linha da tabela `delegacoes` (fatos append-only de concessão/revogação).
+export interface DelegacaoRow {
+  id: string;
+  empresa: string;
+  contexto: string;
+  campo: string;
+  knowledge_pattern_id: string;
+  knowledge_versao: number;
+  valor_delegado: string;
+  tipo: string; // 'concessao' | 'revogacao'
+  delegado_por: string;
+  motivo: string;
+  assinatura: Record<string, unknown>;
+  evidencias: Record<string, unknown>;
+  ocorrido_em: string;
+  created_at?: string;
+}
+
 // ---- Registro de Ofertas (AIL, ADR-001) — rodar a migração 025 ----
 // Linha da tabela `ofertas` (log append-only de sugestões apresentadas).
 export interface OfertaRow {
