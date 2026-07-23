@@ -16,7 +16,9 @@ plano.
 **08:00 — abre a Zion.** Sem menu, sem 40 números. Três coisas: uma **frase de
 estado** em português de gente; **a fila do dia** (3 cartões priorizados);
 nada mais. A inversão: ela não procura problemas — os problemas certos, já
-digeridos, vêm até ela.
+digeridos, vêm até ela. *(Nota de reconciliação — PX-006: "sem menu" = sem
+navegação-por-substantivos como experiência primária; as 5 áreas do PX-005
+são apoios, e Hoje é a casa.)*
 
 **08:10 — o catálogo.** Ela encaminhou o e-mail do fornecedor para o endereço
 da própria loja na Zion. Durante a noite a Zion leu como um funcionário
@@ -38,8 +40,9 @@ algo falhar, nada duplica — retomo de onde parei."* Ansiedade combatida com
 comportamento verificável, não com promessas.
 
 **O resto do dia — o silêncio que trabalha.** Silêncio é o padrão; interrupção
-só por dinheiro em risco, operação travada ou oportunidade com prazo; todo o
-resto é sugestão no contexto, com *"por quê? →"* no rodapé.
+só pelos **quatro motivos** — dinheiro em risco, operação travada, oportunidade
+com prazo, consentimento obrigatório (PX-003/PX-004); todo o resto é sugestão
+no contexto, com *"por quê? →"* no rodapé.
 
 **15:30 — o momento encantador.** O cartão azul: *"Você aprovou minha
 categoria 47 vezes seguidas sem mudar nenhuma. Posso cuidar disso sozinha?
