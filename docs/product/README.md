@@ -24,6 +24,8 @@
 | [SYS-001](system/002-product-laws.md) | **Product Laws** (`system/002`) | as leis da expressão visual — ocupa oficialmente o elo 002 da cadeia da Ontologia |
 | [SHELL-001](SHELL-001-application-shell.md) | **Application Shell** | as 3 camadas, o frame, o palco, o primeiro-plano; estados; resposta a dispositivos |
 | [SHELL-002](SHELL-002-component-tree.md) | **Component Tree** | a árvore de ~30 componentes; comunicação; fronteiras; prova multiplataforma |
+| [CMP-001](CMP-001-mission-component.md) | **Mission Component** | a especificação implementável da Missão: anatomia, contrato, estados, 4 DecisionBodies, aceite |
+| [DS-100](system/003-design-system-foundation.md) | **Design System Foundation** (`system/003`) | a ontologia das 5 camadas visuais (Foundation→Semantic→Component→Pattern→Theme); sem valores |
 
 **Nota de estratos (PX-006):** existem duas cadeias normativas — a cadeia **PX/UX/DOM/VOC**
 (a experiência e o domínio) e a cadeia **`system/`** (a expressão do design, com raiz na
