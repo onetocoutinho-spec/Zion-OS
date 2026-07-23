@@ -162,7 +162,9 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   rejected/expired/ignored exigem fatos novos — documentado); determinístico
   (sem NOW/recência), idempotente, jamais persistido; regra do auto-reforço
   embutida (confirmed → decisionId descontável pela E5.3) — [relatório](executions/e51-outcome-projection-report.md)
-- **E5.2 — Outcome Explainability** — qual Offer/Decision/operador/tempo/alteração
+- **E5.2 — Outcome Explainability** `✅ (2026-07-22)` — `OutcomeExplanation`
+  serializável: origem/resposta/comparação + cadeia de 3 elos (Offer→Observation→Outcome)
+  + nota oficial de auto-reforço; explicar = selecionar fatos, nunca produzir — [relatório](executions/e52-outcome-explainability-report.md)
 - **E5.3 — Confidence Evolution** — Confidence acima de `consistente` via Outcomes (fronteira dura da 004 finalmente cruzada — pelo Engine, como previsto)
 - **E5.4 — Knowledge Promotion** — promoção derivada (motivo/evidências/histórico/reversibilidade)
 - **E5.5 — Suggestion Analytics** — projeções de taxas (aceitação/edição/ignoradas) e uso de Patterns
