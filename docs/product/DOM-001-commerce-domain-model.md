@@ -6,7 +6,8 @@
 ## A raiz do domínio
 
 > **A raiz é a VERDADE DO PRODUTO** — o corpo de alegações que se sustenta
-> sobre um referente físico.
+> sobre um referente *(físico ou não: bens, serviços, digitais — Emenda
+> VAL-001·E1)*.
 
 Prova por cobertura: toda porta de entrada entrega *alegações*; toda operação
 universal transforma ou transporta verdade; **toda falha do domínio é uma
@@ -41,7 +42,7 @@ canal** — não existe "completa" em absoluto; existe *suficiente-para*.
 | **Canal** | língua (taxonomia, dialetos) · leis de admissão · público · vereditos · a presença (registro local). **ERP é canal; portas de entrada são canais ao contrário** |
 | **Operação** | estoque · preços · ofertas · compromissos · execução · a verdade-da-operação |
 | **Cliente** (o dono) | a responsabilidade: decisões, autonomias, a marca |
-| **Zion** | **nada** — custodia verdades, traduz expressões, executa o combinado e lembra. Trabalhadora do domínio, não parte dele |
+| **Zion** | **nada** — custodia verdades, traduz expressões, executa o combinado e lembra. Trabalhadora do domínio, não parte dele. *A Zion age sempre como **agente de uma Parte**, sob delegação — imputável pelo ato, jamais dona do domínio (Emenda VAL-001·E5)* |
 
 **Não pertencem ao produto** (contexto): preço, estoque, oferta, campanha,
 frete, anúncio, **título/descrição/foto tratada** (são Expressão!), categoria
