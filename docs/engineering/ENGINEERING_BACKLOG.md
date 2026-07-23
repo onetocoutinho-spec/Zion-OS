@@ -183,7 +183,11 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
   serializável: Patterns/Offers/Outcomes/Confidence/Readiness + **Health sem nota**
   (fatos + principais bloqueios); metodologia obrigatória em toda seção; composição
   pura sobre E5.1/3/4 sem recalcular — [relatório](executions/e55-intelligence-analytics-report.md)
-- **E5.6 — DI Dashboard** — visão operacional sobre as projeções existentes
+- **E5.6 — Decision Intelligence Center** `✅ (2026-07-22)` — `/ail/inteligencia`
+  (Health sem nota + métricas com metodologia + lista atual→projetada/prontidão) e
+  `/ail/inteligencia/[id]` (linha do tempo lógica em 7 etapas, cada uma com origem);
+  analytics embutido idêntico ao E5.5 (testado); termos promovido/confiável
+  inexistentes — [relatório](executions/e56-di-center-report.md)
 - **E5.7 — Reprojection Runtime** — aposenta scripts; reprojeção completa/parcial + auditoria + idempotência (absorve a antiga E4.1.1)
 - **E5.8 — Typed Author** — materializa o `Autor{tipo,id,…}` adormecido (S-35), retrocompatível
 - **E5.9 — System Authorship** — versões (Engine/contrato/Confidence/Explainability) em toda oferta; autoria explícita de toda ação automática (fecha S-30)

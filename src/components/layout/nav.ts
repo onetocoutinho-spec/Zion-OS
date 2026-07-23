@@ -20,6 +20,7 @@ import {
   Sparkles,
   UserPlus,
   Brain,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -48,6 +49,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Pendências", href: "/pendencias", icon: AlertCircle },
   { label: "Vendas", href: "/vendas", icon: TrendingUp },
   { label: "Memória (AIL)", href: "/ail/padroes", icon: Brain },
+  { label: "Decision Intelligence", href: "/ail/inteligencia", icon: Activity },
   { label: "Relatórios", href: "/relatorios", icon: BarChart3 },
   { label: "Financeiro", href: "/financeiro", icon: Wallet },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
