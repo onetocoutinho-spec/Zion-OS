@@ -31,6 +31,8 @@
 | [DS-120](system/005-semantic-tokens.md) | **Semantic Tokens** (`system/005`) | a camada do significado: 12 famílias de papéis que referem só Foundation e são resolvidos só por Theme; nunca valores |
 | [CAP-000](capabilities/CAP-000-capability-constitution.md) | **Capability Constitution** (`capabilities/000`) | o eixo FUNCIONAL: as leis de qualquer Capability (competência permanente); reconcilia Agreement=Combinado=Delegation, Memory=Segunda Verdade, Gap=Lacuna |
 
+| [ENG-001](ENG-001-vertical-slice-zero.md) | **Vertical Slice Zero** | o plano da primeira implementação: a menor fatia Shell→Missão→Capability→AIL→Memory→Resultado, reusando o motor; internal boundaries, não monorepo |
+
 **Os três eixos da arquitetura:** `docs/product/` (a experiência e o domínio) ·
 `docs/product/system/` (a expressão visual, sob a Ontologia) ·
 `docs/product/capabilities/` (a arquitetura funcional). O motor Decision
