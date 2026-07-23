@@ -157,9 +157,11 @@ E5-Saneamento). Um item por vez; sistema sempre funcional e retrocompatível.*
 - **E5.0 — Offer Observation** `✅ (2026-07-22)` — 3 classes de evidência
   (respondida_igual/diferente/sem_resposta) sobre `ofertas × decisoes`; limites
   declarados (criação não captura; remoção sem fato; sem janela) — [relatório](executions/e50-offer-observation-report.md)
-- **E5.1 — Outcome Projection** — `Outcomes = f(ofertas × Journal)` (ADR-001);
-  herda as classes e limites da E5.0; reconhecer aceitação como *confirmada*
-  (nunca auto-reforço)
+- **E5.1 — Outcome Projection** `✅ (2026-07-22)` — `Outcome = f(ofertas × Journal)`
+  via E5.0; estados sustentados pelos fatos (pending/confirmed/modified;
+  rejected/expired/ignored exigem fatos novos — documentado); determinístico
+  (sem NOW/recência), idempotente, jamais persistido; regra do auto-reforço
+  embutida (confirmed → decisionId descontável pela E5.3) — [relatório](executions/e51-outcome-projection-report.md)
 - **E5.2 — Outcome Explainability** — qual Offer/Decision/operador/tempo/alteração
 - **E5.3 — Confidence Evolution** — Confidence acima de `consistente` via Outcomes (fronteira dura da 004 finalmente cruzada — pelo Engine, como previsto)
 - **E5.4 — Knowledge Promotion** — promoção derivada (motivo/evidências/histórico/reversibilidade)
