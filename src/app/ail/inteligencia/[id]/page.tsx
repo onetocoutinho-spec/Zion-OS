@@ -18,6 +18,11 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useLiveQuery } from "@/lib/hooks";
 import { carregarPadraoNoCentro } from "@/modules/adaptive-intelligence/application/intelligence-center";
+import {
+  carregarConhecimento,
+  promoverConhecimento,
+  rebaixarConhecimento,
+} from "@/modules/adaptive-intelligence/application/knowledge-maturation";
 
 const TOM_CONFIDENCE = { observado: "gray", recorrente: "blue", consistente: "green" } as const;
 const TOM_OUTCOME = { pending: "gray", confirmed: "green", modified: "orange" } as const;
@@ -41,6 +46,24 @@ export default function PadraoNoCentroPage() {
   const id = params?.id ?? "";
   const consulta = useCallback(() => carregarPadraoNoCentro(id), [id]);
   const { data: linha, carregando } = useLiveQuery(consulta, [id]);
+  const consultaConhecimento = useCallback(() => carregarConhecimento(id), [id]);
+  const { data: conhecimento, reload: recarregarConhecimento } = useLiveQuery(consultaConhecimento, [id]);
+
+  // Q3/Q5 (ADR-002): atos HUMANOS assinados — o sistema apenas propõe/sinaliza.
+  async function promover() {
+    const motivo = window.prompt("Motivo da promoção (obrigatório — ADR-002):");
+    if (motivo === null) return;
+    const r = await promoverConhecimento(id, motivo);
+    if (!r.ok) window.alert(`Promoção negada:\n· ${r.motivos.join("\n· ")}`);
+    recarregarConhecimento();
+  }
+  async function rebaixar() {
+    const motivo = window.prompt("Motivo do rebaixamento (obrigatório — ADR-002):");
+    if (motivo === null) return;
+    const r = await rebaixarConhecimento(id, motivo);
+    if (!r.ok) window.alert(`Rebaixamento negado:\n· ${r.motivos.join("\n· ")}`);
+    recarregarConhecimento();
+  }
 
   if (!carregando && !linha) {
     return (
@@ -133,13 +156,82 @@ export default function PadraoNoCentroPage() {
         </div>
         <p className="mb-2 text-xs leading-relaxed text-zinc-400">{readiness.explanation}</p>
         <div className="rounded border border-white/5 bg-white/[0.02] p-2 text-xs text-zinc-500">
-          <div className="mb-1 font-medium text-zinc-400">Dependências da ADR-002 (nunca preenchidas com código):</div>
+          <div className="mb-1 font-medium text-zinc-400">Dependências da ADR-002 — decididas e aceitas (ver Etapa 8):</div>
           <ul className="grid gap-0.5">
             {readiness.dependenciasAdr002.map((d) => (
               <li key={d}>· {d}</li>
             ))}
           </ul>
         </div>
+      </Etapa>
+
+      <Etapa n={8} titulo="Knowledge — a decisão institucional (ADR-002 · E5.10a)">
+        {!conhecimento || conhecimento.estado.situacao === "nenhum" ? (
+          <div className="mb-2">
+            {conhecimento?.promovibilidade.promovivel ? (
+              <Badge tone="green">PROMOVÍVEL — o sistema propõe; a decisão é sua</Badge>
+            ) : (
+              <Badge tone="gray">sem Knowledge — ainda não promovível</Badge>
+            )}
+          </div>
+        ) : (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {conhecimento.estado.situacao === "vigente" ? (
+              <Badge tone="green">{`Knowledge VIGENTE — v${conhecimento.estado.versaoVigente}`}</Badge>
+            ) : (
+              <Badge tone="gray">rebaixado (histórico preservado)</Badge>
+            )}
+            {conhecimento.sobContradicao && (
+              <Badge tone="orange">sob contradição — o Pattern deixou de sustentar os critérios (rebaixar é decisão sua)</Badge>
+            )}
+          </div>
+        )}
+
+        {conhecimento && (
+          <ul className="mb-2 grid gap-1 text-xs text-zinc-400">
+            {conhecimento.promovibilidade.condicoes.map((c) => (
+              <li key={c.condicao}>
+                {c.ok ? "✓" : "✗"} {c.condicao} — <span className="text-zinc-500">{c.evidencia}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mb-2 flex gap-2">
+          {conhecimento?.promovibilidade.promovivel && (
+            <button
+              type="button"
+              onClick={promover}
+              className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20"
+            >
+              Promover (assinado)
+            </button>
+          )}
+          {conhecimento?.estado.situacao === "vigente" && (
+            <button
+              type="button"
+              onClick={rebaixar}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-white/[0.06]"
+            >
+              Rebaixar (assinado)
+            </button>
+          )}
+        </div>
+
+        {conhecimento && conhecimento.estado.historico.length > 0 && (
+          <div className="rounded border border-white/5 bg-white/[0.02] p-2 text-xs text-zinc-500">
+            <div className="mb-1 font-medium text-zinc-400">Histórico de versões (append-only — nada se apaga):</div>
+            <ul className="grid gap-0.5">
+              {conhecimento.estado.historico.map((f) => (
+                <li key={f.id}>
+                  · {f.tipo === "promocao" ? `v${f.versao} promovida` : `v${f.versao} rebaixada`} por{" "}
+                  {f.autorHumano} em {new Date(f.ocorridoEm).toLocaleString("pt-BR")} — &ldquo;{f.motivo}&rdquo;{" "}
+                  <span className="text-zinc-600">({f.versaoPolitica})</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Etapa>
     </div>
   );
