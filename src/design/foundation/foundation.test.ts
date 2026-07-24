@@ -10,15 +10,17 @@ import { dirname, join } from "node:path";
 
 import { foundation, fnd } from "./foundation.generated.ts";
 
+type Leaf = { $value?: unknown; $extensions: { zion: { posicao: string } } };
+
 const HERE = dirname(fileURLToPath(import.meta.url));
-const doc = JSON.parse(readFileSync(join(HERE, "..", "tokens.json"), "utf8")) as Record<string, any>;
+const doc = JSON.parse(readFileSync(join(HERE, "..", "tokens.json"), "utf8")) as Record<string, unknown>;
 const css = readFileSync(join(HERE, "foundation.css"), "utf8");
 
 // índice símbolo→leaf do tokens.json (fonte única)
-const source = new Map<string, any>();
+const source = new Map<string, { materia: string; leaf: Leaf }>();
 for (const [materia, group] of Object.entries(doc)) {
   if (materia.startsWith("$") || typeof group !== "object" || group === null) continue;
-  for (const [symbol, leaf] of Object.entries(group as Record<string, any>)) source.set(symbol, { materia, leaf });
+  for (const [symbol, leaf] of Object.entries(group as Record<string, Leaf>)) source.set(symbol, { materia, leaf });
 }
 const genFlat = () => {
   const out: { symbol: string; value: unknown }[] = [];

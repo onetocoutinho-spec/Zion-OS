@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import { textStyle } from "./text-style.ts";
 import { surfaceStyle } from "./surface-style.ts";
-import { semanticRoles } from "../semantic/semantic.generated.ts";
+import { semanticRoles, type SemanticRole } from "../semantic/semantic.generated.ts";
 
 test("Text: cor e size/weight vêm da Semantic; line-height vem da Foundation", () => {
   const s = textStyle("title-l", "secondary");
@@ -20,11 +20,11 @@ test("Text: cor e size/weight vêm da Semantic; line-height vem da Foundation", 
 
 test("Text: todo papel Semantic referido existe de fato (nenhum papel fantasma)", () => {
   for (const role of ["display", "body-m", "label", "mono", "caption"] as const) {
-    assert.ok(semanticRoles.includes(`type.${role}.size` as any), `type.${role}.size ausente`);
-    assert.ok(semanticRoles.includes(`type.${role}.weight` as any), `type.${role}.weight ausente`);
+    assert.ok(semanticRoles.includes(`type.${role}.size` as SemanticRole), `type.${role}.size ausente`);
+    assert.ok(semanticRoles.includes(`type.${role}.weight` as SemanticRole), `type.${role}.weight ausente`);
   }
   for (const tone of ["primary", "secondary", "tertiary", "disabled", "inverse", "on-accent"] as const) {
-    assert.ok(semanticRoles.includes(`color.text.${tone}` as any), `color.text.${tone} ausente`);
+    assert.ok(semanticRoles.includes(`color.text.${tone}` as SemanticRole), `color.text.${tone} ausente`);
   }
 });
 

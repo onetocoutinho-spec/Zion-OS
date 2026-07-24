@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { semanticRoles, sem } from "./semantic.generated.ts";
+import { semanticRoles, sem, type SemanticRole } from "./semantic.generated.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(HERE, "semantic.css"), "utf8");
@@ -42,9 +42,9 @@ test("Transformação-alfa vira color-mix (fiel a `X @ N%`)", () => {
 
 test("Mapa de estado vira um papel por estado, apontando para outro papel", () => {
   assert.equal(decls.find((d) => d.n === "--sem-color-health-healthy")?.v, "var(--sem-color-success)");
-  assert.ok(semanticRoles.includes("color.health.healthy" as any));
+  assert.ok(semanticRoles.includes("color.health.healthy" as SemanticRole));
 });
 
 test("sem(): referência CSS a partir do papel", () => {
-  assert.equal(sem("color.text.primary" as any), "var(--sem-color-text-primary)");
+  assert.equal(sem("color.text.primary" as SemanticRole), "var(--sem-color-text-primary)");
 });

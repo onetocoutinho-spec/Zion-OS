@@ -19,7 +19,8 @@ import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = join(ROOT, "src", "design", "semantic");
-const doc = JSON.parse(readFileSync(join(ROOT, "src", "design", "tokens.json"), "utf8")) as Record<string, any>;
+interface Leaf { $extensions: { zion: { posicao?: string; conteudo?: unknown } } }
+const doc = JSON.parse(readFileSync(join(ROOT, "src", "design", "tokens.json"), "utf8")) as Record<string, unknown>;
 
 // ── Conjuntos de símbolos por Posição (para classificar --fnd- vs --sem-) ────
 const foundationSyms = new Set<string>();
@@ -27,7 +28,7 @@ const semanticSyms = new Set<string>();
 const allSyms = new Set<string>();
 for (const [materia, group] of Object.entries(doc)) {
   if (materia.startsWith("$") || typeof group !== "object" || group === null) continue;
-  for (const [symbol, leaf] of Object.entries(group as Record<string, any>)) {
+  for (const [symbol, leaf] of Object.entries(group as Record<string, Leaf>)) {
     allSyms.add(symbol);
     const pos = leaf.$extensions?.zion?.posicao;
     if (pos === "Foundation") foundationSyms.add(symbol);
@@ -75,14 +76,14 @@ const emitted: { symbol: string; contextual: boolean }[] = [];
 
 for (const materia of Object.keys(doc)) {
   if (materia.startsWith("$")) continue;
-  for (const [symbol, leaf] of Object.entries(doc[materia] as Record<string, any>)) {
+  for (const [symbol, leaf] of Object.entries(doc[materia] as Record<string, Leaf>)) {
     if (leaf.$extensions?.zion?.posicao !== "Semantic") continue;
     const conteudo = leaf.$extensions.zion.conteudo;
     const name = `--sem-${cssvar(symbol)}`;
 
     if (conteudo && typeof conteudo === "object" && "ref" in conteudo) {
       // Referência única, independente de Contexto
-      const v = refVar((conteudo as any).ref, symbol);
+      const v = refVar((conteudo as { ref: string }).ref, symbol);
       if (v) { rootVars.push(`  ${name}: ${v};`); emitted.push({ symbol, contextual: false }); }
       continue;
     }
@@ -94,7 +95,7 @@ for (const materia of Object.keys(doc)) {
         let any = false;
         for (const c of CTX) {
           if (!(c in conteudo)) continue;
-          const v = resolveValue(String((conteudo as any)[c]), symbol);
+          const v = resolveValue(String((conteudo as Record<string, unknown>)[c]), symbol);
           if (!v) continue;
           any = true;
           if (c === "dark") rootVars.push(`  ${name}: ${v};`); // Dark = primário no :root
