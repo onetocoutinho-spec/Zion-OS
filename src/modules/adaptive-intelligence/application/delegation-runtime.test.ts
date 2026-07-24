@@ -149,6 +149,14 @@ test("revogar: fecha a torneira futura; histórico completo preservado", async (
   const conhecimento = visaoConhecimento([promocao(1, "2026-07-23T10:00:00.000Z")]);
   const d = deps(conhecimento);
   await concederDelegacao("pat-a", "ok", d);
+  // Determinismo (fix(ail-tests)): concederDelegacao e revogarDelegacao carimbam
+  // `new Date()` internamente. Num runner rápido a concessão e a revogação caem no
+  // MESMO milissegundo; aí o desempate de estadoDelegacao é pelo id (UUID aleatório)
+  // e o "último fato" vira cara-ou-coroa → flaky. Fixar o instante da concessão no
+  // passado garante, de forma determinística, que a revogação (now) seja POSTERIOR.
+  // Só o teste muda; a produção da AIL fica intacta. (Em produção conceder/revogar
+  // distam segundos — a colisão nunca ocorre.)
+  d.gravados[0] = { ...d.gravados[0], ocorridoEm: "2026-07-23T10:00:00.000Z" };
   const r = await revogarDelegacao("pat-a", "pausa operacional", d);
   assert.ok(r.ok);
   assert.equal(await executarDelegacao(CTX, d), null); // futura: fechada
