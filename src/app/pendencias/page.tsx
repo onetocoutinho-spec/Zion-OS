@@ -12,8 +12,26 @@ import {
   excluirPendencia,
   listarPendencias,
   reabrirPendencia,
-  resolverPendencia,
 } from "@/lib/services/pendencias";
+
+// Composition root fino (Platform v2 · experimento Pendências Fase 2): o evento
+// "Resolver" nasce como UserIntent e percorre o Runtime até a PendenciasCapability,
+// reutilizando integralmente a plataforma — sem host de Missão, sem UI nova. A lista
+// revalida por useLiveQuery (inalterado); o ShellPort é no-op (o clique já era
+// fire-and-forget silencioso — o comportamento permanece idêntico).
+import { Runtime } from "@/runtime/Runtime";
+import { DecisionFactory } from "@/runtime/decision/DecisionFactory";
+import { RuntimeDispatcher } from "@/runtime/dispatcher/RuntimeDispatcher";
+import type { ShellPort } from "@/runtime/ports/ShellPort";
+import { PendenciasCapability } from "@/capabilities/pendencias/PendenciasCapability";
+import { PendenciasAdapter } from "@/capabilities/pendencias/PendenciasAdapter";
+
+const shellPort: ShellPort = { publish: () => {} };
+const runtime = new Runtime(
+  new DecisionFactory(),
+  new RuntimeDispatcher(new PendenciasCapability(new PendenciasAdapter()), shellPort),
+  shellPort,
+);
 
 const SITUACOES = ["Aberta", "Resolvida"];
 const HEADERS = ["Pendência", "Cliente", "Tarefa vinculada", "Situação", "Ações"];
@@ -86,7 +104,7 @@ export default function PendenciasPage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => resolverPendencia(p.id)}
+                    onClick={() => runtime.receive({ missionId: "resolver-pendencia", type: "answer", payload: p.id, timestamp: Date.now() })}
                     title="Marcar como resolvida"
                     className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 text-zinc-500 transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-400"
                   >
