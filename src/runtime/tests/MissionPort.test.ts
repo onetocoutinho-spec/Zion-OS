@@ -7,8 +7,10 @@ import type { MissionPort } from "../ports/MissionPort.ts";
 import { Runtime } from "../Runtime.ts";
 import { DecisionFactory } from "../decision/DecisionFactory.ts";
 import { RuntimeDispatcher } from "../dispatcher/RuntimeDispatcher.ts";
-import { FakeCapability } from "../FakeCapability.ts";
 import type { RuntimeEvent } from "../contracts/runtime.ts";
+
+// Dublê "completed" no lugar da FakeCapability removida (ENG-006).
+const completedCapability = { execute: () => ({ status: "completed" as const }) };
 
 test("Runtime satisfaz MissionPort e roteia o UserIntent recebido", () => {
   const events: RuntimeEvent[] = [];
@@ -16,7 +18,7 @@ test("Runtime satisfaz MissionPort e roteia o UserIntent recebido", () => {
   // A atribuição já prova, em tempo de compilação, que Runtime implementa MissionPort.
   const port: MissionPort = new Runtime(
     new DecisionFactory(() => 0, () => "d1"),
-    new RuntimeDispatcher(new FakeCapability(), shell, () => 0),
+    new RuntimeDispatcher(completedCapability, shell, () => 0),
     shell,
     () => 0,
   );

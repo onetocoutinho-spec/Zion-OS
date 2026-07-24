@@ -21,17 +21,27 @@ import { Mission } from "../../mission/components/Mission.tsx";
 import { useMission } from "../../mission/hooks/useMission.ts";
 import type { MissionPayload } from "../../mission/contracts/mission.ts";
 
-// Composition root (ENG-005): o /z é o único que conhece o Runtime. Mission e
-// Shell NÃO o conhecem — o UserIntent é roteado aqui, por porta.
+// Composition root (ENG-005/006): o /z é o único que conhece o Runtime e cabla a
+// Capability real. Mission e Shell NÃO os conhecem — o UserIntent é roteado aqui.
 import { Runtime } from "../../runtime/Runtime.ts";
 import { DecisionFactory } from "../../runtime/decision/DecisionFactory.ts";
 import { RuntimeDispatcher } from "../../runtime/dispatcher/RuntimeDispatcher.ts";
-import { FakeCapability } from "../../runtime/FakeCapability.ts";
 import type { ShellPort } from "../../runtime/ports/ShellPort.ts";
+// ENG-006: a Capability REAL substitui a FakeCapability (removida).
+import { CatalogCapability } from "../../capabilities/catalog/CatalogCapability.ts";
+import { CatalogCapabilityAdapter } from "../../capabilities/catalog/CatalogCapabilityAdapter.ts";
+// Journal em-memória: implementação EXISTENTE da AIL (reutilizada), para a demo observar a captura.
+import { InMemoryDecisionJournal } from "../../modules/adaptive-intelligence/infrastructure/decision-journal.memory.ts";
 
 // ShellPort concreto: publica os RuntimeEvents no console (adaptador de saída).
 const runtimeShell: ShellPort = { publish: (e) => console.log("[RuntimeEvent]", e.type, e) };
-const runtime = new Runtime(new DecisionFactory(), new RuntimeDispatcher(new FakeCapability(), runtimeShell), runtimeShell);
+// Journal injetado (reutiliza o Port da AIL); alvo = um produto-semente existente.
+const demoJournal = new InMemoryDecisionJournal();
+const DEMO_PRODUTO_ID = "prd-01";
+const catalog = new CatalogCapability(new CatalogCapabilityAdapter(DEMO_PRODUTO_ID, demoJournal));
+const runtime = new Runtime(new DecisionFactory(), new RuntimeDispatcher(catalog, runtimeShell), runtimeShell);
+// Exposto só para a demonstração inspecionar o Journal da AIL no navegador.
+if (typeof window !== "undefined") (window as unknown as { __demoJournal?: unknown }).__demoJournal = demoJournal;
 
 import { Text } from "../../design/ui/index.ts";
 import { fnd } from "../../design/foundation/foundation.generated.ts";
@@ -45,13 +55,15 @@ const NAV: NavigationItem[] = [
   { id: "zion", label: "Zion" },
 ];
 
-// Mission fake (o app hospeda; a Mission não conhece domínio). Exemplo do ENG-004.
+// Mission fake (o app hospeda; a Mission não conhece domínio). ENG-006: pergunta
+// por um campo JÁ OBSERVADO pela AIL (categoriaMarketplace), para o fluxo
+// atualizarProduto → AIL → Journal engajar de verdade.
 const FAKE: MissionPayload = {
-  id: "codigo-de-barras",
+  id: "categoria-marketplace",
   type: "input",
-  title: "Qual é o código de barras?",
-  description: "Precisamos desta informação para concluir o cadastro.",
-  body: { kind: "input", inputType: "text", placeholder: "Ex.: 7891234567890" },
+  title: "Em qual categoria do marketplace este produto entra?",
+  description: "A Zion registra sua decisão de categoria para aprender com ela.",
+  body: { kind: "input", inputType: "text", placeholder: "Ex.: Calçados > Chinelos" },
   confirmLabel: "Confirmar",
   cancelLabel: "Cancelar",
 };

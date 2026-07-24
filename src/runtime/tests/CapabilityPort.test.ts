@@ -4,10 +4,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { CapabilityPort } from "../ports/CapabilityPort.ts";
-import { FakeCapability } from "../FakeCapability.ts";
 
-test("FakeCapability satisfaz CapabilityPort e responde completed", async () => {
-  const port: CapabilityPort = new FakeCapability();
+test("um adaptador 'completed' satisfaz CapabilityPort e responde completed", async () => {
+  const port: CapabilityPort = { execute: () => ({ status: "completed" }) };
   const res = await port.execute({ decisionId: "d1", missionId: "m1", payload: "x" });
   assert.deepEqual(res, { status: "completed" });
 });

@@ -7,15 +7,17 @@ import assert from "node:assert/strict";
 import { Runtime } from "../Runtime.ts";
 import { DecisionFactory } from "../decision/DecisionFactory.ts";
 import { RuntimeDispatcher } from "../dispatcher/RuntimeDispatcher.ts";
-import { FakeCapability } from "../FakeCapability.ts";
 import type { RuntimeEvent, UserIntent } from "../contracts/runtime.ts";
+
+// Dublê "completed" no lugar da FakeCapability removida (ENG-006).
+const completedCapability = { execute: () => ({ status: "completed" as const }) };
 
 test("UserIntent → Runtime → Decision → CapabilityPort → eventos publicados", async () => {
   const events: RuntimeEvent[] = [];
   const shell = { publish: (e: RuntimeEvent) => events.push(e) };
   const runtime = new Runtime(
     new DecisionFactory(() => 111, () => "decision-1"),
-    new RuntimeDispatcher(new FakeCapability(), shell, () => 222),
+    new RuntimeDispatcher(completedCapability, shell, () => 222),
     shell,
     () => 222,
   );

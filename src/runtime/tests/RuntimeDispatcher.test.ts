@@ -4,11 +4,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { RuntimeDispatcher } from "../dispatcher/RuntimeDispatcher.ts";
-import { FakeCapability } from "../FakeCapability.ts";
 import { DecisionFactory } from "../decision/DecisionFactory.ts";
 import type { CapabilityPort } from "../ports/CapabilityPort.ts";
 import type { RuntimeEvent } from "../contracts/runtime.ts";
 
+// Dublê "completed" no lugar da FakeCapability removida (ENG-006).
+const completedCapability = { execute: () => ({ status: "completed" as const }) };
 const decision = new DecisionFactory(() => 0, () => "d1").create({ missionId: "m1", type: "answer", payload: "p", timestamp: 0 });
 const capture = () => {
   const events: RuntimeEvent[] = [];
@@ -17,7 +18,7 @@ const capture = () => {
 
 test("dispatch: CapabilityRequested → CapabilityCompleted (fake completed)", async () => {
   const c = capture();
-  await new RuntimeDispatcher(new FakeCapability(), c.shell, () => 7).dispatch(decision);
+  await new RuntimeDispatcher(completedCapability, c.shell, () => 7).dispatch(decision);
   assert.deepEqual(c.events.map((e) => e.type), ["CapabilityRequested", "CapabilityCompleted"]);
   assert.equal(c.events[0].request?.decisionId, "d1");
   assert.equal(c.events[0].request?.missionId, "m1");
