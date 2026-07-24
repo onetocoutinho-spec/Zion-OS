@@ -1,12 +1,19 @@
 "use client";
 
-// Rota /z (ENG-003 + ENG-004) — a superfície do Shell + o fluxo humano da Mission.
-// Renderiza APENAS Shell (Frame→Navigation→Stage→MissionLayer→FeedbackLayer) e a
-// Mission. Sem Runtime, sem IA, sem Catálogo, sem domínio. O CSS da slice
-// (Foundation + Semantic, namespaced) é carregado só aqui.
+// Rota /z (ENG-003/004/005/006/007) — o composition root da Vertical Slice.
+// Resolve a fonte de dados REAL (produção autenticada com RLS, ou demonstração
+// com produtos-semente oficiais quando não há Supabase/sessão) e cabla:
+//   ProductFlow → Mission → UserIntent → Runtime → Decision → CatalogCapability
+//   → CatalogCapabilityAdapter → atualizarProduto() → AIL → Journal →
+//   RuntimeEvents → (ShellPort) → FeedbackLayer.
+// A diferença auth/demo existe SÓ aqui (resolução da fonte). Runtime, Mission,
+// Shell, Capability, AIL e Journal são idênticos nos dois modos. Sem console.log,
+// sem IDs fake, sem mocks.
 
 import "../../design/foundation/foundation.css";
 import "../../design/semantic/semantic.css";
+
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 
 import { ShellProvider } from "../../shell/providers/ShellProvider.tsx";
 import { Frame } from "../../shell/Frame/Frame.tsx";
@@ -14,6 +21,7 @@ import { Navigation } from "../../shell/Navigation/Navigation.tsx";
 import { Stage } from "../../shell/Stage/Stage.tsx";
 import { MissionLayer } from "../../shell/MissionLayer/MissionLayer.tsx";
 import { FeedbackLayer } from "../../shell/FeedbackLayer/FeedbackLayer.tsx";
+import { useShell } from "../../shell/hooks/useShell.ts";
 import type { NavigationItem } from "../../shell/contracts/shell.ts";
 
 import { MissionProvider } from "../../mission/provider/MissionProvider.tsx";
@@ -21,28 +29,19 @@ import { Mission } from "../../mission/components/Mission.tsx";
 import { useMission } from "../../mission/hooks/useMission.ts";
 import type { MissionPayload } from "../../mission/contracts/mission.ts";
 
-// Composition root (ENG-005/006): o /z é o único que conhece o Runtime e cabla a
-// Capability real. Mission e Shell NÃO os conhecem — o UserIntent é roteado aqui.
 import { Runtime } from "../../runtime/Runtime.ts";
 import { DecisionFactory } from "../../runtime/decision/DecisionFactory.ts";
 import { RuntimeDispatcher } from "../../runtime/dispatcher/RuntimeDispatcher.ts";
 import type { ShellPort } from "../../runtime/ports/ShellPort.ts";
-// ENG-006: a Capability REAL substitui a FakeCapability (removida).
 import { CatalogCapability } from "../../capabilities/catalog/CatalogCapability.ts";
 import { CatalogCapabilityAdapter } from "../../capabilities/catalog/CatalogCapabilityAdapter.ts";
-// Journal em-memória: implementação EXISTENTE da AIL (reutilizada), para a demo observar a captura.
-import { InMemoryDecisionJournal } from "../../modules/adaptive-intelligence/infrastructure/decision-journal.memory.ts";
 
-// ShellPort concreto: publica os RuntimeEvents no console (adaptador de saída).
-const runtimeShell: ShellPort = { publish: (e) => console.log("[RuntimeEvent]", e.type, e) };
-// Journal injetado (reutiliza o Port da AIL); alvo = um produto-semente existente.
-const demoJournal = new InMemoryDecisionJournal();
-const DEMO_PRODUTO_ID = "prd-01";
-const catalog = new CatalogCapability(new CatalogCapabilityAdapter(DEMO_PRODUTO_ID, demoJournal));
-const runtime = new Runtime(new DecisionFactory(), new RuntimeDispatcher(catalog, runtimeShell), runtimeShell);
-// Exposto só para a demonstração inspecionar o Journal da AIL no navegador.
-if (typeof window !== "undefined") (window as unknown as { __demoJournal?: unknown }).__demoJournal = demoJournal;
+import { meuPerfil } from "../../lib/services/perfil.ts";
+import { listarProdutos, listarProdutosDoCliente } from "../../lib/services/produtos.ts";
+import { supabaseConfigurado } from "../../lib/supabase/client.ts";
+import type { Produto } from "../../lib/types.ts";
 
+import { mapRuntimeEventToFeedback } from "./runtime-feedback.ts";
 import { Text } from "../../design/ui/index.ts";
 import { fnd } from "../../design/foundation/foundation.generated.ts";
 import { sem } from "../../design/semantic/semantic.generated.ts";
@@ -55,47 +54,82 @@ const NAV: NavigationItem[] = [
   { id: "zion", label: "Zion" },
 ];
 
-// Mission fake (o app hospeda; a Mission não conhece domínio). ENG-006: pergunta
-// por um campo JÁ OBSERVADO pela AIL (categoriaMarketplace), para o fluxo
-// atualizarProduto → AIL → Journal engajar de verdade.
-const FAKE: MissionPayload = {
+// A Missão de catálogo para um produto real. Campo observado pela AIL (ENG-006).
+const missaoCategoria = (produto: Produto): MissionPayload => ({
   id: "categoria-marketplace",
   type: "input",
   title: "Em qual categoria do marketplace este produto entra?",
-  description: "A Zion registra sua decisão de categoria para aprender com ela.",
+  description: `Definindo a categoria de “${produto.nome}”. A Zion registra sua decisão para aprender.`,
   body: { kind: "input", inputType: "text", placeholder: "Ex.: Calçados > Chinelos" },
   confirmLabel: "Confirmar",
   cancelLabel: "Cancelar",
-};
+});
 
-function MissionTrigger() {
+// ── Seletor de Produto real + wiring do Runtime por produto selecionado ──────
+function ProductFlow({ runtimeRef }: { runtimeRef: MutableRefObject<Runtime | null> }) {
+  const { setFeedback } = useShell();
   const { open } = useMission();
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [modo, setModo] = useState("");
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      // Resolução da fonte REAL: com sessão de cliente, os produtos do cliente;
+      // senão, todos (RLS em produção; sementes oficiais em demonstração).
+      const perfil = await meuPerfil();
+      const lista = perfil?.clienteId ? await listarProdutosDoCliente(perfil.clienteId) : await listarProdutos();
+      if (!vivo) return;
+      setModo(supabaseConfigurado ? "autenticado" : "demonstração");
+      setProdutos(lista);
+      setCarregando(false);
+    })();
+    return () => { vivo = false; };
+  }, []);
+
+  const selecionar = (produto: Produto) => {
+    // Composition root: constrói o Runtime para ESTE produto real. A ShellPort
+    // traduz RuntimeEvents em feedback visual (o Runtime nunca toca React).
+    const shellPort: ShellPort = { publish: (e) => setFeedback(mapRuntimeEventToFeedback(e)) };
+    const catalog = new CatalogCapability(new CatalogCapabilityAdapter(produto.id));
+    runtimeRef.current = new Runtime(new DecisionFactory(), new RuntimeDispatcher(catalog, shellPort), shellPort);
+    open(missaoCategoria(produto));
+  };
+
+  if (carregando) return <Text role="body-m" tone="tertiary">Carregando produtos…</Text>;
+
   return (
-    <button
-      type="button"
-      data-testid="abrir-missao"
-      onClick={() => open(FAKE)}
-      style={{ cursor: "pointer", borderStyle: "none", borderRadius: fnd("radius.md"), padding: fnd("space.3"), background: sem("color.surface.raised") }}
-    >
-      <Text role="label" tone="primary">Abrir Missão (exemplo)</Text>
-    </button>
+    <div style={{ display: "flex", flexDirection: "column", gap: fnd("space.3"), maxWidth: 560 }}>
+      <Text role="title-s" tone="primary">Selecione um produto ({modo})</Text>
+      {produtos.length === 0 ? (
+        <Text role="body-m" tone="tertiary">Nenhum produto disponível para esta identidade.</Text>
+      ) : null}
+      {produtos.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          data-produto-id={p.id}
+          onClick={() => selecionar(p)}
+          style={{ textAlign: "left", cursor: "pointer", borderStyle: "none", borderRadius: fnd("radius.md"), padding: fnd("space.3"), background: sem("color.surface.raised") }}
+        >
+          <Text role="body-m" tone="primary">{p.nome}</Text>
+        </button>
+      ))}
+    </div>
   );
 }
 
 export default function ZPage() {
+  const runtimeRef = useRef<Runtime | null>(null);
   return (
     <MissionProvider
       onEvent={(e) => {
-        if (e.type === "UserIntentEmitted" && e.intent) {
-          console.log("[UserIntent]", e.intent);
-          // Roteia o UserIntent para o Runtime (única camada que produz Decision).
-          runtime.receive(e.intent);
-        } else {
-          console.log("[MissionEvent]", e.type, e.missionId);
-        }
+        // Roteia o UserIntent para o Runtime do produto selecionado (por porta).
+        if (e.type === "UserIntentEmitted" && e.intent) runtimeRef.current?.receive(e.intent);
       }}
     >
-      <ShellProvider config={{ navigation: NAV, initialContext: "hoje", contents: [{ contextId: "hoje", node: <MissionTrigger /> }] }}>
+      <ShellProvider config={{ navigation: NAV, initialContext: "catalogo", contents: [{ contextId: "catalogo", node: <ProductFlow runtimeRef={runtimeRef} /> }] }}>
         <Frame>
           <Navigation />
           <Stage />

@@ -62,6 +62,7 @@ export function ShellProvider({ config, children }: { config: ShellConfig; child
       navigation: config.navigation,
       mission: state.mission,
       feedback: state.feedback,
+      setFeedback: (feedback) => dispatch({ type: "setFeedback", feedback }),
       stage,
     };
   }, [state, config]);

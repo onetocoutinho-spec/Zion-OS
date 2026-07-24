@@ -41,5 +41,8 @@ export interface ShellContext {
   navigation: NavigationItem[];
   mission: MissionState;
   feedback: FeedbackState;
+  /** Empurra um estado de feedback visual (simétrico a setActive). O Shell não
+   *  conhece a ORIGEM do feedback — quem publica (ex.: uma ShellPort) traduz. */
+  setFeedback: (feedback: FeedbackState) => void;
   stage: StageContent | null;
 }
