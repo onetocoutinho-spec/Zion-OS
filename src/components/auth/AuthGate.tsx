@@ -321,6 +321,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   // A página de definir senha (convite) é pública e não passa pelo gate de
   // perfil — assim o convidado não é mandado ao painel antes de definir a senha.
+  //
+  // /z (Vertical Slice Zero) NÃO é público: passa pelo gate normal e pela regra
+  // de papel (decidirRota) → exige sessão; a equipe alcança a superfície de tela
+  // cheia, o cliente é levado ao seu portal. Só a MOLDURA (sem casca de equipe)
+  // é tratada à parte no AppShell.
   if (pathname === ROTA_DEFINIR_SENHA) return <>{children}</>;
 
   const estado = decidirEstadoAuth(faseSessao, fasePerfil);
