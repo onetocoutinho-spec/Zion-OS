@@ -149,19 +149,43 @@ test("revogar: fecha a torneira futura; histórico completo preservado", async (
   const conhecimento = visaoConhecimento([promocao(1, "2026-07-23T10:00:00.000Z")]);
   const d = deps(conhecimento);
   await concederDelegacao("pat-a", "ok", d);
-  // Determinismo (fix(ail-tests)): concederDelegacao e revogarDelegacao carimbam
-  // `new Date()` internamente. Num runner rápido a concessão e a revogação caem no
-  // MESMO milissegundo; aí o desempate de estadoDelegacao é pelo id (UUID aleatório)
-  // e o "último fato" vira cara-ou-coroa → flaky. Fixar o instante da concessão no
-  // passado garante, de forma determinística, que a revogação (now) seja POSTERIOR.
-  // Só o teste muda; a produção da AIL fica intacta. (Em produção conceder/revogar
-  // distam segundos — a colisão nunca ocorre.)
-  d.gravados[0] = { ...d.gravados[0], ocorridoEm: "2026-07-23T10:00:00.000Z" };
   const r = await revogarDelegacao("pat-a", "pausa operacional", d);
   assert.ok(r.ok);
   assert.equal(await executarDelegacao(CTX, d), null); // futura: fechada
   assert.equal(d.gravados.length, 2); // concessão + revogação — nada apagado
   assert.equal(estadoDelegacao(d.gravados).situacao, "revogada");
+});
+
+// Ordenação determinística: revogarDelegacao só produz um fato quando há concessão
+// VIGENTE — logo a concessão é causalmente anterior à revogação do mesmo slot.
+// Quando ambas compartilham `ocorridoEm` (runner rápido), essa precedência não pode
+// depender do id (UUID aleatório em produção). O teste exerce as DUAS ordens de id e
+// as duas ordens de entrada: nenhuma pode alterar o resultado.
+const INSTANTE_UNICO = "2026-07-23T10:00:00.000Z";
+const fatoNoMesmoInstante = (id: string, tipo: FatoDelegacao["tipo"]): FatoDelegacao => ({
+  id, empresa: "cli-01", contexto: "catalogo", campo: "categoriaMarketplace",
+  knowledgePatternId: "pat-a", knowledgeVersao: 1, valorDelegado: "MLB273770",
+  tipo, delegadoPor: "mantenedor@zion.com", motivo: tipo,
+  assinatura: ASSINATURA_DELEGATION_RUNTIME, evidencias: FOTO,
+  ocorridoEm: INSTANTE_UNICO,
+});
+
+test("concessão precede revogação no MESMO instante — independe do id", () => {
+  // id da concessão < id da revogação
+  assert.equal(
+    estadoDelegacao([fatoNoMesmoInstante("a", "concessao"), fatoNoMesmoInstante("b", "revogacao")]).situacao,
+    "revogada",
+  );
+  // id da concessão > id da revogação (o caso que o desempate por id inverte)
+  assert.equal(
+    estadoDelegacao([fatoNoMesmoInstante("b", "concessao"), fatoNoMesmoInstante("a", "revogacao")]).situacao,
+    "revogada",
+  );
+  // e a ordem de entrada do array também não pode decidir
+  assert.equal(
+    estadoDelegacao([fatoNoMesmoInstante("a", "revogacao"), fatoNoMesmoInstante("b", "concessao")]).situacao,
+    "revogada",
+  );
 });
 
 test("sem delegação vigente no slot → execução silenciosa (null), nunca erro", async () => {
