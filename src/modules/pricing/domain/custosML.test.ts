@@ -1,8 +1,8 @@
-// Testes dos custos que dependem de peso e dimensão.
+// Testes dos custos do Mercado Livre.
 //
-// A regra que guia este arquivo: onde falta dado, o resultado é null — nunca um
-// número plausível. Um frete extrapolado da tabela vira preço errado no anúncio
-// de um cliente real, e ninguém descobre até a margem sumir.
+// Os valores esperados aqui vêm da TABELA OFICIAL (ver tabelaEnvioML.ts), não
+// de estimativa de terceiros. Se o ML mudar a tabela, estes testes quebram —
+// que é exatamente o que deve acontecer.
 // Rodar: npx tsx --test src/modules/pricing/domain/custosML.test.ts
 
 import { test } from "node:test";
@@ -10,26 +10,16 @@ import assert from "node:assert/strict";
 
 import {
   pesoCobravelGramas,
-  custoFixoPorPreco,
-  fretePorPeso,
+  custoDeEnvio,
   comissaoDoAnuncio,
   COMISSAO_MODA,
   LIMIAR_FRETE_GRATIS,
-  type TabelaFrete,
 } from "./custosML.ts";
-
-// Tabela de EXEMPLO, só para os testes. Os dois pontos conhecidos em jul/2026;
-// não é a tabela oficial (que não existe de forma pública e estável).
-const TABELA_EXEMPLO: TabelaFrete = [
-  { atePesoGramas: 300, valor: 18.45 },
-  { atePesoGramas: 5000, valor: 46 },
-];
 
 // ── Peso cobrável: o maior entre real e cubado ───────────────────────────────
 
 test("caixa volumosa e leve é cobrada pelo VOLUME, não pela balança", () => {
   // Caixa de chinelo: 30×20×10 = 6000 cm³ → 1000 g cubados contra 400 g reais.
-  // Este é exatamente o caso que a mudança de 2 de março de 2026 penaliza.
   const cobravel = pesoCobravelGramas({
     pesoGramas: 400,
     alturaCm: 10,
@@ -39,83 +29,99 @@ test("caixa volumosa e leve é cobrada pelo VOLUME, não pela balança", () => {
   assert.equal(cobravel, 1000);
 });
 
-test("produto denso é cobrado pelo peso real", () => {
-  // 30×10×5 = 1500 cm³ → 250 g cubados, contra 800 g reais.
+test("produto denso e pequeno é cobrado pelo peso real", () => {
   const cobravel = pesoCobravelGramas({
-    pesoGramas: 800,
+    pesoGramas: 2000,
     alturaCm: 5,
     larguraCm: 10,
-    comprimentoCm: 30,
+    comprimentoCm: 10,
   });
-  assert.equal(cobravel, 800);
+  assert.equal(cobravel, 2000); // cubado = 500/6000×1000 ≈ 83 g
 });
 
-test("sem dimensões, o peso real prevalece — falta de dado não infla o frete", () => {
+test("sem medidas, o peso real prevalece — nunca se infla por falta de dado", () => {
   const cobravel = pesoCobravelGramas({
-    pesoGramas: 650,
+    pesoGramas: 350,
     alturaCm: 0,
     larguraCm: 0,
     comprimentoCm: 0,
   });
-  assert.equal(cobravel, 650);
+  assert.equal(cobravel, 350);
 });
 
-// ── Custo fixo: por faixa de PREÇO, e só ABAIXO do limiar ────────────────────
+// ── Custo de envio: matriz peso × preço ──────────────────────────────────────
 
-test("o custo fixo segue a faixa de preço", () => {
-  assert.equal(custoFixoPorPreco(15), 5.5);
-  assert.equal(custoFixoPorPreco(20), 5.5);
-  assert.equal(custoFixoPorPreco(20.01), 6);
-  assert.equal(custoFixoPorPreco(78.99), 6);
+test("o envio incide TAMBÉM abaixo do limiar — não é zero lá", () => {
+  // A página oficial: "se aplica a todas as vendas, mesmo que o comprador
+  // pague pelo envio". O modelo anterior zerava isto e errava por baixo.
+  const c = custoDeEnvio(300, 50);
+  assert.ok(c !== null && c > 0, `esperado custo > 0 abaixo do limiar, veio ${c}`);
+  assert.equal(c, 7.75); // 0,3 kg × faixa R$ 49 a R$ 78,99, tabela verde
 });
 
-test("no limiar e acima dele o custo fixo NÃO incide", () => {
-  // O código antigo cobrava R$1,15 em todos os preços; a faixa era o oposto.
-  assert.equal(custoFixoPorPreco(LIMIAR_FRETE_GRATIS), 0);
-  assert.equal(custoFixoPorPreco(350), 0);
+test("no limiar o custo SALTA — é quando o frete grátis vira do vendedor", () => {
+  const abaixo = custoDeEnvio(300, LIMIAR_FRETE_GRATIS - 0.01)!;
+  const acima = custoDeEnvio(300, LIMIAR_FRETE_GRATIS)!;
+  assert.equal(abaixo, 7.75);
+  assert.equal(acima, 12.35);
+  assert.ok(acima > abaixo * 1.5);
 });
 
-test("abaixo do mínimo vendável não há custo — não há venda", () => {
-  assert.equal(custoFixoPorPreco(9.99), null);
-  assert.equal(custoFixoPorPreco(0), null);
+test("o MESMO peso custa mais quando o produto é mais caro", () => {
+  // O preço entra duas vezes na conta: pela comissão e pela faixa de envio.
+  assert.equal(custoDeEnvio(300, 90), 12.35);
+  assert.equal(custoDeEnvio(300, 250), 20.95);
 });
 
-// ── Frete: da tabela, e null fora dela ───────────────────────────────────────
-
-test("o frete sai da faixa de peso correspondente", () => {
-  assert.equal(fretePorPeso(200, TABELA_EXEMPLO), 18.45);
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO), 18.45);
-  assert.equal(fretePorPeso(301, TABELA_EXEMPLO), 46);
-  assert.equal(fretePorPeso(5000, TABELA_EXEMPLO), 46);
+test("a caixa de chinelo cubada cai numa faixa de peso mais cara", () => {
+  const peso = pesoCobravelGramas({
+    pesoGramas: 400,
+    alturaCm: 10,
+    larguraCm: 20,
+    comprimentoCm: 30,
+  });
+  assert.equal(custoDeEnvio(peso, 110), 16.15); // faixa "De 0,5 a 1 kg"
+  // Se fosse pelo peso real de 400 g, cairia na faixa anterior e mais barata.
+  assert.equal(custoDeEnvio(400, 110), 15.45);
 });
 
-test("peso fora da tabela devolve null — não extrapola", () => {
-  // A prova que justifica o arquivo inteiro: sem cobertura, sem palpite.
-  assert.equal(fretePorPeso(5001, TABELA_EXEMPLO), null);
-  assert.equal(fretePorPeso(-1, TABELA_EXEMPLO), null);
-  assert.equal(fretePorPeso(500, []), null);
+test("reputação escolhe a tabela — laranja paga bem mais que verde", () => {
+  const verde = custoDeEnvio(300, 110, "verde")!;
+  const amarela = custoDeEnvio(300, 110, "amarela")!;
+  const laranja = custoDeEnvio(300, 110, "laranja")!;
+  assert.equal(verde, 14.35);
+  assert.equal(amarela, 17.22);
+  assert.equal(laranja, 28.7);
+  assert.ok(verde < amarela && amarela < laranja);
 });
 
-test("o subsídio do ML desconta sobre o valor de tabela", () => {
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO, 50), 9.23);
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO, 70), 5.54);
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO, 0), 18.45);
+test("abaixo de R$ 19 o envio custa no máximo METADE do preço", () => {
+  // Sem esse teto, um item de R$ 8 pagaria R$ 5,65 — 71% do próprio preço.
+  assert.equal(custoDeEnvio(300, 8), 4);
+  assert.equal(custoDeEnvio(300, 10), 5);
+  // Em R$ 19 o teto já não vale: passa a valer a tabela cheia.
+  assert.equal(custoDeEnvio(300, 19), 6.55);
 });
 
-test("subsídio fora da faixa 0–100 devolve null", () => {
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO, 101), null);
-  assert.equal(fretePorPeso(300, TABELA_EXEMPLO, -1), null);
+test("peso acima de 150 kg cai na última faixa, sem estourar", () => {
+  assert.equal(custoDeEnvio(200000, 250), 261.95);
 });
 
-// ── Comissão por tipo de anúncio ─────────────────────────────────────────────
+test("preço zero não gera custo, e entrada inválida devolve null", () => {
+  assert.equal(custoDeEnvio(300, 0), 0);
+  assert.equal(custoDeEnvio(-1, 50), null);
+  assert.equal(custoDeEnvio(300, -1), null);
+});
 
-test("a comissão segue o tipo de anúncio", () => {
-  assert.equal(comissaoDoAnuncio("Clássico"), 14);
+// ── Comissão ─────────────────────────────────────────────────────────────────
+
+test("Premium é o padrão do canal; Clássico é mais barato", () => {
+  assert.equal(comissaoDoAnuncio(undefined), 19);
   assert.equal(comissaoDoAnuncio("Premium"), 19);
+  assert.equal(comissaoDoAnuncio("Clássico"), 14);
+  assert.equal(COMISSAO_MODA.premium, 19);
 });
 
-test("sem tipo, vale Premium — o mesmo default do canal", () => {
-  // Espelha `canaisMarketplace.paraApp`: `tipo_anuncio ?? "Premium"`.
-  assert.equal(comissaoDoAnuncio(undefined), COMISSAO_MODA.premium);
-  assert.equal(comissaoDoAnuncio(null), COMISSAO_MODA.premium);
+test("outra categoria entra como parâmetro, não como número solto", () => {
+  assert.equal(comissaoDoAnuncio("Premium", { classico: 11, premium: 16 }), 16);
 });

@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { TAXAS_PADRAO } from "../../pricing/domain/modeloPreco.ts";
 import {
   RASCUNHO_VAZIO,
   paraNumero,
@@ -16,6 +17,12 @@ import {
   montarProduto,
   type RascunhoProduto,
 } from "./cadastroManual.ts";
+
+/** Caixa de chinelo medida: sem isto o envio (e o piso) não são calculáveis. */
+const REAL = {
+  ...TAXAS_PADRAO,
+  embalagem: { pesoGramas: 400, alturaCm: 10, larguraCm: 20, comprimentoCm: 30 },
+};
 
 const completo: RascunhoProduto = {
   ...RASCUNHO_VAZIO,
@@ -83,28 +90,34 @@ test("preço abaixo do piso do lojista AVISA, não bloqueia", () => {
   // ninguém decide o que não vê.
   const barato = { ...completo, precoVenda: "30,00" };
   assert.deepEqual(validarRascunho(barato), []); // não bloqueia
-  const aviso = avisoDePreco(barato, 5);
+  const aviso = avisoDePreco(barato, 5, REAL);
   assert.ok(aviso);
   assert.ok(aviso.precoMinimo > 30);
 });
 
+test("SEM o peso da embalagem não há aviso — e isso é deliberado", () => {
+  // O custo de envio do ML depende do peso cobrável. Sem ele, acusar "preço
+  // baixo" seria assustar por dado que falta a NÓS, não ao lojista.
+  const barato = { ...completo, precoVenda: "30,00" };
+  assert.equal(avisoDePreco(barato, 5), null);
+});
+
 test("o MESMO preço avisa ou não conforme a margem que o lojista escolheu", () => {
-  // custo 22,50 → piso 36,38 com margem 5%; piso 59,13 com margem 30%.
-  // A R$ 55 o preço é folgado para um lojista e apertado para o outro.
+  // A R$ 55 o preço é folgado para quem exige 5% e apertado para quem exige 30%.
   const p = { ...completo, precoVenda: "55,00", custo: "22,50" };
-  assert.equal(avisoDePreco(p, 5), null, "com margem 5% o preço passa");
-  const exigente = avisoDePreco(p, 30);
+  assert.equal(avisoDePreco(p, 5, REAL), null, "com margem 5% o preço passa");
+  const exigente = avisoDePreco(p, 30, REAL);
   assert.ok(exigente, "com margem 30% o preço fica abaixo do piso");
   assert.ok(exigente.precoMinimo > 55);
   assert.ok(exigente.margemAtual < 30);
 });
 
 test("preço acima do piso não gera aviso", () => {
-  assert.equal(avisoDePreco({ ...completo, precoVenda: "500,00" }, 5), null);
+  assert.equal(avisoDePreco({ ...completo, precoVenda: "500,00" }, 5, REAL), null);
 });
 
 test("sem custo não há o que comparar — nenhum aviso inventado", () => {
-  assert.equal(avisoDePreco({ ...completo, custo: "" }, 5), null);
+  assert.equal(avisoDePreco({ ...completo, custo: "" }, 5, REAL), null);
 });
 
 // ── Montagem ─────────────────────────────────────────────────────────────────
@@ -140,9 +153,15 @@ test("custo digitado pelo próprio lojista tem confiança alta", () => {
 });
 
 test("o preço mínimo gravado usa a margem do lojista, não um piso fixo", () => {
-  const com5 = montarProduto(completo, "c", "n", 5).precoMinimo!;
-  const com25 = montarProduto(completo, "c", "n", 25).precoMinimo!;
+  const com5 = montarProduto(completo, "c", "n", 5, REAL).precoMinimo!;
+  const com25 = montarProduto(completo, "c", "n", 25, REAL).precoMinimo!;
   assert.ok(com25 > com5, `${com25} > ${com5}`);
+});
+
+test("sem peso, o produto nasce sem preço mínimo gravado — campo ausente, não zero", () => {
+  const p = montarProduto(completo, "c", "n", 5);
+  assert.equal(p.precoMinimo, undefined);
+  assert.equal(p.margem, undefined);
 });
 
 test("espaços em volta não viram parte do dado", () => {

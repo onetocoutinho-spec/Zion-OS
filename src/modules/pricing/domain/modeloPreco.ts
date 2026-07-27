@@ -1,46 +1,39 @@
 // Modelo de preço — puro, sem rede, sem React.
 //
-// A margem mínima é escolha do lojista (migração 029). As TAXAS, que antes eram
-// quatro números fixos e errados, agora vêm de `custosML`:
+// A margem mínima é escolha do lojista (migração 029). As taxas vêm de
+// `custosML`, que agora usa a TABELA OFICIAL do Mercado Livre:
 //
-//   comissão   → % por tipo de anúncio (Clássico 14% / Premium 19% em Moda)
-//   custo fixo → por faixa de PREÇO, e só ABAIXO do limiar de R$ 79
-//   frete      → por PESO cobrável (o maior entre real e cubado), só a partir
-//                do limiar, com subsídio de reputação
+//   comissão → % por tipo de anúncio (Clássico 14% / Premium 19% em Moda)
+//   envio    → matriz peso × faixa de preço, por reputação. Incide SEMPRE.
 //
-// O que havia antes: comissão 30% (11 pontos fictícios), custo fixo de R$ 1,15
-// cobrado em TODOS os preços (o ML cobra só abaixo do limiar) e frete de R$
-// 14,15 fixo. Os dois primeiros erram em direções opostas: em produto barato se
-// cancelavam, em produto caro se somavam — o piso saía até 27% acima do real.
+// Histórico das correções, para ninguém refazer o caminho errado:
+//   1ª versão: comissão 30% (11 pontos fictícios), custo fixo R$ 1,15 em todo
+//              preço, frete R$ 14,15 fixo acima de R$ 79. Tudo chute.
+//   2ª versão: comissão real, mas com um "custo fixo por faixa de preço" que
+//              não existe, e frete tratado como desconhecido.
+//   agora:     a tabela oficial. Não há mais custo desconhecido quando se sabe
+//              o peso — e o peso está em `produto_variantes` desde a migração 001.
 //
-// ⚠️ ONDE FALTA DADO, O RESULTADO É null — nunca um número plausível.
-// Sem tabela de frete não há como saber o custo de envio de um item acima do
-// limiar. Devolver zero faria o piso parecer MENOR do que é, que é o erro
-// perigoso: o lojista venderia no prejuízo sem saber. null vira pendência
-// visível na tela.
+// O que ainda pode faltar é o PESO da variante. Aí sim o resultado é null:
+// estimar o envio sem peso faria o piso parecer menor do que é, e o lojista
+// venderia no prejuízo sem saber.
 
 import {
   COMISSAO_MODA,
   LIMIAR_FRETE_GRATIS,
-  PRECO_MINIMO_VENDAVEL,
-  TABELA_CUSTO_FIXO,
+  REPUTACAO_PADRAO,
+  TETOS_PRECO,
   comissaoDoAnuncio,
-  custoFixoPorPreco,
-  fretePorPeso,
+  custoDeEnvio,
   pesoCobravelGramas,
   type ComissaoPorTipo,
   type Embalagem,
-  type FaixaCustoFixo,
-  type TabelaFrete,
+  type ReputacaoEnvio,
 } from "./custosML.ts";
 
-export {
-  LIMIAR_FRETE_GRATIS,
-  COMISSAO_MODA,
-  type Embalagem,
-  type TabelaFrete,
-  type ComissaoPorTipo,
-};
+export { LIMIAR_FRETE_GRATIS, COMISSAO_MODA, REPUTACAO_PADRAO };
+export type { Embalagem, ComissaoPorTipo, ReputacaoEnvio };
+export { ROTULO_REPUTACAO } from "./tabelaEnvioML.ts";
 
 /** Tudo o que decide quanto uma venda custa. */
 export interface ModeloTaxas {
@@ -48,33 +41,30 @@ export interface ModeloTaxas {
   comissao: ComissaoPorTipo;
   /** "Clássico" ou "Premium" — vem do canal do cliente. */
   tipoAnuncio: string;
-  tabelaCustoFixo: readonly FaixaCustoFixo[];
-  /** Do painel do lojista. null = desconhecida, e o frete vira pendência. */
-  tabelaFrete: TabelaFrete | null;
-  /** Medidas da variante. null = sem peso, e o frete vira pendência. */
+  /** Reputação do lojista: escolhe qual das três tabelas de envio vale. */
+  reputacao: ReputacaoEnvio;
+  /** Medidas da variante. null = sem peso, e o envio vira pendência. */
   embalagem: Embalagem | null;
-  /** Subsídio do ML sobre o frete de tabela (até 70%, conforme reputação). */
-  subsidioFretePercentual: number;
 }
 
 /**
- * O padrão espelha o que o sistema sabe hoje: categoria Moda, canal Premium
- * (o default de `canaisMarketplace`), e frete DESCONHECIDO — porque não existe
- * tabela pública estável, e inventar uma seria pior do que admitir a falta.
+ * O padrão: categoria Moda, canal Premium (o default de `canaisMarketplace`) e
+ * reputação verde — que é o que o ML aplica a quem não tem reputação ainda.
  */
 export const TAXAS_PADRAO: ModeloTaxas = {
   comissao: COMISSAO_MODA,
   tipoAnuncio: "Premium",
-  tabelaCustoFixo: TABELA_CUSTO_FIXO,
-  tabelaFrete: null,
+  reputacao: REPUTACAO_PADRAO,
   embalagem: null,
-  subsidioFretePercentual: 0,
 };
 
 /** O piso que a Zion assumia pelo lojista. Vira apenas o valor inicial dele. */
 export const MARGEM_MINIMA_PADRAO = 5;
 export const MARGEM_MINIMA_PERMITIDA = 0;
 export const MARGEM_MAXIMA_PERMITIDA = 60;
+
+const SEM_PESO =
+  "Falta o peso e as medidas da embalagem para calcular o envio deste produto.";
 
 function arredondar(v: number): number {
   return Math.round(v * 100) / 100;
@@ -85,72 +75,41 @@ export function comissaoPercentual(taxas: ModeloTaxas = TAXAS_PADRAO): number {
   return comissaoDoAnuncio(taxas.tipoAnuncio, taxas.comissao);
 }
 
-/** O frete do vendedor, ou null quando falta peso ou tabela. */
-export function freteDoModelo(taxas: ModeloTaxas = TAXAS_PADRAO): number | null {
-  if (!taxas.embalagem || !taxas.tabelaFrete) return null;
-  const peso = pesoCobravelGramas(taxas.embalagem);
-  return fretePorPeso(peso, taxas.tabelaFrete, taxas.subsidioFretePercentual);
+/** O custo de envio para um preço, ou null quando falta o peso. */
+export function envioDoModelo(
+  preco: number,
+  taxas: ModeloTaxas = TAXAS_PADRAO
+): number | null {
+  if (!taxas.embalagem) return null;
+  return custoDeEnvio(pesoCobravelGramas(taxas.embalagem), preco, taxas.reputacao);
 }
 
 export interface CustoDaVenda {
   comissao: number;
-  custoFixo: number;
-  /** null quando o preço atinge o limiar e o frete não é conhecido. */
-  frete: number | null;
+  /** null quando falta o peso da embalagem. */
+  envio: number | null;
   /** null quando alguma parcela é desconhecida — nunca um total parcial. */
   total: number | null;
-  /** O que falta para fechar a conta. Vazio quando o total é confiável. */
+  /** O que falta para fechar a conta. null quando o total é confiável. */
   pendencia: string | null;
 }
 
-/**
- * Quanto o marketplace leva desta venda. Puro.
- *
- * Abaixo do limiar o frete não é do vendedor, então a conta fecha sempre. A
- * partir do limiar o frete entra, e sem peso ou sem tabela o total é null.
- */
+/** Quanto o marketplace leva desta venda. Puro. */
 export function custoDaVenda(
   preco: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
 ): CustoDaVenda {
-  if (preco <= 0) {
-    return { comissao: 0, custoFixo: 0, frete: 0, total: 0, pendencia: null };
-  }
+  if (preco <= 0) return { comissao: 0, envio: 0, total: 0, pendencia: null };
 
   const comissao = arredondar((preco * comissaoPercentual(taxas)) / 100);
-  const abaixoDoLimiar = preco < LIMIAR_FRETE_GRATIS;
-
-  if (abaixoDoLimiar) {
-    const fixo = custoFixoPorPreco(preco, taxas.tabelaCustoFixo);
-    if (fixo === null) {
-      return {
-        comissao,
-        custoFixo: 0,
-        frete: 0,
-        total: null,
-        pendencia: `Preço abaixo do mínimo vendável no Mercado Livre (R$ ${PRECO_MINIMO_VENDAVEL}).`,
-      };
-    }
-    return { comissao, custoFixo: fixo, frete: 0, total: arredondar(comissao + fixo), pendencia: null };
+  const envio = envioDoModelo(preco, taxas);
+  if (envio === null) {
+    return { comissao, envio: null, total: null, pendencia: SEM_PESO };
   }
-
-  // A partir do limiar: sem custo fixo, com frete por conta do vendedor.
-  const frete = freteDoModelo(taxas);
-  if (frete === null) {
-    return {
-      comissao,
-      custoFixo: 0,
-      frete: null,
-      total: null,
-      pendencia: !taxas.embalagem
-        ? "Falta o peso e as medidas da variante para calcular o frete."
-        : "Falta a tabela de frete da sua conta no Mercado Livre.",
-    };
-  }
-  return { comissao, custoFixo: 0, frete, total: arredondar(comissao + frete), pendencia: null };
+  return { comissao, envio, total: arredondar(comissao + envio), pendencia: null };
 }
 
-/** Soma das taxas, ou null quando alguma parcela é desconhecida. */
+/** Soma das taxas, ou null quando falta o peso. */
 export function custoDasTaxas(
   preco: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
@@ -186,19 +145,16 @@ export type ResultadoPrecoMinimo =
   | { ok: true; preco: number }
   /** comissão + margem ≥ 100%: não existe preço que satisfaça. */
   | { ok: false; motivo: "margem_impossivel" }
-  /**
-   * O piso cruza o limiar e o frete é desconhecido. `pisoSemFrete` é um limite
-   * INFERIOR real: o preço certo é maior. Mostrar como "a partir de", nunca
-   * como o valor final.
-   */
-  | { ok: false; motivo: "frete_desconhecido"; pisoSemFrete: number; pendencia: string };
+  /** Falta o peso da embalagem — o envio não é estimável. */
+  | { ok: false; motivo: "sem_peso"; pendencia: string };
 
 /**
  * O menor preço que ainda entrega a margem escolhida pelo lojista.
  *
- * Resolve preco = (custo + parcelas fixas) / (1 − comissão − margem). As
- * parcelas mudam conforme o preço cruza o limiar, então o cálculo é feito
- * abaixo do limiar primeiro e refeito acima se o resultado passar da linha.
+ * O envio depende do PREÇO (a matriz tem faixas por preço), e o preço é
+ * justamente o que se quer descobrir. Então cada faixa de preço gera um
+ * candidato — resolvendo preco = (custo + envio_da_faixa) / (1 − comissão −
+ * margem) — e vale o primeiro que cai DENTRO da própria faixa.
  */
 export function precoMinimo(
   custo: number,
@@ -207,31 +163,26 @@ export function precoMinimo(
 ): ResultadoPrecoMinimo {
   const divisor = 1 - comissaoPercentual(taxas) / 100 - margemDesejada / 100;
   if (divisor <= 0) return { ok: false, motivo: "margem_impossivel" };
+  if (!taxas.embalagem) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
 
-  // Hipótese 1: o preço fica ABAIXO do limiar → incide custo fixo, sem frete.
-  //
-  // O custo fixo muda por faixa de preço, e o preço é justamente o que se quer
-  // descobrir — então cada faixa gera um candidato, e vale o primeiro que cai
-  // DENTRO da própria faixa. Usar sempre a faixa mais cara entregaria margem
-  // acima da pedida em produto barato: erra para o lado seguro, mas erra.
-  for (const faixa of taxas.tabelaCustoFixo) {
-    const candidato = (custo + faixa.valor) / divisor;
-    if (candidato <= faixa.atePreco) return { ok: true, preco: arredondar(candidato) };
-  }
+  let anterior = 0;
+  for (const teto of TETOS_PRECO) {
+    // Um preço qualquer DENTRO da faixa serve para consultar o custo de envio
+    // dela — dentro da faixa o valor é constante.
+    const amostra = Number.isFinite(teto) ? teto : anterior + 1;
+    const envio = envioDoModelo(amostra, taxas);
+    if (envio === null) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
 
-  // Hipótese 2: o preço fica NO limiar ou acima → sem custo fixo, com frete.
-  const frete = freteDoModelo(taxas);
-  if (frete === null) {
-    return {
-      ok: false,
-      motivo: "frete_desconhecido",
-      pisoSemFrete: arredondar(Math.max(custo / divisor, LIMIAR_FRETE_GRATIS)),
-      pendencia: !taxas.embalagem
-        ? "Falta o peso e as medidas da variante para calcular o frete."
-        : "Falta a tabela de frete da sua conta no Mercado Livre.",
-    };
+    const candidato = (custo + envio) / divisor;
+    if (candidato <= teto) {
+      // Nunca abaixo do piso da própria faixa: se o cálculo cair antes dela, é
+      // porque a faixa anterior não coube — o preço é o começo desta.
+      return { ok: true, preco: arredondar(Math.max(candidato, anterior)) };
+    }
+    anterior = teto;
   }
-  return { ok: true, preco: arredondar(Math.max((custo + frete) / divisor, LIMIAR_FRETE_GRATIS)) };
+  // A última faixa é aberta, então o laço acima sempre resolve. Inalcançável.
+  return { ok: false, motivo: "margem_impossivel" };
 }
 
 /** Atalho para quem só quer o número e trata a ausência como desconhecida. */

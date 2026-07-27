@@ -56,7 +56,7 @@ export default function ClientePrecificacao() {
       const saude = { margem: pct, status, tone: toneSaudeMargem(status) };
       const piso = p.custo > 0 ? precoMinimo(p.custo, margem) : null;
       const precoIdeal = piso?.ok ? piso.preco : null;
-      const pendencia = piso && !piso.ok && piso.motivo === "frete_desconhecido" ? piso.pendencia : null;
+      const pendencia = piso && !piso.ok && piso.motivo === "sem_peso" ? piso.pendencia : null;
       return { p, taxas, lucro, saude, precoIdeal, pendencia };
     });
   }, [produtos, margem]);

@@ -1,57 +1,51 @@
-// Os custos do Mercado Livre que dependem de PESO e DIMENSÃO — puro, sem rede.
+// Os custos do Mercado Livre — puro, sem rede.
 //
-// Este arquivo existe porque `modeloPreco.ts` trata dois dos três eixos de taxa
-// como número único, e nenhum dos dois é: o custo fixo varia por faixa de PREÇO,
-// e o frete varia por PESO, região e reputação. Ver DIVERGENCIAS_CONHECIDAS lá.
+// A tabela oficial (tabelaEnvioML.ts) corrigiu duas coisas que este arquivo
+// afirmava antes e estavam erradas:
 //
-// ⚠️ LEIA ANTES DE PREENCHER A TABELA DE FRETE.
-// Não existe tabela pública estável de frete do ML para usar como padrão. As
-// fontes consultadas (jul/2026) são unânimes: os valores são dinâmicos e
-// dependem de distância, peso (real ou cubado, o MAIOR), dimensões e reputação
-// do vendedor — "consultar o painel do Mercado Livre". Por isso `fretePorPeso`
-// EXIGE a tabela como parâmetro e devolve null fora da cobertura, em vez de
-// devolver um número inventado. Um frete chutado vira preço de venda errado no
-// anúncio de um cliente real; null vira uma pendência visível.
+//   ✗ "existe um custo fixo por faixa de preço, cobrado só abaixo de R$ 79"
+//   ✓ existe UM custo de envio, cobrado em TODAS as vendas, que é uma matriz
+//     peso × faixa de preço. Abaixo de R$ 79 ele é pequeno; a partir de R$ 79
+//     ele salta, porque é quando o frete grátis passa a ser do vendedor.
+//
+//   ✗ "não existe tabela pública estável de frete, então devolvemos null"
+//   ✓ existe, é pública, e está encodada. O que varia é a REPUTAÇÃO do lojista,
+//     que escolhe entre três tabelas — e vendedor sem reputação usa a verde,
+//     por regra do próprio ML.
+//
+// Os valores R$ 5,50 / R$ 6,00 que estavam em TABELA_CUSTO_FIXO eram estimativa
+// de terceiros, não a fonte. Foram removidos.
 
-/** Preço a partir do qual o custo fixo por unidade deixa de incidir. */
-export const LIMIAR_FRETE_GRATIS = 79;
+import {
+  TABELA_ENVIO,
+  TETOS_PESO_G,
+  TETOS_PRECO,
+  PRECO_TETO_METADE,
+  REPUTACAO_PADRAO,
+  type ReputacaoEnvio,
+} from "./tabelaEnvioML.ts";
 
-/** Abaixo disto o ML não permite vender (limite mínimo). */
-export const PRECO_MINIMO_VENDAVEL = 10;
-
-/** Uma faixa da tabela de custo fixo: vale para preços até `atePreco`. */
-export interface FaixaCustoFixo {
-  atePreco: number;
-  valor: number;
-}
+export {
+  TABELA_ENVIO,
+  TETOS_PESO_G,
+  TETOS_PRECO,
+  REPUTACAO_PADRAO,
+  ROTULO_REPUTACAO,
+  type ReputacaoEnvio,
+} from "./tabelaEnvioML.ts";
 
 /**
- * Custo fixo por unidade, cobrado pelo ML nos itens ABAIXO do limiar.
- *
- * O código antigo aplicava R$1,15 em TODOS os preços — invertido em dois
- * sentidos: o valor está defasado e a faixa é o oposto da real (o ML cobra
- * abaixo do limiar, não acima). Valores da tabela 2026; faixas por PREÇO,
- * não por peso.
+ * Preço a partir do qual o frete grátis passa a ser custeado pelo VENDEDOR.
+ * Não é o ponto em que o custo começa — é onde ele salta.
  */
-export const TABELA_CUSTO_FIXO: readonly FaixaCustoFixo[] = [
-  { atePreco: 20, valor: 5.5 },
-  { atePreco: 78.99, valor: 6.0 },
-];
-
-/** Uma faixa da tabela de frete: vale para pesos até `atePesoGramas`. */
-export interface FaixaFrete {
-  atePesoGramas: number;
-  valor: number;
-}
-
-/** Tabela de frete, ordenada por peso. Sem padrão: cada conta tem a sua. */
-export type TabelaFrete = readonly FaixaFrete[];
+export const LIMIAR_FRETE_GRATIS = 79;
 
 /**
  * Divisor de cubagem (cm³ → gramas equivalentes).
  *
- * 6000 é o divisor de praxe no mercado brasileiro. NÃO foi confirmado contra a
- * documentação do ML — por isso é parâmetro, não número embutido no cálculo.
+ * 6000 é o divisor de praxe no mercado brasileiro. A página oficial diz que o
+ * custo vem "das medidas e peso" sem publicar o divisor — por isso é parâmetro,
+ * não número embutido no cálculo.
  */
 export const DIVISOR_CUBAGEM_PADRAO = 6000;
 
@@ -70,10 +64,10 @@ function arredondar(v: number): number {
 /**
  * O peso que o ML cobra: o MAIOR entre o peso real e o cubado.
  *
- * Desde 2 de março de 2026 a cubagem entrou na conta — quem vende volumoso e
- * leve (caixa de chinelo é exatamente isso) paga pelo volume, não pela balança.
- * Medida faltando conta como zero: sem dimensão não há cubagem, e o peso real
- * prevalece — nunca o contrário, para não inflar o frete por falta de dado.
+ * Quem vende volumoso e leve — caixa de chinelo é exatamente isso — paga pelo
+ * volume, não pela balança. Medida faltando conta como zero: sem dimensão não
+ * há cubagem e o peso real prevalece, nunca o contrário, para não inflar o
+ * frete por falta de dado.
  */
 export function pesoCobravelGramas(
   e: Embalagem,
@@ -85,40 +79,38 @@ export function pesoCobravelGramas(
   return arredondar(Math.max(0, e.pesoGramas, cubado));
 }
 
-/**
- * Custo fixo por unidade para um preço. Puro.
- *
- * Devolve 0 no limiar ou acima (lá o custo é o frete, não este), e null abaixo
- * do mínimo vendável — onde não existe venda legítima para precificar.
- */
-export function custoFixoPorPreco(
-  preco: number,
-  tabela: readonly FaixaCustoFixo[] = TABELA_CUSTO_FIXO
-): number | null {
-  if (!Number.isFinite(preco) || preco < PRECO_MINIMO_VENDAVEL) return null;
-  if (preco >= LIMIAR_FRETE_GRATIS) return 0;
-  const faixa = tabela.find((f) => preco <= f.atePreco);
-  return faixa ? faixa.valor : null;
+/** Índice da faixa cujo teto cobre o valor. -1 quando nenhuma cobre. */
+function faixa(valor: number, tetos: readonly number[]): number {
+  return tetos.findIndex((teto) => valor <= teto);
 }
 
 /**
- * Frete do vendedor para um peso cobrável. Puro.
+ * Custo de envio de uma unidade. Puro.
  *
- * Devolve null quando o peso não está coberto pela tabela — a tabela é a fonte,
- * e extrapolar dela seria inventar o custo do envio de um produto real.
- * O subsídio do ML (até 70%, conforme reputação) entra como desconto sobre o
- * valor de tabela; 0 = sem subsídio.
+ * Incide SEMPRE — a página oficial é explícita: "se aplica a todas as vendas,
+ * mesmo que o comprador pague pelo envio".
+ *
+ * Devolve null só para entrada inválida (peso ou preço negativo). Fora disso a
+ * matriz cobre de R$ 0 a infinito e de 0 g a mais de 150 kg.
  */
-export function fretePorPeso(
+export function custoDeEnvio(
   pesoGramas: number,
-  tabela: TabelaFrete,
-  subsidioPercentual = 0
+  preco: number,
+  reputacao: ReputacaoEnvio = REPUTACAO_PADRAO
 ): number | null {
   if (!Number.isFinite(pesoGramas) || pesoGramas < 0) return null;
-  if (subsidioPercentual < 0 || subsidioPercentual > 100) return null;
-  const faixa = tabela.find((f) => pesoGramas <= f.atePesoGramas);
-  if (!faixa) return null;
-  return arredondar(faixa.valor * (1 - subsidioPercentual / 100));
+  if (!Number.isFinite(preco) || preco < 0) return null;
+  if (preco === 0) return 0;
+
+  const iPeso = faixa(pesoGramas, TETOS_PESO_G);
+  const iPreco = faixa(preco, TETOS_PRECO);
+  if (iPeso < 0 || iPreco < 0) return null;
+
+  const bruto = TABELA_ENVIO[reputacao][iPeso][iPreco];
+  // Rodapé da tabela: abaixo de R$ 19 o envio custa no máximo metade do preço.
+  // Sem isso, um item de R$ 8 pagaria R$ 5,65 de envio — mais da metade dele.
+  const teto = preco < PRECO_TETO_METADE ? preco / 2 : Infinity;
+  return arredondar(Math.min(bruto, teto));
 }
 
 /**
