@@ -12,7 +12,7 @@
 import type { Marketplace, Produto } from "../../../lib/types";
 import {
   margemLiquida,
-  precoMinimo,
+  precoMinimoOuNull,
   MARGEM_MINIMA_PADRAO,
 } from "../../pricing/domain/modeloPreco.ts";
 
@@ -115,9 +115,13 @@ export function avisoDePreco(
   const custo = paraNumero(r.custo);
   const preco = paraNumero(r.precoVenda);
   if (custo <= 0 || preco <= 0) return null; // sem custo não há o que comparar
-  const piso = precoMinimo(custo, margemMinima);
+  const piso = precoMinimoOuNull(custo, margemMinima);
+  // Piso indefinido (frete desconhecido) não vira aviso: acusar preço baixo sem
+  // saber o custo de envio seria assustar por conta de dado que falta a nós.
   if (piso === null || preco >= piso) return null;
-  return { precoMinimo: piso, margemAtual: margemLiquida(custo, preco) };
+  const margemAtual = margemLiquida(custo, preco);
+  if (margemAtual === null) return null;
+  return { precoMinimo: piso, margemAtual };
 }
 
 /**
@@ -135,7 +139,7 @@ export function montarProduto(
 ): Omit<Produto, "id"> {
   const custo = paraNumero(r.custo);
   const precoVenda = paraNumero(r.precoVenda);
-  const piso = precoMinimo(custo, margemMinima);
+  const piso = precoMinimoOuNull(custo, margemMinima);
 
   return {
     clienteId,
@@ -158,8 +162,10 @@ export function montarProduto(
     statusPrecificacao: "Pendente",
     prioridade: "Média",
     observacoes: "Cadastrado pelo lojista no portal.",
+    // ?? undefined: campo ausente é honesto sobre o que ainda não se sabe;
+    // gravar 0 afirmaria "sem margem", que é outra coisa.
     precoMinimo: piso ?? undefined,
-    margem: margemLiquida(custo, precoVenda),
+    margem: margemLiquida(custo, precoVenda) ?? undefined,
     // Custo digitado pelo próprio lojista: a fonte mais confiável que existe.
     confiancaCusto: custo > 0 ? "alta" : "",
   } as Omit<Produto, "id">;

@@ -11,7 +11,7 @@ import { criarProdutos } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
 import {
   margemLiquida,
-  precoMinimo,
+  precoMinimoOuNull,
   MARGEM_MINIMA_PADRAO,
 } from "../../modules/pricing/domain/modeloPreco.ts";
 
@@ -71,14 +71,17 @@ function resolverMarketplace(valor: string, padrao: Marketplace): Marketplace {
 // padrão, não a escolha atual do lojista (que pode mudar depois). Quem exibe
 // preço ideal ao vivo chama precoMinimo() com a margem escolhida.
 
-/** Margem % no momento da importação (taxas padrão). */
-export function margemZion(custo: number, preco: number): number {
+/**
+ * Margem % no momento da importação. null quando o frete é desconhecido —
+ * gravar 0 diria "sem margem", que é diferente de "ainda não dá para saber".
+ */
+export function margemZion(custo: number, preco: number): number | null {
   return margemLiquida(custo, preco);
 }
 
-/** Preço mínimo no momento da importação, pelo piso padrão. */
-export function precoMinimoZion(custo: number): number {
-  return precoMinimo(custo, MARGEM_MINIMA_PADRAO) ?? 0;
+/** Preço mínimo no momento da importação, pelo piso padrão. null se indefinido. */
+export function precoMinimoZion(custo: number): number | null {
+  return precoMinimoOuNull(custo, MARGEM_MINIMA_PADRAO);
 }
 
 function normalizarConfianca(v: string): "alta" | "media" | "baixa" | "" {
@@ -107,7 +110,8 @@ export interface VariacaoImportada {
 
 export interface LinhaProduto {
   base: BaseProduto;
-  margem: number;
+  /** null quando o frete ainda é desconhecido — não é o mesmo que zero. */
+  margem: number | null;
   /** Preenchido no modo agrupado (base com variações). */
   variacoes?: VariacaoImportada[];
 }
@@ -265,8 +269,8 @@ function mapearLinha(
       ? `Importado da base. Custo com confiança ${confiancaCusto} — validar antes de reprecificar.`
       : "Importado da base de produtos.",
     codErp: codErp || undefined,
-    precoMinimo: precoMinimoZion(custo),
-    margem,
+    precoMinimo: precoMinimoZion(custo) ?? undefined,
+    margem: margem ?? undefined,
     confiancaCusto,
   };
 
@@ -336,8 +340,8 @@ function construirAgrupado(
       observacoes: `Importado da base (${variacoes.length} derivações).`,
       tipoProduto: "com_variacao",
       codErp: chave || undefined,
-      precoMinimo: precoMinimoZion(custo),
-      margem,
+      precoMinimo: precoMinimoZion(custo) ?? undefined,
+      margem: margem ?? undefined,
       confiancaCusto,
     };
 
@@ -446,7 +450,8 @@ export async function confirmarImportacaoProdutos(params: {
   return {
     total: produtos.length,
     totalVariacoes: variantes.length,
-    comMargemBaixa: linhas.filter((l) => l.margem < 5).length,
+    // Margem desconhecida não entra na contagem: só conta o que se sabe baixo.
+    comMargemBaixa: linhas.filter((l) => l.margem !== null && l.margem < 5).length,
   };
 }
 

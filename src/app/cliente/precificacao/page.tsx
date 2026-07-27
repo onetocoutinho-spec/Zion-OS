@@ -46,14 +46,18 @@ export default function ClientePrecificacao() {
 
   const linhas = useMemo(() => {
     return (produtos ?? []).map((p) => {
+      // Cada um destes pode ser null quando o frete do item ainda é desconhecido
+      // — a coluna mostra a pendência em vez de um número inventado.
       const taxas = custoDasTaxas(p.precoVenda);
       const lucro = lucroLiquido(p.custo, p.precoVenda);
       const temDados = p.precoVenda > 0 && p.custo > 0;
       const pct = temDados ? margemLiquida(p.custo, p.precoVenda) : null;
       const status = classificarMargem(pct, margem);
       const saude = { margem: pct, status, tone: toneSaudeMargem(status) };
-      const precoIdeal = p.custo > 0 ? precoMinimo(p.custo, margem) : null;
-      return { p, taxas, lucro, saude, precoIdeal };
+      const piso = p.custo > 0 ? precoMinimo(p.custo, margem) : null;
+      const precoIdeal = piso?.ok ? piso.preco : null;
+      const pendencia = piso && !piso.ok && piso.motivo === "frete_desconhecido" ? piso.pendencia : null;
+      return { p, taxas, lucro, saude, precoIdeal, pendencia };
     });
   }, [produtos, margem]);
 
@@ -138,18 +142,24 @@ export default function ClientePrecificacao() {
         {filtradas.length === 0 ? (
           <EmptyRow colSpan={8} />
         ) : (
-          filtradas.map(({ p, taxas, lucro, saude, precoIdeal }) => (
+          filtradas.map(({ p, taxas, lucro, saude, precoIdeal, pendencia }) => (
             <tr key={p.id} className="hover:bg-white/[0.02]">
               <TdMain sub={p.sku || undefined}>{p.nome}</TdMain>
               <Td>{formatBRL(p.custo)}</Td>
               <Td>{formatBRL(p.precoVenda)}</Td>
-              <Td className="text-zinc-500">{formatBRL(taxas)}</Td>
-              <Td className={lucro < 0 ? "text-red-400" : "text-emerald-400"}>{formatBRL(lucro)}</Td>
+              <Td className="text-zinc-500">{taxas === null ? "—" : formatBRL(taxas)}</Td>
+              <Td className={lucro !== null && lucro < 0 ? "text-red-400" : "text-emerald-400"}>
+                {lucro === null ? <span className="text-zinc-600">—</span> : formatBRL(lucro)}
+              </Td>
               <Td>{saude.margem != null ? `${saude.margem}%` : "—"}</Td>
               <Td>
                 {precoIdeal != null ? (
                   <span className={p.precoVenda < precoIdeal ? "text-amber-400" : "text-zinc-400"}>
                     {formatBRL(precoIdeal)}
+                  </span>
+                ) : pendencia ? (
+                  <span className="text-[11px] text-amber-400/80" title={pendencia}>
+                    falta frete
                   </span>
                 ) : (
                   <span className="text-zinc-600">—</span>

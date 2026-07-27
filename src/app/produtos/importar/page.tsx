@@ -179,7 +179,13 @@ export default function ImportarProdutosPage() {
                       <Td className="whitespace-nowrap text-zinc-300">{formatBRL(l.base.custo)}</Td>
                       <Td className="whitespace-nowrap text-zinc-300">{formatBRL(l.base.precoVenda)}</Td>
                       <Td className="whitespace-nowrap text-zinc-300">{l.base.estoque}</Td>
-                      <Td><Badge tone={l.margem >= 5 ? "green" : l.margem >= 0 ? "yellow" : "red"}>{`${l.margem}%`}</Badge></Td>
+                      <Td>
+                        {l.margem === null ? (
+                          <Badge tone="gray">a definir</Badge>
+                        ) : (
+                          <Badge tone={l.margem >= 5 ? "green" : l.margem >= 0 ? "yellow" : "red"}>{`${l.margem}%`}</Badge>
+                        )}
+                      </Td>
                     </tr>
                   ))}
                 </Table>

@@ -970,7 +970,9 @@ function PrecoResultado({ produto, onOutro }: { produto: Produto; onOutro: () =>
   }, []);
 
   const { margem, status, tone } = saudeMargem(produto, margemMinima);
-  const precoMin = produto.custo > 0 ? precoMinimo(produto.custo, margemMinima) : null;
+  const piso = produto.custo > 0 ? precoMinimo(produto.custo, margemMinima) : null;
+  const precoMin = piso?.ok ? piso.preco : null;
+  const pendenciaFrete = piso && !piso.ok && piso.motivo === "frete_desconhecido" ? piso.pendencia : null;
 
   return (
     <Card
@@ -994,13 +996,14 @@ function PrecoResultado({ produto, onOutro }: { produto: Produto; onOutro: () =>
             Abaixo do preço mínimo — considere ajustar para {formatBRL(precoMin)}.
           </span>
         )}
+        {pendenciaFrete && <span className="text-sm text-amber-400">{pendenciaFrete}</span>}
         {margem != null && margem >= 20 && (
           <span className="text-sm text-emerald-400">Margem saudável para vender com folga.</span>
         )}
       </div>
       <p className="mt-4 border-t border-white/5 pt-3 text-xs text-zinc-500">
-        Cálculo pelo modelo Zion (taxa do marketplace, tarifa fixa e frete estimado). Para ajustar o
-        preço em massa, fale com a equipe Zion.
+        Comissão do Mercado Livre por tipo de anúncio, custo fixo por faixa de preço e frete por
+        peso. Onde falta o frete, o preço mínimo aparece como pendência em vez de estimativa.
       </p>
       <div className="mt-3">
         <Link href="/cliente/precificacao" className="text-xs text-violet-400 hover:text-violet-300">
