@@ -10,12 +10,19 @@ import {
   Wand2,
   Sparkles,
   Download,
+  Rocket,
+  ExternalLink,
 } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import {
+  PublicarAnuncio,
+  AvisoPublicado,
+  type ResultadoPublicado,
+} from "@/components/client-portal/PublicarAnuncio";
 import { useLiveQuery } from "@/lib/hooks";
 import {
   listarAnunciosGeradosDoCliente,
@@ -55,6 +62,9 @@ export default function ClienteAnuncios() {
   const [fStatus, setFStatus] = useState("Todos");
   const [aberto, setAberto] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  // Publicar é do lojista: ele aprova e ele coloca no ar. Não passa pela equipe.
+  const [publicar, setPublicar] = useState<AnuncioGeradoRegistro | null>(null);
+  const [publicado, setPublicado] = useState<ResultadoPublicado | null>(null);
 
   const publicados = (anuncios ?? []).filter((a) => a.status === "publicado" && a.mlItemId).length;
 
@@ -112,6 +122,8 @@ export default function ClienteAnuncios() {
           </div>
         }
       />
+
+      {publicado && <AvisoPublicado resultado={publicado} />}
 
       {total === 0 ? (
         <VazioAmigavel
@@ -179,6 +191,25 @@ export default function ClienteAnuncios() {
                               className={`transition-transform ${expandido ? "rotate-180" : ""}`}
                             />
                           </button>
+                          {a.status === "aprovado" && (
+                            <Button
+                              className="px-2 py-1 text-xs"
+                              onClick={() => setPublicar(a)}
+                              title={`Colocar no ar no ${a.marketplace}`}
+                            >
+                              <Rocket size={12} /> Publicar
+                            </Button>
+                          )}
+                          {a.status === "publicado" && a.mlPermalink && (
+                            <a
+                              href={a.mlPermalink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+                            >
+                              <ExternalLink size={12} /> Ver no ML
+                            </a>
+                          )}
                           {(a.status === "aguardando_aprovacao" || a.status === "rascunho") && (
                             <>
                               {podeAprovar ? (
@@ -218,6 +249,17 @@ export default function ClienteAnuncios() {
             )}
           </Table>
         </>
+      )}
+
+      {publicar && (
+        <PublicarAnuncio
+          registro={publicar}
+          onFechar={() => setPublicar(null)}
+          onPublicado={(r) => {
+            setPublicado(r);
+            setPublicar(null);
+          }}
+        />
       )}
     </>
   );

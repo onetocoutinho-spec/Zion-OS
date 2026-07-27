@@ -4,7 +4,11 @@
 // puro: `modules/publication/domain/republicacao`. Aqui só existe o que precisa
 // de mundo externo: ler os registros e encerrar um anúncio no Mercado Livre.
 
-import { listarAnunciosGerados, rejeitarAnuncioGerado } from "./anunciosGerados";
+import {
+  listarAnunciosGerados,
+  listarAnunciosGeradosDoCliente,
+  rejeitarAnuncioGerado,
+} from "./anunciosGerados";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import {
   anunciosAtivosDoProduto,
@@ -13,13 +17,22 @@ import {
 
 export type { AnuncioAtivo };
 
-/** Busca no repositório os anúncios já vivos no ML para o mesmo produto. */
+/**
+ * Busca no repositório os anúncios já vivos no ML para o mesmo produto.
+ *
+ * Escopado pelo cliente: um anúncio de OUTRO lojista jamais deve aparecer como
+ * conflito — a duplicidade que o ML pune é dentro da mesma conta. Sem clienteId
+ * (equipe/demo) cai na lista completa, que já vem filtrada pelo RLS.
+ */
 export async function buscarAnunciosAtivosDoProduto(
+  clienteId: string | null | undefined,
   produtoId: string | null | undefined,
   registroAtualId: string
 ): Promise<AnuncioAtivo[]> {
   if (!produtoId) return [];
-  const registros = await listarAnunciosGerados();
+  const registros = clienteId
+    ? await listarAnunciosGeradosDoCliente(clienteId)
+    : await listarAnunciosGerados();
   return anunciosAtivosDoProduto(registros, produtoId, registroAtualId);
 }
 
