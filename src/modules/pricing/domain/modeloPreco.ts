@@ -33,14 +33,29 @@ import {
 
 export { LIMIAR_FRETE_GRATIS, COMISSAO_MODA, REPUTACAO_PADRAO };
 export type { Embalagem, ComissaoPorTipo, ReputacaoEnvio };
-export { ROTULO_REPUTACAO } from "./tabelaEnvioML.ts";
+export { ROTULO_REPUTACAO, reputacaoDoLevelId } from "./tabelaEnvioML.ts";
 
 /** Tudo o que decide quanto uma venda custa. */
 export interface ModeloTaxas {
-  /** Comissão da categoria, por tipo de anúncio. */
+  /** Comissão da categoria de Moda — FALLBACK de quando a API não respondeu. */
   comissao: ComissaoPorTipo;
   /** "Clássico" ou "Premium" — vem do canal do cliente. */
   tipoAnuncio: string;
+  /**
+   * Percentual REAL da tarifa de venda, vindo de /sites/MLB/listing_prices para
+   * a categoria exata do produto. Quando presente, prevalece sobre `comissao` —
+   * um número que o ML afirma vale mais que qualquer tabela nossa.
+   *
+   * É o `sale_fee_details.percentage_fee`, que pode incluir mais do que a
+   * comissão pura (na Argentina soma o add-on de parcelamento). Usamos como o
+   * ML entrega, sem recompor: o que importa é o que ele cobra.
+   */
+  percentualVendaML?: number | null;
+  /**
+   * Taxa fixa por venda, também da API. Em ME2 sem Flex o ML documenta que é
+   * zero, mas não assumimos: se vier, entra na conta.
+   */
+  taxaFixaVendaML?: number | null;
   /** Reputação do lojista: escolhe qual das três tabelas de envio vale. */
   reputacao: ReputacaoEnvio;
   /** Medidas da variante. null = sem peso, e o envio vira pendência. */
@@ -70,9 +85,24 @@ function arredondar(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
-/** A comissão em % que vale para este modelo. */
+/**
+ * O percentual de tarifa de venda que vale. A API do ML tem precedência sobre
+ * a tabela — ela conhece a categoria exata; a nossa só conhece Moda.
+ */
 export function comissaoPercentual(taxas: ModeloTaxas = TAXAS_PADRAO): number {
+  const daApi = taxas.percentualVendaML;
+  // Sanidade: 0 é valor legítimo (anúncio grátis), mas negativo ou acima de
+  // 100 é resposta corrompida — nesse caso a tabela é mais confiável.
+  if (typeof daApi === "number" && Number.isFinite(daApi) && daApi >= 0 && daApi < 100) {
+    return daApi;
+  }
   return comissaoDoAnuncio(taxas.tipoAnuncio, taxas.comissao);
+}
+
+/** A taxa fixa por venda informada pela API. Zero quando não há. */
+export function taxaFixaVenda(taxas: ModeloTaxas = TAXAS_PADRAO): number {
+  const v = taxas.taxaFixaVendaML;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
 }
 
 /** O custo de envio para um preço, ou null quando falta o peso. */
@@ -86,6 +116,8 @@ export function envioDoModelo(
 
 export interface CustoDaVenda {
   comissao: number;
+  /** Taxa fixa por venda (0 em ME2 sem Flex, conforme o ML documenta). */
+  taxaFixa: number;
   /** null quando falta o peso da embalagem. */
   envio: number | null;
   /** null quando alguma parcela é desconhecida — nunca um total parcial. */
@@ -99,14 +131,21 @@ export function custoDaVenda(
   preco: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
 ): CustoDaVenda {
-  if (preco <= 0) return { comissao: 0, envio: 0, total: 0, pendencia: null };
+  if (preco <= 0) return { comissao: 0, taxaFixa: 0, envio: 0, total: 0, pendencia: null };
 
   const comissao = arredondar((preco * comissaoPercentual(taxas)) / 100);
+  const taxaFixa = taxaFixaVenda(taxas);
   const envio = envioDoModelo(preco, taxas);
   if (envio === null) {
-    return { comissao, envio: null, total: null, pendencia: SEM_PESO };
+    return { comissao, taxaFixa, envio: null, total: null, pendencia: SEM_PESO };
   }
-  return { comissao, envio, total: arredondar(comissao + envio), pendencia: null };
+  return {
+    comissao,
+    taxaFixa,
+    envio,
+    total: arredondar(comissao + taxaFixa + envio),
+    pendencia: null,
+  };
 }
 
 /** Soma das taxas, ou null quando falta o peso. */
@@ -173,7 +212,7 @@ export function precoMinimo(
     const envio = envioDoModelo(amostra, taxas);
     if (envio === null) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
 
-    const candidato = (custo + envio) / divisor;
+    const candidato = (custo + taxaFixaVenda(taxas) + envio) / divisor;
     if (candidato <= teto) {
       // Nunca abaixo do piso da própria faixa: se o cálculo cair antes dela, é
       // porque a faixa anterior não coube — o preço é o começo desta.
