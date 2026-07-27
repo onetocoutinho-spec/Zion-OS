@@ -27,7 +27,7 @@
 | [SHELL-002](SHELL-002-component-tree.md) | **Component Tree** | a árvore de ~30 componentes; comunicação; fronteiras; prova multiplataforma |
 | [CMP-001](CMP-001-mission-component.md) | **Mission Component** | a especificação implementável da Missão: anatomia, contrato, estados, 4 DecisionBodies, aceite |
 | [DS-100](system/003-design-system-foundation.md) | **Design System Foundation** (`system/003`) | a ontologia das 5 camadas visuais (Foundation→Semantic→Component→Pattern→Theme); sem valores |
-| [DS-110](system/004-foundation-values.md) | **Foundation Values** (`system/004`) | a matéria valorada: ~90 tokens dimensionais/temporais (base 4, razão 1.2), serialização DTCG→9 plataformas; hue da Palette = lacuna declarada |
+| [Tokens](system/004-design-tokens.md) | **Design Tokens** (`system/004`) | os 304 Tokens canônicos sob a Ontologia (13 Matérias × Posições Foundation/Semantic/Component, cor inclusa) — a fonte única da qual `src/design/tokens.json` é derivado |
 | [DS-120](system/005-semantic-tokens.md) | **Semantic Tokens** (`system/005`) | a camada do significado: 12 famílias de papéis que referem só Foundation e são resolvidos só por Theme; nunca valores |
 | [CAP-000](capabilities/CAP-000-capability-constitution.md) | **Capability Constitution** (`capabilities/000`) | o eixo FUNCIONAL: as leis de qualquer Capability (competência permanente); reconcilia Agreement=Combinado=Delegation, Memory=Segunda Verdade, Gap=Lacuna |
 
