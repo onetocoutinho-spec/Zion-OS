@@ -134,7 +134,12 @@ export interface Produto {
   codErp?: string;
   /** Preço mínimo pelo piso Zion (margem mínima). */
   precoMinimo?: number;
-  /** Margem % pelo modelo Zion (preço − custo − preço×0,30 − 1,15 − frete). */
+  /**
+   * Margem % no momento da importação — RETRATO, não valor vivo.
+   * A fórmula vive só em `modules/pricing/domain/modeloPreco`; repeti-la aqui
+   * foi o que fez este comentário e os prompts da IA ficarem para trás quando
+   * as taxas reais do ML foram corrigidas. Ausente quando não é calculável.
+   */
   margem?: number;
   /** Confiança do custo (fonte): alta | media | baixa. */
   confiancaCusto?: "alta" | "media" | "baixa" | "";
