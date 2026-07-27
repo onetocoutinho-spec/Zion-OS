@@ -19,10 +19,14 @@ import {
 
 const semNada: ContextoJornada = {
   temProduto: false,
+  quantidadeFotos: 0,
   anuncio: null,
   conectado: true,
   quotaRestante: 10,
 };
+
+/** Produto já fotografado — o estado normal depois do passo de fotos. */
+const comFotos = { temProduto: true, quantidadeFotos: 3 };
 
 const bom: AnuncioNaJornada = {
   status: "aguardando_aprovacao",
@@ -39,32 +43,32 @@ test("sem produto, a jornada começa na escolha do produto", () => {
 });
 
 test("com produto e sem anúncio, o passo é gerar", () => {
-  assert.equal(etapaAtual(ctx({ temProduto: true })), "gerar");
+  assert.equal(etapaAtual(ctx({ ...comFotos })), "gerar");
 });
 
 test("anúncio gerado com pendências → revisar, não aprovar", () => {
   const comPendencia = { ...bom, qtdPendencias: 2, vereditoA10: "reprovado" };
-  assert.equal(etapaAtual(ctx({ temProduto: true, anuncio: comPendencia })), "revisar");
+  assert.equal(etapaAtual(ctx({ ...comFotos, anuncio: comPendencia })), "revisar");
 });
 
 test("anúncio limpo e aprovado pela revisão final → aprovar", () => {
-  assert.equal(etapaAtual(ctx({ temProduto: true, anuncio: bom })), "aprovar");
+  assert.equal(etapaAtual(ctx({ ...comFotos, anuncio: bom })), "aprovar");
 });
 
 test("anúncio já aprovado pelo lojista → publicar", () => {
   const aprovado = { ...bom, status: "aprovado" };
-  assert.equal(etapaAtual(ctx({ temProduto: true, anuncio: aprovado })), "publicar");
+  assert.equal(etapaAtual(ctx({ ...comFotos, anuncio: aprovado })), "publicar");
 });
 
 test("anúncio rejeitado volta para gerar — o caminho é refazer", () => {
   const rejeitado = { ...bom, status: "rejeitado" };
-  assert.equal(etapaAtual(ctx({ temProduto: true, anuncio: rejeitado })), "gerar");
+  assert.equal(etapaAtual(ctx({ ...comFotos, anuncio: rejeitado })), "gerar");
 });
 
 test("a etapa vem do ESTADO, não de um contador — voltar à tela reencontra o lugar", () => {
   // Dois contextos idênticos produzem a mesma etapa, sem memória de navegação.
-  const a = ctx({ temProduto: true, anuncio: bom });
-  const b = ctx({ temProduto: true, anuncio: { ...bom } });
+  const a = ctx({ ...comFotos, anuncio: bom });
+  const b = ctx({ ...comFotos, anuncio: { ...bom } });
   assert.equal(etapaAtual(a), etapaAtual(b));
 });
 
@@ -73,23 +77,23 @@ test("a etapa vem do ESTADO, não de um contador — voltar à tela reencontra o
 test("a trilha tem os cinco passos, sempre, na mesma ordem", () => {
   assert.deepEqual(
     montarJornada(semNada).map((p) => p.etapa),
-    ["produto", "gerar", "revisar", "aprovar", "publicar"]
+    ["produto", "fotos", "gerar", "revisar", "aprovar", "publicar"]
   );
 });
 
 test("o que ficou para trás é 'feito', o que vem é 'futuro', e há exatamente um atual", () => {
-  const passos = montarJornada(ctx({ temProduto: true, anuncio: bom }));
+  const passos = montarJornada(ctx({ ...comFotos, anuncio: bom }));
   assert.deepEqual(
     passos.map((p) => p.estado),
-    ["feito", "feito", "feito", "atual", "futuro"]
+    ["feito", "feito", "feito", "feito", "atual", "futuro"]
   );
 });
 
 test("publicado: a trilha inteira fica feita", () => {
   const publicado = { ...bom, status: "publicado", mlItemId: "MLB1" };
-  const passos = montarJornada(ctx({ temProduto: true, anuncio: publicado }));
+  const passos = montarJornada(ctx({ ...comFotos, anuncio: publicado }));
   assert.ok(passos.every((p) => p.estado === "feito"));
-  assert.equal(concluida(ctx({ temProduto: true, anuncio: publicado })), true);
+  assert.equal(concluida(ctx({ ...comFotos, anuncio: publicado })), true);
 });
 
 test("todo passo explica o que é, em uma linha — a trilha ensina o processo", () => {
@@ -102,7 +106,7 @@ test("todo passo explica o que é, em uma linha — a trilha ensina o processo",
 // ── O que impede ─────────────────────────────────────────────────────────────
 
 test("quota esgotada bloqueia gerar, e diz por quê", () => {
-  const passos = montarJornada(ctx({ temProduto: true, quotaRestante: 0 }));
+  const passos = montarJornada(ctx({ ...comFotos, quotaRestante: 0 }));
   const gerar = passos.find((p) => p.etapa === "gerar")!;
   assert.equal(gerar.estado, "bloqueado");
   assert.match(gerar.bloqueio!, /plano/i);
@@ -111,7 +115,7 @@ test("quota esgotada bloqueia gerar, e diz por quê", () => {
 test("pendências bloqueiam aprovar, dizendo QUANTAS", () => {
   const comPend = { ...bom, qtdPendencias: 3 };
   // força a etapa aprovar mantendo o veredito aprovado
-  const passos = montarJornada(ctx({ temProduto: true, anuncio: { ...comPend, qtdPendencias: 3 } }));
+  const passos = montarJornada(ctx({ ...comFotos, anuncio: { ...comPend, qtdPendencias: 3 } }));
   const atual = passos.find((p) => p.estado === "bloqueado" || p.estado === "atual")!;
   // com pendências a etapa vira revisar; o bloqueio de aprovar não é antecipado
   assert.equal(atual.etapa, "revisar");
@@ -119,7 +123,7 @@ test("pendências bloqueiam aprovar, dizendo QUANTAS", () => {
 
 test("desconectado bloqueia publicar — e só publicar", () => {
   const aprovado = { ...bom, status: "aprovado" };
-  const passos = montarJornada(ctx({ temProduto: true, anuncio: aprovado, conectado: false }));
+  const passos = montarJornada(ctx({ ...comFotos, anuncio: aprovado, conectado: false }));
   const publicar = passos.find((p) => p.etapa === "publicar")!;
   assert.equal(publicar.estado, "bloqueado");
   assert.match(publicar.bloqueio!, /[Cc]onecte/);
@@ -127,7 +131,7 @@ test("desconectado bloqueia publicar — e só publicar", () => {
 
 test("não antecipa bloqueio de etapa futura — dá tempo de resolver", () => {
   // Desconectado, mas ainda na etapa de gerar: publicar não acusa nada agora.
-  const passos = montarJornada(ctx({ temProduto: true, conectado: false }));
+  const passos = montarJornada(ctx({ ...comFotos, conectado: false }));
   assert.equal(passos.find((p) => p.etapa === "publicar")!.estado, "futuro");
   assert.equal(passos.find((p) => p.etapa === "publicar")!.bloqueio, undefined);
 });
@@ -137,9 +141,9 @@ test("não antecipa bloqueio de etapa futura — dá tempo de resolver", () => {
 test("sempre há exatamente uma próxima ação, com verbo", () => {
   for (const c of [
     semNada,
-    ctx({ temProduto: true }),
-    ctx({ temProduto: true, anuncio: bom }),
-    ctx({ temProduto: true, anuncio: { ...bom, status: "aprovado" } }),
+    ctx({ ...comFotos }),
+    ctx({ ...comFotos, anuncio: bom }),
+    ctx({ ...comFotos, anuncio: { ...bom, status: "aprovado" } }),
   ]) {
     const a = proximaAcao(c);
     assert.ok(a, "deve haver próxima ação");
@@ -149,23 +153,70 @@ test("sempre há exatamente uma próxima ação, com verbo", () => {
 });
 
 test("publicado: não há próxima ação a empurrar", () => {
-  assert.equal(proximaAcao(ctx({ temProduto: true, anuncio: { ...bom, status: "publicado" } })), null);
+  assert.equal(proximaAcao(ctx({ ...comFotos, anuncio: { ...bom, status: "publicado" } })), null);
 });
 
 test("o rótulo não mente: depois de rejeitar, é REFAZER", () => {
   const rejeitado = { ...bom, status: "rejeitado" };
-  assert.match(proximaAcao(ctx({ temProduto: true, anuncio: rejeitado }))!.rotulo, /[Rr]efazer/);
-  assert.match(proximaAcao(ctx({ temProduto: true }))!.rotulo, /[Gg]erar/);
+  assert.match(proximaAcao(ctx({ ...comFotos, anuncio: rejeitado }))!.rotulo, /[Rr]efazer/);
+  assert.match(proximaAcao(ctx({ ...comFotos }))!.rotulo, /[Gg]erar/);
 });
 
 test("ação bloqueada vem desabilitada COM motivo — nunca um botão morto sem explicação", () => {
-  const a = proximaAcao(ctx({ temProduto: true, quotaRestante: 0 }))!;
+  const a = proximaAcao(ctx({ ...comFotos, quotaRestante: 0 }))!;
   assert.equal(a.habilitada, false);
   assert.ok(a.motivo && a.motivo.length > 0);
 });
 
 test("ação liberada não carrega motivo", () => {
-  const a = proximaAcao(ctx({ temProduto: true }))!;
+  const a = proximaAcao(ctx({ ...comFotos }))!;
   assert.equal(a.habilitada, true);
   assert.equal(a.motivo, undefined);
+});
+
+// ── Fotos: um passo, não uma parede ──────────────────────────────────────────
+
+test("produto sem foto para na etapa de FOTOS, logo depois de escolher", () => {
+  // Sem foto o ML recusa o anúncio. Cobrar isso agora, e não no último clique,
+  // é a diferença entre um passo e uma parede.
+  assert.equal(etapaAtual(ctx({ temProduto: true, quantidadeFotos: 0 })), "fotos");
+});
+
+test("a etapa de fotos vem ANTES de gerar — o trabalho não se perde", () => {
+  const passos = montarJornada(ctx({ temProduto: true, quantidadeFotos: 0 }));
+  assert.deepEqual(
+    passos.map((p) => p.estado),
+    ["feito", "atual", "futuro", "futuro", "futuro", "futuro"]
+  );
+});
+
+test("com foto, a jornada segue para gerar", () => {
+  assert.equal(etapaAtual(ctx({ temProduto: true, quantidadeFotos: 1 })), "gerar");
+});
+
+test("perder as fotos volta a jornada para lá, mesmo com anúncio pronto", () => {
+  // Não adianta ter anúncio aprovado sem foto: a publicação seria recusada.
+  const aprovado = { ...bom, status: "aprovado" };
+  assert.equal(etapaAtual(ctx({ temProduto: true, quantidadeFotos: 0, anuncio: aprovado })), "fotos");
+});
+
+test("anúncio já publicado NÃO volta a pedir foto", () => {
+  const publicado = { ...bom, status: "publicado" };
+  assert.equal(
+    etapaAtual(ctx({ temProduto: true, quantidadeFotos: 0, anuncio: publicado })),
+    "publicar"
+  );
+  assert.equal(concluida(ctx({ temProduto: true, quantidadeFotos: 0, anuncio: publicado })), true);
+});
+
+test("a ação da etapa de fotos é um verbo e não vem bloqueada", () => {
+  const a = proximaAcao(ctx({ temProduto: true, quantidadeFotos: 0 }))!;
+  assert.equal(a.etapa, "fotos");
+  assert.match(a.rotulo, /[Aa]dicionar/);
+  assert.equal(a.habilitada, true);
+});
+
+test("a etapa de fotos explica POR QUE existe — não é capricho estético", () => {
+  const fotos = montarJornada(semNada).find((p) => p.etapa === "fotos")!;
+  assert.match(fotos.descricao, /Mercado Livre|exige/i);
 });

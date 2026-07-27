@@ -36,6 +36,7 @@ import {
   AvisoPublicado,
   type ResultadoPublicado,
 } from "@/components/client-portal/PublicarAnuncio";
+import { FotosDoProduto } from "@/components/client-portal/FotosDoProduto";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import {
@@ -45,6 +46,7 @@ import {
   criarAnuncioGerado,
 } from "@/lib/services/anunciosGerados";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
+import { urlsDoProduto } from "@/lib/services/storageImagens";
 import { quotaEsteira } from "@/lib/services/perfil";
 import { rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
 import {
@@ -74,6 +76,9 @@ export default function ClienteAnunciar() {
   const [publicando, setPublicando] = useState(false);
   const [publicado, setPublicado] = useState<ResultadoPublicado | null>(null);
   const [conectado, setConectado] = useState(false);
+  // Sem foto o ML recusa o anúncio — por isso as fotos são um passo da jornada,
+  // e não uma tela separada que o lojista descobre ao bater na parede.
+  const [fotos, setFotos] = useState<string[]>([]);
   const [quota, setQuota] = useState<number | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -95,6 +100,19 @@ export default function ClienteAnunciar() {
     [produtos, produtoId]
   );
 
+  const recarregarFotos = useCallback(async () => {
+    if (!produtoId) return setFotos([]);
+    try {
+      setFotos(await urlsDoProduto(produtoId));
+    } catch {
+      setFotos([]); // não conseguir ler não afirma que existem
+    }
+  }, [produtoId]);
+
+  useEffect(() => {
+    void recarregarFotos();
+  }, [recarregarFotos]);
+
   /** O anúncio mais recente DESTE produto — a jornada se orienta por ele. */
   const registro: AnuncioGeradoRegistro | null = useMemo(() => {
     if (!produtoId) return null;
@@ -107,6 +125,7 @@ export default function ClienteAnunciar() {
 
   const ctx: ContextoJornada = {
     temProduto: Boolean(produto),
+    quantidadeFotos: fotos.length,
     anuncio: registro
       ? {
           status: registro.status,
@@ -195,7 +214,8 @@ export default function ClienteAnunciar() {
     if (acao.etapa === "gerar") return void gerar();
     if (acao.etapa === "aprovar") return void aprovar();
     if (acao.etapa === "publicar") return setPublicando(true);
-    // "produto" e "revisar" não têm ação remota: o conteúdo já está na tela.
+    // "produto", "fotos" e "revisar" não têm ação remota: o painel correspondente
+    // já está visível na tela, e o botão só existiria para repetir o óbvio.
   }
 
   const total = (produtos ?? []).length;
@@ -242,6 +262,7 @@ export default function ClienteAnunciar() {
                 value={produtoId ?? ""}
                 onChange={(e) => {
                   setProdutoId(e.target.value || null);
+                  setFotos([]);
                   setPassos([]);
                   setErro(null);
                   setAviso(null);
@@ -279,6 +300,16 @@ export default function ClienteAnunciar() {
         </div>
       )}
 
+      {/* ── Passo 2: as fotos ───────────────────────────────────────────── */}
+      {produto && !fim && (
+        <FotosDoProduto
+          produto={produto}
+          clienteId={clienteId}
+          fotos={fotos}
+          onMudou={() => void recarregarFotos()}
+        />
+      )}
+
       {/* ── Passos da geração ───────────────────────────────────────────── */}
       {rodando && <PassosDaEsteira passos={passos} />}
 
@@ -299,7 +330,7 @@ export default function ClienteAnunciar() {
       {registro?.anuncio && !rodando && <AnuncioPronto registro={registro} />}
 
       {/* ── A única ação de agora ───────────────────────────────────────── */}
-      {produto && !fim && acao && (
+      {produto && !fim && acao && acao.etapa !== "fotos" && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-4">
           <Button onClick={executarAcao} disabled={!acao.habilitada || rodando || ocupado}>
             {rodando ? (

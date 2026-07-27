@@ -13,7 +13,7 @@
 //
 // Sem rede, sem React.
 
-export type EtapaJornada = "produto" | "gerar" | "revisar" | "aprovar" | "publicar";
+export type EtapaJornada = "produto" | "fotos" | "gerar" | "revisar" | "aprovar" | "publicar";
 
 export type EstadoPasso = "feito" | "atual" | "futuro" | "bloqueado";
 
@@ -39,6 +39,12 @@ export interface AnuncioNaJornada {
 export interface ContextoJornada {
   /** O produto escolhido. null = ainda não escolheu. */
   temProduto: boolean;
+  /**
+   * Fotos do produto. Sem nenhuma, o Mercado Livre recusa o anúncio — então
+   * isto não é um detalhe estético, é um bloqueio de publicação. A jornada
+   * pede as fotos LOGO, e não no último clique.
+   */
+  quantidadeFotos: number;
   /** O anúncio gerado mais recente para esse produto, se houver. */
   anuncio: AnuncioNaJornada | null;
   /** A conta do marketplace está conectada? */
@@ -51,6 +57,10 @@ const DESCRICOES: Record<EtapaJornada, { titulo: string; descricao: string }> = 
   produto: {
     titulo: "Escolha o produto",
     descricao: "Um produto da sua base, ou cadastre um novo agora.",
+  },
+  fotos: {
+    titulo: "Adicione as fotos",
+    descricao: "O Mercado Livre exige pelo menos uma imagem. A IA também pode gerar.",
   },
   gerar: {
     titulo: "A IA monta o anúncio",
@@ -70,7 +80,7 @@ const DESCRICOES: Record<EtapaJornada, { titulo: string; descricao: string }> = 
   },
 };
 
-const ORDEM: EtapaJornada[] = ["produto", "gerar", "revisar", "aprovar", "publicar"];
+const ORDEM: EtapaJornada[] = ["produto", "fotos", "gerar", "revisar", "aprovar", "publicar"];
 
 /**
  * Em que etapa a pessoa está AGORA. Deriva do estado real, nunca de um
@@ -78,6 +88,11 @@ const ORDEM: EtapaJornada[] = ["produto", "gerar", "revisar", "aprovar", "public
  */
 export function etapaAtual(ctx: ContextoJornada): EtapaJornada {
   if (!ctx.temProduto) return "produto";
+  // Publicado é publicado — não se pede foto de quem já está no ar.
+  if (ctx.anuncio?.status === "publicado") return "publicar";
+  // Sem foto não existe publicação. Cobrar isso agora, e não depois de todo o
+  // trabalho, é a diferença entre um passo e uma parede.
+  if (ctx.quantidadeFotos <= 0) return "fotos";
   const a = ctx.anuncio;
   if (!a) return "gerar";
   if (a.status === "publicado") return "publicar";
@@ -158,6 +173,7 @@ export function proximaAcao(ctx: ContextoJornada): ProximaAcao | null {
   const bloqueio = bloqueioDe(etapa, ctx);
   const rotulos: Record<EtapaJornada, string> = {
     produto: "Escolher produto",
+    fotos: "Adicionar fotos",
     // Refazer e gerar são a mesma ação; o rótulo muda para não mentir sobre
     // o que aconteceu antes.
     gerar: ctx.anuncio?.status === "rejeitado" ? "Refazer anúncio" : "Gerar anúncio com IA",
