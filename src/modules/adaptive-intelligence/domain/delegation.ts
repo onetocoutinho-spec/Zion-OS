@@ -40,9 +40,21 @@ export interface EstadoDelegacao {
   historico: FatoDelegacao[]; // mais recente primeiro — nada se apaga
 }
 
+/**
+ * Precedência causal no empate: revogar exige uma concessão VIGENTE — logo, no
+ * mesmo slot, a concessão é sempre causalmente anterior à revogação. Quando o
+ * instante empata, é esta ordem que vale; o id (aleatório em produção) jamais
+ * decide causalidade.
+ */
+const PRECEDENCIA_NO_EMPATE: Record<FatoDelegacao["tipo"], number> = { concessao: 0, revogacao: 1 };
+
 function ordenar(fatos: readonly FatoDelegacao[]): FatoDelegacao[] {
+  // Determinístico: por instante do fato; empate pela precedência causal do tipo
+  // e, por fim, pelo id (desempate estável, nunca causal).
   return [...fatos].sort((a, b) =>
-    a.ocorridoEm < b.ocorridoEm ? -1 : a.ocorridoEm > b.ocorridoEm ? 1 : a.id < b.id ? -1 : 1
+    a.ocorridoEm < b.ocorridoEm ? -1 : a.ocorridoEm > b.ocorridoEm ? 1
+      : PRECEDENCIA_NO_EMPATE[a.tipo] - PRECEDENCIA_NO_EMPATE[b.tipo]
+        || (a.id < b.id ? -1 : 1)
   );
 }
 
