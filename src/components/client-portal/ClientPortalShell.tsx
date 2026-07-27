@@ -26,6 +26,7 @@ import {
   Store,
   Zap,
   TrendingUp,
+  Wand2,
 } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
@@ -35,12 +36,14 @@ import { ClientPortalProvider } from "./context";
 
 const MENU = [
   { href: "/cliente", label: "Início", icon: Home },
+  // A jornada guiada vem antes de tudo: é o caminho, não uma ferramenta.
+  { href: "/cliente/anunciar", label: "Criar anúncio", icon: Sparkles },
   { href: "/cliente/vendas", label: "Vendas", icon: TrendingUp },
   { href: "/cliente/produtos", label: "Meus Produtos", icon: Package },
   { href: "/cliente/anuncios", label: "Meus Anúncios", icon: Megaphone },
   { href: "/cliente/imagens", label: "Fotos", icon: Images },
   { href: "/cliente/medidas", label: "Medidas", icon: Ruler },
-  { href: "/cliente/otimizar", label: "Otimizar com IA", icon: Sparkles },
+  { href: "/cliente/otimizar", label: "Ferramentas avulsas", icon: Wand2 },
   { href: "/cliente/auditoria", label: "Auditoria", icon: ClipboardCheck },
   { href: "/cliente/precificacao", label: "Precificação", icon: Calculator },
   { href: "/cliente/relatorios", label: "Relatórios", icon: FileText },

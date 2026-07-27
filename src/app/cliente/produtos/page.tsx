@@ -247,7 +247,7 @@ export default function ClienteProdutos() {
               {importandoCusto ? "Importando…" : "Custos"}
               <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />
             </Button>
-            <Link href="/cliente/otimizar">
+            <Link href="/cliente/anunciar">
               <Button>
                 <Wand2 size={15} /> Otimizar com IA
               </Button>
@@ -386,7 +386,7 @@ export default function ClienteProdutos() {
                           <Ruler size={12} /> Medidas
                         </button>
                         <Link
-                          href="/cliente/otimizar"
+                          href="/cliente/anunciar"
                           className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
                         >
                           <Wand2 size={12} /> Otimizar

@@ -106,7 +106,7 @@ export default function ClienteAjuda() {
         <h2 className="mb-3 text-sm font-semibold text-zinc-200">Atalhos</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ActionTile href="/cliente/produtos" icon={Upload} titulo="Importar produtos" descricao="Monte sua base." tone="cyan" />
-          <ActionTile href="/cliente/otimizar" icon={Wand2} titulo="Otimizar com IA" descricao="Crie conteúdo." tone="violet" />
+          <ActionTile href="/cliente/anunciar" icon={Wand2} titulo="Otimizar com IA" descricao="Crie conteúdo." tone="violet" />
           <ActionTile href="/cliente/precificacao" icon={Calculator} titulo="Precificação" descricao="Veja o lucro." tone="green" />
           <ActionTile href="/cliente/auditoria" icon={Gauge} titulo="Auditoria" descricao="O que corrigir." tone="orange" />
         </div>

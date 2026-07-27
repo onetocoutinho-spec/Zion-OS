@@ -96,7 +96,7 @@ export default function ClienteHome() {
     if (m.semOtimizacao > 0)
       lista.push({
         texto: `Você tem ${m.semOtimizacao} produto(s) sem anúncio otimizado. A IA pode criar títulos e descrições prontos.`,
-        href: "/cliente/otimizar",
+        href: "/cliente/anunciar",
         cta: "Otimizar",
       });
     if (m.comProblema > 0)
@@ -171,7 +171,7 @@ export default function ClienteHome() {
       <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ActionTile
-            href="/cliente/otimizar"
+            href="/cliente/anunciar"
             icon={Wand2}
             titulo="Otimizar meus anúncios"
             descricao="A IA cria títulos, descrições e ficha técnica prontos."
