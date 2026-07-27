@@ -1,25 +1,43 @@
 // Métricas derivadas para o Portal do Cliente — em linguagem simples.
-// Reaproveita a precificação Zion (margemZion / precoMinimoZion) e traduz
-// números em status amigáveis (Saudável / Atenção / Risco / Prejuízo).
+// A precificação vive em modules/pricing/domain/modeloPreco; aqui só se traduz
+// número em status amigável (Saudável / Atenção / Risco / Prejuízo).
 
-import { margemZion } from "@/lib/services/importacaoProdutos";
+import {
+  margemLiquida,
+  classificarMargem,
+  MARGEM_MINIMA_PADRAO,
+} from "@/modules/pricing/domain/modeloPreco";
 import type { Tone } from "@/lib/status";
 import type { AuditoriaAnuncio, AnuncioGeradoRegistro, Produto } from "@/lib/types";
 
 export type SaudeMargem = "Saudável" | "Atenção" | "Risco" | "Prejuízo" | "—";
 
-/** Classifica a margem Zion (em %) num status de saúde com cor. */
+/** A cor de cada status. Separada para quem já tem o status calculado. */
+export function toneSaudeMargem(status: SaudeMargem): Tone {
+  if (status === "Prejuízo") return "red";
+  if (status === "Risco") return "orange";
+  if (status === "Atenção") return "yellow";
+  if (status === "Saudável") return "green";
+  return "gray";
+}
+
+/**
+ * Classifica a margem de um produto contra o piso do LOJISTA.
+ *
+ * `margemMinima` é opcional e cai no padrão para as chamadas que ainda não
+ * têm a escolha do cliente em mãos — nunca fica sem piso, o que faria toda
+ * margem parecer saudável.
+ */
 export function saudeMargem(
-  produto: Pick<Produto, "custo" | "precoVenda">
+  produto: Pick<Produto, "custo" | "precoVenda">,
+  margemMinima: number = MARGEM_MINIMA_PADRAO
 ): { margem: number | null; status: SaudeMargem; tone: Tone } {
   const { custo, precoVenda } = produto;
   if (!precoVenda || precoVenda <= 0 || !custo || custo <= 0)
     return { margem: null, status: "—", tone: "gray" };
-  const margem = margemZion(custo, precoVenda); // %
-  if (margem < 0) return { margem, status: "Prejuízo", tone: "red" };
-  if (margem < 10) return { margem, status: "Risco", tone: "orange" };
-  if (margem < 20) return { margem, status: "Atenção", tone: "yellow" };
-  return { margem, status: "Saudável", tone: "green" };
+  const margem = margemLiquida(custo, precoVenda);
+  const status = classificarMargem(margem, margemMinima);
+  return { margem, status, tone: toneSaudeMargem(status) };
 }
 
 /**

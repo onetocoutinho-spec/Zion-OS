@@ -9,6 +9,11 @@ import { MARKETPLACES } from "../constantes";
 import type { Marketplace, Produto, ProdutoVariante } from "../types";
 import { criarProdutos } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
+import {
+  margemLiquida,
+  precoMinimo,
+  MARGEM_MINIMA_PADRAO,
+} from "../../modules/pricing/domain/modeloPreco.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -60,19 +65,20 @@ function resolverMarketplace(valor: string, padrao: Marketplace): Marketplace {
   return MARKETPLACES.find((m) => m.toLowerCase() === v) ?? padrao;
 }
 
-/** Margem % pelo modelo Zion: preço − custo − preço×0,30 − 1,15 − frete. */
+// A fórmula da margem vive num lugar só: modules/pricing/domain/modeloPreco.
+// Estas duas funções continuam existindo porque a IMPORTAÇÃO tira um retrato do
+// preço mínimo no momento em que o produto entra — e esse retrato usa o piso
+// padrão, não a escolha atual do lojista (que pode mudar depois). Quem exibe
+// preço ideal ao vivo chama precoMinimo() com a margem escolhida.
+
+/** Margem % no momento da importação (taxas padrão). */
 export function margemZion(custo: number, preco: number): number {
-  if (preco <= 0) return 0;
-  const frete = preco >= 79 ? 14.15 : 0; // assume item leve; pesado é ajustado no B2
-  const margem = preco - custo - preco * 0.3 - 1.15 - frete;
-  return Math.round((margem / preco) * 1000) / 10;
+  return margemLiquida(custo, preco);
 }
 
-/** Preço mínimo pelo piso Zion (margem ≥ 5%): (custo + 1,15 + frete) / 0,65. */
+/** Preço mínimo no momento da importação, pelo piso padrão. */
 export function precoMinimoZion(custo: number): number {
-  const semFrete = (custo + 1.15) / 0.65;
-  const piso = semFrete >= 79 ? (custo + 1.15 + 14.15) / 0.65 : semFrete;
-  return Math.round(piso * 100) / 100;
+  return precoMinimo(custo, MARGEM_MINIMA_PADRAO) ?? 0;
 }
 
 function normalizarConfianca(v: string): "alta" | "media" | "baixa" | "" {
