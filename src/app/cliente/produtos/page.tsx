@@ -8,6 +8,7 @@ import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
+import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
@@ -41,6 +42,9 @@ export default function ClienteProdutos() {
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarImport, setMostrarImport] = useState(false);
+  // Cadastro do zero: quem está começando não monta planilha para um item só.
+  const [cadastrando, setCadastrando] = useState(false);
+  const [criado, setCriado] = useState<string | null>(null);
   const [escolhendoML, setEscolhendoML] = useState(false);
   const [importandoML, setImportandoML] = useState(false);
   const [msgML, setMsgML] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -175,6 +179,13 @@ export default function ClienteProdutos() {
     [anuncios, auditorias]
   );
 
+  // SKU repetido quebraria a conciliação com o ERP e com o marketplace — o
+  // cadastro precisa saber o que já existe para barrar antes de salvar.
+  const skusExistentes = useMemo(
+    () => (produtos ?? []).map((p) => p.sku).filter(Boolean),
+    [produtos]
+  );
+
   // Estado de otimização por produto (a partir do anúncio mais recente).
   const estadoPorProduto = useMemo(() => {
     const mapa = new Map<string, "Otimizado" | "Em revisão" | "Sem otimização">();
@@ -220,6 +231,9 @@ export default function ClienteProdutos() {
         subtitulo="Sua base de produtos. Otimize cada um com a IA para vender melhor."
         acao={
           <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setCadastrando(true)} title="Cadastrar um produto do zero, sem planilha">
+              <Plus size={15} /> Novo produto
+            </Button>
             <Button variant="ghost" onClick={() => setEscolhendoML((v) => !v)} disabled={importandoML} title="Puxar os anúncios já cadastrados na sua conta do Mercado Livre">
               {importandoML ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}{" "}
               {importandoML ? "Importando…" : "Importar do ML"}
@@ -286,6 +300,16 @@ export default function ClienteProdutos() {
           }`}
         >
           {msgML.tipo === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />} {msgML.texto}
+        </p>
+      )}
+
+      {criado && (
+        <p className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">
+          <CheckCircle2 size={15} className="shrink-0" />
+          <span>
+            <strong>{criado}</strong> cadastrado. Otimize com a IA para gerar título, descrição e
+            ficha técnica antes de publicar.
+          </span>
         </p>
       )}
 
@@ -546,6 +570,20 @@ export default function ClienteProdutos() {
             </div>
           </div>
         </div>
+      )}
+
+      {cadastrando && (
+        <CadastrarProduto
+          clienteId={clienteId}
+          cliente={nome}
+          skusExistentes={skusExistentes}
+          onFechar={() => setCadastrando(false)}
+          onCriado={(nomeCriado) => {
+            setCadastrando(false);
+            setCriado(nomeCriado);
+            reload();
+          }}
+        />
       )}
     </>
   );
