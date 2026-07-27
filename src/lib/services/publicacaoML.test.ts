@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import {
   comporObservacoesComFalha,
   montarCapturaCategoriaPublicada,
+  publicarNoML,
+  JaPublicadoError,
 } from "./publicacaoML.ts";
 import { capturarDecisao } from "../../modules/adaptive-intelligence/decision-journal.ts";
 import { InMemoryDecisionJournal } from "../../modules/adaptive-intelligence/infrastructure/decision-journal.memory.ts";
@@ -80,4 +82,63 @@ test("veredito da rejeição: anexado sem destruir observações existentes", ()
   );
   assert.ok(composto.startsWith("Importado do ML (2026-07-01)"));
   assert.ok(composto.endsWith("[Publicação ML rejeitada] chart_name_unavailable"));
+});
+
+// ── Guarda contra publicação ACIDENTAL ───────────────────────────────────────
+// O ML proíbe o mesmo produto, nas mesmas condições, em mais de um anúncio — a
+// infração custa o anúncio e pode custar a conta. Mas republicar deliberadamente
+// (criar novo e migrar) é estratégia legítima do lojista. A guarda separa as duas
+// coisas: barra o ACIDENTE (duplo clique, retry após timeout) e nunca o dry-run.
+// Nenhum destes testes toca a rede: a guarda decide ANTES de qualquer fetch.
+
+const ANUNCIO = { titulo: "T", descricao: "D", fichaTecnica: [], atributos: [], categoriaId: "MLB1" };
+
+const publicado = {
+  id: "ang-pub", clienteId: "cli-01", produtoId: null, anuncio: ANUNCIO,
+  status: "publicado", mlItemId: "MLB123456789", mlPermalink: "https://x/MLB123456789",
+} as unknown as Parameters<typeof publicarNoML>[0];
+
+const aprovado = {
+  id: "ang-apr", clienteId: "cli-01", produtoId: null,
+  status: "aprovado", mlItemId: null, mlPermalink: null,
+  anuncio: { titulo: "T", descricao: "D", atributos: [], categoriaId: "MLB1" },
+} as unknown as Parameters<typeof publicarNoML>[0];
+
+test("guarda: registro já publicado NÃO republica por acidente", async () => {
+  await assert.rejects(() => publicarNoML(publicado, true), (e: Error) => {
+    assert.equal(e.name, "JaPublicadoError");
+    assert.equal((e as JaPublicadoError).mlItemId, "MLB123456789");
+    assert.match(e.message, /não permite|duplicado/i); // explica a consequência
+    return true;
+  });
+});
+
+test("guarda: registro com mlItemId barra mesmo que o status não tenha sido gravado", async () => {
+  const comMlb = { ...publicado, status: "aprovado" } as typeof publicado;
+  await assert.rejects(() => publicarNoML(comMlb, true), (e: Error) => e.name === "JaPublicadoError");
+});
+
+test("guarda NÃO bloqueia o dry-run: preview de anúncio publicado nunca é barrado pela guarda", async () => {
+  // O dry-run pode falhar por outros motivos (payload incompleto neste fixture),
+  // mas JAMAIS pela guarda: inspecionar o preview de um anúncio já publicado é
+  // legítimo e não cria nada no Mercado Livre.
+  const erro = await publicarNoML(publicado, false).then(() => null, (e: Error) => e);
+  assert.notEqual(erro?.name, "JaPublicadoError");
+});
+
+test("guarda: duplo clique simultâneo — a 2ª chamada é barrada enquanto a 1ª está em voo", async () => {
+  // A 1ª vai até a rede e falha (sem fetch no ambiente de teste); o que importa
+  // é que a 2ª, disparada ANTES de a 1ª terminar, seja recusada pela guarda.
+  const primeira = publicarNoML(aprovado, true).catch((e: Error) => e);
+  const segunda = publicarNoML(aprovado, true).catch((e: Error) => e);
+  const [, e2] = await Promise.all([primeira, segunda]);
+  assert.equal((e2 as Error).name, "JaPublicadoError");
+});
+
+test("guarda libera o registro após a tentativa: falha de rede não deixa o anúncio travado", async () => {
+  await publicarNoML(aprovado, true).catch(() => {});
+  // a 2ª tentativa não pode ser recusada pela guarda de concorrência —
+  // só falharia pela rede, nunca por "já em voo".
+  const erro = await publicarNoML(aprovado, true).catch((e: Error) => e);
+  assert.notEqual((erro as Error).name, "JaPublicadoError");
 });

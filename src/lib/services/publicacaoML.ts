@@ -108,14 +108,73 @@ export function comporObservacoesComFalha(
   return atual ? `${atual}\n${veredito}` : veredito;
 }
 
+// ── Guarda contra publicação ACIDENTAL ───────────────────────────────────────
+// O Mercado Livre proíbe o mesmo produto, nas mesmas condições, em mais de um
+// anúncio — a infração pode custar o anúncio e até a conta do lojista. Mas
+// REPUBLICAR (criar um anúncio novo e migrar do antigo) é estratégia legítima:
+// editar o título de um anúncio vivo reseta o histórico de relevância.
+//
+// A distinção não é "republicar ou não" — é se alguém ESCOLHEU republicar:
+//   • duplo clique / retry após timeout → ninguém escolheu. É defeito: bloqueamos.
+//   • republicação deliberada          → é decisão do lojista, com consequência
+//     real. Não se resolve com um erro genérico: exige apresentar a situação e
+//     perguntar o que fazer com o anúncio antigo.
+//
+// Esta guarda cobre APENAS o acidente. A republicação deliberada é tratada em
+// fluxo próprio, com a decisão explícita de quem vende.
+
+/** Erro identificável: já existe anúncio publicado para este registro. */
+export class JaPublicadoError extends Error {
+  readonly mlItemId: string | null;
+  readonly mlPermalink: string | null;
+  constructor(mlItemId: string | null, mlPermalink: string | null) {
+    super(
+      "Este anúncio já foi publicado no Mercado Livre" +
+        (mlItemId ? ` (${mlItemId})` : "") +
+        ". Publicar de novo criaria um anúncio duplicado, o que o Mercado Livre não permite."
+    );
+    this.name = "JaPublicadoError";
+    this.mlItemId = mlItemId;
+    this.mlPermalink = mlPermalink;
+  }
+}
+
+/** Publicações em voo, por registro — barra o duplo clique simultâneo. */
+const emVoo = new Set<string>();
+
 /**
  * go=false → só devolve o payload (dry-run local).
  * go=true  → publica de verdade via /api/ml/publicar e marca como publicado.
+ *
+ * Lança JaPublicadoError quando o registro já tem anúncio no ML ou quando outra
+ * publicação do mesmo registro ainda está em andamento.
  */
 export async function publicarNoML(
   registro: AnuncioGeradoRegistro,
   go: boolean,
   opcoes: OpcoesPublicacao = {}
+): Promise<ResultadoPublicacao> {
+  // A guarda vale só para publicação real; o dry-run (preview) é livre.
+  if (go) {
+    if (registro.status === "publicado" || registro.mlItemId) {
+      throw new JaPublicadoError(registro.mlItemId ?? null, registro.mlPermalink ?? null);
+    }
+    if (emVoo.has(registro.id)) {
+      throw new JaPublicadoError(null, null);
+    }
+    emVoo.add(registro.id);
+  }
+  try {
+    return await executarPublicacao(registro, go, opcoes);
+  } finally {
+    if (go) emVoo.delete(registro.id);
+  }
+}
+
+async function executarPublicacao(
+  registro: AnuncioGeradoRegistro,
+  go: boolean,
+  opcoes: OpcoesPublicacao
 ): Promise<ResultadoPublicacao> {
   // Puxa as fotos reais do produto (Storage) quando não vieram explicitamente.
   let pictures = opcoes.pictures;
