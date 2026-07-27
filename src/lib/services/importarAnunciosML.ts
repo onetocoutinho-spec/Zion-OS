@@ -140,20 +140,29 @@ function varianteDeItem(produtoId: string, clienteId: string, a: AnuncioML): Omi
     custo: 0,
     precoBase: a.preco,
     estoque: a.estoque,
-    peso: 0,
-    altura: 0,
-    largura: 0,
-    comprimento: 0,
+    // Medidas REAIS do ML. Antes eram zeros — e zero significa "não sei", o que
+    // deixava a precificação cega para o custo de envio de todo produto
+    // importado. A variante guarda o peso em kg; o ML entrega em gramas.
+    peso: a.pesoGramas / 1000,
+    altura: a.alturaCm,
+    largura: a.larguraCm,
+    comprimento: a.comprimentoCm,
     status: "Ativa",
     observacoes: a.mlb, // guarda o MLB deste tamanho
   };
 }
 
-/** Variante a partir da variação interna de um anúncio clássico. */
+/**
+ * Variante a partir da variação interna de um anúncio clássico.
+ *
+ * As medidas vêm do ITEM PAI (`a`), não da variação: o ML guarda a embalagem no
+ * item, e todas as variações internas dividem o mesmo pacote.
+ */
 function varianteClassica(
   produtoId: string,
   clienteId: string,
-  v: AnuncioML["variacoes"][number]
+  v: AnuncioML["variacoes"][number],
+  a: AnuncioML
 ): Omit<ProdutoVariante, "id"> {
   return {
     produtoId,
@@ -170,10 +179,10 @@ function varianteClassica(
     custo: 0,
     precoBase: v.preco,
     estoque: v.estoque,
-    peso: 0,
-    altura: 0,
-    largura: 0,
-    comprimento: 0,
+    peso: a.pesoGramas / 1000, // a variante guarda em kg; o ML entrega em gramas
+    altura: a.alturaCm,
+    largura: a.larguraCm,
+    comprimento: a.comprimentoCm,
     status: "Ativa",
     observacoes: "",
   };
@@ -291,7 +300,7 @@ export async function importarAnunciosDoCliente(
     if (unidades(g) <= 1) return; // produto simples, sem variação
     for (const a of g) {
       if (a.variacoes.length > 0) {
-        a.variacoes.forEach((v) => variantes.push(varianteClassica(prod.id, clienteId, v)));
+        a.variacoes.forEach((v) => variantes.push(varianteClassica(prod.id, clienteId, v, a)));
       } else {
         variantes.push(varianteDeItem(prod.id, clienteId, a));
       }

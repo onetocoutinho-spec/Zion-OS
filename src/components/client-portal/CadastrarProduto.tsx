@@ -15,11 +15,14 @@ import {
   validarRascunho,
   avisoDePreco,
   montarProduto,
+  embalagemDoRascunho,
+  paraNumero,
   type RascunhoProduto,
 } from "@/modules/catalog/domain/cadastroManual";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
 import { criarProduto } from "@/lib/services/produtos";
+import { criarVariante } from "@/lib/services/produtoVariantes";
 import { MARKETPLACES } from "@/lib/constantes";
 import { formatBRL } from "@/lib/format";
 import type { Marketplace } from "@/lib/types";
@@ -69,7 +72,40 @@ export function CadastrarProduto({
     setSalvando(true);
     setErro(null);
     try {
-      await criarProduto(montarProduto(r, clienteId, cliente, margem));
+      const produto = await criarProduto(montarProduto(r, clienteId, cliente, margem));
+      // As medidas moram na VARIANTE (migração 001). Sem esta variante, o
+      // produto nasceria sem peso e a precificação ficaria cega para o frete
+      // dele — que foi exatamente o que aconteceu com todo produto importado.
+      const embalagem = embalagemDoRascunho(r);
+      if (embalagem) {
+        try {
+          await criarVariante({
+            produtoId: produto.id,
+            clienteId,
+            sku: r.sku.trim(),
+            codigoInterno: "",
+            ean: "",
+            cor: r.cor.trim(),
+            tamanho: r.tamanho.trim(),
+            voltagem: "",
+            sabor: "",
+            aroma: "",
+            modeloVariacao: "",
+            custo: paraNumero(r.custo),
+            precoBase: paraNumero(r.precoVenda),
+            estoque: Math.max(0, Math.round(paraNumero(r.estoque))),
+            peso: embalagem.pesoGramas / 1000, // a variante guarda em kg
+            altura: embalagem.alturaCm,
+            largura: embalagem.larguraCm,
+            comprimento: embalagem.comprimentoCm,
+            status: "Ativa",
+            observacoes: "Medidas informadas no cadastro.",
+          });
+        } catch {
+          // O produto já existe; perder as medidas é ruim, perder o cadastro
+          // inteiro é pior. A tela de precificação mostrará a pendência.
+        }
+      }
       onCriado(r.nome.trim());
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar o produto.");
@@ -168,6 +204,33 @@ export function CadastrarProduto({
               </span>
             </p>
           )}
+
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+              Embalagem — como o produto será enviado
+            </p>
+            <div className="mt-1 grid gap-4 sm:grid-cols-4">
+              <Campo
+                label="Peso (g)"
+                valor={r.pesoGramas}
+                onChange={(v) => set("pesoGramas", v)}
+                placeholder="400"
+              />
+              <Campo label="Altura (cm)" valor={r.alturaCm} onChange={(v) => set("alturaCm", v)} placeholder="10" />
+              <Campo label="Largura (cm)" valor={r.larguraCm} onChange={(v) => set("larguraCm", v)} placeholder="20" />
+              <Campo
+                label="Compr. (cm)"
+                valor={r.comprimentoCm}
+                onChange={(v) => set("comprimentoCm", v)}
+                placeholder="30"
+              />
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
+              Medidas da <strong className="text-zinc-500">caixa fechada</strong>, não do produto nu.
+              É delas que sai o frete: o Mercado Livre cobra pelo maior entre o peso real e o cubado
+              — uma caixa grande e leve paga pelo volume. Sem elas o preço ideal não é calculável.
+            </p>
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Campo label="Marca" valor={r.marca} onChange={(v) => set("marca", v)} placeholder="Zaxy" />

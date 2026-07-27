@@ -437,6 +437,15 @@ export interface AnuncioML {
   cor: string; // COLOR do item (quando não há variações internas)
   tamanho: string; // SIZE do item
   ean: string; // GTIN do item
+  /**
+   * Medidas da EMBALAGEM. O ML é a fonte: o custo de envio sai do peso cobrável
+   * (o maior entre real e cubado), e sem isso a precificação fica cega.
+   * Peso em GRAMAS e dimensões em CM — as unidades que o ML usa.
+   */
+  pesoGramas: number;
+  alturaCm: number;
+  larguraCm: number;
+  comprimentoCm: number;
 }
 
 interface ItemRaw {
@@ -451,6 +460,7 @@ interface ItemRaw {
   family_name?: string | null;
   user_product_id?: string | null;
   attributes?: { id?: string; value_name?: string | null }[];
+  shipping?: { dimensions?: string | null };
   pictures?: { url?: string; secure_url?: string }[];
   variations?: {
     price?: number;
@@ -463,6 +473,80 @@ interface ItemRaw {
 
 function attr(attrs: { id?: string; value_name?: string | null }[] | undefined, id: string): string {
   return (attrs ?? []).find((a) => a.id === id)?.value_name?.trim() || "";
+}
+
+export interface MedidasDaEmbalagem {
+  pesoGramas: number;
+  alturaCm: number;
+  larguraCm: number;
+  comprimentoCm: number;
+}
+
+const SEM_MEDIDAS: MedidasDaEmbalagem = {
+  pesoGramas: 0,
+  alturaCm: 0,
+  larguraCm: 0,
+  comprimentoCm: 0,
+};
+
+/**
+ * Lê as medidas da embalagem de um item do ML. PURA.
+ *
+ * Duas fontes, nesta ordem:
+ *   1. `shipping.dimensions` — "AxBxC,peso" com dimensões em cm e peso em gramas
+ *      (documentação de Atributos de envio e dimensões).
+ *   2. os atributos PACKAGE_HEIGHT / _WIDTH / _LENGTH / _WEIGHT, que alguns
+ *      itens trazem no lugar.
+ *
+ * Zero em tudo quando nenhuma fonte responde — e zero significa "não sei",
+ * tratado como pendência pela precificação, nunca como "não pesa nada".
+ */
+export function medidasDoItem(it: {
+  shipping?: { dimensions?: string | null };
+  attributes?: { id?: string; value_name?: string | null }[];
+}): MedidasDaEmbalagem {
+  const dim = (it.shipping?.dimensions ?? "").trim();
+  if (dim) {
+    // "30x20x10,1000" → altura x largura x comprimento, peso.
+    //
+    // A vírgula é separadora do peso E pode ser decimal dentro das dimensões
+    // ("30,5x20x10,450"). Dividir pela ÚLTIMA resolve a ambiguidade: o que vem
+    // depois é sempre o peso, o que vem antes são sempre as três dimensões.
+    const corte = dim.lastIndexOf(",");
+    const medidas = corte >= 0 ? dim.slice(0, corte) : dim;
+    const peso = corte >= 0 ? dim.slice(corte + 1) : "";
+    const partes = medidas.split(/x/i).map((n) => Number(String(n).trim().replace(",", ".")));
+    if (partes.length === 3 && partes.every((n) => Number.isFinite(n))) {
+      return {
+        alturaCm: Math.max(0, partes[0]),
+        larguraCm: Math.max(0, partes[1]),
+        comprimentoCm: Math.max(0, partes[2]),
+        pesoGramas: Math.max(0, Number(String(peso ?? "").replace(",", ".")) || 0),
+      };
+    }
+  }
+
+  // Fallback pelos atributos. `value_name` costuma vir com unidade ("450 g").
+  const numero = (v: string): number => {
+    const n = parseFloat(String(v).replace(",", "."));
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+  const pesoAttr = attr(it.attributes, "PACKAGE_WEIGHT");
+  // O ML pode devolver o peso em kg ("0.45 kg"); normalizamos para gramas.
+  const pesoBruto = numero(pesoAttr);
+  const pesoGramas = /kg/i.test(pesoAttr) ? pesoBruto * 1000 : pesoBruto;
+  const medidas: MedidasDaEmbalagem = {
+    pesoGramas,
+    alturaCm: numero(attr(it.attributes, "PACKAGE_HEIGHT")),
+    larguraCm: numero(attr(it.attributes, "PACKAGE_WIDTH")),
+    comprimentoCm: numero(attr(it.attributes, "PACKAGE_LENGTH")),
+  };
+  const temAlgo =
+    medidas.pesoGramas > 0 ||
+    medidas.alturaCm > 0 ||
+    medidas.larguraCm > 0 ||
+    medidas.comprimentoCm > 0;
+  return temAlgo ? medidas : SEM_MEDIDAS;
 }
 
 function mapearItem(it: ItemRaw): AnuncioML {
@@ -487,6 +571,7 @@ function mapearItem(it: ItemRaw): AnuncioML {
     modelo: attr(it.attributes, "MODEL"),
     fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
     variacoes,
+    ...medidasDoItem(it),
     familyId: (it.user_product_id ?? "").toString().trim(),
     familyName: (it.family_name ?? "").trim(),
     cor: attr(it.attributes, "COLOR"),
