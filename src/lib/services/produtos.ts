@@ -106,7 +106,10 @@ export async function excluirProduto(id: string): Promise<void> {
 }
 
 /** Atualiza vários produtos de uma vez (ex.: custos em massa). */
-export async function atualizarProdutosBulk(produtos: Produto[]): Promise<void> {
+/** Aceita PARCIAIS (`{id, custo}`): atualiza só o que veio, sem tocar no resto. */
+export async function atualizarProdutosBulk(
+  produtos: (Partial<Produto> & { id: string })[]
+): Promise<void> {
   return repo.atualizarVarios(produtos);
 }
 

@@ -206,7 +206,10 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     varsPorProduto.set(v.produtoId, arr);
   }
 
-  const varAtualizadas: ProdutoVariante[] = [];
+  // PARCIAIS de propósito: só id + o que muda. Mandar a linha inteira acopla a
+  // importação a todas as colunas, e uma coluna ausente no banco derruba o lote
+  // por causa de um campo que nem se queria alterar.
+  const varAtualizadas: (Partial<ProdutoVariante> & { id: string })[] = [];
   const idVarCasada = new Set<string>();
   const custosPorProduto = new Map<string, number[]>();
   const usados = new Set<string>();
@@ -225,7 +228,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     }
     if (c == null) continue;
     idVarCasada.add(v.id);
-    varAtualizadas.push({ ...v, custo: c });
+    varAtualizadas.push({ id: v.id, custo: c });
     const arr = custosPorProduto.get(v.produtoId) ?? [];
     arr.push(c);
     custosPorProduto.set(v.produtoId, arr);
@@ -253,7 +256,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   }
 
   // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
-  const prodAtualizados: Produto[] = [];
+  const prodAtualizados: (Partial<Produto> & { id: string })[] = [];
   for (const p of produtos) {
     let custo = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
     if (custo != null) usados.add(norm(p.sku));
@@ -276,7 +279,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     if (custo == null || custo <= 0) continue;
 
     prodAtualizados.push({
-      ...p,
+      id: p.id,
       custo,
       // ?? undefined: margem desconhecida some do registro em vez de virar 0,
       // que o resto do sistema leria como "sem margem nenhuma".
@@ -290,7 +293,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     for (const v of varsPorProduto.get(p.id) ?? []) {
       if (!idVarCasada.has(v.id)) {
         idVarCasada.add(v.id);
-        varAtualizadas.push({ ...v, custo });
+        varAtualizadas.push({ id: v.id, custo });
       }
     }
   }

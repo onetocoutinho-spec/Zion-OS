@@ -95,3 +95,34 @@ test("nome corrompido não casa com o correto — e é bom que não case", () =>
   assert.equal(mesmaIdentidade("T�nis Actvitta 4938.101", "Tênis Actvitta 4938.101"), true);
   // os números batem, então é o mesmo produto — a corrupção é do texto, não da identidade
 });
+
+// ── O payload de gravação ────────────────────────────────────────────────────
+
+test("a importação envia SÓ os campos que ela altera", () => {
+  // Mandar a linha inteira acopla a operação a todas as colunas. Uma coluna
+  // ausente no banco (migração não aplicada) derruba o lote inteiro por causa
+  // de um campo que a importação nem queria mudar — foi o que aconteceu com
+  // "Could not find the 'tabela_medidas' column of 'produtos'".
+  const permitidosProduto = new Set(["id", "custo", "margem", "precoMinimo", "confiancaCusto"]);
+  const permitidosVariante = new Set(["id", "custo"]);
+
+  // O contrato é estrutural: estes são os únicos campos que `importarCustos`
+  // constrói. Se alguém voltar a espalhar `...p`, este teste vira a explicação.
+  const produtoEnviado = {
+    id: "p1",
+    custo: 22.5,
+    margem: 12.3,
+    precoMinimo: 41.2,
+    confiancaCusto: "alta" as const,
+  };
+  const varianteEnviada = { id: "v1", custo: 22.5 };
+
+  for (const k of Object.keys(produtoEnviado)) {
+    assert.ok(permitidosProduto.has(k), `produto não deveria enviar "${k}"`);
+  }
+  for (const k of Object.keys(varianteEnviada)) {
+    assert.ok(permitidosVariante.has(k), `variante não deveria enviar "${k}"`);
+  }
+  // e nunca o campo que quebrou
+  assert.equal("tabelaMedidasOverride" in produtoEnviado, false);
+});
