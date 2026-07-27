@@ -99,15 +99,22 @@ export default function ClienteProdutos() {
     try {
       const planilha = await lerPlanilha(file);
       const r = await importarCustos(clienteId, planilha);
-      if (r.aviso) {
-        setMsgML({ tipo: "erro", texto: r.aviso });
-      } else {
-        setMsgML({
-          tipo: "ok",
-          texto: `Custos: ${r.produtos} produto(s) · ${r.variantes} variação(ões) atualizados${r.naoEncontrados > 0 ? ` · ${r.naoEncontrados} SKU(s) não encontrado(s)` : ""}.`,
-        });
-        reload();
-      }
+
+      // O aviso pode vir JUNTO com um resultado bom (ex.: casou 800 produtos e
+      // 12 ficaram ambíguos). Tratar todo aviso como erro escondia o que deu
+      // certo e não recarregava a tela.
+      const partes = [
+        `${r.produtos} produto(s) e ${r.variantes} variação(ões) atualizados de ${r.linhasCsv} linha(s)`,
+      ];
+      if (r.naoEncontrados > 0) partes.push(`${r.naoEncontrados} linha(s) sem produto correspondente`);
+      if (r.ambiguos > 0) partes.push(`${r.ambiguos} produto(s) ambíguo(s), deixados de fora`);
+
+      const houveMudanca = r.produtos > 0 || r.variantes > 0;
+      setMsgML({
+        tipo: houveMudanca ? "ok" : "erro",
+        texto: [partes.join(" · ") + ".", r.aviso].filter(Boolean).join(" "),
+      });
+      if (houveMudanca) reload();
     } catch (err) {
       setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar custos." });
     } finally {
