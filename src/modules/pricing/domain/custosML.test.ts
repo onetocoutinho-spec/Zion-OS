@@ -14,6 +14,7 @@ import {
   comissaoDoAnuncio,
   COMISSAO_MODA,
   LIMIAR_FRETE_GRATIS,
+  reputacaoDoLevelId,
 } from "./custosML.ts";
 
 // ── Peso cobrável: o maior entre real e cubado ───────────────────────────────
@@ -124,4 +125,31 @@ test("Premium é o padrão do canal; Clássico é mais barato", () => {
 
 test("outra categoria entra como parâmetro, não como número solto", () => {
   assert.equal(comissaoDoAnuncio("Premium", { classico: 11, premium: 16 }), 16);
+});
+
+// ── Reputação vinda da API do ML ─────────────────────────────────────────────
+
+test("level_id do ML escolhe a tabela de envio", () => {
+  assert.equal(reputacaoDoLevelId("5_green"), "verde");
+  assert.equal(reputacaoDoLevelId("4_light_green"), "verde");
+  assert.equal(reputacaoDoLevelId("3_yellow"), "amarela");
+  assert.equal(reputacaoDoLevelId("2_orange"), "laranja");
+  assert.equal(reputacaoDoLevelId("1_red"), "laranja");
+});
+
+test("MercadoLíder entra na faixa verde qualquer que seja a cor", () => {
+  assert.equal(reputacaoDoLevelId("3_yellow", "platinum"), "verde");
+  assert.equal(reputacaoDoLevelId("1_red", "gold"), "verde");
+  assert.equal(reputacaoDoLevelId(null, "silver"), "verde");
+});
+
+test("sem reputação é VERDE — regra do próprio ML para quem está começando", () => {
+  assert.equal(reputacaoDoLevelId(null), "verde");
+  assert.equal(reputacaoDoLevelId(""), "verde");
+  assert.equal(reputacaoDoLevelId(undefined), "verde");
+});
+
+test("nível desconhecido cai na tabela MAIS CARA — nunca subestima o custo", () => {
+  // Se o ML renomear os níveis, o piso não pode ficar abaixo do custo real.
+  assert.equal(reputacaoDoLevelId("7_platinum_plus"), "laranja");
 });

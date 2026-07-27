@@ -40,6 +40,36 @@ export const ROTULO_REPUTACAO: Record<ReputacaoEnvio, string> = {
   laranja: "Laranja ou vermelha (sem desconto)",
 };
 
+/**
+ * Traduz o `seller_reputation` da API do ML na tabela de envio que vale. PURO.
+ *
+ * `level_id` vem como "5_green", "4_light_green", "3_yellow", "2_orange" ou
+ * "1_red". `power_seller_status` (silver/gold/platinum) marca MercadoLíder, que
+ * entra na faixa verde qualquer que seja a cor.
+ *
+ * Ausência de reputação → verde, por regra do próprio ML: a página de custos
+ * agrupa "MercadoLíderes, com reputação verde OU SEM REPUTAÇÃO".
+ *
+ * ⚠️ Usa `level_id`, não `real_level`. Vendedor em período de proteção exibe
+ * level_id melhor que o real (na doc: level_id "5_green" com real_level "red"),
+ * e o desconto de frete acompanha o nível EXIBIDO — é o benefício da proteção.
+ * Se algum dia se confirmar o contrário, é aqui que muda.
+ */
+export function reputacaoDoLevelId(
+  levelId: string | null | undefined,
+  powerSellerStatus?: string | null
+): ReputacaoEnvio {
+  if (powerSellerStatus) return "verde"; // MercadoLíder, qualquer medalha
+  const nivel = (levelId ?? "").trim().toLowerCase();
+  if (!nivel) return "verde"; // sem reputação ainda
+  if (nivel.includes("green")) return "verde"; // 5_green e 4_light_green
+  if (nivel.includes("yellow")) return "amarela";
+  if (nivel.includes("orange") || nivel.includes("red")) return "laranja";
+  // Nível desconhecido (o ML mudou a nomenclatura): a escolha conservadora é a
+  // tabela mais CARA, para o piso nunca ficar abaixo do custo real.
+  return "laranja";
+}
+
 /** Teto de cada faixa de peso, em GRAMAS. A última é aberta. */
 export const TETOS_PESO_G: readonly number[] = [
   300, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 11000,

@@ -210,6 +210,114 @@ export async function encerrarItem(
   return { id: j.id, status: j.status };
 }
 
+// ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
+
+export interface TarifaDeVenda {
+  /** `sale_fee_details.percentage_fee` — o % que o ML aplica sobre o preço. */
+  percentual: number;
+  /** `sale_fee_details.fixed_fee` — zero em ME2 sem Flex, mas não assumimos. */
+  taxaFixa: number;
+  /** `sale_fee_amount` — o total em reais para o preço consultado. */
+  valorTotal: number;
+  listingTypeId: string;
+}
+
+/**
+ * Tarifa de venda REAL para uma categoria, do próprio ML.
+ *
+ * Substitui qualquer tabela de comissão nossa: a resposta é da categoria exata
+ * do produto, não de uma média de "Moda". Exige token — o endpoint recusa
+ * chamadas anônimas (403 PolicyAgent).
+ *
+ * Os parâmetros de logística importam: desde a nova estrutura de custos o ML
+ * calcula a taxa fixa também pelo modo de envio, e omiti-los devolve um número
+ * que não coincide com o cobrado de verdade.
+ */
+export async function consultarTarifaDeVenda(
+  accessToken: string,
+  opcoes: {
+    categoryId: string;
+    preco: number;
+    listingTypeId: string;
+    /** Modo de envio do anúncio. O payload da Zion publica sempre como me2. */
+    shippingMode?: string;
+    /** Coleta (cross_docking) é o padrão do fluxo; Flex muda a taxa fixa. */
+    logisticType?: string;
+    siteId?: string;
+  }
+): Promise<TarifaDeVenda> {
+  const site = opcoes.siteId ?? "MLB";
+  const q = new URLSearchParams({
+    price: String(opcoes.preco),
+    currency_id: "BRL",
+    category_id: opcoes.categoryId,
+    listing_type_id: opcoes.listingTypeId,
+    shipping_mode: opcoes.shippingMode ?? "me2",
+    logistic_type: opcoes.logisticType ?? "cross_docking",
+  });
+  const r = await fetch(`${API}/sites/${site}/listing_prices?${q}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`ML recusou consultar a tarifa: ${await extrairErro(r)}`);
+
+  // A resposta é um ARRAY (um item por listing_type quando não se filtra).
+  const corpo = (await r.json()) as unknown;
+  const lista = Array.isArray(corpo) ? corpo.flat() : [corpo];
+  const alvo = (lista as Record<string, unknown>[]).find(
+    (x) => x && x.listing_type_id === opcoes.listingTypeId
+  ) ?? (lista[0] as Record<string, unknown> | undefined);
+  if (!alvo) throw new Error("O ML respondeu sem nenhuma tarifa para esta categoria.");
+
+  const det = (alvo.sale_fee_details ?? {}) as Record<string, unknown>;
+  const num = (v: unknown): number => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  return {
+    percentual: num(det.percentage_fee),
+    taxaFixa: num(det.fixed_fee),
+    valorTotal: num(alvo.sale_fee_amount),
+    listingTypeId: String(alvo.listing_type_id ?? opcoes.listingTypeId),
+  };
+}
+
+export interface ReputacaoVendedor {
+  /** "5_green", "4_light_green", "3_yellow", "2_orange", "1_red" ou null. */
+  levelId: string | null;
+  /** "silver" | "gold" | "platinum" quando é MercadoLíder. */
+  powerSellerStatus: string | null;
+  /** Nível real durante período de proteção — só aparece se protegido. */
+  levelReal: string | null;
+  sellerId: string | null;
+}
+
+/**
+ * Reputação do vendedor conectado. É o que decide qual das três tabelas de
+ * custo de envio vale — e é dado do ML, não configuração que o cliente digita
+ * (e erraria).
+ */
+export async function consultarReputacao(accessToken: string): Promise<ReputacaoVendedor> {
+  const r = await fetch(`${API}/users/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`ML recusou consultar a reputação: ${await extrairErro(r)}`);
+  const j = (await r.json()) as {
+    id?: number | string;
+    seller_reputation?: {
+      level_id?: string | null;
+      power_seller_status?: string | null;
+      real_level?: string | null;
+    };
+  };
+  const rep = j.seller_reputation ?? {};
+  return {
+    levelId: rep.level_id ?? null,
+    powerSellerStatus: rep.power_seller_status ?? null,
+    levelReal: rep.real_level ?? null,
+    sellerId: j.id != null ? String(j.id) : null,
+  };
+}
+
 // ---- Pedidos / vendas (para o dashboard de métricas) ----
 
 export interface ItemPedidoML {

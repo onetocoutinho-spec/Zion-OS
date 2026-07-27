@@ -12,7 +12,9 @@ import { useClientPortal } from "@/components/client-portal/context";
 import { MargemMinima } from "@/components/client-portal/MargemMinima";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
+import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
+import { custosDoCliente, embalagemDasVariantes } from "@/lib/services/taxasDoCliente";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
 import {
   custoDasTaxas,
@@ -21,13 +23,17 @@ import {
   precoMinimo,
   classificarMargem,
   MARGEM_MINIMA_PADRAO,
+  TAXAS_PADRAO,
+  type ModeloTaxas,
 } from "@/modules/pricing/domain/modeloPreco";
 import { formatBRL } from "@/lib/format";
 
 const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
 export default function ClientePrecificacao() {
+  const { clienteId, marketplace } = useClientPortal();
   const { data: produtos } = useLiveQuery(listarProdutos);
+  const { data: variantes } = useLiveQuery(listarTodasVariantes);
 
   const [fStatus, setFStatus] = useState("Todos");
   const [busca, setBusca] = useState("");
@@ -35,6 +41,12 @@ export default function ClientePrecificacao() {
   // A margem que o LOJISTA escolheu. Enquanto não chega, o padrão vale — a tela
   // nunca fica sem piso, o que faria toda margem parecer saudável.
   const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
+  // A REPUTAÇÃO do lojista, do próprio ML: é ela que decide qual das três
+  // tabelas de custo de envio vale, e a diferença entre verde e laranja passa
+  // de 90% no frete. Enquanto não chega, vale o padrão (verde, a regra do ML
+  // para quem ainda não tem reputação).
+  const [taxasBase, setTaxasBase] = useState<ModeloTaxas>(TAXAS_PADRAO);
+  const [avisoCustos, setAvisoCustos] = useState<string | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -44,22 +56,58 @@ export default function ClientePrecificacao() {
     };
   }, []);
 
+  useEffect(() => {
+    let vivo = true;
+    // Sem categoria no pedido: aqui só a reputação interessa. A comissão exata
+    // por categoria é consultada nas telas de UM produto, onde o lojista está
+    // prestes a decidir um preço — uma chamada por linha desta tabela seria
+    // uma tempestade de rede sem ganho proporcional.
+    custosDoCliente({ clienteId, marketplace })
+      .then((c) => {
+        if (!vivo) return;
+        setTaxasBase(c.taxas);
+        setAvisoCustos(c.aviso);
+      })
+      .catch(() => vivo && setAvisoCustos("Não foi possível consultar sua reputação no ML."));
+    return () => {
+      vivo = false;
+    };
+  }, [clienteId, marketplace]);
+
+  /** Peso e medidas por produto — vêm das variantes, não do produto pai. */
+  const embalagemPorProduto = useMemo(() => {
+    const porProduto = new Map<string, typeof variantes>();
+    (variantes ?? []).forEach((v) => {
+      if (!v.produtoId) return;
+      const lista = porProduto.get(v.produtoId) ?? [];
+      lista.push(v);
+      porProduto.set(v.produtoId, lista);
+    });
+    const mapa = new Map<string, ReturnType<typeof embalagemDasVariantes>>();
+    porProduto.forEach((lista, id) => mapa.set(id, embalagemDasVariantes(lista ?? [])));
+    return mapa;
+  }, [variantes]);
+
   const linhas = useMemo(() => {
     return (produtos ?? []).map((p) => {
-      // Cada um destes pode ser null quando o frete do item ainda é desconhecido
-      // — a coluna mostra a pendência em vez de um número inventado.
-      const taxas = custoDasTaxas(p.precoVenda);
-      const lucro = lucroLiquido(p.custo, p.precoVenda);
+      const taxasDoProduto: ModeloTaxas = {
+        ...taxasBase,
+        embalagem: embalagemPorProduto.get(p.id) ?? null,
+      };
+      // Cada um destes pode ser null quando falta o peso da embalagem — a
+      // coluna mostra a pendência em vez de um número inventado.
+      const taxas = custoDasTaxas(p.precoVenda, taxasDoProduto);
+      const lucro = lucroLiquido(p.custo, p.precoVenda, taxasDoProduto);
       const temDados = p.precoVenda > 0 && p.custo > 0;
-      const pct = temDados ? margemLiquida(p.custo, p.precoVenda) : null;
+      const pct = temDados ? margemLiquida(p.custo, p.precoVenda, taxasDoProduto) : null;
       const status = classificarMargem(pct, margem);
       const saude = { margem: pct, status, tone: toneSaudeMargem(status) };
-      const piso = p.custo > 0 ? precoMinimo(p.custo, margem) : null;
+      const piso = p.custo > 0 ? precoMinimo(p.custo, margem, taxasDoProduto) : null;
       const precoIdeal = piso?.ok ? piso.preco : null;
       const pendencia = piso && !piso.ok && piso.motivo === "sem_peso" ? piso.pendencia : null;
       return { p, taxas, lucro, saude, precoIdeal, pendencia };
     });
-  }, [produtos, margem]);
+  }, [produtos, margem, taxasBase, embalagemPorProduto]);
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -112,6 +160,12 @@ export default function ClientePrecificacao() {
       />
 
       <MargemMinima margem={margem} onMudou={setMargem} />
+
+      {avisoCustos && (
+        <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+          {avisoCustos} Os números abaixo usam a tabela padrão até o Mercado Livre responder.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Saudável" value={resumo["Saudável"]} icon={Calculator} tone="green" />
@@ -173,10 +227,15 @@ export default function ClientePrecificacao() {
         )}
       </Table>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs leading-relaxed text-zinc-500">
         <span className="text-amber-400">Preço ideal</span> = o menor preço que ainda entrega a sua
         margem de {margem}%, já descontadas as taxas. Preços atuais abaixo desse valor aparecem em
         amarelo. Mude a margem acima e a coluna inteira se recalcula.
+        <br />
+        O custo de envio vem da tabela oficial do Mercado Livre, pela{" "}
+        <span className="text-zinc-400">sua reputação</span> e pelo peso cobrável de cada produto —
+        o maior entre o peso real e o cubado. Onde falta a medida da embalagem, o preço ideal
+        aparece como pendência em vez de estimativa.
       </p>
     </>
   );

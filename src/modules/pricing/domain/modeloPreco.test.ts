@@ -24,6 +24,7 @@ import {
   margemValida,
   classificarMargem,
   comissaoPercentual,
+  taxaFixaVenda,
   TAXAS_PADRAO,
   MARGEM_MINIMA_PADRAO,
   LIMIAR_FRETE_GRATIS,
@@ -167,4 +168,44 @@ test("margem desconhecida não vira veredito", () => {
 test("prejuízo é prejuízo em qualquer configuração", () => {
   assert.equal(classificarMargem(-3, 0), "Prejuízo");
   assert.equal(classificarMargem(-0.1, 50), "Prejuízo");
+});
+
+// ── A API do ML tem precedência sobre a nossa tabela ─────────────────────────
+
+test("o percentual vindo da API prevalece sobre a tabela de Moda", () => {
+  // A tabela só conhece Moda; a API conhece a categoria exata do produto.
+  const outraCategoria: ModeloTaxas = { ...REAL, percentualVendaML: 11 };
+  assert.equal(comissaoPercentual(outraCategoria), 11);
+  assert.equal(custoDaVenda(100, outraCategoria).comissao, 11);
+});
+
+test("percentual corrompido é ignorado — a tabela é mais confiável que lixo", () => {
+  for (const ruim of [-5, 100, 250, NaN, Infinity]) {
+    assert.equal(comissaoPercentual({ ...REAL, percentualVendaML: ruim }), 19, `valor ${ruim}`);
+  }
+});
+
+test("percentual ZERO é legítimo (anúncio grátis) e não cai no fallback", () => {
+  assert.equal(comissaoPercentual({ ...REAL, percentualVendaML: 0 }), 0);
+});
+
+test("ausência de resposta da API mantém a tabela", () => {
+  assert.equal(comissaoPercentual({ ...REAL, percentualVendaML: null }), 19);
+  assert.equal(comissaoPercentual({ ...REAL, percentualVendaML: undefined }), 19);
+});
+
+test("taxa fixa da API entra na conta e sobe o piso", () => {
+  // Em ME2 sem Flex o ML documenta zero, mas se vier, respeitamos.
+  const comFixa: ModeloTaxas = { ...REAL, taxaFixaVendaML: 6.5 };
+  assert.equal(custoDaVenda(100, comFixa).taxaFixa, 6.5);
+  assert.equal(custoDaVenda(100, comFixa).total, custoDaVenda(100, REAL).total! + 6.5);
+  const semFixa = precoMinimo(60, 5, REAL);
+  const piso = precoMinimo(60, 5, comFixa);
+  assert.ok(semFixa.ok && piso.ok && piso.preco > semFixa.preco);
+});
+
+test("taxa fixa ausente ou inválida vale zero", () => {
+  assert.equal(taxaFixaVenda(REAL), 0);
+  assert.equal(taxaFixaVenda({ ...REAL, taxaFixaVendaML: -3 }), 0);
+  assert.equal(taxaFixaVenda({ ...REAL, taxaFixaVendaML: NaN }), 0);
 });

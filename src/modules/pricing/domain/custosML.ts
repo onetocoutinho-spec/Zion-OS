@@ -31,6 +31,7 @@ export {
   TETOS_PRECO,
   REPUTACAO_PADRAO,
   ROTULO_REPUTACAO,
+  reputacaoDoLevelId,
   type ReputacaoEnvio,
 } from "./tabelaEnvioML.ts";
 
