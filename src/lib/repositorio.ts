@@ -136,11 +136,21 @@ export function criarRepositorio<T extends { id: string }, Row>(
   }
 
   /**
-   * Atualiza muitos registros de uma vez (upsert por id). Cada item deve ser
-   * completo (linha inteira) — usado por importações que alteram um campo em
-   * massa (ex.: custo por SKU). Com retry por lote.
+   * Atualiza muitos registros de uma vez (upsert por id).
+   *
+   * Aceita registros PARCIAIS: `{ id, custo }` atualiza só o custo, sem tocar
+   * no resto da linha. Mandar o objeto inteiro parece inofensivo mas acopla a
+   * operação a TODAS as colunas — se uma delas não existir no banco (migração
+   * não aplicada, schema à frente do código), o lote inteiro falha por causa de
+   * um campo que a operação nem queria mudar. Foi assim que uma importação de
+   * custos morreu com "Could not find the 'tabela_medidas' column".
+   *
+   * Com retry por lote.
    */
-  async function atualizarVarios(registros: T[], chunk = 200): Promise<void> {
+  async function atualizarVarios(
+    registros: (Partial<T> & { id: string })[],
+    chunk = 200
+  ): Promise<void> {
     if (registros.length === 0) return;
     if (!supabaseConfigurado) {
       for (const r of registros) updateItem<T>(colecao, r.id, r);

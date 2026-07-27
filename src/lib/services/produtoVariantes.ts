@@ -65,6 +65,9 @@ export async function criarVariantesBulk(
 }
 
 /** Atualiza várias variantes de uma vez (ex.: custos em massa). */
-export async function atualizarVariantesBulk(variantes: ProdutoVariante[]): Promise<void> {
+/** Aceita PARCIAIS (`{id, custo}`): atualiza só o que veio, sem tocar no resto. */
+export async function atualizarVariantesBulk(
+  variantes: (Partial<ProdutoVariante> & { id: string })[]
+): Promise<void> {
   return repo.atualizarVarios(variantes);
 }
