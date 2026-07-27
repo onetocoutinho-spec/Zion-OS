@@ -3,6 +3,7 @@
 
 import * as XLSX from "xlsx";
 import { parseCsv } from "./csv";
+import { decodificarTexto } from "./textoDeArquivo";
 
 export interface PlanilhaLida {
   headers: string[];
@@ -35,12 +36,24 @@ function lerExcel(buf: ArrayBuffer): PlanilhaLida {
   return { headers, linhas };
 }
 
+/**
+ * Lê o CSV com o encoding CERTO.
+ *
+ * `file.text()` decodifica sempre como UTF-8, e o Excel no Windows exporta em
+ * Windows-1252 — foi assim que 470 produtos entraram com "T?nis" no lugar de
+ * "Tênis", e esse nome corrompido vai direto para o título do anúncio.
+ * Ver src/lib/textoDeArquivo.ts.
+ */
+async function lerCsvComEncoding(file: File): Promise<string> {
+  return decodificarTexto(await file.arrayBuffer()).texto;
+}
+
 /** Lê um arquivo CSV ou Excel e devolve { headers, linhas }. */
 export async function lerPlanilha(file: File): Promise<PlanilhaLida> {
   if (ehExcel(file.name)) {
     return lerExcel(await file.arrayBuffer());
   }
-  return parseCsv(await file.text());
+  return parseCsv(await lerCsvComEncoding(file));
 }
 
 /**
@@ -48,7 +61,7 @@ export async function lerPlanilha(file: File): Promise<PlanilhaLida> {
  * reaproveitar fluxos que já parseiam CSV em texto (importação da base).
  */
 export async function lerPlanilhaComoCsv(file: File): Promise<string> {
-  if (!ehExcel(file.name)) return file.text();
+  if (!ehExcel(file.name)) return lerCsvComEncoding(file);
   const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return ws ? XLSX.utils.sheet_to_csv(ws) : "";

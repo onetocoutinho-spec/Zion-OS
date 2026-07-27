@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { useLiveQuery } from "@/lib/hooks";
+import { decodificarTexto } from "@/lib/textoDeArquivo";
 import { listarClientes } from "@/lib/services/clientes";
 import { MARKETPLACES } from "@/lib/constantes";
 import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
@@ -61,7 +62,9 @@ export default function ImportarCsvPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     setResultado(null);
-    const texto = await file.text();
+    // decodificarTexto, não file.text(): o Excel do Windows exporta em
+    // Windows-1252 e file.text() força UTF-8, corrompendo todo acento.
+    const texto = decodificarTexto(await file.arrayBuffer()).texto;
     setNomeArquivo(file.name);
     setAnalise(analisarCsv(texto, marketplace));
   }

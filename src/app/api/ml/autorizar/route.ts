@@ -27,6 +27,25 @@ export async function GET(request: Request) {
   const state = searchParams.get("clienteId") ?? "";
   const redirectUri = process.env.ML_REDIRECT_URI ?? `${origem(request)}/cliente/conectar-ml`;
 
+  // O ML recusa redirect_uri que não seja HTTPS, e a recusa acontece na BORDA:
+  // o vendedor recebe uma página branca da CloudFront com "403 ERROR", sem
+  // nenhuma pista do que houve nem do que fazer. Barrar aqui troca esse beco
+  // sem saída por uma frase que explica o problema — em desenvolvimento, o
+  // redirect vira http://localhost e isso nunca vai funcionar.
+  if (!redirectUri.startsWith("https://")) {
+    return Response.json(
+      {
+        erro:
+          "A conexão com o Mercado Livre só funciona pelo site publicado (https). " +
+          "Em ambiente local o endereço gerado seria " +
+          redirectUri +
+          ", que o Mercado Livre recusa antes mesmo da tela de login. " +
+          "Configure ML_REDIRECT_URI com a URL de produção ou faça a conexão por lá.",
+      },
+      { status: 400 }
+    );
+  }
+
   const url = new URL(AUTH_URL);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
