@@ -79,3 +79,22 @@ revoke all on function public.portal_margem_minima() from public;
 revoke all on function public.portal_definir_margem_minima(numeric) from public;
 grant execute on function public.portal_margem_minima() to authenticated;
 grant execute on function public.portal_definir_margem_minima(numeric) to authenticated;
+
+-- ------------------------------------------------------------
+-- VERIFICAÇÃO (somente leitura):
+--   select count(*) filter (where margem_minima = 5) as no_padrao, count(*) as total
+--     from public.clientes;                       -- esperado: no_padrao = total
+--   select public.portal_margem_minima();         -- esperado: 5 (ou a margem do cliente logado)
+--
+-- REVERTER:
+--   drop function if exists public.portal_definir_margem_minima(numeric);
+--   drop function if exists public.portal_margem_minima();
+--   alter table public.clientes drop constraint if exists clientes_margem_minima_faixa;
+--   alter table public.clientes drop column if exists margem_minima;
+--   delete from public.migracoes_aplicadas where numero = '029';
+-- ------------------------------------------------------------
+
+-- ★ Auto-registro (convenção ≥024):
+insert into public.migracoes_aplicadas (numero, nome, observacao)
+values ('029','029-margem-minima-cliente','a margem mínima passa a ser escolha do lojista — default 5 preserva o comportamento anterior')
+on conflict (numero) do nothing;

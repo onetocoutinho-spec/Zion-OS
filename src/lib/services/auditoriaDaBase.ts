@@ -29,13 +29,19 @@ function tituloParecOtimizado(titulo: string): boolean {
   return titulo.trim().length >= 20 && titulo.trim().length <= 60 && palavras.length >= 4;
 }
 
-function derivarSinais(p: Produto, qtdVariacoes: number, margem: number): SinaisQualidade {
+// margem null = desconhecida (frete ainda indefinido). Segue a mesma convenção
+// de classificarPrioridadeColdStart: falta de dado não vira acusação.
+function derivarSinais(
+  p: Produto,
+  qtdVariacoes: number,
+  margem: number | null
+): SinaisQualidade {
   return {
     tituloOtimizado: tituloParecOtimizado(p.nome),
     descricaoCompleta: p.statusDescricao === "Concluído" || Boolean(p.descricaoBase),
     imagensAdequadas: p.statusImagens === "Concluído",
     fichaTecnicaCompleta: Boolean(p.marca && p.modelo && p.categoria),
-    precoCompetitivo: p.precoVenda > 0 && margem >= 5,
+    precoCompetitivo: p.precoVenda > 0 && (margem === null || margem >= 5),
     estoqueDisponivel: p.estoque > 0,
     variacoesCorretas: p.tipoProduto !== "com_variacao" || qtdVariacoes > 0,
     tabelaMedidasAplicavel: /cal[çc]ad|t[êe]nis|moda|roupa|vestu/i.test(p.categoria),
@@ -120,7 +126,7 @@ export async function gerarAuditoriasDaBase(
     const sinais = derivarSinais(p, qtdVar, margem);
     const score = calcularScore(sinais);
     const tipos = derivarTipos(sinais);
-    const prioridade = classificarPrioridadeColdStart(score, { margem, estoque: p.estoque });
+    const prioridade = classificarPrioridadeColdStart(score, { margem: margem ?? undefined, estoque: p.estoque });
     if (prioridade === "critica") criticas++;
     if (prioridade === "alta") altas++;
 
@@ -146,7 +152,7 @@ export async function gerarAuditoriasDaBase(
       problemasEncontrados:
         tipos.slice(0, 3).map((t) => ROTULO_TIPO_PROBLEMA[t]).join(", ") ||
         "Nenhum problema crítico de cadastro",
-      oportunidades: `Cold-start — potencial: margem ${margem.toFixed(1)}%, ${p.estoque} em estoque, ${qtdVar} variações.`,
+      oportunidades: `Cold-start — potencial: margem ${margem === null ? "a definir (falta frete)" : `${margem.toFixed(1)}%`}, ${p.estoque} em estoque, ${qtdVar} variações.`,
       proximaAcao:
         tipos.length > 0 ? SUGESTAO_PROBLEMA[tipos[0]] : "Cadastro ok — validar métricas quando houver tráfego.",
       agenteRecomendado:

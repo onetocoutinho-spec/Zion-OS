@@ -189,8 +189,10 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     prodAtualizados.push({
       ...p,
       custo,
-      margem: margemZion(custo, p.precoVenda),
-      precoMinimo: precoMinimoZion(custo),
+      // ?? undefined: margem desconhecida some do registro em vez de virar 0,
+      // que o resto do sistema leria como "sem margem nenhuma".
+      margem: margemZion(custo, p.precoVenda) ?? undefined,
+      precoMinimo: precoMinimoZion(custo) ?? undefined,
       confiancaCusto: "alta",
     });
     if (porNome) usados.add(normNome(p.nome));
