@@ -181,6 +181,35 @@ export async function criarItem(
   return { id: j.id, permalink: j.permalink, status: j.status };
 }
 
+/**
+ * ENCERRA um anúncio no Mercado Livre (status "closed").
+ *
+ * Usado na migração de anúncio: republicar é estratégia legítima do lojista —
+ * editar o título de um anúncio vivo reseta o histórico de relevância —, mas
+ * manter DOIS anúncios ativos do mesmo produto, nas mesmas condições, infringe
+ * a política do ML e pode custar o anúncio ou a conta. Encerrar o antigo é o
+ * que separa a migração legítima da duplicidade punível.
+ *
+ * "closed" é terminal no ML: o anúncio sai do ar e não volta. Por isso esta
+ * função nunca é chamada por inferência — só por decisão explícita de quem vende.
+ */
+export async function encerrarItem(
+  accessToken: string,
+  itemId: string
+): Promise<{ id: string; status: string }> {
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status: "closed" }),
+  });
+  if (!r.ok) throw new Error(`ML recusou encerrar o anúncio ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; status: string };
+  return { id: j.id, status: j.status };
+}
+
 // ---- Pedidos / vendas (para o dashboard de métricas) ----
 
 export interface ItemPedidoML {

@@ -29,6 +29,13 @@ import {
   ROTULO_STATUS_ANUNCIO_GERADO,
 } from "@/lib/services/anunciosGerados";
 import { montarPreviewML, publicarNoML } from "@/lib/services/publicacaoML";
+import {
+  buscarAnunciosAtivosDoProduto,
+  encerrarAntigosAposPublicar,
+  type AnuncioAtivo,
+} from "@/lib/services/migracaoAnuncio";
+import { montarMissaoRepublicacao, type MissaoRepublicacao as Missao } from "@/modules/publication/domain/republicacao";
+import { MissaoRepublicacao } from "@/components/esteira/MissaoRepublicacao";
 import { urlsDoProduto } from "@/lib/services/storageImagens";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
 
@@ -134,14 +141,61 @@ function ConteudoAprovacoes({
   const [preview, setPreview] = useState<AnuncioGeradoRegistro | null>(null);
   const [publicando, setPublicando] = useState(false);
   const [msgPub, setMsgPub] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  // A Missão só existe quando há algo real a perguntar (anúncio ativo do mesmo
+  // produto). Sem isso, publicar segue direto — nada de atrito inventado.
+  const [missao, setMissao] = useState<{ missao: Missao; ativos: AnuncioAtivo[] } | null>(null);
 
+  /** Antes de publicar: o produto já tem anúncio no ar? Se tem, quem decide é o lojista. */
   async function publicarReal() {
     if (!preview || publicando) return;
+    setMsgPub(null);
+    let ativos: AnuncioAtivo[] = [];
+    try {
+      ativos = await buscarAnunciosAtivosDoProduto(preview.produtoId, preview.id);
+    } catch {
+      // Não conseguir checar não pode bloquear a publicação — mas também não
+      // vira um "está tudo certo": segue sem afirmar o que não se sabe.
+      ativos = [];
+    }
+    const m = montarMissaoRepublicacao(ativos);
+    if (m) return setMissao({ missao: m, ativos });
+    await publicar(null);
+  }
+
+  /**
+   * `migrar` = os antigos são encerrados DEPOIS que o novo entra no ar.
+   * A ordem importa: se encerrasse antes e a publicação falhasse, o lojista
+   * ficaria sem anúncio nenhum — prejuízo causado pela ferramenta.
+   */
+  async function publicar(migrar: AnuncioAtivo[] | null) {
+    if (!preview) return;
     setPublicando(true);
     setMsgPub(null);
     try {
       const r = await publicarNoML(preview, true);
-      setMsgPub({ tipo: "ok", texto: `Publicado no ML: ${r.id}` });
+      let texto = `Publicado no ML: ${r.id}`;
+      if (migrar?.length) {
+        const { encerrados, falharam } = await encerrarAntigosAposPublicar(
+          preview.clienteId,
+          migrar,
+          preview.marketplace
+        );
+        if (encerrados.length) texto += ` · encerrado: ${encerrados.join(", ")}`;
+        // Falha ao encerrar deixa DOIS anúncios no ar. Isso nunca é omitido.
+        if (falharam.length) {
+          setMsgPub({
+            tipo: "erro",
+            texto: `${texto}. ATENÇÃO: não foi possível encerrar ${falharam
+              .map((f) => f.mlItemId)
+              .join(", ")} — encerre manualmente no Mercado Livre para não ficar com anúncio duplicado.`,
+          });
+          setMissao(null);
+          setPreview(null);
+          return;
+        }
+      }
+      setMsgPub({ tipo: "ok", texto });
+      setMissao(null);
       setPreview(null);
     } catch (e) {
       setMsgPub({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao publicar." });
@@ -308,6 +362,15 @@ function ConteudoAprovacoes({
           publicando={publicando}
           onPublicar={publicarReal}
           onFechar={() => setPreview(null)}
+        />
+      )}
+
+      {missao && (
+        <MissaoRepublicacao
+          missao={missao.missao}
+          ocupado={publicando}
+          onCancelar={() => setMissao(null)}
+          onConfirmar={(escolha) => publicar(escolha === "migrar" ? missao.ativos : null)}
         />
       )}
     </div>
