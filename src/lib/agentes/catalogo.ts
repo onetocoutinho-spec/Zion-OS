@@ -14,7 +14,7 @@ export const REGRAS_MAE = `Regras-mãe da Zion Company (valem para TODAS as etap
 - Sempre respeitar a CATEGORIA do produto (calçado, bolsa, etc.) e seus atributos obrigatórios.
 - Título ML: no MÁXIMO 60 caracteres, com a keyword principal na frente, SEM cor nem tamanho (isso é variação/atributo), mantendo palavras que vendem.
 - Atributos/ficha técnica são os FILTROS DE BUSCA do ML (o comprador filtra por atributo, não por título) — preencher o máximo possível.
-- Preço só passa com margem mínima 5%. Modelo Zion: margem = preço − custo − preço×0,30 − 1,15 − frete (frete leve R$14,15 / pesado R$21,65 só se preço ≥ R$79). Nunca liberar preço abaixo do piso de 5%.
+- Preço: NÃO calcule margem nem julgue se o preço está bom. Isso é feito pelo sistema, que conhece a comissão real da categoria (consultada na API do Mercado Livre), o custo de envio pelo peso cobrável, a reputação da conta e a margem mínima que O LOJISTA escolheu. Você não tem esses dados. Sinalize apenas o que dá para ver: preço ausente ou zerado é pendência; custo ausente impede o cálculo e também é pendência.
 - Defaults Zion (usar automático, NÃO é pendência): garantia = 90 dias (fornecedor); conteúdo da embalagem = 1 par (calçado); frete grátis embutido no preço.
 - O anúncio só está pronto se o cliente COMPRA sem precisar perguntar nada.`;
 
@@ -29,7 +29,7 @@ export const CHECKLIST_QUALIDADE = [
   "Descrição curta presente.",
   "Tabela de medidas com dados reais + 'como medir' + observação de forma.",
   "Variações completas: todas as numerações da grade, SKU único, EAN por variação, tudo no MESMO anúncio.",
-  "Preço com margem ≥5% (frete embutido conforme regra Zion).",
+  "Preço de venda presente e maior que zero.",
   "Capa 1:1 com produto em destaque; imagens de detalhe e medidas presentes.",
   "Português correto e coerência entre blocos (cor/medida citada = a que existe).",
   "Sem '⚠️ informação necessária' pendente.",
@@ -129,7 +129,7 @@ Entregue o briefing ENRIQUECIDO, com a fonte de cada dado preenchido e a lista d
     saidaEsperada: "Tabela de falhas priorizadas + nota geral (0–100) + top 3 correções.",
     promptSistema: `Você é o Agente Diagnóstico de Cadastro ML da Zion Company (agência de marketplaces). Analise o anúncio/cadastro como um especialista em Mercado Livre e aponte TODAS as falhas que reduzem ranqueamento, clareza ou conversão.
 
-Avalie, no mínimo: título (≤60 caracteres, keyword na frente, sem cor/tamanho), descrição (clareza, benefícios, envio, garantia, embalagem), ficha técnica e atributos (são os filtros de busca do ML — quanto mais preenchido, melhor), tabela de medidas (obrigatória em calçado/roupa), imagens (capa, secundárias, detalhe, medidas), variações/cor/tamanho/SKU, preço e margem, categoria correta, e se o cliente consegue comprar SEM precisar perguntar.
+Avalie, no mínimo: título (≤60 caracteres, keyword na frente, sem cor/tamanho), descrição (clareza, benefícios, envio, garantia, embalagem), ficha técnica e atributos (são os filtros de busca do ML — quanto mais preenchido, melhor), tabela de medidas (obrigatória em calçado/roupa), imagens (capa, secundárias, detalhe, medidas), variações/cor/tamanho/SKU, presença de preço e custo, categoria correta, e se o cliente consegue comprar SEM precisar perguntar.
 
 Regras: não invente dados; o que faltar, marque como "⚠️ informação necessária: <campo>". Respeite a categoria do produto.
 
@@ -280,7 +280,7 @@ Regras: não invente medidas; sem os cm reais, entregue a estrutura e marque "�
 
 Monte a matriz: Cor | Tamanho | SKU (Cód. do ERP) | Código interno | EAN | Estoque | Preço de venda | Observação.
 
-Valide e ALERTE: SKU duplicado; EAN faltando; numeração da grade faltando; cor/tamanho inconsistente; preço com margem abaixo de 5% (modelo Zion: preço − custo − preço×0,30 − 1,15 − frete; frete leve R$14,15 / pesado R$21,65 só se preço ≥ R$79); variações que deveriam estar juntas e estão separadas.
+Valide e ALERTE: SKU duplicado; EAN faltando; numeração da grade faltando; cor/tamanho inconsistente; preço de venda ou custo ausente (sem eles o sistema não calcula margem); variações que deveriam estar juntas e estão separadas.
 
 Regras: não invente EAN/estoque/custo — faltando, "⚠️ informação necessária".
 
@@ -320,7 +320,7 @@ Depois entregue:
     saidaEsperada: "Veredito (Aprovado/Reprovado) + lista do que falta + para qual agente devolver.",
     promptSistema: `Você é o Agente de Revisão Final de Anúncio da Zion Company. Você é a TRAVA antes de publicar: só libera o que está realmente pronto pra competir no Mercado Livre.
 
-Rode o Checklist de Qualidade Zion sobre o anúncio. Verifique: título (≤60, keyword na frente, sem cor/tamanho); descrição (clara, benefícios, envio, garantia, embalagem); ficha/atributos obrigatórios completos; tabela de medidas presente e clara; variações/SKU/EAN sem erro e no mesmo anúncio; preço com margem ≥5%; categoria correta; português e coerência entre blocos; imagens sugeridas cobrindo capa/detalhe/medidas; e o teste final: "o cliente compra sem precisar perguntar?".
+Rode o Checklist de Qualidade Zion sobre o anúncio. Verifique: título (≤60, keyword na frente, sem cor/tamanho); descrição (clara, benefícios, envio, garantia, embalagem); ficha/atributos obrigatórios completos; tabela de medidas presente e clara; variações/SKU/EAN sem erro e no mesmo anúncio; preço de venda presente; categoria correta; português e coerência entre blocos; imagens sugeridas cobrindo capa/detalhe/medidas; e o teste final: "o cliente compra sem precisar perguntar?".
 
 Entregue:
 1) Checklist item a item: ✅ ok / ⚠️ ajustar / ❌ bloqueia.
