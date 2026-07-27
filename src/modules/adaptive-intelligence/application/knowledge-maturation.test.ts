@@ -187,3 +187,35 @@ test("Pattern ausente com Knowledge vigente: a fotografia sobrevive (ADR §Risco
   assert.equal(visao?.estado.situacao, "vigente"); // o Knowledge não morre com a reprojeção
   assert.equal(visao?.sobContradicao, true); // mas o sinal acende
 });
+
+// Ordenação determinística (Q7): rebaixarConhecimento só produz um fato quando há
+// promoção vigente e copia a versão dela — logo, para a MESMA versão, a promoção é
+// causalmente anterior ao rebaixamento. Quando ambos compartilham `ocorridoEm`, essa
+// precedência não pode depender do id (UUID aleatório em produção). O teste exerce as
+// DUAS ordens de id e as duas ordens de entrada: nenhuma pode alterar o resultado.
+const INSTANTE = "2026-07-23T10:00:00.000Z";
+const fatoMesmoInstante = (id: string, tipo: FatoMaturacao["tipo"]): FatoMaturacao => ({
+  id, patternId: "pat-a", empresa: "cli-01", contexto: "catalogo",
+  campo: "categoriaMarketplace", valor: "MLB273770", tipo, versao: 1,
+  autorHumano: "m@zion.com", motivo: tipo,
+  fotografia: { confidenceNoInstante: "consistente", suporteIndependente: 3, decisoesIndependentes: [], outcomesConsiderados: [], ultimoOutcomeStatus: "confirmed", readinessBloqueios: [] },
+  versaoPolitica: VERSAO_POLITICA_MATURACAO, ocorridoEm: INSTANTE,
+});
+
+test("Q7: promoção precede rebaixamento da MESMA versão no MESMO instante — independe do id", () => {
+  // id da promoção < id do rebaixamento
+  assert.equal(
+    estadoConhecimento([fatoMesmoInstante("a", "promocao"), fatoMesmoInstante("b", "rebaixamento")]).situacao,
+    "rebaixado",
+  );
+  // id da promoção > id do rebaixamento (o caso que o desempate por id inverte)
+  assert.equal(
+    estadoConhecimento([fatoMesmoInstante("b", "promocao"), fatoMesmoInstante("a", "rebaixamento")]).situacao,
+    "rebaixado",
+  );
+  // e a ordem de entrada do array também não pode decidir
+  assert.equal(
+    estadoConhecimento([fatoMesmoInstante("a", "rebaixamento"), fatoMesmoInstante("b", "promocao")]).situacao,
+    "rebaixado",
+  );
+});

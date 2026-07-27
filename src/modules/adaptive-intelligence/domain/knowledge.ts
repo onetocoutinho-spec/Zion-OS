@@ -74,10 +74,22 @@ export interface CondicaoPromocao {
   evidencia: string;
 }
 
+/**
+ * Precedência causal no empate (Q7): rebaixar exige uma promoção VIGENTE e copia
+ * a versão dela — logo, para a MESMA versão, a promoção é sempre causalmente
+ * anterior ao rebaixamento. Quando instante e versão empatam, é esta ordem que
+ * vale; o id (aleatório em produção) jamais decide causalidade.
+ */
+const PRECEDENCIA_NO_EMPATE: Record<FatoMaturacao["tipo"], number> = { promocao: 0, rebaixamento: 1 };
+
 function ordenar(fatos: readonly FatoMaturacao[]): FatoMaturacao[] {
-  // Determinístico: por instante do fato; empate pela versão e id.
+  // Determinístico: por instante do fato; empate pela versão, pela precedência
+  // causal do tipo e, por fim, pelo id (desempate estável, nunca causal).
   return [...fatos].sort((a, b) =>
-    a.ocorridoEm < b.ocorridoEm ? -1 : a.ocorridoEm > b.ocorridoEm ? 1 : a.versao - b.versao || (a.id < b.id ? -1 : 1)
+    a.ocorridoEm < b.ocorridoEm ? -1 : a.ocorridoEm > b.ocorridoEm ? 1
+      : a.versao - b.versao
+        || PRECEDENCIA_NO_EMPATE[a.tipo] - PRECEDENCIA_NO_EMPATE[b.tipo]
+        || (a.id < b.id ? -1 : 1)
   );
 }
 
