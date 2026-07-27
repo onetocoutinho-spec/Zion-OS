@@ -17,8 +17,11 @@ import type { Produto, ProdutoVariante } from "../types";
 export interface ResultadoCustos {
   produtos: number;
   variantes: number;
+  /** Linhas da planilha que não casaram com nenhum produto. */
   naoEncontrados: number;
   linhasCsv: number;
+  /** Produtos que casaram com custos DIFERENTES e por isso ficaram de fora. */
+  ambiguos: number;
   aviso?: string;
 }
 
@@ -34,17 +37,96 @@ const normNome = (s: string) =>
     .trim();
 const palavras = (s: string) => new Set(normNome(s).split(" ").filter((w) => w.length > 2));
 
-/** Lê "12,50" / "12.50" / "R$ 1.234,56" → número. */
-function parseNumero(s: string): number {
-  let t = s.replace(/[^\d.,-]/g, "").trim();
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
-  const n = parseFloat(t);
+/**
+ * Lê "12,50" / "12.50" / "R$ 1.234,56" / "1.234" → número. PURA.
+ *
+ * A armadilha é o PONTO sem vírgula: "1.234" pode ser mil duzentos e trinta e
+ * quatro (padrão brasileiro) ou um vírgula duzentos e trinta e quatro (padrão
+ * americano). A regra que distingue com segurança é a do separador de milhar:
+ * ele SEMPRE agrupa de três em três. Então ".234" é milhar e ".90" é decimal.
+ *
+ * Errar isso lia R$ 1.234 como R$ 1,23 — custo mil vezes menor, e a margem
+ * aparecia absurdamente positiva sem ninguém desconfiar.
+ */
+export function parseNumeroCusto(s: string): number {
+  const t = (s ?? "").replace(/[^\d.,-]/g, "").trim();
+  if (!t) return 0;
+
+  let normalizado: string;
+  if (t.includes(",")) {
+    // Com vírgula presente, ela é o decimal e o ponto é milhar. Sem ambiguidade.
+    normalizado = t.replace(/\./g, "").replace(",", ".");
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) {
+    // Só pontos, todos agrupando de 3 em 3 → separador de milhar.
+    normalizado = t.replace(/\./g, "");
+  } else {
+    // Um ponto com 1, 2 ou 4+ dígitos depois → decimal.
+    normalizado = t;
+  }
+  const n = parseFloat(normalizado);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * O código do modelo embutido no nome, como uma sequência única de dígitos.
+ *
+ * "Tênis Actvitta 4938.101 Xangai" → "4938101"
+ * "Tênis Actvitta 4938101 Xangai"  → "4938101"
+ *
+ * Concatenar em vez de guardar os grupos separados é o que faz "7141.100" e
+ * "7141100" — a mesma referência escrita de dois jeitos — serem reconhecidas
+ * como iguais. Grupos separados dão conjuntos disjuntos e o casamento falha.
+ */
+function codigoDoNome(s: string): string {
+  return (normNome(s).match(/\d+/g) ?? []).join("");
+}
+
+/** Sobreposição de palavras entre dois nomes, de 0 a 1. PURA. */
+export function pontuarNomes(a: string, b: string): number {
+  const pa = palavras(a);
+  const pb = palavras(b);
+  if (pa.size === 0 || pb.size === 0) return 0;
+  let comuns = 0;
+  for (const w of pb) if (pa.has(w)) comuns++;
+  return comuns / Math.max(pa.size, pb.size, 1);
+}
+
+/**
+ * Estes dois nomes são o MESMO produto? PURA.
+ *
+ * A sobreposição de palavras sozinha não serve. Num catálogo de calçados os
+ * nomes são seriados e diferem só no código do modelo:
+ *
+ *   "Tênis Actvitta 4938.101 Xangai/Aus"  ↔  "Tênis Actvitta 4849.101 Xangai/Aus"
+ *
+ * São 83% de palavras em comum e produtos DIFERENTES. Com o limiar antigo de
+ * 0,6 o custo de um ia para o outro, em silêncio — e custo errado é pior que
+ * custo ausente, porque a tela passa a mostrar margem com confiança.
+ *
+ * Então o número manda: se os dois lados têm código, eles precisam bater.
+ * Se só um tem, não casa — "Tênis Actvitta" genérico não pode herdar o custo
+ * de um modelo específico. Sem código nos dois, aí sim decide a semelhança,
+ * com limiar alto.
+ *
+ * Código igual sozinho também não basta: "Chinelo Havaianas 39/40" e "Sandália
+ * Modare 39/40" compartilham "3940" e não têm nada a ver. Por isso o texto
+ * ainda precisa se parecer minimamente.
+ */
+export function mesmaIdentidade(a: string, b: string): boolean {
+  const ca = codigoDoNome(a);
+  const cb = codigoDoNome(b);
+
+  if (ca && cb) return ca === cb && pontuarNomes(a, b) >= 0.4;
+  if (ca !== cb) return false; // código de um lado só: não decide nada
+
+  return pontuarNomes(a, b) >= 0.85;
 }
 
 interface EntradaNome {
   palavras: Set<string>;
   custo: number;
+  /** O nome como veio, para a comparação de identidade. */
+  original: string;
 }
 
 export async function importarCustos(clienteId: string, planilha: PlanilhaLida): Promise<ResultadoCustos> {
@@ -76,6 +158,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
       variantes: 0,
       naoEncontrados: 0,
       linhasCsv: linhas.length,
+      ambiguos: 0,
       aviso: "A planilha precisa da coluna 'custo' e de 'sku', 'ean' e/ou 'nome/produto'.",
     };
   }
@@ -85,7 +168,7 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   const porNomeExato = new Map<string, number>();
   const entradasNome: EntradaNome[] = [];
   for (const row of linhas) {
-    const custo = parseNumero(row[hCusto] ?? "");
+    const custo = parseNumeroCusto(row[hCusto] ?? "");
     if (custo <= 0) continue;
     if (hSku) {
       const sku = norm(row[hSku] ?? "");
@@ -103,12 +186,15 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
       const nome = (row[hNome] ?? "").trim();
       if (nome) {
         porNomeExato.set(normNome(nome), custo);
-        entradasNome.push({ palavras: palavras(nome), custo });
+        entradasNome.push({ palavras: palavras(nome), custo, original: nome });
       }
     }
   }
   if (porSku.size === 0 && porEan.size === 0 && porNomeExato.size === 0) {
-    return { produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, aviso: "Nenhum custo válido na planilha." };
+    return {
+      produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, ambiguos: 0,
+      aviso: "Nenhum custo válido na planilha. Confira se a coluna de custo tem números.",
+    };
   }
 
   const produtos = await listarProdutosDoCliente(clienteId);
@@ -124,6 +210,8 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   const idVarCasada = new Set<string>();
   const custosPorProduto = new Map<string, number[]>();
   const usados = new Set<string>();
+  /** Produtos que casaram com mais de um custo — não se escolhe por conta própria. */
+  const ambiguos = new Set<string>();
 
   // 1) Variações por SKU ou EAN.
   for (const v of todasVar) {
@@ -143,24 +231,25 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
     custosPorProduto.set(v.produtoId, arr);
   }
 
-  /** Melhor custo por nome (exato, senão o mais parecido). */
+  /**
+   * Melhor custo por nome. Exige IDENTIDADE, não semelhança — ver
+   * `mesmaIdentidade`. E recusa quando DUAS linhas diferentes reivindicam o
+   * mesmo produto com custos diferentes: aí não há resposta certa, e chutar
+   * uma seria gravar custo errado sem avisar.
+   */
   function custoPorNome(nomeProduto: string): number | null {
     const exato = porNomeExato.get(normNome(nomeProduto));
     if (exato != null) return exato;
-    const pp = palavras(nomeProduto);
-    if (pp.size === 0) return null;
-    let melhor = 0;
-    let custo: number | null = null;
-    for (const e of entradasNome) {
-      let comuns = 0;
-      for (const w of e.palavras) if (pp.has(w)) comuns++;
-      const score = comuns / Math.max(e.palavras.size, pp.size, 1);
-      if (score > melhor) {
-        melhor = score;
-        custo = e.custo;
-      }
+
+    const candidatos = entradasNome.filter((e) => mesmaIdentidade(e.original, nomeProduto));
+    if (candidatos.length === 0) return null;
+
+    const custos = new Set(candidatos.map((c) => c.custo));
+    if (custos.size > 1) {
+      ambiguos.add(nomeProduto); // duas linhas brigando pelo mesmo produto
+      return null;
     }
-    return melhor >= 0.6 ? custo : null;
+    return candidatos[0].custo;
   }
 
   // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
@@ -209,14 +298,33 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   if (varAtualizadas.length > 0) await atualizarVariantesBulk(varAtualizadas);
   if (prodAtualizados.length > 0) await atualizarProdutosBulk(prodAtualizados);
 
+  // O contador antigo só olhava SKU e EAN. Uma planilha SÓ COM NOMES reportava
+  // "0 não encontrados" mesmo sem casar nada — o lojista concluía que tinha
+  // dado certo. Agora conta os nomes também.
   let naoEncontrados = 0;
   for (const sku of porSku.keys()) if (!usados.has(sku)) naoEncontrados++;
   for (const ean of porEan.keys()) if (!usados.has(ean)) naoEncontrados++;
+  for (const nome of porNomeExato.keys()) if (!usados.has(nome)) naoEncontrados++;
+
+  const avisos: string[] = [];
+  if (ambiguos.size > 0) {
+    avisos.push(
+      `${ambiguos.size} produto(s) casaram com mais de um custo diferente e ficaram de fora — ` +
+        `escolher um por conta própria gravaria custo errado. Use o SKU para desempatar.`
+    );
+  }
+  if (prodAtualizados.length === 0) {
+    avisos.push(
+      "Nenhum produto casou. Confira se a coluna de SKU da planilha usa o mesmo código do cadastro."
+    );
+  }
 
   return {
     produtos: prodAtualizados.length,
     variantes: varAtualizadas.length,
     naoEncontrados,
     linhasCsv: linhas.length,
+    ambiguos: ambiguos.size,
+    ...(avisos.length > 0 ? { aviso: avisos.join(" ") } : {}),
   };
 }
