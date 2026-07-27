@@ -12,8 +12,9 @@
 //
 // As ferramentas avulsas continuam em /cliente/otimizar para quem quer uma só.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Check,
   Circle,
@@ -56,10 +57,20 @@ import {
   concluida,
   type ContextoJornada,
 } from "@/modules/publication/domain/jornada";
+import { produtoParaRetomar, chaveUltimoProduto } from "@/modules/publication/domain/retomada";
 import { formatBRL } from "@/lib/format";
 import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
 
 export default function ClienteAnunciar() {
+  // useSearchParams exige Suspense no App Router.
+  return (
+    <Suspense fallback={null}>
+      <Jornada />
+    </Suspense>
+  );
+}
+
+function Jornada() {
   const { clienteId, nome, marketplace } = useClientPortal();
   const { data: produtos } = useLiveQuery(listarProdutos);
   const { data: anuncios, reload: recarregarAnuncios } = useLiveQuery(
@@ -67,7 +78,12 @@ export default function ClienteAnunciar() {
     [clienteId]
   );
 
-  const [produtoId, setProdutoId] = useState<string | null>(null);
+  const router = useRouter();
+  const params = useSearchParams();
+
+  const [produtoId, setProdutoIdBruto] = useState<string | null>(null);
+  /** Já retomamos uma vez? Sem isto, a retomada brigaria com a escolha manual. */
+  const [retomou, setRetomou] = useState(false);
   const [cadastrando, setCadastrando] = useState(false);
   const [rodando, setRodando] = useState(false);
   const [passos, setPassos] = useState<PassoCadeia[]>([]);
@@ -94,6 +110,48 @@ export default function ClienteAnunciar() {
       vivo = false;
     };
   }, [clienteId, marketplace]);
+
+  /**
+   * Escolher um produto grava onde o lojista está: no endereço (para o voltar
+   * do navegador e um link compartilhável funcionarem) e localmente (para quem
+   * fecha o Zion e volta depois cair no mesmo lugar).
+   */
+  const setProdutoId = useCallback(
+    (id: string | null) => {
+      setProdutoIdBruto(id);
+      const q = new URLSearchParams(Array.from(params.entries()));
+      if (id) q.set("produto", id);
+      else q.delete("produto");
+      router.replace(q.toString() ? `?${q}` : "/cliente/anunciar", { scroll: false });
+      try {
+        const chave = chaveUltimoProduto(clienteId);
+        if (id) localStorage.setItem(chave, id);
+        else localStorage.removeItem(chave);
+      } catch {
+        // storage indisponível (aba anônima, cota): a URL sozinha já retoma
+      }
+    },
+    [params, router, clienteId]
+  );
+
+  // Retomada: acontece UMA vez, quando a lista de produtos chega. Depois disso
+  // quem manda é a escolha do lojista — reaplicar sobrescreveria o que ele fez.
+  useEffect(() => {
+    if (retomou || !produtos) return;
+    setRetomou(true);
+    let ultimo: string | null = null;
+    try {
+      ultimo = localStorage.getItem(chaveUltimoProduto(clienteId));
+    } catch {
+      ultimo = null;
+    }
+    const alvo = produtoParaRetomar({
+      daUrl: params.get("produto"),
+      ultimoUsado: ultimo,
+      disponiveis: produtos.map((p) => p.id),
+    });
+    if (alvo) setProdutoIdBruto(alvo);
+  }, [retomou, produtos, params, clienteId]);
 
   const produto = useMemo(
     () => (produtos ?? []).find((p) => p.id === produtoId) ?? null,
