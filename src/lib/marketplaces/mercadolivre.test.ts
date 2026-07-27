@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { extrairErro } from "./mercadolivre.ts";
+import { extrairErro, medidasDoItem } from "./mercadolivre.ts";
 
 function resposta(corpo: unknown, status = 400): Response {
   return new Response(JSON.stringify(corpo), { status });
@@ -64,4 +64,52 @@ test("corpo sem detalhe → HTTP status como último recurso", async () => {
     await extrairErro(new Response("não é json", { status: 500 })),
     "HTTP 500"
   );
+});
+
+// ── Medidas da embalagem vindas do item do ML ────────────────────────────────
+//
+// Até aqui a importação gravava peso e dimensões como ZERO, e zero significa
+// "não sei" — o que deixava a precificação cega para o frete de todo produto
+// importado. O ML tem o dado; era só ler.
+
+test("lê shipping.dimensions no formato AxBxC,peso", () => {
+  const m = medidasDoItem({ shipping: { dimensions: "30x20x10,1000" } });
+  assert.deepEqual(m, { alturaCm: 30, larguraCm: 20, comprimentoCm: 10, pesoGramas: 1000 });
+});
+
+test("aceita dimensões com decimal e vírgula decimal", () => {
+  const m = medidasDoItem({ shipping: { dimensions: "30,5x20x10,450" } });
+  assert.equal(m.alturaCm, 30.5);
+});
+
+test("cai nos atributos PACKAGE_* quando não há shipping.dimensions", () => {
+  const m = medidasDoItem({
+    attributes: [
+      { id: "PACKAGE_WEIGHT", value_name: "450 g" },
+      { id: "PACKAGE_HEIGHT", value_name: "10 cm" },
+      { id: "PACKAGE_WIDTH", value_name: "20 cm" },
+      { id: "PACKAGE_LENGTH", value_name: "30 cm" },
+    ],
+  });
+  assert.deepEqual(m, { pesoGramas: 450, alturaCm: 10, larguraCm: 20, comprimentoCm: 30 });
+});
+
+test("peso em kg é normalizado para gramas", () => {
+  const m = medidasDoItem({ attributes: [{ id: "PACKAGE_WEIGHT", value_name: "0.45 kg" }] });
+  assert.equal(m.pesoGramas, 450);
+});
+
+test("item sem nenhuma medida devolve zeros — que a precificação lê como pendência", () => {
+  assert.deepEqual(medidasDoItem({}), {
+    pesoGramas: 0,
+    alturaCm: 0,
+    larguraCm: 0,
+    comprimentoCm: 0,
+  });
+});
+
+test("dimensões malformadas não viram número inventado", () => {
+  const m = medidasDoItem({ shipping: { dimensions: "sem medida aqui" } });
+  assert.equal(m.pesoGramas, 0);
+  assert.equal(m.alturaCm, 0);
 });

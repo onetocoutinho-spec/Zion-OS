@@ -15,6 +15,7 @@ import {
   validarRascunho,
   avisoDePreco,
   montarProduto,
+  embalagemDoRascunho,
   type RascunhoProduto,
 } from "./cadastroManual.ts";
 
@@ -173,4 +174,51 @@ test("espaços em volta não viram parte do dado", () => {
 test("estoque fracionado vira inteiro, e nunca negativo", () => {
   assert.equal(montarProduto({ ...completo, estoque: "12,7" }, "c", "n").estoque, 13);
   assert.equal(montarProduto({ ...completo, estoque: "-4" }, "c", "n").estoque, 0);
+});
+
+// ── Medidas da embalagem ─────────────────────────────────────────────────────
+
+test("as medidas digitadas viram a embalagem do cálculo", () => {
+  const e = embalagemDoRascunho({
+    ...completo,
+    pesoGramas: "400",
+    alturaCm: "10",
+    larguraCm: "20",
+    comprimentoCm: "30",
+  });
+  assert.deepEqual(e, { pesoGramas: 400, alturaCm: 10, larguraCm: 20, comprimentoCm: 30 });
+});
+
+test("sem nenhuma medida a embalagem é null — o envio vira pendência", () => {
+  assert.equal(embalagemDoRascunho(completo), null);
+});
+
+test("só o peso já serve — dimensão ausente não anula a medida", () => {
+  const e = embalagemDoRascunho({ ...completo, pesoGramas: "350" });
+  assert.ok(e);
+  assert.equal(e.pesoGramas, 350);
+});
+
+test("com as medidas no rascunho, o aviso de preço volta a funcionar", () => {
+  // Sem medidas não há como calcular o envio, e o aviso fica em silêncio.
+  // Com elas, o piso passa a existir — sem precisar do modelo de fora.
+  const medido = {
+    ...completo,
+    precoVenda: "30,00",
+    pesoGramas: "400",
+    alturaCm: "10",
+    larguraCm: "20",
+    comprimentoCm: "30",
+  };
+  assert.equal(avisoDePreco({ ...completo, precoVenda: "30,00" }, 5), null, "sem medidas: silêncio");
+  const aviso = avisoDePreco(medido, 5);
+  assert.ok(aviso, "com medidas: o piso existe e o preço baixo é acusado");
+  assert.ok(aviso.precoMinimo > 30);
+});
+
+test("o produto montado grava o preço mínimo quando há medidas", () => {
+  const medido = { ...completo, pesoGramas: "400", alturaCm: "10", larguraCm: "20", comprimentoCm: "30" };
+  const p = montarProduto(medido, "c", "n", 5);
+  assert.ok(typeof p.precoMinimo === "number" && p.precoMinimo > 0);
+  assert.ok(typeof p.margem === "number");
 });

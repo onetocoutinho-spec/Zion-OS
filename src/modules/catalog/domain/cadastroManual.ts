@@ -15,6 +15,7 @@ import {
   precoMinimoOuNull,
   MARGEM_MINIMA_PADRAO,
   TAXAS_PADRAO,
+  type Embalagem,
   type ModeloTaxas,
 } from "../../pricing/domain/modeloPreco.ts";
 
@@ -31,6 +32,15 @@ export interface RascunhoProduto {
   cor: string;
   tamanho: string;
   marketplace: Marketplace;
+  /**
+   * Medidas da EMBALAGEM, não do produto nu. É delas que sai o custo de envio
+   * do ML (pelo peso cobrável: o maior entre real e cubado). Sem elas o preço
+   * ideal não é calculável — por isso o formulário pede, mesmo sendo opcional.
+   */
+  pesoGramas: string;
+  alturaCm: string;
+  larguraCm: string;
+  comprimentoCm: string;
 }
 
 export const RASCUNHO_VAZIO: RascunhoProduto = {
@@ -44,6 +54,10 @@ export const RASCUNHO_VAZIO: RascunhoProduto = {
   cor: "",
   tamanho: "",
   marketplace: "Mercado Livre",
+  pesoGramas: "",
+  alturaCm: "",
+  larguraCm: "",
+  comprimentoCm: "",
 };
 
 /** Aceita "1.234,56", "1234.56", "R$ 89,90". Devolve 0 quando não é número. */
@@ -100,6 +114,21 @@ export function validarRascunho(
   return problemas;
 }
 
+/**
+ * As medidas do rascunho, prontas para o cálculo de envio. null quando o
+ * lojista não informou nada — aí o envio é pendência, nunca estimativa.
+ */
+export function embalagemDoRascunho(r: RascunhoProduto): Embalagem | null {
+  const e = {
+    pesoGramas: paraNumero(r.pesoGramas),
+    alturaCm: paraNumero(r.alturaCm),
+    larguraCm: paraNumero(r.larguraCm),
+    comprimentoCm: paraNumero(r.comprimentoCm),
+  };
+  const temAlgo = e.pesoGramas > 0 || e.alturaCm > 0 || e.larguraCm > 0 || e.comprimentoCm > 0;
+  return temAlgo ? e : null;
+}
+
 export interface AvisoPreco {
   precoMinimo: number;
   margemAtual: number;
@@ -118,11 +147,17 @@ export function avisoDePreco(
   const custo = paraNumero(r.custo);
   const preco = paraNumero(r.precoVenda);
   if (custo <= 0 || preco <= 0) return null; // sem custo não há o que comparar
-  const piso = precoMinimoOuNull(custo, margemMinima, taxas);
-  // Piso indefinido (sem peso da embalagem) não vira aviso: acusar preço baixo
-  // sem saber o custo de envio seria assustar por dado que falta A NÓS.
+  // As medidas digitadas AGORA valem mais que as do modelo: é o produto que
+  // está sendo cadastrado, e o lojista acabou de informá-las.
+  const comEmbalagem: ModeloTaxas = {
+    ...taxas,
+    embalagem: embalagemDoRascunho(r) ?? taxas.embalagem,
+  };
+  const piso = precoMinimoOuNull(custo, margemMinima, comEmbalagem);
+  // Piso indefinido (sem medidas) não vira aviso: acusar preço baixo sem saber
+  // o custo de envio seria assustar por dado que falta A NÓS.
   if (piso === null || preco >= piso) return null;
-  const margemAtual = margemLiquida(custo, preco, taxas);
+  const margemAtual = margemLiquida(custo, preco, comEmbalagem);
   if (margemAtual === null) return null;
   return { precoMinimo: piso, margemAtual };
 }
@@ -143,7 +178,11 @@ export function montarProduto(
 ): Omit<Produto, "id"> {
   const custo = paraNumero(r.custo);
   const precoVenda = paraNumero(r.precoVenda);
-  const piso = precoMinimoOuNull(custo, margemMinima, taxas);
+  const comEmbalagem: ModeloTaxas = {
+    ...taxas,
+    embalagem: embalagemDoRascunho(r) ?? taxas.embalagem,
+  };
+  const piso = precoMinimoOuNull(custo, margemMinima, comEmbalagem);
 
   return {
     clienteId,
@@ -169,7 +208,7 @@ export function montarProduto(
     // ?? undefined: campo ausente é honesto sobre o que ainda não se sabe;
     // gravar 0 afirmaria "sem margem", que é outra coisa.
     precoMinimo: piso ?? undefined,
-    margem: margemLiquida(custo, precoVenda, taxas) ?? undefined,
+    margem: margemLiquida(custo, precoVenda, comEmbalagem) ?? undefined,
     // Custo digitado pelo próprio lojista: a fonte mais confiável que existe.
     confiancaCusto: custo > 0 ? "alta" : "",
   } as Omit<Produto, "id">;
