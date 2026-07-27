@@ -151,7 +151,7 @@ function ConteudoAprovacoes({
     setMsgPub(null);
     let ativos: AnuncioAtivo[] = [];
     try {
-      ativos = await buscarAnunciosAtivosDoProduto(preview.produtoId, preview.id);
+      ativos = await buscarAnunciosAtivosDoProduto(preview.clienteId, preview.produtoId, preview.id);
     } catch {
       // Não conseguir checar não pode bloquear a publicação — mas também não
       // vira um "está tudo certo": segue sem afirmar o que não se sabe.
