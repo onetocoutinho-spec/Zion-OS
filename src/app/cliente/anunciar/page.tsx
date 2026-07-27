@@ -49,7 +49,7 @@ import {
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { urlsDoProduto } from "@/lib/services/storageImagens";
 import { quotaEsteira } from "@/lib/services/perfil";
-import { rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
+import { INTERMEDIARIOS, rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
 import {
   montarJornada,
   proximaAcao,
@@ -58,6 +58,13 @@ import {
   type ContextoJornada,
 } from "@/modules/publication/domain/jornada";
 import { produtoParaRetomar, chaveUltimoProduto } from "@/modules/publication/domain/retomada";
+import {
+  chaveProgresso,
+  etapasRetomaveis,
+  impressaoDoBriefing,
+  lerProgresso,
+  type EtapaConcluida,
+} from "@/modules/publication/domain/progressoGeracao";
 import { formatBRL } from "@/lib/format";
 import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
 
@@ -87,6 +94,8 @@ function Jornada() {
   const [cadastrando, setCadastrando] = useState(false);
   const [rodando, setRodando] = useState(false);
   const [passos, setPassos] = useState<PassoCadeia[]>([]);
+  /** Entregas de IA de uma geração interrompida, prontas para reaproveitar. */
+  const [retomavel, setRetomavel] = useState<EtapaConcluida[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [publicando, setPublicando] = useState(false);
@@ -158,6 +167,68 @@ function Jornada() {
     [produtos, produtoId]
   );
 
+  /**
+   * O briefing de agora. É ele que os agentes leram, então é a impressão dele
+   * que diz se o trabalho guardado ainda fala do mesmo produto.
+   */
+  const briefing = useMemo(() => (produto ? montarBriefing(produto) : ""), [produto]);
+
+  /**
+   * Grava as entregas já prontas. Chamado a cada agente que termina — é isso
+   * que faz a geração sobreviver a um "sair e voltar": sem gravar, os minutos
+   * de espera e as chamadas de IA já pagas iam para o lixo na 1ª navegação.
+   */
+  const gravarProgresso = useCallback(
+    (etapas: EtapaConcluida[]) => {
+      if (!produto) return;
+      try {
+        localStorage.setItem(
+          chaveProgresso(clienteId),
+          JSON.stringify({
+            produtoId: produto.id,
+            impressaoBriefing: impressaoDoBriefing(briefing),
+            etapas,
+            atualizadoEm: new Date().toISOString(),
+          })
+        );
+      } catch {
+        // Sem storage (aba anônima, cota estourada) a geração roda igual — só
+        // deixa de sobreviver a uma saída. Não é motivo para interromper nada.
+      }
+    },
+    [produto, clienteId, briefing]
+  );
+
+  const limparProgresso = useCallback(() => {
+    try {
+      localStorage.removeItem(chaveProgresso(clienteId));
+    } catch {
+      // sem storage não havia o que limpar
+    }
+  }, [clienteId]);
+
+  // Ao abrir num produto, procura trabalho de uma geração que ficou pela metade.
+  useEffect(() => {
+    if (!produto) {
+      setRetomavel([]);
+      return;
+    }
+    let bruto: string | null = null;
+    try {
+      bruto = localStorage.getItem(chaveProgresso(clienteId));
+    } catch {
+      bruto = null;
+    }
+    setRetomavel(
+      etapasRetomaveis(lerProgresso(bruto), {
+        produtoId: produto.id,
+        impressaoBriefing: impressaoDoBriefing(briefing),
+        ordem: INTERMEDIARIOS,
+        agora: new Date().toISOString(),
+      })
+    );
+  }, [produto, clienteId, briefing]);
+
   const recarregarFotos = useCallback(async () => {
     if (!produtoId) return setFotos([]);
     try {
@@ -212,8 +283,10 @@ function Jornada() {
     try {
       const r = await rodarCadeiaEsteira({
         produto: produto.nome,
-        briefing: montarBriefing(produto),
+        briefing,
         onPasso: setPassos,
+        retomarDe: retomavel,
+        onEtapaConcluida: (_, todas) => gravarProgresso(todas),
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
       await criarAnuncioGerado({
@@ -236,14 +309,30 @@ function Jornada() {
         observacoes: "Gerado pelo lojista no portal.",
       } as Omit<AnuncioGeradoRegistro, "id">);
       if (r.aviso) setAviso(r.aviso);
+      // Anúncio gravado: o rascunho da esteira cumpriu o papel e sai de cena.
+      limparProgresso();
+      setRetomavel([]);
       await recarregarAnuncios();
       setQuota((q) => (q === null ? q : Math.max(0, q - 1)));
     } catch (e) {
+      // O progresso guardado FICA. É exatamente aqui que ele vale: a próxima
+      // tentativa começa de onde parou, sem repagar o que já foi entregue.
       setErro(e instanceof Error ? e.message : "Não foi possível gerar o anúncio agora.");
     } finally {
       setRodando(false);
     }
-  }, [produto, rodando, clienteId, nome, marketplace, recarregarAnuncios]);
+  }, [
+    produto,
+    rodando,
+    clienteId,
+    nome,
+    marketplace,
+    recarregarAnuncios,
+    briefing,
+    retomavel,
+    gravarProgresso,
+    limparProgresso,
+  ]);
 
   async function aprovar() {
     if (!registro || ocupado) return;
@@ -368,6 +457,21 @@ function Jornada() {
         />
       )}
 
+      {/* ── Geração interrompida: o que já ficou pronto ─────────────────── */}
+      {/* A condição é a ETAPA, não a ausência de anúncio: quem clicou "refazer"
+          continua com o anúncio rejeitado no banco, e ficaria com um botão
+          "Continuar geração" sem nenhuma explicação do que ele continua. */}
+      {produto && !fim && !rodando && etapa === "gerar" && retomavel.length > 0 && (
+        <p className="flex items-start gap-2 rounded-lg border border-violet-500/20 bg-violet-500/[0.06] p-3 text-sm text-violet-200">
+          <Check size={15} className="mt-0.5 shrink-0" />
+          <span>
+            Você já tinha começado este anúncio: <strong>{retomavel.length} de{" "}
+            {INTERMEDIARIOS.length} etapas</strong> ficaram prontas e foram guardadas. Gerar agora
+            continua daí — o que já foi feito não é refeito.
+          </span>
+        </p>
+      )}
+
       {/* ── Passos da geração ───────────────────────────────────────────── */}
       {rodando && <PassosDaEsteira passos={passos} />}
 
@@ -397,7 +501,9 @@ function Jornada() {
               </>
             ) : (
               <>
-                {iconeDaEtapa(etapa)} {acao.rotulo}
+                {iconeDaEtapa(etapa)}{" "}
+                {/* Quando há trabalho guardado o botão não mente: ele continua. */}
+                {etapa === "gerar" && retomavel.length > 0 ? "Continuar geração" : acao.rotulo}
               </>
             )}
           </Button>

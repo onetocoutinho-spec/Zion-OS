@@ -13,6 +13,12 @@
 // passo a passo via onPasso (o usuário acompanha A0…A10).
 
 import { AGENTES, ORDEM_ESTEIRA, type AgenteDef } from "../agentes/catalogo";
+// Import relativo (e não "@/…") de propósito: é o que o runner de testes
+// resolve, e o que o resto de src/lib/services já usa.
+import {
+  prefixoDaOrdem,
+  type EtapaConcluida,
+} from "../../modules/publication/domain/progressoGeracao";
 import { anuncioSimulado, type AnuncioGerado } from "../agentes/esteira";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 
@@ -39,10 +45,31 @@ export interface OpcoesCadeia {
   briefing?: string;
   /** Chamado a cada mudança de estado dos passos (para a barra de progresso). */
   onPasso?: (passos: PassoCadeia[]) => void;
+  /**
+   * Entregas de uma execução anterior, a serem reaproveitadas em vez de
+   * refeitas. Precisa ser um PREFIXO da ordem: cada agente responde ao dossiê
+   * dos anteriores, então pular um do meio montaria um dossiê inédito. Quem
+   * monta a lista é `etapasRetomaveis` (modules/publication/domain).
+   *
+   * Um código fora da sequência é ignorado — a esteira roda ele de novo, que é
+   * o comportamento seguro.
+   */
+  retomarDe?: readonly EtapaConcluida[];
+  /**
+   * Chamado assim que um agente intermediário entrega — inclusive nos
+   * reaproveitados. É o gancho para gravar o progresso: sem ele, sair da tela
+   * no meio joga fora as chamadas de IA já pagas.
+   */
+  onEtapaConcluida?: (etapa: EtapaConcluida, todas: EtapaConcluida[]) => void;
 }
 
-/** Códigos que rodam como agente-texto (A4 monta e A10 valida no passo final). */
-const INTERMEDIARIOS = ORDEM_ESTEIRA.filter((c) => c !== "A4" && c !== "A10");
+/**
+ * Códigos que rodam como agente-texto (A4 monta e A10 valida no passo final).
+ * É esta a ordem que define o prefixo aproveitável numa retomada.
+ */
+export const INTERMEDIARIOS: readonly string[] = ORDEM_ESTEIRA.filter(
+  (c) => c !== "A4" && c !== "A10"
+);
 
 async function rodarAgenteTexto(
   agente: AgenteDef,
@@ -85,10 +112,29 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
   const contexto = opcoes.contexto ?? "";
   let dossie = opcoes.briefing?.trim() || "";
 
+  // Só vale como retomada o PREFIXO íntegro da ordem — o resto se refaz. A
+  // peneira é aplicada aqui de novo (e não só em quem chama) porque um dossiê
+  // remontado fora de ordem não dá erro: dá texto que se contradiz em silêncio.
+  const reaproveitar = new Map(
+    prefixoDaOrdem(opcoes.retomarDe ?? [], INTERMEDIARIOS).map((e) => [e.codigo, e.markdown])
+  );
+  const concluidas: EtapaConcluida[] = [];
+
   // 1) Agentes intermediários (A0, A1, A2, A9, construtores) — acumulam o dossiê.
   for (const codigo of INTERMEDIARIOS) {
     const agente = AGENTES[codigo];
     const passo = achar(codigo);
+    const guardado = reaproveitar.get(codigo);
+    if (guardado !== undefined) {
+      // Já entregue numa execução anterior: reentra no dossiê sem gastar IA.
+      passo.resultado = guardado;
+      passo.status = "ok";
+      dossie += `\n\n=== ${agente.codigo} · ${agente.nome} ===\n${guardado}`;
+      concluidas.push({ codigo, markdown: guardado });
+      opcoes.onEtapaConcluida?.({ codigo, markdown: guardado }, [...concluidas]);
+      emitir();
+      continue;
+    }
     passo.status = "rodando";
     emitir();
     let res: { markdown: string; simulado: boolean };
@@ -117,6 +163,9 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
     passo.resultado = res.markdown;
     passo.status = "ok";
     dossie += `\n\n=== ${agente.codigo} · ${agente.nome} ===\n${res.markdown}`;
+    concluidas.push({ codigo, markdown: res.markdown });
+    // Grava ANTES de seguir: se a pessoa sair no próximo agente, este está salvo.
+    opcoes.onEtapaConcluida?.({ codigo, markdown: res.markdown }, [...concluidas]);
     emitir();
   }
 
