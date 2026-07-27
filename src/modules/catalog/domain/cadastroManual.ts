@@ -14,6 +14,8 @@ import {
   margemLiquida,
   precoMinimoOuNull,
   MARGEM_MINIMA_PADRAO,
+  TAXAS_PADRAO,
+  type ModeloTaxas,
 } from "../../pricing/domain/modeloPreco.ts";
 
 /** Exatamente o que se pede a quem está cadastrando. Nada além. */
@@ -110,16 +112,17 @@ export interface AvisoPreco {
  */
 export function avisoDePreco(
   r: RascunhoProduto,
-  margemMinima: number = MARGEM_MINIMA_PADRAO
+  margemMinima: number = MARGEM_MINIMA_PADRAO,
+  taxas: ModeloTaxas = TAXAS_PADRAO
 ): AvisoPreco | null {
   const custo = paraNumero(r.custo);
   const preco = paraNumero(r.precoVenda);
   if (custo <= 0 || preco <= 0) return null; // sem custo não há o que comparar
-  const piso = precoMinimoOuNull(custo, margemMinima);
-  // Piso indefinido (frete desconhecido) não vira aviso: acusar preço baixo sem
-  // saber o custo de envio seria assustar por conta de dado que falta a nós.
+  const piso = precoMinimoOuNull(custo, margemMinima, taxas);
+  // Piso indefinido (sem peso da embalagem) não vira aviso: acusar preço baixo
+  // sem saber o custo de envio seria assustar por dado que falta A NÓS.
   if (piso === null || preco >= piso) return null;
-  const margemAtual = margemLiquida(custo, preco);
+  const margemAtual = margemLiquida(custo, preco, taxas);
   if (margemAtual === null) return null;
   return { precoMinimo: piso, margemAtual };
 }
@@ -135,11 +138,12 @@ export function montarProduto(
   r: RascunhoProduto,
   clienteId: string,
   cliente: string,
-  margemMinima: number = MARGEM_MINIMA_PADRAO
+  margemMinima: number = MARGEM_MINIMA_PADRAO,
+  taxas: ModeloTaxas = TAXAS_PADRAO
 ): Omit<Produto, "id"> {
   const custo = paraNumero(r.custo);
   const precoVenda = paraNumero(r.precoVenda);
-  const piso = precoMinimoOuNull(custo, margemMinima);
+  const piso = precoMinimoOuNull(custo, margemMinima, taxas);
 
   return {
     clienteId,
@@ -165,7 +169,7 @@ export function montarProduto(
     // ?? undefined: campo ausente é honesto sobre o que ainda não se sabe;
     // gravar 0 afirmaria "sem margem", que é outra coisa.
     precoMinimo: piso ?? undefined,
-    margem: margemLiquida(custo, precoVenda) ?? undefined,
+    margem: margemLiquida(custo, precoVenda, taxas) ?? undefined,
     // Custo digitado pelo próprio lojista: a fonte mais confiável que existe.
     confiancaCusto: custo > 0 ? "alta" : "",
   } as Omit<Produto, "id">;

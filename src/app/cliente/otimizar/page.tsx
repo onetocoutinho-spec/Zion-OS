@@ -972,7 +972,7 @@ function PrecoResultado({ produto, onOutro }: { produto: Produto; onOutro: () =>
   const { margem, status, tone } = saudeMargem(produto, margemMinima);
   const piso = produto.custo > 0 ? precoMinimo(produto.custo, margemMinima) : null;
   const precoMin = piso?.ok ? piso.preco : null;
-  const pendenciaFrete = piso && !piso.ok && piso.motivo === "frete_desconhecido" ? piso.pendencia : null;
+  const pendenciaFrete = piso && !piso.ok && piso.motivo === "sem_peso" ? piso.pendencia : null;
 
   return (
     <Card

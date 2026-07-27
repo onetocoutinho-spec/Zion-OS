@@ -1,13 +1,14 @@
 // Testes do modelo de preço.
 //
-// ⚠️ OS TRÊS TESTES DE COMPATIBILIDADE FORAM APOSENTADOS DE PROPÓSITO.
-// Eles comparavam contra as fórmulas antigas replicadas como oráculo, e
-// existiam para provar que a PR #42 (margem editável) não mudava número nenhum.
-// Agora os números MUDAM, porque os antigos estavam errados: comissão 30%
-// (11 pontos fictícios sobre os 19% reais do Premium em Moda) e custo fixo de
-// R$ 1,15 cobrado em todos os preços quando o ML cobra só abaixo do limiar.
-// Ajustá-los para passar seria fingir que a correção não aconteceu.
+// Os números aqui saem da tabela OFICIAL do ML (tabelaEnvioML.ts). Duas gerações
+// de testes já foram aposentadas neste arquivo, e vale registrar por quê:
 //
+//   1ª — provavam compatibilidade com a fórmula de 30% de comissão + R$ 1,15
+//        fixo + R$ 14,15 de frete. Tudo chute; caíram com a correção.
+//   2ª — provavam que o frete era "desconhecido" e virava pendência. Existia
+//        tabela pública o tempo todo; caíram quando ela foi encodada.
+//
+// O que sobrevive é o princípio: onde falta dado (o PESO), o resultado é null.
 // Rodar: npx tsx --test src/modules/pricing/domain/modeloPreco.test.ts
 
 import { test } from "node:test";
@@ -29,18 +30,11 @@ import {
   type ModeloTaxas,
 } from "./modeloPreco.ts";
 
-/** Caixa de chinelo: volumosa e leve — 1000 g cobráveis por cubagem. */
+/** Caixa de chinelo: 30×20×10 cm e 400 g → 1000 g cobráveis por cubagem. */
 const CAIXA = { pesoGramas: 400, alturaCm: 10, larguraCm: 20, comprimentoCm: 30 };
 
-/** Modelo com frete conhecido, para os casos acima do limiar. */
-const COM_FRETE: ModeloTaxas = {
-  ...TAXAS_PADRAO,
-  embalagem: CAIXA,
-  tabelaFrete: [
-    { atePesoGramas: 300, valor: 18.45 },
-    { atePesoGramas: 5000, valor: 46 },
-  ],
-};
+/** O modelo real de um lojista de calçado: Premium, verde, com a caixa medida. */
+const REAL: ModeloTaxas = { ...TAXAS_PADRAO, embalagem: CAIXA };
 
 // ── A comissão real ──────────────────────────────────────────────────────────
 
@@ -50,134 +44,104 @@ test("Premium é o padrão do canal e vale 19% em Moda — não 30%", () => {
 });
 
 test("os 11 pontos fictícios sumiram: R$ 100 paga R$ 19 de comissão", () => {
-  assert.equal(custoDaVenda(100, COM_FRETE).comissao, 19);
+  assert.equal(custoDaVenda(100, REAL).comissao, 19);
 });
 
-// ── Custo fixo: só ABAIXO do limiar ──────────────────────────────────────────
+// ── O envio incide sempre ────────────────────────────────────────────────────
 
-test("abaixo do limiar incide custo fixo e NÃO incide frete", () => {
-  const c = custoDaVenda(50);
-  assert.ok(c.custoFixo > 0, "custo fixo deve incidir abaixo do limiar");
-  assert.equal(c.frete, 0);
-  assert.equal(c.pendencia, null); // fecha sempre, mesmo sem tabela de frete
-});
-
-test("a partir do limiar o custo fixo ZERA — o erro invertido do código antigo", () => {
-  // Antes, R$ 1,15 era cobrado em todos os preços. O ML cobra só abaixo.
-  assert.equal(custoDaVenda(LIMIAR_FRETE_GRATIS, COM_FRETE).custoFixo, 0);
-  assert.equal(custoDaVenda(500, COM_FRETE).custoFixo, 0);
-});
-
-test("o custo fixo varia por faixa de PREÇO, não é número único", () => {
-  const barato = custoDaVenda(15).custoFixo;
-  const caro = custoDaVenda(70).custoFixo;
-  assert.notEqual(barato, caro);
-});
-
-// ── Frete: onde falta dado, o resultado é null ───────────────────────────────
-
-test("acima do limiar SEM tabela de frete: total é null, com pendência dita", () => {
-  // Devolver zero faria o piso parecer menor do que é — o erro perigoso.
-  const c = custoDaVenda(200);
-  assert.equal(c.frete, null);
-  assert.equal(c.total, null);
-  assert.match(c.pendencia!, /peso|tabela/i);
-});
-
-test("acima do limiar COM tabela: o frete usa o peso CUBADO da caixa", () => {
-  // 30×20×10 = 6000 cm³ → 1000 g cubados > 400 g reais → faixa de 5 kg.
-  const c = custoDaVenda(200, COM_FRETE);
-  assert.equal(c.frete, 46);
-  assert.equal(c.total, arred(200 * 0.19 + 46));
+test("abaixo do limiar o envio NÃO é zero — o modelo anterior errava por baixo", () => {
+  const c = custoDaVenda(50, REAL);
+  assert.ok(c.envio !== null && c.envio > 0);
   assert.equal(c.pendencia, null);
+  // comissão 9,50 + envio 7,95 (1 kg cubado, faixa R$ 49–78,99)
+  assert.equal(c.total, 17.45);
 });
 
-test("o subsídio de reputação desconta o frete de tabela", () => {
-  const c = custoDaVenda(200, { ...COM_FRETE, subsidioFretePercentual: 50 });
-  assert.equal(c.frete, 23);
+test("no limiar o custo salta, porque o frete grátis vira do vendedor", () => {
+  const abaixo = custoDaVenda(LIMIAR_FRETE_GRATIS - 0.01, REAL).envio!;
+  const acima = custoDaVenda(LIMIAR_FRETE_GRATIS, REAL).envio!;
+  assert.ok(acima > abaixo * 1.5, `${abaixo} → ${acima}`);
 });
 
-test("margem e lucro viram null quando o frete é desconhecido — nunca um número", () => {
+test("o preço entra DUAS vezes na conta: pela comissão e pela faixa de envio", () => {
+  const barato = custoDaVenda(90, REAL);
+  const caro = custoDaVenda(250, REAL);
+  assert.ok(caro.comissao > barato.comissao);
+  assert.ok(caro.envio! > barato.envio!, "a faixa de envio também sobe com o preço");
+});
+
+// ── Sem peso, o resultado é null ─────────────────────────────────────────────
+
+test("sem a embalagem medida, nada é afirmado", () => {
+  // TAXAS_PADRAO não tem embalagem: é o estado de quem ainda não mediu.
   assert.equal(custoDasTaxas(200), null);
   assert.equal(lucroLiquido(60, 200), null);
   assert.equal(margemLiquida(60, 200), null);
+  const c = custoDaVenda(200);
+  assert.equal(c.envio, null);
+  assert.match(c.pendencia!, /peso|medidas/i);
 });
 
-test("abaixo do limiar tudo continua calculável mesmo sem tabela de frete", () => {
-  assert.ok(typeof custoDasTaxas(50) === "number");
-  assert.ok(typeof margemLiquida(20, 50) === "number");
+test("com a embalagem medida, tudo fecha", () => {
+  assert.ok(typeof custoDasTaxas(200, REAL) === "number");
+  assert.ok(typeof margemLiquida(60, 200, REAL) === "number");
 });
 
 // ── Preço mínimo ─────────────────────────────────────────────────────────────
 
-test("o piso ENTREGA de fato a margem pedida, abaixo do limiar", () => {
+test("o piso ENTREGA de fato a margem pedida, em várias faixas de preço", () => {
   for (const margem of [0, 5, 10, 20]) {
-    for (const custo of [8, 15, 30]) {
-      const r = precoMinimo(custo, margem);
-      if (!r.ok) continue; // custo alto pode cruzar o limiar
-      const obtida = margemLiquida(custo, r.preco);
+    for (const custo of [8, 30, 60, 150]) {
+      const r = precoMinimo(custo, margem, REAL);
+      assert.ok(r.ok, `custo ${custo} margem ${margem} deveria resolver`);
+      const obtida = margemLiquida(custo, r.preco, REAL);
       assert.ok(obtida !== null);
       assert.ok(
-        Math.abs(obtida - margem) < 0.5,
-        `custo ${custo}, pedida ${margem}%, obtida ${obtida}%`
+        obtida >= margem - 0.6,
+        `custo ${custo}, pedida ${margem}%, obtida ${obtida}% (preço ${r.preco})`
       );
     }
   }
 });
 
-test("o piso ENTREGA a margem pedida acima do limiar, com frete conhecido", () => {
-  const r = precoMinimo(60, 5, COM_FRETE);
-  assert.ok(r.ok);
-  const obtida = margemLiquida(60, r.preco, COM_FRETE);
-  assert.ok(obtida !== null && Math.abs(obtida - 5) < 0.5, `obtida ${obtida}%`);
-});
-
-test("isolando a comissão: com o MESMO frete de antes, o piso CAI", () => {
-  // O modelo antigo (comissão 30%, frete 14,15) dava piso R$ 115,85 para custo
-  // 60. Trocando só a comissão para os 19% reais, o piso desce para ~97,57.
-  const mesmoFrete: ModeloTaxas = {
-    ...TAXAS_PADRAO,
-    embalagem: CAIXA,
-    tabelaFrete: [{ atePesoGramas: 5000, valor: 14.15 }],
-  };
-  const r = precoMinimo(60, MARGEM_MINIMA_PADRAO, mesmoFrete);
-  assert.ok(r.ok);
-  assert.ok(r.preco < 115.85, `piso ${r.preco} deveria ser menor que 115,85`);
-});
-
-test("mas com o frete REAL de tabela o piso SOBE — a direção depende do frete", () => {
-  // Caixa de chinelo cuba 1000 g e cai na faixa de R$ 46, contra os R$ 14,15
-  // chutados antes. A correção da comissão sozinha não torna ninguém mais
-  // competitivo: quem decide a direção é o custo de envio, que é o dado que
-  // ainda falta. Este teste existe para que essa conclusão não se perca.
-  const r = precoMinimo(60, MARGEM_MINIMA_PADRAO, COM_FRETE);
-  assert.ok(r.ok);
-  assert.ok(r.preco > 115.85, `piso ${r.preco} deveria ser maior que 115,85`);
-});
-
-test("sem frete conhecido, o piso não é inventado: vem como limite INFERIOR", () => {
-  const r = precoMinimo(60, 5);
-  assert.equal(r.ok, false);
-  assert.ok(!r.ok && r.motivo === "frete_desconhecido");
-  if (!r.ok && r.motivo === "frete_desconhecido") {
-    assert.ok(r.pisoSemFrete >= LIMIAR_FRETE_GRATIS);
-    // é limite inferior: o preço com frete tem de ser maior
-    const comFrete = precoMinimo(60, 5, COM_FRETE);
-    assert.ok(comFrete.ok && comFrete.preco > r.pisoSemFrete);
-    assert.match(r.pendencia, /peso|tabela/i);
+test("o piso nunca entrega MENOS do que o lojista pediu", () => {
+  // Errar para cima é conservador; errar para baixo faz vender no prejuízo.
+  for (const custo of [12, 45, 90]) {
+    const r = precoMinimo(custo, 15, REAL);
+    assert.ok(r.ok);
+    assert.ok(margemLiquida(custo, r.preco, REAL)! >= 14.4);
   }
 });
 
+test("sem peso, o piso não é inventado", () => {
+  const r = precoMinimo(60, 5);
+  assert.ok(!r.ok && r.motivo === "sem_peso");
+  assert.equal(precoMinimoOuNull(60, 5), null);
+});
+
 test("margem impossível é dita como tal, não como número", () => {
-  const r = precoMinimo(50, 90);
+  const r = precoMinimo(50, 90, REAL);
   assert.ok(!r.ok && r.motivo === "margem_impossivel");
-  assert.equal(precoMinimoOuNull(50, 90), null);
+  assert.equal(precoMinimoOuNull(50, 90, REAL), null);
 });
 
 test("com a comissão real, margens que antes eram impossíveis agora cabem", () => {
   // Com 30% de comissão, 75% de margem estourava. Com 19%, ainda cabe.
-  const r = precoMinimo(30, 60);
-  assert.ok(r.ok || r.motivo === "frete_desconhecido", "60% deve ser viável com 19%");
+  assert.ok(precoMinimo(30, 60, REAL).ok);
+});
+
+test("reputação pior encarece o envio e sobe o piso", () => {
+  const verde = precoMinimo(60, 5, REAL);
+  const laranja = precoMinimo(60, 5, { ...REAL, reputacao: "laranja" });
+  assert.ok(verde.ok && laranja.ok);
+  assert.ok(laranja.preco > verde.preco, `${verde.preco} → ${laranja.preco}`);
+});
+
+test("anúncio Clássico permite piso menor que Premium — comissão menor", () => {
+  const premium = precoMinimo(60, 5, REAL);
+  const classico = precoMinimo(60, 5, { ...REAL, tipoAnuncio: "Clássico" });
+  assert.ok(premium.ok && classico.ok);
+  assert.ok(classico.preco < premium.preco);
 });
 
 // ── Validação e saúde ────────────────────────────────────────────────────────
@@ -197,15 +161,10 @@ test("a saúde é medida contra a margem QUE O LOJISTA escolheu", () => {
 });
 
 test("margem desconhecida não vira veredito", () => {
-  // "Saudável" sobre um número que não existe seria mentira.
-  assert.equal(classificarMargem(null, 5), "—");
+  assert.equal(classificarMargem(null, MARGEM_MINIMA_PADRAO), "—");
 });
 
 test("prejuízo é prejuízo em qualquer configuração", () => {
   assert.equal(classificarMargem(-3, 0), "Prejuízo");
   assert.equal(classificarMargem(-0.1, 50), "Prejuízo");
 });
-
-function arred(v: number): number {
-  return Math.round(v * 100) / 100;
-}
