@@ -51,7 +51,8 @@ import {
 import { rodarAgentePortal } from "@/lib/services/agentePortal";
 import { quotaEsteira } from "@/lib/services/perfil";
 import type { FerramentaPortal } from "@/lib/agentes/catalogo";
-import { precoMinimoZion } from "@/lib/services/importacaoProdutos";
+import { precoMinimo, MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
+import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
 import { saudeMargem } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
 import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
@@ -955,10 +956,21 @@ function ConteudoFerramenta({ campo, anuncio }: { campo: Campo; anuncio: Anuncio
   }
 }
 
-/** Resultado da ferramenta de preço — cálculo local (modelo Zion). */
+/** Resultado da ferramenta de preço — usa a margem que o LOJISTA escolheu. */
 function PrecoResultado({ produto, onOutro }: { produto: Produto; onOutro: () => void }) {
-  const { margem, status, tone } = saudeMargem(produto);
-  const precoMin = produto.custo > 0 ? precoMinimoZion(produto.custo) : null;
+  // Sem isto, esta tela e /cliente/precificacao mostrariam preços mínimos
+  // diferentes para o mesmo produto — o portal se contradizendo.
+  const [margemMinima, setMargemMinima] = useState(MARGEM_MINIMA_PADRAO);
+  useEffect(() => {
+    let vivo = true;
+    margemMinimaDoCliente().then((m) => vivo && setMargemMinima(m));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const { margem, status, tone } = saudeMargem(produto, margemMinima);
+  const precoMin = produto.custo > 0 ? precoMinimo(produto.custo, margemMinima) : null;
 
   return (
     <Card

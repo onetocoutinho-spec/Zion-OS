@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Calculator, Search, Package, TrendingUp } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
@@ -9,38 +9,53 @@ import { Button } from "@/components/ui/Button";
 import { StatCard } from "@/components/ui/StatCard";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { MargemMinima } from "@/components/client-portal/MargemMinima";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
-import { precoMinimoZion } from "@/lib/services/importacaoProdutos";
-import { saudeMargem } from "@/lib/client-portal/metrics";
+import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
+import { toneSaudeMargem } from "@/lib/client-portal/metrics";
+import {
+  custoDasTaxas,
+  lucroLiquido,
+  margemLiquida,
+  precoMinimo,
+  classificarMargem,
+  MARGEM_MINIMA_PADRAO,
+} from "@/modules/pricing/domain/modeloPreco";
 import { formatBRL } from "@/lib/format";
 
 const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
-/** Taxas do modelo Zion: comissão 30% + tarifa fixa 1,15 + frete estimado. */
-function taxasZion(preco: number) {
-  if (preco <= 0) return 0;
-  const frete = preco >= 79 ? 14.15 : 0;
-  return Math.round((preco * 0.3 + 1.15 + frete) * 100) / 100;
-}
-
 export default function ClientePrecificacao() {
-  const { clienteId } = useClientPortal();
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const [fStatus, setFStatus] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarIdeal, setMostrarIdeal] = useState(false);
+  // A margem que o LOJISTA escolheu. Enquanto não chega, o padrão vale — a tela
+  // nunca fica sem piso, o que faria toda margem parecer saudável.
+  const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
+
+  useEffect(() => {
+    let vivo = true;
+    margemMinimaDoCliente().then((m) => vivo && setMargem(m));
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const linhas = useMemo(() => {
     return (produtos ?? []).map((p) => {
-      const taxas = taxasZion(p.precoVenda);
-      const lucro = Math.round((p.precoVenda - p.custo - taxas) * 100) / 100;
-      const saude = saudeMargem(p);
-      const precoIdeal = p.custo > 0 ? precoMinimoZion(p.custo) : null;
+      const taxas = custoDasTaxas(p.precoVenda);
+      const lucro = lucroLiquido(p.custo, p.precoVenda);
+      const temDados = p.precoVenda > 0 && p.custo > 0;
+      const pct = temDados ? margemLiquida(p.custo, p.precoVenda) : null;
+      const status = classificarMargem(pct, margem);
+      const saude = { margem: pct, status, tone: toneSaudeMargem(status) };
+      const precoIdeal = p.custo > 0 ? precoMinimo(p.custo, margem) : null;
       return { p, taxas, lucro, saude, precoIdeal };
     });
-  }, [produtos]);
+  }, [produtos, margem]);
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -91,6 +106,8 @@ export default function ClientePrecificacao() {
           </Button>
         }
       />
+
+      <MargemMinima margem={margem} onMudou={setMargem} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Saudável" value={resumo["Saudável"]} icon={Calculator} tone="green" />
@@ -147,8 +164,9 @@ export default function ClientePrecificacao() {
       </Table>
 
       <p className="text-xs text-zinc-500">
-        <span className="text-amber-400">Preço ideal</span> = piso Zion para manter a margem mínima
-        (custo + tarifas ÷ 0,65). Preços atuais abaixo desse valor aparecem em amarelo.
+        <span className="text-amber-400">Preço ideal</span> = o menor preço que ainda entrega a sua
+        margem de {margem}%, já descontadas as taxas. Preços atuais abaixo desse valor aparecem em
+        amarelo. Mude a margem acima e a coluna inteira se recalcula.
       </p>
     </>
   );
