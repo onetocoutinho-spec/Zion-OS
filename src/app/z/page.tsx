@@ -30,8 +30,7 @@ import { useMission } from "../../mission/hooks/useMission.ts";
 import type { MissionPayload } from "../../mission/contracts/mission.ts";
 
 import { Runtime } from "../../runtime/Runtime.ts";
-import { DecisionFactory } from "../../runtime/decision/DecisionFactory.ts";
-import { RuntimeDispatcher } from "../../runtime/dispatcher/RuntimeDispatcher.ts";
+import { criarRuntime } from "../../platform-kit/runtime-factory.ts";
 import type { ShellPort } from "../../runtime/ports/ShellPort.ts";
 import { CatalogCapability } from "../../capabilities/catalog/CatalogCapability.ts";
 import { CatalogCapabilityAdapter } from "../../capabilities/catalog/CatalogCapabilityAdapter.ts";
@@ -93,7 +92,7 @@ function ProductFlow({ runtimeRef }: { runtimeRef: MutableRefObject<Runtime | nu
     // traduz RuntimeEvents em feedback visual (o Runtime nunca toca React).
     const shellPort: ShellPort = { publish: (e) => setFeedback(mapRuntimeEventToFeedback(e)) };
     const catalog = new CatalogCapability(new CatalogCapabilityAdapter(produto.id));
-    runtimeRef.current = new Runtime(new DecisionFactory(), new RuntimeDispatcher(catalog, shellPort), shellPort);
+    runtimeRef.current = criarRuntime(catalog, shellPort);
     open(missaoCategoria(produto));
   };
 
