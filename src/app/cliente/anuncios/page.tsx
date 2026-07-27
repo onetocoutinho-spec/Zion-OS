@@ -114,7 +114,7 @@ export default function ClienteAnuncios() {
                 <Download size={15} /> Vincular no ERP ({publicados})
               </Button>
             )}
-            <Link href="/cliente/otimizar">
+            <Link href="/cliente/anunciar">
               <Button>
                 <Wand2 size={15} /> Otimizar com IA
               </Button>
@@ -131,7 +131,7 @@ export default function ClienteAnuncios() {
           titulo="Você ainda não tem anúncios gerados"
           descricao="Use a otimização com IA para criar títulos, descrições e ficha técnica prontos a partir dos seus produtos."
           acao={
-            <Link href="/cliente/otimizar">
+            <Link href="/cliente/anunciar">
               <Button>
                 <Sparkles size={15} /> Otimizar com IA
               </Button>
