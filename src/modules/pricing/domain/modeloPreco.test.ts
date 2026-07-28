@@ -209,3 +209,21 @@ test("taxa fixa ausente ou inválida vale zero", () => {
   assert.equal(taxaFixaVenda({ ...REAL, taxaFixaVendaML: -3 }), 0);
   assert.equal(taxaFixaVenda({ ...REAL, taxaFixaVendaML: NaN }), 0);
 });
+
+test("sem custo NÃO se afirma lucro", () => {
+  // A tela mostrava "custo R$ 0 · preço R$ 128 · taxas R$ 43 · lucro R$ 85"
+  // para 28 produtos: o lucro de uma sandália que não custou nada. Na mesma
+  // linha a margem já dizia "—" — o chamador guardava margem e piso com
+  // custo > 0 e esquecia o lucro.
+  const comPeso: ModeloTaxas = { ...TAXAS_PADRAO, embalagem: { pesoGramas: 700, alturaCm: 13, larguraCm: 13, comprimentoCm: 13 } };
+  assert.equal(lucroLiquido(0, 128, comPeso), null);
+  assert.equal(lucroLiquido(-5, 128, comPeso), null);
+  assert.equal(lucroLiquido(Number.NaN, 128, comPeso), null);
+  // com custo, volta a responder
+  assert.ok((lucroLiquido(69, 150, comPeso) ?? 0) > 0);
+});
+
+test("margem também não sai sem custo — as duas colunas contam a mesma história", () => {
+  const comPeso: ModeloTaxas = { ...TAXAS_PADRAO, embalagem: { pesoGramas: 700, alturaCm: 13, larguraCm: 13, comprimentoCm: 13 } };
+  assert.equal(margemLiquida(0, 128, comPeso), null);
+});

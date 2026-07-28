@@ -156,13 +156,29 @@ export function custoDasTaxas(
   return custoDaVenda(preco, taxas).total;
 }
 
-/** Lucro em reais, ou null quando as taxas não fecham. */
+/**
+ * Lucro em reais, ou null quando não dá para saber.
+ *
+ * Sem CUSTO não existe lucro — e essa guarda não estava aqui. A tela mostrava
+ * "Papete Slide Moleca · custo R$ 0 · preço R$ 128 · taxas R$ 43 · lucro R$ 85"
+ * para 28 produtos: a conta `128 − 43 − 0`, ou seja, o lucro de uma sandália
+ * que não custou nada. Na mesma linha a margem já dizia "—", porque o chamador
+ * guardava margem e piso com `custo > 0` e esquecia o lucro.
+ *
+ * É a família de defeito que mais dói neste sistema: número derivado de uma
+ * entrada ausente, exibido com a mesma cara de um número real. Já apareceu como
+ * preço mínimo de R$ 1,77 e como custo de R$ 30 milhões. Aqui a pessoa
+ * precificaria contando com um lucro inflado pelo custo inteiro do produto.
+ *
+ * A guarda mora no domínio, não na tela: assim vale para toda tela futura.
+ */
 export function lucroLiquido(
   custo: number,
   preco: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
 ): number | null {
   if (preco <= 0) return 0;
+  if (!(custo > 0)) return null; // custo ausente (0, negativo ou NaN) → não se afirma lucro
   const total = custoDasTaxas(preco, taxas);
   if (total === null) return null;
   return arredondar(preco - custo - total);
