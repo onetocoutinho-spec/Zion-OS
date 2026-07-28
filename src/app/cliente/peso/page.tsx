@@ -19,7 +19,7 @@
 // dar um peso diferente a um produto específico. Mesma regra que a importação
 // de planilha aprendeu do jeito difícil: semelhança propõe, humano decide.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, Suspense } from "react";
 import { Check, ChevronDown, ChevronRight, Loader2, Scale } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/client-portal/ui";
@@ -28,9 +28,19 @@ import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso, definirPesoDosProdutos } from "@/lib/services/pesoDeProduto";
 import { agruparPorFamilia, contarComPeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { formatBRL } from "@/lib/format";
+import { useSearchParams } from "next/navigation";
 
-export default function PesoDosProdutos() {
+/**
+ * A tela abre focada num produto quando vem de `?produto=<id>`.
+ *
+ * Sem isso o chip "peso" da lista levava para 42 famílias fechadas, e a pessoa
+ * tinha que procurar de novo o produto que ela acabou de ver. O caminho existia
+ * e não continuava — que é o custo real de ter quatro telas no mesmo assunto.
+ */
+function PesoDosProdutosInterno() {
   const { clienteId } = useClientPortal();
+  const params = useSearchParams();
+  const produtoAlvo = params.get("produto");
   const { data: produtos, reload } = useLiveQuery(
     () => listarProdutosComPeso(clienteId),
     [clienteId]
@@ -41,6 +51,25 @@ export default function PesoDosProdutos() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const familias = useMemo(() => agruparPorFamilia(produtos ?? []), [produtos]);
+
+  /** A família do produto pedido no endereço, se houver. */
+  const familiaAlvo = useMemo(
+    () => (produtoAlvo ? familias.find((f) => f.produtos.some((p) => p.id === produtoAlvo)) : undefined),
+    [familias, produtoAlvo]
+  );
+
+  // Abre e rola até ela, uma vez. `focou` impede que reabrir aconteça a cada
+  // render — reabrir o que a pessoa fechou seria brigar com ela.
+  const [focou, setFocou] = useState(false);
+  useEffect(() => {
+    if (focou || !familiaAlvo) return;
+    setFocou(true);
+    setAbertas((s) => new Set(s).add(familiaAlvo.chave));
+    // O rAF espera a família abrir antes de medir para onde rolar.
+    requestAnimationFrame(() =>
+      document.getElementById(`familia-${familiaAlvo.chave}`)?.scrollIntoView({ block: "center" })
+    );
+  }, [focou, familiaAlvo]);
   const total = produtos?.length ?? 0;
   const comPeso = contarComPeso(produtos ?? []);
 
@@ -116,6 +145,7 @@ export default function PesoDosProdutos() {
           return (
             <div
               key={f.chave}
+              id={`familia-${f.chave}`}
               className={`rounded-xl border p-4 ${
                 completa ? "border-emerald-500/20 bg-emerald-500/[0.03]" : "border-white/10 bg-white/[0.02]"
               }`}
@@ -213,5 +243,17 @@ function Campo({
       />
       {rotulo}
     </label>
+  );
+}
+
+/**
+ * `useSearchParams` obriga um limite de Suspense no App Router — sem ele a
+ * página inteira vira renderização sob demanda no cliente.
+ */
+export default function PesoDosProdutos() {
+  return (
+    <Suspense fallback={null}>
+      <PesoDosProdutosInterno />
+    </Suspense>
   );
 }

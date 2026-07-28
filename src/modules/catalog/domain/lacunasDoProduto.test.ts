@@ -34,12 +34,32 @@ test("custo vem antes de peso, e peso antes de foto", () => {
   );
 });
 
-test("cada lacuna diz o que IMPEDE e para onde ir", () => {
+test("cada lacuna diz o que IMPEDE, e cabe numa célula", () => {
   for (const l of lacunasDoProduto({ custo: 0, precoVenda: 0, pesoGramas: 0, temFoto: false })) {
     assert.ok(l.impede.length > 20, `${l.tipo} sem consequência escrita`);
-    assert.match(l.href, /^\/cliente/, `${l.tipo} sem destino`);
     assert.ok(l.rotulo.length <= 8, `${l.tipo}: rótulo não cabe numa célula`);
   }
+});
+
+test("o destino leva o PRODUTO junto — a tela abre focada nele", () => {
+  // Sem isto o chip levava para uma lista de 42 famílias e a pessoa tinha que
+  // procurar o produto de novo. O caminho existia e não continuava.
+  const l = lacunasDoProduto({ custo: 9, precoVenda: 10, pesoGramas: 0, temFoto: true }, "abc-123");
+  assert.equal(l[0].href, "/cliente/peso?produto=abc-123");
+});
+
+test("id com caractere especial é escapado", () => {
+  const l = lacunasDoProduto({ custo: 9, precoVenda: 10, pesoGramas: 0, temFoto: true }, "a b&c");
+  assert.equal(l[0].href, "/cliente/peso?produto=a%20b%26c");
+});
+
+test("CUSTO não tem destino — não existe lugar por produto", () => {
+  // O custo vem de planilha. Mandar para a tela onde a pessoa já está seria uma
+  // porta que não abre nada, e porta falsa ensina a não clicar em nenhuma.
+  const l = lacunasDoProduto({ custo: 0, precoVenda: 10, pesoGramas: 700, temFoto: true }, "abc");
+  assert.equal(l[0].tipo, "custo");
+  assert.equal(l[0].href, undefined);
+  assert.match(l[0].impede, /planilha/);
 });
 
 test("comprador pagando o frete DISPENSA o peso", () => {
