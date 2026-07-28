@@ -15,6 +15,10 @@ import { listarProdutos } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
 import { custosDoLojista } from "@/lib/services/custosCliente";
+import {
+  SEM_CUSTOS_DO_LOJISTA,
+  type CustosDoLojista,
+} from "@/modules/pricing/domain/custosDoLojista";
 import { custosDoCliente, embalagemDasVariantes } from "@/lib/services/taxasDoCliente";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
 import {
@@ -48,13 +52,25 @@ export default function ClientePrecificacao() {
   // para quem ainda não tem reputação).
   const [taxasBase, setTaxasBase] = useState<ModeloTaxas>(TAXAS_PADRAO);
   const [avisoCustos, setAvisoCustos] = useState<string | null>(null);
+  /**
+   * Os custos do lojista vivem em estado PRÓPRIO, não dentro de `taxasBase`.
+   *
+   * Estavam lá, e o efeito da reputação — que chega depois, por rede — fazia
+   * `setTaxasBase(c.taxas)` e SUBSTITUÍA o objeto inteiro, apagando-os. A tela
+   * então mostrava a margem antiga (20,7%) com o preço ideal novo: metade da
+   * conta atualizada, sem nenhum erro em lugar nenhum.
+   *
+   * Compor no ponto de uso, em vez de acumular num objeto que várias fontes
+   * escrevem, faz a corrida deixar de existir — em vez de ser remendada.
+   */
+  const [custosLojista, setCustosLojista] = useState<CustosDoLojista>(SEM_CUSTOS_DO_LOJISTA);
 
   useEffect(() => {
     let vivo = true;
     margemMinimaDoCliente().then((m) => vivo && setMargem(m));
     // Imposto, comissões internas e embalagem entram na MESMA conta. Sem eles a
     // margem saía otimista: 20,7% onde a planilha do lojista mostrava 6%.
-    custosDoLojista().then((c) => vivo && setTaxasBase((t) => ({ ...t, custosDoLojista: c })));
+    custosDoLojista().then((c) => vivo && setCustosLojista(c));
     return () => {
       vivo = false;
     };
@@ -96,6 +112,7 @@ export default function ClientePrecificacao() {
     return (produtos ?? []).map((p) => {
       const taxasDoProduto: ModeloTaxas = {
         ...taxasBase,
+        custosDoLojista: custosLojista,
         embalagem: embalagemPorProduto.get(p.id) ?? null,
         // Só entra quando o produto REALMENTE informou. Ausente fica ausente,
         // e o modelo assume que o vendedor paga — nunca o contrário.
@@ -116,7 +133,7 @@ export default function ClientePrecificacao() {
       const pendencia = piso && !piso.ok && piso.motivo === "sem_peso" ? piso.pendencia : null;
       return { p, taxas, lucro, saude, precoIdeal, pendencia };
     });
-  }, [produtos, margem, taxasBase, embalagemPorProduto]);
+  }, [produtos, margem, taxasBase, custosLojista, embalagemPorProduto]);
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
