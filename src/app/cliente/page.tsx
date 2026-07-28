@@ -271,14 +271,16 @@ export default function ClienteHome() {
           </Card>
         </Section>
 
-        {/* Próximas ações */}
-        <Section titulo="Próximas ações" descricao="O que a equipe Zion planejou para você.">
+        {/* Recados.
+            Esta seção vinha de um RPC que SÓ a equipe preenche. Num produto sem
+            equipe no caminho crítico ela ficava vazia para sempre, dizendo "o
+            que a equipe planejou para você" — uma promessa que ninguém ia
+            cumprir. Agora ela só existe quando existe recado; quem diz o que
+            fazer é "O que falta", que se deriva dos dados. */}
+        {(proximas ?? []).length > 0 && (
+        <Section titulo="Recados" descricao="Avisos deixados para a sua loja.">
           <Card>
-            {(proximas ?? []).length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-zinc-500">
-                <CheckCircle2 size={16} className="text-emerald-400" /> Nenhuma ação pendente no momento.
-              </div>
-            ) : (
+            {(
               <ul className="space-y-3">
                 {(proximas ?? []).slice(0, 6).map((a, i) => (
                   <li key={i} className="flex items-start gap-3">
@@ -297,6 +299,7 @@ export default function ClienteHome() {
             )}
           </Card>
         </Section>
+        )}
       </div>
     </>
   );

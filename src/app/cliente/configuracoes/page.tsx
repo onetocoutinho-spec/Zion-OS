@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Store, Gauge, User, Mail, LifeBuoy, ShieldCheck, Plug, CheckCircle2 } from "lucide-react";
+import { Store, Gauge, LifeBuoy, ShieldCheck, Plug, CheckCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
@@ -11,6 +11,8 @@ import { useLiveQuery } from "@/lib/hooks";
 import { quotaEsteira } from "@/lib/services/perfil";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
+import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
+import { Field, Input } from "@/components/ui/form";
 
 export default function ClienteConfiguracoes() {
   const { nome, marketplace, clienteId } = useClientPortal();
@@ -20,6 +22,52 @@ export default function ClienteConfiguracoes() {
     [clienteId]
   );
   const [email, setEmail] = useState<string | null>(null);
+  const [nomeDaLoja, setNomeDaLoja] = useState("");
+  const [novoEmail, setNovoEmail] = useState("");
+  const [salvandoNome, setSalvandoNome] = useState(false);
+  const [salvandoEmail, setSalvandoEmail] = useState(false);
+  const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+
+  async function salvarNome(e: React.FormEvent) {
+    e.preventDefault();
+    setSalvandoNome(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/loja/renomear", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+        body: JSON.stringify({ nomeDaLoja }),
+      });
+      const d = (await r.json()) as { erro?: string };
+      if (!r.ok) {
+        setMsg({ tipo: "erro", texto: d.erro ?? "Não foi possível salvar." });
+        return;
+      }
+      // O nome da loja aparece no cabeçalho e em várias telas; recarregar é o
+      // jeito honesto de tudo passar a mostrar o valor novo de uma vez.
+      window.location.reload();
+    } catch {
+      setMsg({ tipo: "erro", texto: "Não foi possível falar com o servidor." });
+    } finally {
+      setSalvandoNome(false);
+    }
+  }
+
+  async function trocarEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setSalvandoEmail(true);
+    setMsg(null);
+    // Quem confirma a troca é o Supabase, por link no endereço NOVO. Trocar sem
+    // confirmar deixaria alguém trancado fora da própria conta por um erro de
+    // digitação.
+    const { error } = await getSupabase().auth.updateUser({ email: novoEmail.trim() });
+    setSalvandoEmail(false);
+    setMsg(
+      error
+        ? { tipo: "erro", texto: `Não foi possível trocar: ${error.message}` }
+        : { tipo: "ok", texto: "Enviamos um link de confirmação para o e-mail novo." }
+    );
+  }
 
   useEffect(() => {
     if (!supabaseConfigurado) return;
@@ -37,13 +85,64 @@ export default function ClienteConfiguracoes() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Sua conta">
           <ul className="space-y-3 text-sm">
-            <Linha icon={User} label="Loja">{nome}</Linha>
-            <Linha icon={Mail} label="E-mail de acesso">{email ?? "—"}</Linha>
             <Linha icon={Store} label="Marketplace ativo">{marketplace}</Linha>
           </ul>
-          <p className="mt-4 border-t border-white/5 pt-3 text-xs text-zinc-500">
-            Para alterar o e-mail de acesso, a loja ou adicionar outro marketplace, fale com a equipe Zion.
-          </p>
+
+          {/* Antes esta seção era um bilhete: "fale com a equipe Zion". Num SaaS
+              sem equipe no caminho crítico, quem erra o próprio nome ao se
+              cadastrar ficaria preso ao erro para sempre. */}
+          <form onSubmit={salvarNome} className="mt-4 border-t border-white/5 pt-4">
+            <Field label="Nome da loja">
+              <div className="flex gap-2">
+                <Input
+                  value={nomeDaLoja}
+                  onChange={(e) => setNomeDaLoja(e.target.value)}
+                  placeholder={nome}
+                />
+                <Button
+                  type="submit"
+                  disabled={salvandoNome || !nomeDaLoja.trim() || nomeDaLoja.trim() === nome}
+                >
+                  {salvandoNome ? "Salvando…" : "Salvar"}
+                </Button>
+              </div>
+            </Field>
+          </form>
+
+          <form onSubmit={trocarEmail} className="mt-3">
+            <Field label="E-mail de acesso">
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  value={novoEmail}
+                  onChange={(e) => setNovoEmail(e.target.value)}
+                  placeholder={email ?? "—"}
+                />
+                <Button
+                  type="submit"
+                  disabled={salvandoEmail || !novoEmail.trim() || novoEmail.trim() === email}
+                >
+                  {salvandoEmail ? "Enviando…" : "Trocar"}
+                </Button>
+              </div>
+            </Field>
+            <p className="mt-1 text-[11px] text-zinc-500">
+              Você recebe um link de confirmação no endereço novo. O acesso só muda depois
+              que você clicar nele.
+            </p>
+          </form>
+
+          {msg && (
+            <p
+              className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                msg.tipo === "ok"
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                  : "border-red-500/20 bg-red-500/10 text-red-400"
+              }`}
+            >
+              {msg.texto}
+            </p>
+          )}
         </Card>
 
         <Card title="Seu plano">
@@ -72,8 +171,8 @@ export default function ClienteConfiguracoes() {
             </div>
           )}
           <p className="mt-4 flex items-center gap-1.5 border-t border-white/5 pt-3 text-xs text-zinc-500">
-            <ShieldCheck size={13} className="text-emerald-400" /> Seus dados são privados: só você e a
-            equipe Zion têm acesso.
+            <ShieldCheck size={13} className="text-emerald-400" /> Seus dados são privados: nenhum
+            outro lojista vê seus produtos, preços ou anúncios.
           </p>
         </Card>
       </div>
@@ -134,7 +233,7 @@ function Linha({
   label,
   children,
 }: {
-  icon: typeof User;
+  icon: typeof Store;
   label: string;
   children: React.ReactNode;
 }) {

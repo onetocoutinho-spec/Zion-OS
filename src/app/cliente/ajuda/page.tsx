@@ -55,11 +55,11 @@ const FAQ = [
   },
   {
     q: "A IA publica sozinha no Mercado Livre?",
-    a: "Ainda não. Por enquanto a IA gera e você aprova o conteúdo. A publicação automática nos marketplaces está sendo integrada pela equipe Zion.",
+    a: "A IA escreve e você aprova — publicar continua sendo decisão sua, com um clique. Nada vai ao ar sem o seu aval.",
   },
   {
     q: "Quem vê meus dados?",
-    a: "Apenas você e a equipe Zion. Seus produtos, preços e anúncios são privados e não aparecem para outros clientes.",
+    a: "Só você. Seus produtos, preços e anúncios são privados e não aparecem para nenhum outro lojista.",
   },
 ];
 

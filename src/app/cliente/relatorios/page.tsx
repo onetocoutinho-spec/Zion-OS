@@ -75,7 +75,7 @@ export default function ClienteRelatorios() {
         <VazioAmigavel
           icon={FileText}
           titulo="Nenhum relatório publicado ainda"
-          descricao="A equipe Zion publica relatórios periódicos com o que foi feito e os próximos passos. Enquanto isso, o resumo acima acompanha sua loja em tempo real."
+          descricao="O resumo acima acompanha sua loja em tempo real, sempre que você abrir."
         />
       ) : (
         <div className="space-y-3">
