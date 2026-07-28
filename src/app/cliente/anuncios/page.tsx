@@ -114,7 +114,10 @@ export default function ClienteAnuncios() {
                 <Download size={15} /> Vincular no ERP ({publicados})
               </Button>
             )}
-            <Link href="/cliente/anunciar">
+            {/* inline-flex: `a` é inline por padrão e mede menor que o botão
+                dentro dele — o toque acerta, mas a auditoria acusa. Caixa
+                ambígua em auditoria vira ruído, e ruído se aprende a ignorar. */}
+            <Link href="/cliente/anunciar" className="inline-flex">
               <Button>
                 <Wand2 size={15} /> Otimizar com IA
               </Button>
@@ -183,7 +186,7 @@ export default function ClienteAnuncios() {
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => setAberto(expandido ? null : a.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 hover:border-white/20"
+                            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 hover:border-white/20 [@media(pointer:coarse)]:min-h-11"
                           >
                             Detalhes
                             <ChevronDown
@@ -205,7 +208,7 @@ export default function ClienteAnuncios() {
                               href={a.mlPermalink}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+                              className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20 [@media(pointer:coarse)]:min-h-11"
                             >
                               <ExternalLink size={12} /> Ver no ML
                             </a>

@@ -77,7 +77,7 @@ export default function ClienteVendas() {
                 <button
                   key={p.dias}
                   onClick={() => setDias(p.dias)}
-                  className={`rounded-md px-2.5 py-1.5 font-medium transition-colors ${
+                  className={`rounded-md px-2.5 py-1.5 font-medium transition-colors [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-4 ${
                     dias === p.dias ? "bg-violet-500/15 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >

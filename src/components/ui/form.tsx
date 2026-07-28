@@ -4,7 +4,7 @@
 // Todos os formulários de entidade (components/forms/*) usam estes blocos.
 
 const INPUT_BASE =
-  "w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 hover:border-white/20 focus:border-violet-500/60";
+  "w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-600 hover:border-white/20 focus:border-violet-500/60 [@media(pointer:coarse)]:min-h-11";
 
 interface FieldProps {
   label: string;
