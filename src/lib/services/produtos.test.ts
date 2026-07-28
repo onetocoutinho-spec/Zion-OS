@@ -88,9 +88,28 @@ test("DoD: Journal que LANÇA não interrompe a operação principal", async () 
   assert.equal(resultado.categoriaMarketplaceSugerida, "MLB777777");
 });
 
-test("campo NÃO observado (custo) → nenhuma captura, nenhuma leitura prévia", async () => {
+test("CUSTO é observado — era o campo mais consequente sem rastro nenhum", async () => {
+  // Dele saem lucro, margem e piso, e era o único gravado em silêncio. Um custo
+  // sobrescrito por engano não tinha como voltar: nem a variação guarda o valor
+  // antigo, porque ela recebe o mesmo custo do pai.
+  const antes = await buscarProduto(ID_SEED);
+  assert.ok(antes);
   const journal = new InMemoryDecisionJournal();
   const resultado = await atualizarProduto(ID_SEED, { custo: 55 }, journal);
+  assert.ok(resultado);
+  assert.equal(journal.recebidas.length, 1);
+  const d: Decision = journal.recebidas[0];
+  assert.equal(d.campo, "custo");
+  assert.equal(d.contexto, "precificacao");
+  assert.equal(d.valorAnterior, String(antes.custo));
+  assert.equal(d.valorNovo, "55");
+});
+
+test("campo NÃO observado (estoque) → nenhuma captura, nenhuma leitura prévia", async () => {
+  // Estoque é estado operacional, não conhecimento: muda sozinho a cada venda e
+  // não há nada a aprender com o número. É o outro lado do critério.
+  const journal = new InMemoryDecisionJournal();
+  const resultado = await atualizarProduto(ID_SEED, { estoque: 7 }, journal);
   assert.ok(resultado);
   assert.equal(journal.recebidas.length, 0);
 });

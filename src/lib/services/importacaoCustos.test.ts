@@ -16,7 +16,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseNumeroCusto, mesmaIdentidade, pontuarNomes } from "./importacaoCustos.ts";
+import {
+  parseNumeroCusto,
+  mesmaIdentidade,
+  pontuarNomes,
+  definirCustoEscolhido,
+} from "./importacaoCustos.ts";
+import { buscarProduto } from "./produtos.ts";
+import type {
+  Decision,
+  DecisionJournal,
+} from "../../modules/adaptive-intelligence/decision-journal.ts";
+import { InMemoryDecisionJournal } from "../../modules/adaptive-intelligence/infrastructure/decision-journal.memory.ts";
 
 // ── Leitura de número ────────────────────────────────────────────────────────
 
@@ -134,4 +145,59 @@ test("a importação envia SÓ os campos que ela altera", () => {
   }
   // e nunca o campo que quebrou
   assert.equal("tabelaMedidasOverride" in produtoEnviado, false);
+});
+
+// ── Signal Source CUSTO (AIL) ────────────────────────────────────────────────
+//
+// O custo é o campo mais consequente da cadeia de preço — dele saem lucro,
+// margem e piso — e era o único gravado sem deixar rastro. Um custo
+// sobrescrito por engano não tinha como voltar: nem a variação guarda o valor
+// antigo, porque ela recebe o mesmo custo do pai.
+
+test("escolher um custo captura EXATAMENTE uma Decision", async () => {
+  const antes = await buscarProduto("prd-01");
+  assert.ok(antes);
+  const journal = new InMemoryDecisionJournal();
+  await definirCustoEscolhido("cli-01", "prd-01", 51.4, journal);
+
+  assert.equal(journal.recebidas.length, 1);
+  const d: Decision = journal.recebidas[0];
+  assert.equal(d.campo, "custo");
+  assert.equal(d.contexto, "precificacao");
+  assert.equal(d.entidade.tipo, "produto");
+  assert.equal(d.entidade.id, "prd-01");
+  assert.equal(d.empresa, "cli-01");
+  assert.equal(d.valorAnterior, String(antes.custo));
+  assert.equal(d.valorNovo, "51.4");
+  assert.equal(d.origem, "importacaoCustos.definirCustoEscolhido");
+});
+
+test("regravar o MESMO custo não captura nada", async () => {
+  // Delta real é obrigatório: sem ele o histórico encheria de linhas que não
+  // contam nenhuma mudança, e ninguém procura num histórico assim.
+  const atual = await buscarProduto("prd-01");
+  assert.ok(atual);
+  const journal = new InMemoryDecisionJournal();
+  await definirCustoEscolhido("cli-01", "prd-01", atual.custo, journal);
+  assert.equal(journal.recebidas.length, 0);
+});
+
+test("produto de OUTRO cliente não é tocado nem capturado", async () => {
+  const journal = new InMemoryDecisionJournal();
+  const r = await definirCustoEscolhido("cli-99", "prd-01", 77, journal);
+  assert.equal(r.variantes, 0);
+  assert.equal(journal.recebidas.length, 0);
+});
+
+test("Journal que LANÇA não interrompe a gravação do custo", async () => {
+  // Fire-and-forget absoluto: a AIL é observadora, e observador que derruba o
+  // que observa deixa de ser observador.
+  const jornalQueLanca: DecisionJournal = {
+    registrarDecisao() {
+      throw new Error("falha simulada do Journal");
+    },
+  };
+  await definirCustoEscolhido("cli-01", "prd-01", 43.21, jornalQueLanca);
+  const depois = await buscarProduto("prd-01");
+  assert.equal(depois?.custo, 43.21);
 });
