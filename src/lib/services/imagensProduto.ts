@@ -39,3 +39,13 @@ export async function atualizarImagem(
 export async function excluirImagem(id: string): Promise<void> {
   return repo.excluir(id);
 }
+
+/**
+ * Todas as imagens, para contar em massa quantos produtos já têm foto.
+ *
+ * A tela inicial precisa saber "quantos produtos estão sem foto" — perguntar
+ * produto a produto seriam 73 consultas para responder um número.
+ */
+export async function listarTodasImagens(): Promise<ImagemProduto[]> {
+  return repo.listar();
+}

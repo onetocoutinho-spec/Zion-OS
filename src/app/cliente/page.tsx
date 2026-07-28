@@ -23,7 +23,13 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader, ActionTile, Section, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarProdutos } from "@/lib/services/produtos";
+import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
+import { buscarCanal } from "@/lib/services/canaisMarketplace";
+import { listarTodasImagens } from "@/lib/services/imagensProduto";
+import {
+  lacunasDaLoja,
+  type EstadoDaLoja,
+} from "@/modules/publication/domain/prontidaoDaLoja";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
@@ -33,7 +39,12 @@ import { portalProximasAcoes, quotaEsteira } from "@/lib/services/perfil";
 export default function ClienteHome() {
   const { clienteId, nome } = useClientPortal();
 
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  // A home precisa do PESO, não só do produto: é o peso que decide se a
+  // precificação existe, e era justamente ele que não aparecia em lugar nenhum.
+  const { data: produtos } = useLiveQuery(
+    () => listarProdutosComPeso(clienteId),
+    [clienteId]
+  );
   const { data: anuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
@@ -45,6 +56,11 @@ export default function ClienteHome() {
   );
   const { data: relatorios } = useLiveQuery(
     () => listarRelatoriosDoCliente(clienteId),
+    [clienteId]
+  );
+  const { data: imagens } = useLiveQuery(listarTodasImagens);
+  const { data: canal } = useLiveQuery(
+    () => buscarCanal(clienteId, "Mercado Livre"),
     [clienteId]
   );
   const { data: proximas } = useLiveQuery(portalProximasAcoes);
@@ -84,41 +100,34 @@ export default function ClienteHome() {
     };
   }, [produtos, anuncios, auditorias, pendencias, relatorios]);
 
-  // Sugestões da IA — derivadas dos dados reais da loja, em linguagem simples.
-  const sugestoes = useMemo(() => {
-    const lista: { texto: string; href: string; cta: string }[] = [];
-    if (m.total === 0)
-      lista.push({
-        texto: "Importe sua base de produtos para começar a otimizar sua loja.",
-        href: "/cliente/produtos",
-        cta: "Importar",
-      });
-    if (m.semOtimizacao > 0)
-      lista.push({
-        texto: `Você tem ${m.semOtimizacao} produto(s) sem anúncio otimizado. A IA pode criar títulos e descrições prontos.`,
-        href: "/cliente/anunciar",
-        cta: "Otimizar",
-      });
-    if (m.comProblema > 0)
-      lista.push({
-        texto: `${m.comProblema} anúncio(s) têm pontos a revisar antes de ir para o ar.`,
-        href: "/cliente/anuncios",
-        cta: "Revisar",
-      });
-    if (m.total > 0 && m.auditados === 0)
-      lista.push({
-        texto: "Rode a auditoria da sua base para descobrir o que melhorar primeiro.",
-        href: "/cliente/auditoria",
-        cta: "Auditar",
-      });
-    if (lista.length === 0)
-      lista.push({
-        texto: "Sua loja está em dia! Continue acompanhando os relatórios e as pendências.",
-        href: "/cliente/relatorios",
-        cta: "Ver relatórios",
-      });
-    return lista.slice(0, 4);
-  }, [m]);
+  /**
+   * O QUE FALTA — a lista honesta, na ordem em que resolver produz resultado.
+   *
+   * Substitui as antigas "sugestões da IA", que mandavam otimizar e auditar
+   * enquanto a precificação estava morta por falta de peso — e nunca diziam
+   * isso. O lojista não tinha como descobrir sozinho.
+   */
+  const lacunas = useMemo(() => {
+    const prods = produtos ?? [];
+    const ans = anuncios ?? [];
+    const produtosComAnuncio = new Set(ans.map((a) => a.produtoId).filter(Boolean));
+    const comFoto = new Set((imagens ?? []).map((i) => i.produtoId).filter(Boolean));
+
+    const estado: EstadoDaLoja = {
+      produtos: prods.length,
+      comPeso: prods.filter((p) => p.pesoGramas > 0).length,
+      comCusto: prods.filter((p) => p.custo > 0).length,
+      // MEDIDO, não deduzido: o menor entre "com custo" e "com peso" parece um
+      // teto honesto e é chute — os conjuntos podem não se sobrepor.
+      prontosParaPrecificar: prods.filter((p) => p.custo > 0 && p.pesoGramas > 0).length,
+      comFoto: prods.filter((p) => comFoto.has(p.id)).length,
+      comAnuncio: prods.filter((p) => produtosComAnuncio.has(p.id)).length,
+      aguardandoAprovacao: ans.filter((a) => a.status === "aguardando_aprovacao").length,
+      aprovadosNaoPublicados: ans.filter((a) => a.status === "aprovado").length,
+      conectadoAoMarketplace: Boolean(canal?.ativo),
+    };
+    return { lista: lacunasDaLoja(estado), estado };
+  }, [produtos, anuncios, imagens, canal]);
 
   return (
     <>
@@ -163,7 +172,7 @@ export default function ClienteHome() {
           tone={m.pendencias > 0 ? "yellow" : "gray"}
         />
         <StatCard label="Relatórios" value={m.relatorios} icon={FileText} tone="blue" />
-        <StatCard label="Sugestões da IA" value={sugestoes.length} icon={Sparkles} tone="violet" />
+        <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
         <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
       </div>
 
@@ -217,24 +226,48 @@ export default function ClienteHome() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Sugestões da IA */}
-        <Section titulo="Sugestões da IA" descricao="Recomendações com base na sua loja.">
+        <Section
+          titulo="O que falta"
+          descricao="Na ordem em que resolver destrava o resto."
+        >
           <Card>
-            <ul className="space-y-3">
-              {sugestoes.map((s, i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <Lightbulb size={16} className="mt-0.5 shrink-0 text-amber-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-zinc-300">{s.texto}</p>
-                    <Link
-                      href={s.href}
-                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
-                    >
-                      {s.cta} <ArrowRight size={12} />
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {lacunas.lista.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-zinc-400">
+                <CheckCircle2 size={16} className="text-emerald-400" />
+                Nada travado. Sua loja está em dia.
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {lacunas.lista.map((l) => (
+                  <li key={l.tipo} className="flex items-start gap-3">
+                    {/* Vermelho só para o que trava TUDO. Se tudo fosse urgente,
+                        nada seria — e a lista viraria ruído a se ignorar. */}
+                    {l.bloqueiaTudo ? (
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
+                    ) : (
+                      <Lightbulb size={16} className="mt-0.5 shrink-0 text-amber-400" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-zinc-200">{l.titulo}</p>
+                      <p className="mt-0.5 text-xs text-zinc-400">{l.trava}</p>
+                      <Link
+                        href={l.href}
+                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
+                      >
+                        {l.cta} <ArrowRight size={12} />
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {lacunas.estado.produtos > 0 && (
+              <p className="mt-4 border-t border-white/5 pt-3 text-xs text-zinc-500">
+                <strong className="text-zinc-300">{lacunas.estado.prontosParaPrecificar}</strong> de{" "}
+                {lacunas.estado.produtos} produto(s) têm custo e peso — os únicos com preço mínimo
+                calculado.
+              </p>
+            )}
           </Card>
         </Section>
 
