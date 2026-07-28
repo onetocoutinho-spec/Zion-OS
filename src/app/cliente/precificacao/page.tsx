@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Calculator, Search, Package, TrendingUp } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -20,6 +21,8 @@ import {
   type CustosDoLojista,
 } from "@/modules/pricing/domain/custosDoLojista";
 import { custosDoCliente, embalagemDasVariantes } from "@/lib/services/taxasDoCliente";
+import { definirCustoEscolhido } from "@/lib/services/importacaoCustos";
+import { CustoEditavel } from "@/components/client-portal/CustoEditavel";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
 import {
   custoDasTaxas,
@@ -35,14 +38,22 @@ import { formatBRL } from "@/lib/format";
 
 const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
-export default function ClientePrecificacao() {
+function Precificacao() {
   const { clienteId, marketplace } = useClientPortal();
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  const { data: produtos, reload } = useLiveQuery(listarProdutos);
   const { data: variantes } = useLiveQuery(listarTodasVariantes);
+
+  // Chegou por um chip "falta custo" na lista de produtos. O id vem no endereço
+  // para a tela abrir NESTE produto — antes o chip despejava a pessoa numa
+  // tabela de 73 linhas para procurar de novo o que ela acabou de ver.
+  const params = useSearchParams();
+  const produtoAlvo = params.get("produto");
 
   const [fStatus, setFStatus] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarIdeal, setMostrarIdeal] = useState(false);
+  /** Só os que ainda não têm custo — a fila de trabalho de quem veio preencher. */
+  const [soSemCusto, setSoSemCusto] = useState(false);
   // A margem que o LOJISTA escolheu. Enquanto não chega, o padrão vale — a tela
   // nunca fica sem piso, o que faria toda margem parecer saudável.
   const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
@@ -138,12 +149,39 @@ export default function ClientePrecificacao() {
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return linhas.filter((l) => {
+      if (soSemCusto && l.p.custo > 0) return false;
       if (fStatus !== "Todos" && l.saude.status !== fStatus) return false;
       if (mostrarIdeal && !(l.precoIdeal != null && l.p.precoVenda < l.precoIdeal)) return false;
       if (q && !`${l.p.nome} ${l.p.sku}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [linhas, fStatus, busca, mostrarIdeal]);
+  }, [linhas, fStatus, busca, mostrarIdeal, soSemCusto]);
+
+  const semCusto = useMemo(() => linhas.filter((l) => !(l.p.custo > 0)).length, [linhas]);
+
+  /**
+   * O produto do endereço existe mesmo? Id de produto apagado é ignorado — abrir
+   * a tela focada num item fantasma é pior do que abri-la inteira.
+   */
+  const alvoValido = useMemo(
+    () => (produtoAlvo && linhas.some((l) => l.p.id === produtoAlvo) ? produtoAlvo : null),
+    [produtoAlvo, linhas]
+  );
+
+  // Rola até ele UMA vez. Repetir a cada render brigaria com quem já rolou para
+  // outro lugar — a tela ficaria puxando a página de volta enquanto se digita.
+  //
+  // Ferrolho em ref, não em estado: nada na tela depende de já ter rolado, e
+  // `setState` dentro de efeito dispara uma renderização em cascata só para
+  // guardar um booleano que ninguém lê.
+  const rolou = useRef(false);
+  useEffect(() => {
+    if (rolou.current || !alvoValido) return;
+    rolou.current = true;
+    requestAnimationFrame(() =>
+      document.getElementById(`produto-${alvoValido}`)?.scrollIntoView({ block: "center" })
+    );
+  }, [alvoValido]);
 
   const resumo = useMemo(() => {
     const cont = { Saudável: 0, Atenção: 0, Risco: 0, Prejuízo: 0 } as Record<string, number>;
@@ -211,6 +249,21 @@ export default function ClientePrecificacao() {
           />
         </div>
         <FilterSelect label="Status" value={fStatus} options={STATUS} onChange={setFStatus} />
+        {semCusto > 0 && (
+          // O tamanho do trabalho, não só o filtro. "43 sem custo" responde
+          // "quanto falta para eu terminar" antes de a pessoa clicar em nada.
+          <button
+            type="button"
+            onClick={() => setSoSemCusto((v) => !v)}
+            className={`rounded-lg border px-2.5 py-1.5 text-xs transition-colors [@media(pointer:coarse)]:min-h-11 ${
+              soSemCusto
+                ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
+                : "border-amber-500/25 bg-amber-500/[0.06] text-amber-300 hover:border-amber-500/50"
+            }`}
+          >
+            {soSemCusto ? `Ver todos · ${semCusto} sem custo` : `${semCusto} sem custo`}
+          </button>
+        )}
         <span className="ml-auto text-xs text-zinc-500">
           {filtradas.length} de {total} produtos
         </span>
@@ -223,9 +276,28 @@ export default function ClientePrecificacao() {
           <EmptyRow colSpan={8} />
         ) : (
           filtradas.map(({ p, taxas, lucro, saude, precoIdeal, pendencia }) => (
-            <tr key={p.id} className="hover:bg-white/[0.02]">
+            <tr
+              key={p.id}
+              id={`produto-${p.id}`}
+              className={`hover:bg-white/[0.02] ${
+                // Quem chegou por um chip precisa ver ONDE parou. Sem a marca, a
+                // rolagem entrega a pessoa no meio de 73 linhas iguais.
+                alvoValido === p.id ? "bg-violet-500/[0.07]" : ""
+              }`}
+            >
               <TdMain sub={p.sku || undefined}>{p.nome}</TdMain>
-              <Td>{formatBRL(p.custo)}</Td>
+              <Td>
+                <CustoEditavel
+                  nome={p.nome}
+                  custo={p.custo}
+                  precoVenda={p.precoVenda}
+                  focoInicial={alvoValido === p.id && !(p.custo > 0)}
+                  onGravar={async (custo) => {
+                    await definirCustoEscolhido(clienteId, p.id, custo);
+                    reload();
+                  }}
+                />
+              </Td>
               <Td>{formatBRL(p.precoVenda)}</Td>
               <Td className="text-zinc-500">{taxas === null ? "—" : formatBRL(taxas)}</Td>
               <Td className={lucro !== null && lucro < 0 ? "text-red-400" : "text-emerald-400"}>
@@ -262,7 +334,22 @@ export default function ClientePrecificacao() {
         <span className="text-zinc-400">sua reputação</span> e pelo peso cobrável de cada produto —
         o maior entre o peso real e o cubado. Onde falta a medida da embalagem, o preço ideal
         aparece como pendência em vez de estimativa.
+        <br />
+        O <span className="text-zinc-400">custo</span> é editável: clique no valor para digitar. Ele
+        vale para o produto e para todas as suas variações.
       </p>
     </>
+  );
+}
+
+/**
+ * `useSearchParams` obriga um limite de Suspense no App Router — sem ele a
+ * página inteira vira renderização sob demanda e o build reclama.
+ */
+export default function ClientePrecificacao() {
+  return (
+    <Suspense fallback={null}>
+      <Precificacao />
+    </Suspense>
   );
 }

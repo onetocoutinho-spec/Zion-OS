@@ -13,6 +13,7 @@ import {
   sugerirMapeamento,
   type Mapeamento,
 } from "../../modules/catalog/domain/mapeamentoPlanilha";
+import { parseNumeroCusto } from "../../modules/pricing/domain/custoDigitado";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
@@ -58,38 +59,17 @@ const normNome = (s: string) =>
 const palavras = (s: string) => new Set(normNome(s).split(" ").filter((w) => w.length > 2));
 
 /**
- * Lê "12,50" / "12.50" / "R$ 1.234,56" / "1.234" → número. PURA.
+ * Lê "12,50" / "R$ 1.234,56" / "1.234" → número.
  *
- * A armadilha é o PONTO sem vírgula: "1.234" pode ser mil duzentos e trinta e
- * quatro (padrão brasileiro) ou um vírgula duzentos e trinta e quatro (padrão
- * americano). A regra que distingue com segurança é a do separador de milhar:
- * ele SEMPRE agrupa de três em três. Então ".234" é milhar e ".90" é decimal.
+ * Mudou de casa para `modules/pricing/domain/custoDigitado` quando o custo
+ * passou a entrar por dois caminhos — planilha e teclado. Regra que dois
+ * caminhos usam mora no domínio; deixada aqui, um dos dois acabaria com uma
+ * cópia que envelhece sozinha, e a regra do separador de milhar é exatamente o
+ * tipo de detalhe que ninguém lembra de copiar de volta.
  *
- * Errar isso lia R$ 1.234 como R$ 1,23 — custo mil vezes menor, e a margem
- * aparecia absurdamente positiva sem ninguém desconfiar.
+ * Continua exportada daqui porque é por este nome que a importação a conhece.
  */
-export function parseNumeroCusto(s: string): number {
-  const t = (s ?? "").replace(/[^\d.,-]/g, "").trim();
-  if (!t) return 0;
-
-  let normalizado: string;
-  if (t.includes(",")) {
-    // Com vírgula presente, ela é o decimal e o ponto é milhar. Sem ambiguidade.
-    normalizado = t.replace(/\./g, "").replace(",", ".");
-  } else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) {
-    // Só pontos, todos agrupando de 3 em 3 → separador de milhar.
-    //
-    // O primeiro grupo não pode começar com zero: ninguém escreve "0.850" para
-    // oitocentos e cinquenta. Sem essa guarda, um custo de R$ 0,850 virava
-    // R$ 850 — mil vezes maior, e o preço mínimo junto.
-    normalizado = t.replace(/\./g, "");
-  } else {
-    // Um ponto com 1, 2 ou 4+ dígitos depois → decimal.
-    normalizado = t;
-  }
-  const n = parseFloat(normalizado);
-  return Number.isFinite(n) ? n : 0;
-}
+export { parseNumeroCusto };
 
 /**
  * O código do modelo embutido no nome, como uma sequência única de dígitos.
@@ -389,15 +369,28 @@ export async function importarCustos(
 }
 
 /**
- * Grava o custo que o LOJISTA escolheu para um produto ambíguo.
+ * Grava o custo que o LOJISTA definiu, produto a produto.
  *
- * A importação recusa quando duas linhas da planilha reivindicam o mesmo
- * produto com custos diferentes — não há resposta certa e chutar gravaria custo
- * errado em silêncio. Mas recusar só é honesto se a pessoa puder decidir; esta
- * é a outra metade.
+ * Duas portas chegam aqui, e as duas são a mesma decisão — uma pessoa dizendo
+ * quanto custa este item:
+ *
+ *   1. a caixa de ambíguos, quando a planilha traz custos diferentes para o
+ *      mesmo produto e não há resposta certa para escolher sozinho;
+ *   2. a caixa de custo na tela de Precificação, para os produtos que a planilha
+ *      não alcança — títulos de marketing do ML contra nomes de ERP, 71% de
+ *      semelhança, abaixo do limiar de 85%. Baixar o limiar não é saída: foi com
+ *      83% que o custo de um sapato foi parar em outro modelo.
+ *
+ * `confiancaCusto: "alta"` nos dois casos, e é honesto: veio de quem compra.
  *
  * O custo desce para as variações do produto, como na importação: a variação
  * sem custo próprio herda o do pai, e é dela que a precificação lê.
+ *
+ * NÃO grava `precoMinimo`. A coluna guarda o resultado da fórmula antiga, sem
+ * peso e sem frete — foi ela que deixou 1.733 produtos com R$ 1,77 de piso, o
+ * mesmo valor para tênis, mochila e slime. A tela calcula o piso ao vivo, com o
+ * peso real; escrever ali de novo seria recriar o fantasma que a migração 030
+ * apagou.
  */
 export async function definirCustoEscolhido(
   clienteId: string,

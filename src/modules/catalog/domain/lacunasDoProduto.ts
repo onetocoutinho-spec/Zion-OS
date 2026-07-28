@@ -31,8 +31,10 @@ export interface LacunaProduto {
    * Onde se resolve, JÁ COM O PRODUTO no endereço — a tela de destino abre
    * focada nele em vez de mostrar a lista inteira para procurar de novo.
    *
-   * Ausente quando não existe um lugar por produto: o custo vem de planilha, e
-   * mandar para a tela onde a pessoa já está é uma porta que não abre nada.
+   * Opcional porque nem toda lacuna tem lugar próprio. O custo não tinha: vinha
+   * só de planilha, e o chip virava um `<span>` que explicava a ausência. Hoje
+   * tem — a Precificação recebe o custo digitado, e é lá que ele mostra o que
+   * faz, porque lucro, margem e piso se refazem na mesma linha.
    */
   href?: string;
 }
@@ -67,7 +69,8 @@ export function lacunasDoProduto(p: EstadoDoProduto, produtoId?: string): Lacuna
       rotulo: "custo",
       impede:
         "Sem o custo não dá para saber se o preço dá lucro nem qual é o piso. " +
-        "O custo vem da planilha — use o botão Custos, acima.",
+        "Clique para digitar o custo deste produto.",
+      href: com("/cliente/precificacao"),
     });
   }
 
