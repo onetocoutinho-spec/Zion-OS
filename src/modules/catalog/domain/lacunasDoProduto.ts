@@ -27,8 +27,14 @@ export interface LacunaProduto {
   rotulo: string;
   /** O que isto impede. Vai no title, para quem quiser saber por quê. */
   impede: string;
-  /** Onde se resolve. */
-  href: string;
+  /**
+   * Onde se resolve, JÁ COM O PRODUTO no endereço — a tela de destino abre
+   * focada nele em vez de mostrar a lista inteira para procurar de novo.
+   *
+   * Ausente quando não existe um lugar por produto: o custo vem de planilha, e
+   * mandar para a tela onde a pessoa já está é uma porta que não abre nada.
+   */
+  href?: string;
 }
 
 export interface EstadoDoProduto {
@@ -50,15 +56,18 @@ export interface EstadoDoProduto {
  * Devolve `[]` quando não falta nada — e aí a linha mostra que está pronta, em
  * vez de uma célula vazia que se confunde com "não sei".
  */
-export function lacunasDoProduto(p: EstadoDoProduto): LacunaProduto[] {
+export function lacunasDoProduto(p: EstadoDoProduto, produtoId?: string): LacunaProduto[] {
   const lacunas: LacunaProduto[] = [];
+  /** O destino leva o produto junto, quando a tela sabe receber. */
+  const com = (rota: string) => (produtoId ? `${rota}?produto=${encodeURIComponent(produtoId)}` : rota);
 
   if (!(p.custo > 0)) {
     lacunas.push({
       tipo: "custo",
       rotulo: "custo",
-      impede: "Sem o custo não dá para saber se o preço dá lucro nem qual é o piso.",
-      href: "/cliente/produtos",
+      impede:
+        "Sem o custo não dá para saber se o preço dá lucro nem qual é o piso. " +
+        "O custo vem da planilha — use o botão Custos, acima.",
     });
   }
 
@@ -69,7 +78,7 @@ export function lacunasDoProduto(p: EstadoDoProduto): LacunaProduto[] {
       tipo: "peso",
       rotulo: "peso",
       impede: "O frete do Mercado Livre é cobrado por peso. Sem ele, não há preço mínimo.",
-      href: "/cliente/peso",
+      href: com("/cliente/peso"),
     });
   }
 
@@ -78,7 +87,7 @@ export function lacunasDoProduto(p: EstadoDoProduto): LacunaProduto[] {
       tipo: "foto",
       rotulo: "foto",
       impede: "O Mercado Livre não aceita anúncio sem imagem.",
-      href: "/cliente/imagens",
+      href: com("/cliente/imagens"),
     });
   }
 
@@ -87,7 +96,7 @@ export function lacunasDoProduto(p: EstadoDoProduto): LacunaProduto[] {
       tipo: "preco",
       rotulo: "preço",
       impede: "Sem preço de venda não há o que analisar nem o que publicar.",
-      href: "/cliente/precificacao",
+      href: com("/cliente/precificacao"),
     });
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Images,
   Upload,
@@ -64,7 +65,11 @@ function casarProduto(pasta: string, produtos: Produto[]): string | null {
   return melhorScore >= 0.34 ? melhor : null;
 }
 
-export default function ClienteImagens() {
+/**
+ * Abre já no produto quando vem de `?produto=<id>` — o chip "foto" da lista
+ * leva a pessoa ao item que ela acabou de ver, em vez de a uma busca vazia.
+ */
+function ClienteImagensInterno() {
   const { clienteId } = useClientPortal();
   const { data: produtos } = useLiveQuery(listarProdutos);
   const [modo, setModo] = useState<"produto" | "massa">("produto");
@@ -128,7 +133,13 @@ export default function ClienteImagens() {
 // ---------- Modo: um produto ----------
 
 function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: Produto[] }) {
-  const [produtoId, setProdutoId] = useState<string | null>(null);
+  const params = useSearchParams();
+  // Só aceita id que EXISTE na lista: um endereço com produto apagado abriria a
+  // tela num item fantasma, o que é pior que abrir vazia.
+  const doEndereco = params.get("produto");
+  const [produtoId, setProdutoId] = useState<string | null>(
+    doEndereco && produtos.some((p) => p.id === doEndereco) ? doEndereco : null
+  );
   const [busca, setBusca] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -650,5 +661,14 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
         </p>
       )}
     </Card>
+  );
+}
+
+/** `useSearchParams` exige limite de Suspense no App Router. */
+export default function ClienteImagens() {
+  return (
+    <Suspense fallback={null}>
+      <ClienteImagensInterno />
+    </Suspense>
   );
 }
