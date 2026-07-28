@@ -26,7 +26,23 @@ export interface ResultadoCustos {
   linhasCsv: number;
   /** Produtos que casaram com custos DIFERENTES e por isso ficaram de fora. */
   ambiguos: number;
+  /**
+   * QUAIS produtos, e quais custos brigaram por eles.
+   *
+   * Sem isto o relatório dizia "17 produto(s) ambíguo(s)" e mais nada — o
+   * lojista sabia que perdeu 17 custos e não tinha como descobrir quais, nem
+   * decidir. Recusar de propósito só é honesto se a pessoa puder resolver.
+   */
+  detalhesAmbiguos: AmbiguidadeCusto[];
   aviso?: string;
+}
+
+/** Um produto que casou com mais de um custo, e os custos em disputa. */
+export interface AmbiguidadeCusto {
+  produtoId: string;
+  produto: string;
+  /** Custos distintos que reivindicaram este produto, com a linha de origem. */
+  candidatos: { custo: number; origem: string }[];
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -163,6 +179,7 @@ export async function importarCustos(
       naoEncontrados: 0,
       linhasCsv: linhas.length,
       ambiguos: 0,
+      detalhesAmbiguos: [],
       aviso: "A planilha precisa da coluna 'custo' e de 'sku', 'ean' e/ou 'nome/produto'.",
     };
   }
@@ -197,6 +214,7 @@ export async function importarCustos(
   if (porSku.size === 0 && porEan.size === 0 && porNomeExato.size === 0) {
     return {
       produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, ambiguos: 0,
+      detalhesAmbiguos: [],
       aviso: "Nenhum custo válido na planilha. Confira se a coluna de custo tem números.",
     };
   }
@@ -218,7 +236,7 @@ export async function importarCustos(
   const custosPorProduto = new Map<string, number[]>();
   const usados = new Set<string>();
   /** Produtos que casaram com mais de um custo — não se escolhe por conta própria. */
-  const ambiguos = new Set<string>();
+  const ambiguos = new Map<string, { produto: string; candidatos: { custo: number; origem: string }[] }>();
 
   // 1) Variações por SKU ou EAN.
   for (const v of todasVar) {
@@ -244,7 +262,7 @@ export async function importarCustos(
    * mesmo produto com custos diferentes: aí não há resposta certa, e chutar
    * uma seria gravar custo errado sem avisar.
    */
-  function custoPorNome(nomeProduto: string): number | null {
+  function custoPorNome(nomeProduto: string, produtoId: string): number | null {
     const exato = porNomeExato.get(normNome(nomeProduto));
     if (exato != null) return exato;
 
@@ -253,7 +271,17 @@ export async function importarCustos(
 
     const custos = new Set(candidatos.map((c) => c.custo));
     if (custos.size > 1) {
-      ambiguos.add(nomeProduto); // duas linhas brigando pelo mesmo produto
+      // Duas linhas brigando pelo mesmo produto. Guarda QUAIS, para a tela
+      // poder mostrar e a pessoa decidir — recusar em silêncio só empurra o
+      // problema para um lugar onde ninguém o vê.
+      const vistos = new Set<number>();
+      const distintos: { custo: number; origem: string }[] = [];
+      for (const c of candidatos) {
+        if (vistos.has(c.custo)) continue;
+        vistos.add(c.custo);
+        distintos.push({ custo: c.custo, origem: c.original });
+      }
+      ambiguos.set(produtoId, { produto: nomeProduto, candidatos: distintos });
       return null;
     }
     return candidatos[0].custo;
@@ -270,7 +298,7 @@ export async function importarCustos(
     }
     let porNome = false;
     if (custo == null && hNome) {
-      const c = custoPorNome(p.nome);
+      const c = custoPorNome(p.nome, p.id);
       if (c != null) {
         custo = c;
         porNome = true;
@@ -336,7 +364,7 @@ export async function importarCustos(
   if (ambiguos.size > 0) {
     avisos.push(
       `${ambiguos.size} produto(s) casaram com mais de um custo diferente e ficaram de fora — ` +
-        `escolher um por conta própria gravaria custo errado. Use o SKU para desempatar.`
+        `escolher um por conta própria gravaria custo errado. Eles estão listados abaixo para você decidir.`
     );
   }
   if (prodAtualizados.length === 0) {
@@ -351,6 +379,53 @@ export async function importarCustos(
     naoEncontrados,
     linhasCsv: linhas.length,
     ambiguos: ambiguos.size,
+    detalhesAmbiguos: [...ambiguos.entries()].map(([produtoId, v]) => ({
+      produtoId,
+      produto: v.produto,
+      candidatos: v.candidatos,
+    })),
     ...(avisos.length > 0 ? { aviso: avisos.join(" ") } : {}),
   };
+}
+
+/**
+ * Grava o custo que o LOJISTA escolheu para um produto ambíguo.
+ *
+ * A importação recusa quando duas linhas da planilha reivindicam o mesmo
+ * produto com custos diferentes — não há resposta certa e chutar gravaria custo
+ * errado em silêncio. Mas recusar só é honesto se a pessoa puder decidir; esta
+ * é a outra metade.
+ *
+ * O custo desce para as variações do produto, como na importação: a variação
+ * sem custo próprio herda o do pai, e é dela que a precificação lê.
+ */
+export async function definirCustoEscolhido(
+  clienteId: string,
+  produtoId: string,
+  custo: number
+): Promise<{ variantes: number }> {
+  if (!(custo > 0)) return { variantes: 0 };
+
+  const produtos = await listarProdutosDoCliente(clienteId);
+  const produto = produtos.find((p) => p.id === produtoId);
+  if (!produto) return { variantes: 0 };
+
+  await atualizarProdutosBulk([
+    {
+      id: produtoId,
+      custo,
+      // ?? undefined: margem desconhecida some do registro em vez de virar 0,
+      // que o resto do sistema leria como "sem margem nenhuma".
+      margem: margemZion(custo, produto.precoVenda) ?? undefined,
+      confiancaCusto: "alta",
+    },
+  ]);
+
+  const variantes = (await listarTodasVariantes()).filter(
+    (v) => v.clienteId === clienteId && v.produtoId === produtoId
+  );
+  if (variantes.length > 0) {
+    await atualizarVariantesBulk(variantes.map((v) => ({ id: v.id, custo })));
+  }
+  return { variantes: variantes.length };
 }
