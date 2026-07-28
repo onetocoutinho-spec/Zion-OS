@@ -19,6 +19,7 @@ import { TextArea } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { listarAnuncios, atualizarAnuncio } from "@/lib/services/anuncios";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { rodarEsteira } from "@/lib/services/esteira";
@@ -109,17 +110,24 @@ export default function EsteiraPage() {
     setRegistroId(null);
     setPassos([]);
     try {
+      // A grade cadastrada vai como DADO nos dois modos. Sem produto escolhido
+      // ela fica vazia — e vazia vira pendência, nunca grade inventada.
+      const variantes = produto ? await listarVariantesDoProduto(produto.id) : [];
       const r =
         modo === "aprofundado"
           ? await rodarCadeiaEsteira({
               briefing: briefing.trim() || undefined,
               contexto: contexto || undefined,
               produto: produto?.nome,
+              variantes,
+              precoVenda: produto?.precoVenda ?? 0,
               onPasso: setPassos,
             })
           : await rodarEsteira(briefing.trim(), {
               contexto: contexto || undefined,
               produto: produto?.nome,
+              variantes,
+              precoVenda: produto?.precoVenda ?? 0,
             });
       setAnuncio(r.anuncio);
       setTipo(r.tipo);

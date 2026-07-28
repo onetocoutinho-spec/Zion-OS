@@ -19,7 +19,17 @@ import {
   prefixoDaOrdem,
   type EtapaConcluida,
 } from "../../modules/publication/domain/progressoGeracao";
-import { anuncioSimulado, type AnuncioGerado } from "../agentes/esteira";
+import {
+  briefingDaGrade,
+  montarVariacoes,
+  type VarianteDaBase,
+} from "../../modules/publication/domain/variacoesDoAnuncio";
+import {
+  anuncioSimulado,
+  comAGradeDoCadastro,
+  type AnuncioDaIA,
+  type AnuncioGerado,
+} from "../agentes/esteira";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 
 export type StatusPasso = "pendente" | "rodando" | "ok" | "erro" | "pulado";
@@ -43,6 +53,17 @@ export interface OpcoesCadeia {
   contexto?: string;
   produto?: string;
   briefing?: string;
+  /**
+   * A grade cadastrada do produto. É daqui que saem cor, tamanho, SKU, EAN e
+   * estoque do anúncio — a IA não os escreve mais.
+   *
+   * Ausente (ou vazia) NÃO vira grade inventada: vira uma pendência dizendo que
+   * o produto não tem grade cadastrada. Foi pedir isso à IA sem lhe dar fonte
+   * que produziu SKUs plausíveis e falsos.
+   */
+  variantes?: readonly VarianteDaBase[];
+  /** Preço do produto pai, usado quando a variação não tem preço próprio. */
+  precoVenda?: number;
   /** Chamado a cada mudança de estado dos passos (para a barra de progresso). */
   onPasso?: (passos: PassoCadeia[]) => void;
   /**
@@ -109,7 +130,13 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
   const achar = (codigo: string) => passos.find((p) => p.codigo === codigo)!;
   emitir();
 
-  const contexto = opcoes.contexto ?? "";
+  // A grade REAL, montada uma vez e usada duas: ela entra no contexto que os
+  // agentes leem (para a tabela de medidas falar dos tamanhos que existem) e
+  // volta no fim como a grade do anúncio. O modelo conhece, mas não escreve.
+  const grade = montarVariacoes(opcoes.variantes ?? [], opcoes.precoVenda ?? 0);
+  const contexto = [opcoes.contexto ?? "", briefingDaGrade(grade)]
+    .filter((p) => p.trim())
+    .join("\n\n");
   let dossie = opcoes.briefing?.trim() || "";
 
   // Só vale como retomada o PREFIXO íntegro da ordem — o resto se refaz. A
@@ -193,7 +220,7 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
     };
   }
 
-  const dados = (await resposta.json()) as { anuncio?: AnuncioGerado; erro?: string };
+  const dados = (await resposta.json()) as { anuncio?: AnuncioDaIA; erro?: string };
   if (!resposta.ok || !dados.anuncio) {
     a4.status = "erro";
     emitir();
@@ -204,5 +231,5 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
   achar("A10").status = "ok";
   emitir();
 
-  return { anuncio: dados.anuncio, tipo: "IA", passos };
+  return { anuncio: comAGradeDoCadastro(dados.anuncio, grade), tipo: "IA", passos };
 }

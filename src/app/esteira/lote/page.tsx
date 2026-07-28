@@ -168,6 +168,10 @@ export default function EsteiraLotePage() {
         const r = await rodarEsteira("", {
           contexto: briefingDaAuditoria(fila[i], prod, vars),
           produto: fila[i].tituloAtual,
+          // A grade vai como DADO, não como texto no briefing: é dela que sai a
+          // grade do anúncio. Sem isto o lote publicaria SKU inventado em massa.
+          variantes: vars,
+          precoVenda: prod?.precoVenda ?? 0,
         });
         tipoFinal = r.tipo;
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

@@ -14,6 +14,11 @@ import {
   CHECKLIST_QUALIDADE,
   agentesDaEsteira,
 } from "./catalogo";
+import {
+  gradePublicavel,
+  pendenciasDaGrade,
+  type VariacaoDoAnuncio,
+} from "../../modules/publication/domain/variacoesDoAnuncio";
 
 // Re-exporta as regras-mãe do catálogo (compatibilidade com quem importa daqui).
 export const REGRAS_MAE = REGRAS_MAE_CATALOGO;
@@ -31,6 +36,9 @@ ${etapas}
 
 CHECKLIST DE QUALIDADE (o A10 é a trava — só aprove com tudo ✅):
 ${checklist}
+
+IDENTIDADE DO PRODUTO NÃO SE ESCREVE — SE LÊ:
+Cor, tamanho, SKU, EAN e estoque são DADOS do cadastro, e a grade de variações é montada a partir dele depois da sua resposta. Você não a produz. Use os valores da GRADE REAL do briefing (quando houver) na tabela de medidas, na descrição e na ficha técnica, e NUNCA invente ou complete um número, uma cor ou um código que não esteja lá — nem para "ficar completo". Onde o dado não veio, escreva "⚠️ informação necessária: <o que falta>". Um SKU plausível e falso vira pedido que ninguém sabe despachar.
 
 Preencha "notaDiagnostico" com a nota do A1 (0–100). Consolide TODAS as "⚠️ informação necessária" em "pendencias". Defina vereditoA10 = "aprovado" só se passar no checklist; senão "reprovado" com o motivo. Responda em português do Brasil.
 
@@ -64,23 +72,17 @@ export const ESQUEMA_ANUNCIO = {
     tabelaMedidas: { type: "string", description: "Tabela de medidas em Markdown, ou string vazia se não se aplica." },
     comoMedir: { type: "string" },
     forma: { type: "string", enum: ["pequeno", "normal", "grande", "nao_aplicavel"] },
-    variacoes: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          cor: { type: "string" },
-          tamanho: { type: "string" },
-          sku: { type: "string" },
-          ean: { type: "string" },
-          estoque: { type: "string" },
-          preco: { type: "string" },
-          obs: { type: "string" },
-        },
-        required: ["cor", "tamanho", "sku", "ean", "estoque", "preco", "obs"],
-        additionalProperties: false,
-      },
-    },
+    // `variacoes` NÃO está aqui, e é o ponto do arquivo.
+    //
+    // Estava — com cor, tamanho, sku, ean, estoque e preco todos `required` — e
+    // o que a esteira mandava para o modelo era o nome do produto e um dossiê
+    // de texto. Campo obrigatório sem fonte tem uma saída só: ele preencheu.
+    // Um babuche branco virou "Arco Iris" com SKU "22591.408-ARCOIRIS-19/20", e
+    // um chinelo de três cores virou cinco variações pretas.
+    //
+    // A grade é montada do cadastro em `publication/domain/variacoesDoAnuncio`.
+    // Não pedir é a única correção que funciona: pedir "não invente" a um campo
+    // obrigatório sem fonte é pedir o impossível.
     imagensSugeridas: {
       type: "array",
       items: {
@@ -120,7 +122,6 @@ export const ESQUEMA_ANUNCIO = {
     "tabelaMedidas",
     "comoMedir",
     "forma",
-    "variacoes",
     "imagensSugeridas",
     "faq",
     "pendencias",
@@ -155,6 +156,15 @@ export interface PerguntaFaq {
   resposta: string;
 }
 
+/**
+ * O que a IA devolve — TUDO menos a grade.
+ *
+ * O tipo existe para que esquecer de montar a grade seja um erro de compilação,
+ * e não um anúncio publicado com SKU inventado. `AnuncioGerado` (abaixo) é o
+ * resultado final, depois de a grade vir do cadastro.
+ */
+export type AnuncioDaIA = Omit<AnuncioGerado, "variacoes">;
+
 export interface AnuncioGerado {
   notaDiagnostico: number;
   tituloOtimizado: string;
@@ -172,6 +182,39 @@ export interface AnuncioGerado {
   pendencias: string[];
   vereditoA10: "aprovado" | "reprovado";
   motivoVeredito: string;
+}
+
+/**
+ * Junta o texto da IA com a grade do CADASTRO — e deixa o veredito honesto.
+ *
+ * Mora aqui, e não em cada serviço, porque são QUATRO caminhos que rodam a
+ * esteira (cadeia multi-agente, passada única, lote e worker). Um deles sem a
+ * montagem publicaria SKU inventado, e seria o mais silencioso dos quatro.
+ *
+ * A trava não é opinião do modelo: grade incompleta reprova, por melhor que
+ * esteja o texto. E era justamente o texto bom que fazia o problema passar —
+ * descrição impecável, FAQ caprichada, SKU falso no meio.
+ *
+ * As pendências da grade entram na FRENTE porque são as que impedem publicar;
+ * as do modelo (foto, validação de busca) vêm depois.
+ */
+export function comAGradeDoCadastro(
+  daIA: AnuncioDaIA,
+  grade: VariacaoDoAnuncio[]
+): AnuncioGerado {
+  const daGrade = pendenciasDaGrade(grade);
+  const publicavel = gradePublicavel(grade);
+  return {
+    ...daIA,
+    variacoes: grade,
+    pendencias: [...daGrade, ...(daIA.pendencias ?? [])],
+    vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
+    motivoVeredito: publicavel
+      ? daIA.motivoVeredito
+      : [daIA.motivoVeredito, `Grade de variações incompleta: ${daGrade.join(" ")}`]
+          .filter(Boolean)
+          .join(" "),
+  };
 }
 
 /** Resultado simulado (fallback sem ANTHROPIC_API_KEY) — demonstra a tela. */
