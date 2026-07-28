@@ -14,6 +14,7 @@ import {
   Sparkles,
   Images,
   Ruler,
+  Scale,
   ClipboardCheck,
   Calculator,
   FileText,
@@ -43,6 +44,9 @@ const MENU = [
   { href: "/cliente/anuncios", label: "Meus Anúncios", icon: Megaphone },
   { href: "/cliente/imagens", label: "Fotos", icon: Images },
   { href: "/cliente/medidas", label: "Medidas", icon: Ruler },
+  // Peso vem logo depois de Medidas: são as duas coisas que só o lojista sabe,
+  // e é o peso que destrava o preço mínimo.
+  { href: "/cliente/peso", label: "Peso e caixa", icon: Scale },
   { href: "/cliente/otimizar", label: "Ferramentas avulsas", icon: Wand2 },
   { href: "/cliente/auditoria", label: "Auditoria", icon: ClipboardCheck },
   { href: "/cliente/precificacao", label: "Precificação", icon: Calculator },
