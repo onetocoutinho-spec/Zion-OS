@@ -6,6 +6,20 @@ export function formatBRL(value: number): string {
   });
 }
 
+/**
+ * Com centavos. A tela de listagem arredonda de propósito (R$ 106 lê melhor que
+ * R$ 105,90), mas conferência de custo é outra coisa: R$ 25 e R$ 25,13 são
+ * números diferentes, e é olhando o centavo que se percebe a coluna trocada.
+ */
+export function formatBRLExato(value: number): string {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const [y, m, d] = iso.split("-");

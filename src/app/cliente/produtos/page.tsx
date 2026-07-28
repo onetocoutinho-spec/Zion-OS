@@ -16,8 +16,10 @@ import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { importarCustos } from "@/lib/services/importacaoCustos";
+import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
+import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
-import { lerPlanilha } from "@/lib/planilha";
+import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
@@ -91,15 +93,29 @@ export default function ClienteProdutos() {
   // --- Importar custos (CSV: sku, custo) ---
   const custoInputRef = useRef<HTMLInputElement>(null);
   const [importandoCusto, setImportandoCusto] = useState(false);
+  /** A planilha lida, esperando conferência. Nada é gravado antes do "sim". */
+  const [conferindo, setConferindo] = useState<PlanilhaLida | null>(null);
   async function aoImportarCustos(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || importandoCusto) return;
+    setMsgML(null);
+    try {
+      // Ler não grava nada. A gravação só acontece depois da conferência —
+      // adivinhar coluna em silêncio já escreveu referência de modelo como custo.
+      setConferindo(await lerPlanilha(file));
+    } catch (err) {
+      setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao ler a planilha." });
+    }
+  }
+
+  async function gravarCustos(mapa: Mapeamento) {
+    if (!conferindo || importandoCusto) return;
     setImportandoCusto(true);
     setMsgML(null);
     try {
-      const planilha = await lerPlanilha(file);
-      const r = await importarCustos(clienteId, planilha);
+      const planilha = conferindo;
+      const r = await importarCustos(clienteId, planilha, mapa);
 
       // O aviso pode vir JUNTO com um resultado bom (ex.: casou 800 produtos e
       // 12 ficaram ambíguos). Tratar todo aviso como erro escondia o que deu
@@ -116,6 +132,7 @@ export default function ClienteProdutos() {
         texto: [partes.join(" · ") + ".", r.aviso].filter(Boolean).join(" "),
       });
       if (houveMudanca) reload();
+      setConferindo(null);
     } catch (err) {
       setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar custos." });
     } finally {
@@ -336,6 +353,15 @@ export default function ClienteProdutos() {
             Cancelar
           </button>
         </div>
+      )}
+
+      {conferindo && (
+        <ConferirPlanilha
+          planilha={conferindo}
+          ocupado={importandoCusto}
+          onCancelar={() => setConferindo(null)}
+          onConfirmar={(mapa) => void gravarCustos(mapa)}
+        />
       )}
 
       {msgML && (
