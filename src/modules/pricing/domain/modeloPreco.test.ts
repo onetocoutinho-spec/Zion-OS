@@ -15,6 +15,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  envioDoModelo,
   type ModeloTaxas,
   custoDaVenda,
   custoDasTaxas,
@@ -295,4 +296,28 @@ test("percentuais que somam 100 ou mais tornam a margem impossível", () => {
   const r = precoMinimo(69, 10, absurdo);
   assert.equal(r.ok, false);
   assert.ok(!r.ok && r.motivo === "margem_impossivel");
+});
+
+// ---- Quem paga o frete ----
+
+test("comprador paga o frete: o envio some da conta do lojista", () => {
+  // Descontar um frete que o lojista não paga mostraria margem menor que a real.
+  const compradorPaga: ModeloTaxas = { ...COM_PESO, vendedorPagaFrete: false };
+  assert.equal(envioDoModelo(150, compradorPaga), 0);
+  assert.ok((envioDoModelo(150, COM_PESO) ?? 0) > 0, "com o vendedor pagando, há frete");
+});
+
+test("sem peso E comprador pagando NÃO é pendência", () => {
+  // Sem custo de envio, não faltar peso não impede nada. A ordem da guarda
+  // importa: peso primeiro transformaria isto num "falta frete" eterno.
+  const semPeso: ModeloTaxas = { ...TAXAS_PADRAO, vendedorPagaFrete: false };
+  assert.equal(envioDoModelo(150, semPeso), 0);
+  const r = precoMinimo(69, 10, semPeso);
+  assert.equal(r.ok, true);
+});
+
+test("não saber quem paga ASSUME que o vendedor paga", () => {
+  // Supor que não paga inflaria a margem, e margem otimista é o defeito que
+  // este modelo mais repetiu.
+  assert.equal(envioDoModelo(150, COM_PESO), envioDoModelo(150, { ...COM_PESO, vendedorPagaFrete: undefined }));
 });
