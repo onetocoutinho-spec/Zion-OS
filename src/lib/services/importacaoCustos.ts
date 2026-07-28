@@ -7,8 +7,12 @@
 // Atualiza o custo e recalcula margem e preço mínimo (modelo Zion). Quando casa
 // por nome, propaga o custo para todas as variações do produto.
 
-import { normalizarHeader } from "../csv";
 import type { PlanilhaLida } from "../planilha";
+import {
+  colunaDoPapel,
+  sugerirMapeamento,
+  type Mapeamento,
+} from "../../modules/catalog/domain/mapeamentoPlanilha";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
@@ -133,29 +137,25 @@ interface EntradaNome {
   original: string;
 }
 
-export async function importarCustos(clienteId: string, planilha: PlanilhaLida): Promise<ResultadoCustos> {
+/**
+ * Importa custos usando um mapeamento EXPLÍCITO de colunas.
+ *
+ * O mapa é opcional só para não quebrar quem já chamava; quando ele falta, a
+ * sugestão automática entra no lugar. Mas o caminho certo é a tela mostrar a
+ * sugestão, deixar a pessoa corrigir, e passar o resultado aqui — foi adivinhar
+ * em silêncio que gravou 87 referências de modelo como se fossem dinheiro.
+ */
+export async function importarCustos(
+  clienteId: string,
+  planilha: PlanilhaLida,
+  mapa?: Mapeamento
+): Promise<ResultadoCustos> {
   const { headers, linhas } = planilha;
-  const achaPor = (teste: (n: string) => boolean) => headers.find((h) => teste(normalizarHeader(h)));
-  // Detecção tolerante: "Custo (R$)" vira "custo_r", "SKU Pai" vira "sku_pai" etc.
-  const hSku = achaPor(
-    (n) =>
-      n === "sku" ||
-      n.startsWith("sku") ||
-      ["codigo", "cod", "seller_sku", "codigo_sku", "cod_erp", "codigo_erp", "sku_erp"].includes(n)
-  );
-  const hNome = achaPor(
-    (n) =>
-      ["nome", "produto", "descricao", "titulo", "nome_produto", "descricao_produto", "item"].includes(n) ||
-      n.startsWith("nome") ||
-      n.startsWith("produto") ||
-      n.startsWith("descricao")
-  );
-  const hEan = achaPor(
-    (n) => n === "ean" || n === "gtin" || n === "ean13" || n.startsWith("codigo_barras") || n.startsWith("cod_barras")
-  );
-  const hCusto = achaPor(
-    (n) => n.startsWith("custo") || ["cost", "preco_custo", "valor_custo", "custounit"].includes(n)
-  );
+  const mapeamento = mapa ?? sugerirMapeamento(headers);
+  const hSku = colunaDoPapel(mapeamento, "sku");
+  const hNome = colunaDoPapel(mapeamento, "nome");
+  const hEan = colunaDoPapel(mapeamento, "ean");
+  const hCusto = colunaDoPapel(mapeamento, "custo");
   if (!hCusto || (!hSku && !hNome && !hEan)) {
     return {
       produtos: 0,
@@ -305,13 +305,32 @@ export async function importarCustos(clienteId: string, planilha: PlanilhaLida):
   if (varAtualizadas.length > 0) await atualizarVariantesBulk(varAtualizadas);
   if (prodAtualizados.length > 0) await atualizarProdutosBulk(prodAtualizados);
 
-  // O contador antigo só olhava SKU e EAN. Uma planilha SÓ COM NOMES reportava
-  // "0 não encontrados" mesmo sem casar nada — o lojista concluía que tinha
-  // dado certo. Agora conta os nomes também.
+  // Conta LINHAS da planilha que não acharam produto — uma por linha.
+  //
+  // A versão anterior somava chaves não-casadas de três mapas (sku, ean, nome),
+  // e uma linha que tem os três contava até três vezes. O relatório saiu com
+  // "1853 linhas sem produto correspondente" numa planilha de 1374 linhas —
+  // número maior que o total, no rótulo errado. Um relatório que se contradiz
+  // não é só feio: ele treina a pessoa a ignorar o relatório.
   let naoEncontrados = 0;
-  for (const sku of porSku.keys()) if (!usados.has(sku)) naoEncontrados++;
-  for (const ean of porEan.keys()) if (!usados.has(ean)) naoEncontrados++;
-  for (const nome of porNomeExato.keys()) if (!usados.has(nome)) naoEncontrados++;
+  for (const row of linhas) {
+    const custo = hCusto ? parseNumeroCusto(row[hCusto] ?? "") : 0;
+    if (custo <= 0) continue; // linha sem custo não é "produto não encontrado"
+    const chaves: string[] = [];
+    if (hSku) {
+      const sku = norm(row[hSku] ?? "");
+      if (sku) chaves.push(sku, semZeros(sku));
+    }
+    if (hEan) {
+      const ean = (row[hEan] ?? "").replace(/\D/g, "");
+      if (ean) chaves.push(ean);
+    }
+    if (hNome) {
+      const nome = (row[hNome] ?? "").trim();
+      if (nome) chaves.push(normNome(nome));
+    }
+    if (chaves.length > 0 && !chaves.some((c) => usados.has(c))) naoEncontrados++;
+  }
 
   const avisos: string[] = [];
   if (ambiguos.size > 0) {
