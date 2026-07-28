@@ -15,7 +15,12 @@ import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
-import { importarCustos } from "@/lib/services/importacaoCustos";
+import {
+  importarCustos,
+  definirCustoEscolhido,
+  type AmbiguidadeCusto,
+} from "@/lib/services/importacaoCustos";
+import { ResolverAmbiguos } from "@/components/client-portal/ResolverAmbiguos";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
@@ -95,6 +100,8 @@ export default function ClienteProdutos() {
   const [importandoCusto, setImportandoCusto] = useState(false);
   /** A planilha lida, esperando conferência. Nada é gravado antes do "sim". */
   const [conferindo, setConferindo] = useState<PlanilhaLida | null>(null);
+  /** Produtos que casaram com custos diferentes — esperando a escolha do lojista. */
+  const [ambiguos, setAmbiguos] = useState<AmbiguidadeCusto[]>([]);
   async function aoImportarCustos(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -131,6 +138,9 @@ export default function ClienteProdutos() {
         tipo: houveMudanca ? "ok" : "erro",
         texto: [partes.join(" · ") + ".", r.aviso].filter(Boolean).join(" "),
       });
+      // Os ambíguos ficam na tela DEPOIS da importação: recusar sem oferecer
+      // saída deixava 17 custos perdidos e o lojista sem caminho.
+      setAmbiguos(r.detalhesAmbiguos);
       if (houveMudanca) reload();
       setConferindo(null);
     } catch (err) {
@@ -353,6 +363,16 @@ export default function ClienteProdutos() {
             Cancelar
           </button>
         </div>
+      )}
+
+      {ambiguos.length > 0 && (
+        <ResolverAmbiguos
+          itens={ambiguos}
+          onEscolher={async (produtoId, custo) => {
+            await definirCustoEscolhido(clienteId, produtoId, custo);
+            reload();
+          }}
+        />
       )}
 
       {conferindo && (
