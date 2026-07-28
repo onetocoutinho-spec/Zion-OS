@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
@@ -21,6 +21,12 @@ import {
   type AmbiguidadeCusto,
 } from "@/lib/services/importacaoCustos";
 import { ResolverAmbiguos } from "@/components/client-portal/ResolverAmbiguos";
+import {
+  ambiguidadesAindaAbertas,
+  chaveAmbiguidades,
+  lerAmbiguidades,
+  semOProduto,
+} from "@/modules/catalog/domain/ambiguidadesPendentes";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
@@ -100,8 +106,48 @@ export default function ClienteProdutos() {
   const [importandoCusto, setImportandoCusto] = useState(false);
   /** A planilha lida, esperando conferência. Nada é gravado antes do "sim". */
   const [conferindo, setConferindo] = useState<PlanilhaLida | null>(null);
-  /** Produtos que casaram com custos diferentes — esperando a escolha do lojista. */
+  /**
+   * Produtos que casaram com custos diferentes — esperando a escolha do lojista.
+   *
+   * Guardado LOCALMENTE porque decisão pendente é trabalho, e trabalho não pode
+   * morrer numa navegação: o lojista reimportou, viu "17 ambíguos", saiu da tela
+   * e voltou — e não havia mais nada. Do ponto de vista dele, a funcionalidade
+   * não existia.
+   */
   const [ambiguos, setAmbiguos] = useState<AmbiguidadeCusto[]>([]);
+
+  const gravarAmbiguos = useCallback(
+    (lista: AmbiguidadeCusto[]) => {
+      setAmbiguos(lista);
+      try {
+        if (lista.length > 0) {
+          localStorage.setItem(chaveAmbiguidades(clienteId), JSON.stringify(lista));
+        } else {
+          localStorage.removeItem(chaveAmbiguidades(clienteId));
+        }
+      } catch {
+        // sem storage a tela continua funcionando nesta visita — só não sobrevive a uma saída
+      }
+    },
+    [clienteId]
+  );
+
+  // Ao abrir, recupera o que ficou pendente — e descarta o que já foi decidido
+  // por outro caminho (outra importação, edição manual, outro navegador).
+  // A validade é por FATO, não por tempo: quem já tem custo sai da lista.
+  useEffect(() => {
+    if (!produtos) return;
+    let bruto: string | null = null;
+    try {
+      bruto = localStorage.getItem(chaveAmbiguidades(clienteId));
+    } catch {
+      bruto = null;
+    }
+    const salvas = lerAmbiguidades(bruto);
+    if (salvas.length === 0) return;
+    const comCusto = new Set(produtos.filter((p) => p.custo > 0).map((p) => p.id));
+    setAmbiguos(ambiguidadesAindaAbertas(salvas, comCusto));
+  }, [produtos, clienteId]);
   async function aoImportarCustos(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -140,7 +186,7 @@ export default function ClienteProdutos() {
       });
       // Os ambíguos ficam na tela DEPOIS da importação: recusar sem oferecer
       // saída deixava 17 custos perdidos e o lojista sem caminho.
-      setAmbiguos(r.detalhesAmbiguos);
+      gravarAmbiguos(r.detalhesAmbiguos);
       if (houveMudanca) reload();
       setConferindo(null);
     } catch (err) {
@@ -370,6 +416,7 @@ export default function ClienteProdutos() {
           itens={ambiguos}
           onEscolher={async (produtoId, custo) => {
             await definirCustoEscolhido(clienteId, produtoId, custo);
+            gravarAmbiguos(semOProduto(ambiguos, produtoId));
             reload();
           }}
         />
