@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +16,7 @@ import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { importarCustos } from "@/lib/services/importacaoCustos";
+import { importarPeso } from "@/lib/services/importacaoPeso";
 import { lerPlanilha } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -119,6 +120,40 @@ export default function ClienteProdutos() {
       setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar custos." });
     } finally {
       setImportandoCusto(false);
+    }
+  }
+
+  // --- Importar peso e medidas (CSV: sku|ean + peso_kg|peso_g) ---
+  const pesoInputRef = useRef<HTMLInputElement>(null);
+  const [importandoPeso, setImportandoPeso] = useState(false);
+  async function aoImportarPeso(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || importandoPeso) return;
+    setImportandoPeso(true);
+    setMsgML(null);
+    try {
+      const planilha = await lerPlanilha(file);
+      const r = await importarPeso(clienteId, planilha);
+
+      const partes = [
+        `${r.variantes} variação(ões) de ${r.produtos} produto(s) com peso, de ${r.linhasCsv} linha(s)`,
+      ];
+      if (r.naoEncontrados > 0) partes.push(`${r.naoEncontrados} ${r.chave.toUpperCase()}(s) sem correspondência na base`);
+      if (r.semPeso > 0) partes.push(`${r.semPeso} linha(s) sem peso utilizável`);
+
+      const houveMudanca = r.variantes > 0;
+      setMsgML({
+        tipo: houveMudanca ? "ok" : "erro",
+        texto: [partes.join(" · ") + ".", r.aviso].filter(Boolean).join(" "),
+      });
+      if (houveMudanca) reload();
+    } catch (err) {
+      // A recusa por cabeçalho ambíguo é deliberada e a mensagem já explica o
+      // que renomear — mostrar como está é mais útil que um texto genérico.
+      setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar peso." });
+    } finally {
+      setImportandoPeso(false);
     }
   }
 
@@ -253,6 +288,11 @@ export default function ClienteProdutos() {
               {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
               {importandoCusto ? "Importando…" : "Custos"}
               <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />
+            </Button>
+            <Button variant="ghost" onClick={() => pesoInputRef.current?.click()} disabled={importandoPeso} title="Importar peso e medidas (CSV/Excel) — colunas: sku (ou ean) + peso_kg (ou peso_g); altura, largura e comprimento em cm são opcionais">
+              {importandoPeso ? <Loader2 size={15} className="animate-spin" /> : <Weight size={15} />}{" "}
+              {importandoPeso ? "Importando…" : "Peso"}
+              <input ref={pesoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarPeso} />
             </Button>
             <Link href="/cliente/anunciar">
               <Button>
