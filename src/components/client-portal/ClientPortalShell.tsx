@@ -12,56 +12,35 @@ import {
   Package,
   Megaphone,
   Sparkles,
-  Images,
-  Ruler,
-  Scale,
-  ClipboardCheck,
-  Calculator,
-  FileText,
-  ListChecks,
   Settings,
-  HelpCircle,
   LogOut,
   Menu,
   X,
   Store,
   Zap,
   TrendingUp,
-  Wand2,
 } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
 import { meuPerfil } from "@/lib/services/perfil";
 import { listarProdutos } from "@/lib/services/produtos";
 import { ClientPortalProvider } from "./context";
+import { AREAS, areaDaRota, telaAtiva, type ContextoPortal } from "@/modules/portal/domain/navegacao";
 
-const MENU = [
-  { href: "/cliente", label: "Início", icon: Home },
-  // A jornada guiada vem antes de tudo: é o caminho, não uma ferramenta.
-  { href: "/cliente/anunciar", label: "Criar anúncio", icon: Sparkles },
-  { href: "/cliente/vendas", label: "Vendas", icon: TrendingUp },
-  { href: "/cliente/produtos", label: "Meus Produtos", icon: Package },
-  { href: "/cliente/anuncios", label: "Meus Anúncios", icon: Megaphone },
-  { href: "/cliente/imagens", label: "Fotos", icon: Images },
-  { href: "/cliente/medidas", label: "Medidas", icon: Ruler },
-  // Peso vem logo depois de Medidas: são as duas coisas que só o lojista sabe,
-  // e é o peso que destrava o preço mínimo.
-  { href: "/cliente/peso", label: "Peso e caixa", icon: Scale },
-  { href: "/cliente/otimizar", label: "Ferramentas avulsas", icon: Wand2 },
-  { href: "/cliente/auditoria", label: "Auditoria", icon: ClipboardCheck },
-  { href: "/cliente/precificacao", label: "Precificação", icon: Calculator },
-  { href: "/cliente/relatorios", label: "Relatórios", icon: FileText },
-  { href: "/cliente/pendencias", label: "Pendências", icon: ListChecks },
-  { href: "/cliente/configuracoes", label: "Configurações", icon: Settings },
-  { href: "/cliente/ajuda", label: "Ajuda", icon: HelpCircle },
-];
+/** Um ícone por ÁREA. As telas de dentro não têm ícone: são texto, e texto lê-se mais rápido. */
+const ICONE_DA_AREA: Record<ContextoPortal, typeof Home> = {
+  hoje: Home,
+  catalogo: Package,
+  anuncios: Megaphone,
+  pulso: TrendingUp,
+  zion: Settings,
+};
 
-function itemAtivo(pathname: string, href: string) {
-  return href === "/cliente" ? pathname === "/cliente" : pathname.startsWith(href);
-}
+
 
 function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const areaAtual = areaDaRota(pathname);
   return (
     <div className="flex h-full flex-col bg-[#0b0b12] border-r border-white/5">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/5">
@@ -74,24 +53,63 @@ function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {MENU.map((item) => {
-          const active = itemAtivo(pathname, item.href);
-          const Icon = item.icon;
+      {/* CINCO áreas, não quinze itens (docs/product/UX-010).
+          Cada uma responde uma PERGUNTA, e as telas de dentro só aparecem
+          quando a área está aberta — quem chega vê cinco escolhas, não
+          quinze maneiras de errar a primeira. */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+        {AREAS.map((area) => {
+          const aberta = areaAtual?.contexto === area.contexto;
+          const Icon = ICONE_DA_AREA[area.contexto];
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-violet-500/10 text-violet-300 font-medium"
-                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              }`}
-            >
-              <Icon size={17} className={active ? "text-violet-400" : "text-zinc-500"} />
-              {item.label}
-            </Link>
+            <div key={area.contexto}>
+              <Link
+                href={area.principal}
+                onClick={onNavigate}
+                aria-current={aberta ? "page" : undefined}
+                className={`flex items-start gap-3 rounded-lg px-3 py-2 transition-colors ${
+                  aberta
+                    ? "bg-violet-500/10 text-violet-200"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                }`}
+              >
+                <Icon
+                  size={17}
+                  className={`mt-0.5 shrink-0 ${aberta ? "text-violet-400" : "text-zinc-500"}`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{area.titulo}</span>
+                  {/* A pergunta é o que orienta quem não sabe por onde começar.
+                      "Catálogo" sozinho não diz nada. */}
+                  <span className="block text-[11px] leading-snug text-zinc-500">
+                    {area.pergunta}
+                  </span>
+                </span>
+              </Link>
+
+              {aberta && area.telas.length > 1 && (
+                <div className="mt-0.5 mb-1 ml-[1.85rem] space-y-0.5 border-l border-white/5 pl-3">
+                  {area.telas.map((tela) => {
+                    const ativa = telaAtiva(pathname, tela.href);
+                    return (
+                      <Link
+                        key={tela.href}
+                        href={tela.href}
+                        onClick={onNavigate}
+                        aria-current={ativa ? "page" : undefined}
+                        className={`block rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                          ativa
+                            ? "text-violet-300 font-medium"
+                            : "text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        {tela.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>
@@ -127,8 +145,14 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
     return [...cont.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Mercado Livre";
   }, [produtos]);
 
+  // Do MESMO mapa da moldura: no celular mostra a tela exata, e a área quando
+  // não houver correspondência. Duas fontes de verdade para o mesmo título
+  // envelhecem em direções diferentes.
+  const areaAtual = areaDaRota(pathname);
   const tituloAtual =
-    MENU.find((m) => itemAtivo(pathname, m.href))?.label ?? "Início";
+    areaAtual?.telas.find((t) => telaAtiva(pathname, t.href))?.label ??
+    areaAtual?.titulo ??
+    "Hoje";
 
   async function sair() {
     if (supabaseConfigurado) await getSupabase().auth.signOut();
