@@ -81,7 +81,7 @@ function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }
                   <span className="block text-sm font-medium">{area.titulo}</span>
                   {/* A pergunta é o que orienta quem não sabe por onde começar.
                       "Catálogo" sozinho não diz nada. */}
-                  <span className="block text-[11px] leading-snug text-zinc-500">
+                  <span className="block text-xs leading-snug text-zinc-500">
                     {area.pergunta}
                   </span>
                 </span>
@@ -97,7 +97,7 @@ function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }
                         href={tela.href}
                         onClick={onNavigate}
                         aria-current={ativa ? "page" : undefined}
-                        className={`block rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                        className={`block rounded-md px-2 py-1.5 text-[13px] transition-colors [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:items-center ${
                           ativa
                             ? "text-violet-300 font-medium"
                             : "text-zinc-500 hover:text-zinc-300"

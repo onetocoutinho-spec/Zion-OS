@@ -12,7 +12,14 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const BASE =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none";
+  // `whitespace-nowrap`: com sete botões na barra de Produtos, "Novo produto"
+  // quebrava no meio e virava um bloco de 58px. Botão não quebra por dentro —
+  // quem quebra é a barra, entre botões.
+  //
+  // `min-h-11` (44px) SÓ em ponteiro grosso — dedo. No mouse os 38px atuais
+  // continuam, porque a regra dos 44 é sobre precisão de toque, e inflar o
+  // desktop por causa dela seria aplicar a regra sem entender o motivo.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none [@media(pointer:coarse)]:min-h-11";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
