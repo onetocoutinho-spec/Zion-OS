@@ -40,7 +40,7 @@ export default function ClientePendencias() {
     <>
       <PageHeader
         titulo="Pendências"
-        subtitulo="Itens que dependem de você ou da equipe Zion para avançar."
+        subtitulo="O que ainda falta para seus anúncios avançarem."
       />
 
       {lista.length === 0 ? (

@@ -15,7 +15,14 @@ export const CHECKLIST_ONBOARDING: { key: OnboardingItemKey; label: string }[] =
   { key: "reuniaoInicial", label: "Reunião inicial marcada" },
   { key: "plano30Dias", label: "Plano de 30 dias criado" },
   { key: "primeirasTarefas", label: "Primeiras tarefas criadas" },
-  { key: "clienteLiberado", label: "Cliente liberado para operação" },
+  // "Cliente liberado para operação" SAIU: desde o auto-cadastro
+  // (/api/loja/provisionar), quem libera o acesso é o próprio cadastro do
+  // lojista. Manter o item convidaria alguém a continuar liberando à mão — e a
+  // etapa manual voltaria a ser obrigatória sem ninguém decidir isso.
+  //
+  // O resto desta lista é a operação de agência: contrato, reunião, plano de 30
+  // dias. Continua útil para quem faz acompanhamento, mas NÃO é mais requisito
+  // para o lojista operar.
 ];
 
 export const CHECKLIST_STATUS: ChecklistStatus[] = [
