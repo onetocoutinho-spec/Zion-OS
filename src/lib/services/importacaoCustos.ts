@@ -14,6 +14,11 @@ import {
   type Mapeamento,
 } from "../../modules/catalog/domain/mapeamentoPlanilha";
 import { parseNumeroCusto } from "../../modules/pricing/domain/custoDigitado";
+import {
+  capturarDecisao,
+  type DecisionJournal,
+} from "../../modules/adaptive-intelligence/decision-journal.ts";
+import { autorAtual } from "../auth/autorAtual";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
@@ -395,7 +400,8 @@ export async function importarCustos(
 export async function definirCustoEscolhido(
   clienteId: string,
   produtoId: string,
-  custo: number
+  custo: number,
+  journal?: DecisionJournal
 ): Promise<{ variantes: number }> {
   if (!(custo > 0)) return { variantes: 0 };
 
@@ -413,6 +419,35 @@ export async function definirCustoEscolhido(
       confiancaCusto: "alta",
     },
   ]);
+
+  // ── Observador lateral · Signal Source CUSTO (AIL) ────────────────────────
+  //
+  // Esta função é o funil das duas decisões HUMANAS de custo — a escolha na
+  // caixa de ambíguos e o valor digitado na Precificação. As duas passam as
+  // cinco perguntas de admissão do AIL_SIGNAL_MAP: é decisão de pessoa, tem
+  // delta observável, repete, e capturar não muda comportamento nenhum.
+  //
+  // A importação em massa NÃO passa aqui, e é de propósito: o mapa de sinais já
+  // decidiu que "execuções autônomas não são Decisions". Além disso cada captura
+  // é um upsert próprio — 1.806 linhas de planilha virariam 1.806 gravações
+  // laterais numa importação que o lojista já achou lenta.
+  //
+  // Depois da gravação, não antes: só se registra o que de fato aconteceu.
+  // `String()` para casar com a forma canônica de `produtos.valorObservado`, e
+  // assim os dois caminhos produzirem registros comparáveis.
+  capturarDecisao(
+    {
+      empresa: clienteId,
+      contexto: "precificacao",
+      entidade: { tipo: "produto", id: produtoId },
+      campo: "custo",
+      valorAnterior: produto.custo > 0 ? String(produto.custo) : null,
+      valorNovo: String(custo),
+      origem: "importacaoCustos.definirCustoEscolhido",
+      autor: await autorAtual(),
+    },
+    journal
+  );
 
   const variantes = (await listarTodasVariantes()).filter(
     (v) => v.clienteId === clienteId && v.produtoId === produtoId

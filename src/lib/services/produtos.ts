@@ -49,6 +49,15 @@ const CAMPOS_OBSERVADOS = [
   { campo: "categoriaMarketplace", propriedade: "categoriaMarketplaceSugerida", contexto: "catalogo" },
   { campo: "precoVenda", propriedade: "precoVenda", contexto: "precificacao" },
   { campo: "tabelaMedidas", propriedade: "tabelaMedidasOverride", contexto: "catalogo" },
+  // Custo: o campo mais consequente da cadeia de preço — dele saem lucro, margem
+  // e piso — e o único deles que era gravado sem deixar rastro. Um custo
+  // sobrescrito por engano não tinha como ser recuperado: nem a variação guarda
+  // o valor antigo, porque ela recebe o mesmo custo do pai.
+  //
+  // Mesma classe CONTÍNUA de precoVenda na tipologia do PR-007: valores exatos
+  // quase nunca recorrem, então isto não vira sugestão por contagem. Vale como
+  // rastro e como métrica — que é exatamente o que faltava.
+  { campo: "custo", propriedade: "custo", contexto: "precificacao" },
 ] as const;
 
 type PropriedadeObservada = (typeof CAMPOS_OBSERVADOS)[number]["propriedade"];
