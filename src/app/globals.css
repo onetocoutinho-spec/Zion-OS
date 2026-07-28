@@ -8,6 +8,18 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
+  /* Texto secundário: zinc-500 do Tailwind (#71717a) dá 4,06:1 sobre o fundo
+     escuro do portal — abaixo do mínimo de 4,5:1 da WCAG AA. Medido em tela:
+     15 de 423 textos reprovavam, todos por esta cor.
+
+     Clarear até zinc-400 (#a1a1aa) resolveria com 7,65:1, mas o secundário
+     passaria a competir com o principal e a hierarquia se perderia. Este tom
+     intermediário dá 5,81:1 e mantém a discrição.
+
+     A troca é no TOKEN, não em 349 arquivos: quem escrever `text-zinc-500`
+     amanhã herda o tom acessível sem precisar saber disto. */
+  --color-zinc-500: #8b8b94;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
