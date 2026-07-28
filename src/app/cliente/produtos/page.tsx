@@ -573,7 +573,11 @@ export default function ClienteProdutos() {
                               key={l.tipo}
                               href={l.href}
                               title={l.impede}
-                              className="rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300 hover:border-amber-500/50"
+                              // O chip mede 22px de altura, e o mínimo tocável é
+                              // 44. Em vez de inchar a linha da tabela, a área de
+                              // toque cresce por baixo (pseudo-elemento invisível):
+                              // o dedo acerta, o olho continua vendo um chip.
+                              className="relative rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300 hover:border-amber-500/50 before:absolute before:inset-x-0 before:-inset-y-[11px] before:content-['']"
                             >
                               {l.rotulo}
                             </Link>
