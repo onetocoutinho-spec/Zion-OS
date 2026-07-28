@@ -107,6 +107,12 @@ function baseProdutoDoGrupo(g: Grupo): BaseProduto {
     custo: 0, // o ML não expõe o custo — o cliente completa depois
     precoVenda: rep.preco,
     estoque,
+    // Quem paga o frete vem do próprio anúncio. Antes este campo era jogado
+    // fora e o cálculo descontava frete de todo produto, inclusive daqueles em
+    // que o comprador paga — margem menor que a real, sem ninguém saber por quê.
+    ...(typeof rep.vendedorPagaFrete === "boolean"
+      ? { vendedorPagaFrete: rep.vendedorPagaFrete }
+      : {}),
     marketplace: "Mercado Livre",
     statusCadastro: "Publicado",
     statusSeo: "Concluído",

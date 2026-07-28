@@ -144,6 +144,13 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     cuidados: row.cuidados ?? "",
     codErp: row.cod_erp ?? "",
     precoMinimo: row.preco_minimo != null ? Number(row.preco_minimo) : undefined,
+    // A coluna é da migração 034 e pode não existir num banco atrasado — por
+    // isso o acesso é defensivo. null/ausente = não se sabe, e o cálculo
+    // assume que o vendedor paga.
+    ...(() => {
+      const v = (row as unknown as Record<string, unknown>).vendedor_paga_frete;
+      return typeof v === "boolean" ? { vendedorPagaFrete: v } : {};
+    })(),
     margem: row.margem != null ? Number(row.margem) : undefined,
     confiancaCusto: (row.confianca_custo ?? "") as Produto["confiancaCusto"],
     tabelaMedidasOverride: row.tabela_medidas ?? "",
@@ -180,6 +187,7 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.cuidados !== undefined) r.cuidados = d.cuidados;
   if (d.codErp !== undefined) r.cod_erp = d.codErp;
   if (d.precoMinimo !== undefined) r.preco_minimo = d.precoMinimo;
+  if (d.vendedorPagaFrete !== undefined) r.vendedor_paga_frete = d.vendedorPagaFrete;
   if (d.margem !== undefined) r.margem = d.margem;
   if (d.confiancaCusto !== undefined) r.confianca_custo = d.confiancaCusto;
   if (d.tabelaMedidasOverride !== undefined) r.tabela_medidas = d.tabelaMedidasOverride;

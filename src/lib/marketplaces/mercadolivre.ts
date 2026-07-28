@@ -438,6 +438,15 @@ export interface AnuncioML {
   tamanho: string; // SIZE do item
   ean: string; // GTIN do item
   /**
+   * O VENDEDOR paga o frete deste anúncio?
+   *
+   * `undefined` quando o item não informou — e aí quem consome ASSUME que paga,
+   * que é a direção segura. Sem este campo o cálculo descontava frete de todo
+   * anúncio, inclusive daqueles em que o comprador paga: margem menor que a
+   * real, sem ninguém saber por quê.
+   */
+  vendedorPagaFrete?: boolean;
+  /**
    * Medidas da EMBALAGEM. O ML é a fonte: o custo de envio sai do peso cobrável
    * (o maior entre real e cubado), e sem isso a precificação fica cega.
    * Peso em GRAMAS e dimensões em CM — as unidades que o ML usa.
@@ -460,7 +469,7 @@ interface ItemRaw {
   family_name?: string | null;
   user_product_id?: string | null;
   attributes?: { id?: string; value_name?: string | null }[];
-  shipping?: { dimensions?: string | null };
+  shipping?: { dimensions?: string | null; free_shipping?: boolean; logistic_type?: string };
   pictures?: { url?: string; secure_url?: string }[];
   variations?: {
     price?: number;
@@ -560,6 +569,11 @@ function mapearItem(it: ItemRaw): AnuncioML {
   }));
   return {
     mlb: it.id ?? "",
+    // O ML devolve `free_shipping` como booleano. Ausente = não informado, e
+    // não "falso": undefined faz o cálculo assumir que o vendedor paga.
+    ...(typeof it.shipping?.free_shipping === "boolean"
+      ? { vendedorPagaFrete: it.shipping.free_shipping }
+      : {}),
     titulo: it.title ?? "",
     categoria: it.category_id ?? "",
     preco: Number(it.price ?? 0),

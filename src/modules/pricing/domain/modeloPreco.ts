@@ -74,6 +74,21 @@ export interface ModeloTaxas {
    * 6%, e chamava o produto de "Saudável".
    */
   custosDoLojista?: CustosDoLojista | null;
+  /**
+   * O VENDEDOR paga o frete deste anúncio?
+   *
+   * Sob ME2 com frete grátis o ML cobra do vendedor um valor por faixa de peso
+   * e preço — é o que a tabela calcula. Quando o comprador paga, esse custo
+   * simplesmente não existe para o lojista, e descontá-lo mostraria margem
+   * menor que a real.
+   *
+   * `undefined` = não se sabe, e aí ASSUME QUE PAGA. É a direção segura: supor
+   * que não paga inflaria a margem, e margem otimista é o defeito que este
+   * modelo mais repetiu. Acima de R$ 79 o ML obriga frete grátis, então a
+   * suposição quase sempre acerta; abaixo disso é escolha do lojista, e é lá
+   * que o dado real faz diferença.
+   */
+  vendedorPagaFrete?: boolean;
   /** Medidas da variante. null = sem peso, e o envio vira pendência. */
   embalagem: Embalagem | null;
 }
@@ -126,6 +141,9 @@ export function envioDoModelo(
   preco: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
 ): number | null {
+  // Comprador paga: o frete não é custo do lojista. Isto vem ANTES do peso —
+  // sem custo de envio, não faltar peso não é pendência nenhuma.
+  if (taxas.vendedorPagaFrete === false) return 0;
   if (!taxas.embalagem) return null;
   return custoDeEnvio(pesoCobravelGramas(taxas.embalagem), preco, taxas.reputacao);
 }
@@ -249,7 +267,12 @@ export function precoMinimo(
   const divisor =
     1 - comissaoPercentual(taxas) / 100 - percentuaisDoLojista(c) / 100 - margemDesejada / 100;
   if (divisor <= 0) return { ok: false, motivo: "margem_impossivel" };
-  if (!taxas.embalagem) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
+  // Falta peso SÓ é impedimento quando o frete é custo do lojista. Com o
+  // comprador pagando, o peso não entra em conta nenhuma — e cobrar esse dado
+  // seria um "falta frete" eterno em produto que nunca vai precisar dele.
+  if (taxas.vendedorPagaFrete !== false && !taxas.embalagem) {
+    return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
+  }
 
   let anterior = 0;
   for (const teto of TETOS_PRECO) {

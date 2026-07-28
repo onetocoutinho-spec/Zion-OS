@@ -97,6 +97,11 @@ export default function ClientePrecificacao() {
       const taxasDoProduto: ModeloTaxas = {
         ...taxasBase,
         embalagem: embalagemPorProduto.get(p.id) ?? null,
+        // Só entra quando o produto REALMENTE informou. Ausente fica ausente,
+        // e o modelo assume que o vendedor paga — nunca o contrário.
+        ...(typeof p.vendedorPagaFrete === "boolean"
+          ? { vendedorPagaFrete: p.vendedorPagaFrete }
+          : {}),
       };
       // Cada um destes pode ser null quando falta o peso da embalagem — a
       // coluna mostra a pendência em vez de um número inventado.

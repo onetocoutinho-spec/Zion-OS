@@ -111,6 +111,11 @@ export interface Produto {
   custo: number;
   precoVenda: number;
   estoque: number;
+  /**
+   * O vendedor paga o frete deste produto? undefined = não se sabe, e o
+   * cálculo assume que paga (supor o contrário inflaria a margem).
+   */
+  vendedorPagaFrete?: boolean;
   marketplace: Marketplace;
   /** Status geral do produto pai (serve como status_geral). */
   statusCadastro: CadastroStatus;
