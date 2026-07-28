@@ -7,7 +7,17 @@
 // tempo da função.
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
-import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira, type AnuncioGerado } from "@/lib/agentes/esteira";
+import {
+  ESQUEMA_ANUNCIO,
+  comAGradeDoCadastro,
+  montarSystemPromptEsteira,
+  type AnuncioDaIA,
+  type AnuncioGerado,
+} from "@/lib/agentes/esteira";
+import {
+  briefingDaGrade,
+  montarVariacoes,
+} from "@/modules/publication/domain/variacoesDoAnuncio";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
 import {
@@ -77,7 +87,12 @@ async function gerarAnuncio(
   variantes: ProdutoVariante[],
   tabelasMedidas: TabelaMedida[]
 ): Promise<AnuncioGerado> {
-  const mensagem = montarMensagem(montarContexto({ produto, variantes, tabelasMedidas }));
+  // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
+  // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
+  const grade = montarVariacoes(variantes, produto.precoVenda);
+  const mensagem = montarMensagem(
+    [montarContexto({ produto, variantes, tabelasMedidas }), briefingDaGrade(grade)].join("\n\n")
+  );
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     const { json } = await chamarIAEstruturada({
@@ -87,7 +102,7 @@ async function gerarAnuncio(
       maxTokens: 24000,
     });
     try {
-      return JSON.parse(json) as AnuncioGerado;
+      return comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
     } catch (e) {
       ultimoParse = e instanceof Error ? e.message : String(e);
     }

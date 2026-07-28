@@ -40,6 +40,7 @@ import {
 import { FotosDoProduto } from "@/components/client-portal/FotosDoProduto";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
   listarAnunciosGeradosDoCliente,
   aprovarAnuncioGerado,
@@ -281,9 +282,15 @@ function Jornada() {
     setAviso(null);
     setPassos([]);
     try {
+      // A grade cadastrada vai JUNTO. Sem ela a esteira pedia cor, tamanho,
+      // SKU, EAN e estoque à IA tendo mandado só o nome do produto — e um
+      // babuche branco voltou "Arco Iris" com SKU inventado.
+      const variantes = await listarVariantesDoProduto(produto.id);
       const r = await rodarCadeiaEsteira({
         produto: produto.nome,
         briefing,
+        variantes,
+        precoVenda: produto.precoVenda,
         onPasso: setPassos,
         retomarDe: retomavel,
         onEtapaConcluida: (_, todas) => gravarProgresso(todas),

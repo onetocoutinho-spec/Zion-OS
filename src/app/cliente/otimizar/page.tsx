@@ -207,6 +207,8 @@ export default function ClienteOtimizar() {
       const r = await rodarEsteira("", {
         contexto: montarContexto({ produto, variantes, tabelasMedidas: tabelasMedidas ?? [] }),
         produto: produto.nome,
+        variantes,
+        precoVenda: produto.precoVenda,
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
       await criarAnuncioGerado({
