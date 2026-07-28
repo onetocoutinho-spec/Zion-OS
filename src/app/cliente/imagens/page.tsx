@@ -107,7 +107,7 @@ export default function ClienteImagens() {
           <button
             key={m}
             onClick={() => setModo(m)}
-            className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 font-medium transition-colors [@media(pointer:coarse)]:min-h-11 ${
               modo === m ? "bg-violet-500/15 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
