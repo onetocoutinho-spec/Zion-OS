@@ -53,13 +53,21 @@ test("id com caractere especial é escapado", () => {
   assert.equal(l[0].href, "/cliente/peso?produto=a%20b%26c");
 });
 
-test("CUSTO não tem destino — não existe lugar por produto", () => {
-  // O custo vem de planilha. Mandar para a tela onde a pessoa já está seria uma
-  // porta que não abre nada, e porta falsa ensina a não clicar em nenhuma.
+test("CUSTO leva para onde se digita — a Precificação", () => {
+  // Enquanto o custo só vinha de planilha este chip não era link, porque não
+  // havia lugar por produto. Agora há, e o destino é a tela onde o número mostra
+  // o que faz: lucro, margem e piso se refazem na mesma linha.
   const l = lacunasDoProduto({ custo: 0, precoVenda: 10, pesoGramas: 700, temFoto: true }, "abc");
   assert.equal(l[0].tipo, "custo");
-  assert.equal(l[0].href, undefined);
-  assert.match(l[0].impede, /planilha/);
+  assert.equal(l[0].href, "/cliente/precificacao?produto=abc");
+});
+
+test("sem id, nenhuma lacuna inventa um endereço com produto vazio", () => {
+  // A lista chama sem id em teste e em `produtoCompleto`. "?produto=undefined"
+  // abriria a tela procurando um produto que não existe.
+  for (const l of lacunasDoProduto({ custo: 0, precoVenda: 0, pesoGramas: 0, temFoto: false })) {
+    if (l.href) assert.doesNotMatch(l.href, /\?produto=/, `${l.tipo} vazou um id ausente`);
+  }
 });
 
 test("comprador pagando o frete DISPENSA o peso", () => {
