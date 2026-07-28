@@ -12,6 +12,9 @@ import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
+import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
+import { listarTodasImagens } from "@/lib/services/imagensProduto";
+import { lacunasDoProduto } from "@/modules/catalog/domain/lacunasDoProduto";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
@@ -51,6 +54,26 @@ export default function ClienteProdutos() {
     [clienteId]
   );
   const { data: auditorias } = useLiveQuery(listarAuditorias);
+  // Peso e foto NÃO vivem no produto: peso está nas variantes, foto na tabela de
+  // imagens. A lista precisava dos dois para dizer o que falta em cada linha —
+  // antes ela era um inventário, e descobrir a lacuna exigia visitar outra tela.
+  const { data: variantes } = useLiveQuery(listarTodasVariantes);
+  const { data: imagens } = useLiveQuery(listarTodasImagens);
+
+  const pesoPorProduto = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const v of variantes ?? []) {
+      if (v.clienteId !== clienteId || !v.produtoId) continue;
+      // O MAIOR entre as variantes: o frete cobra pela caixa que sai.
+      mapa.set(v.produtoId, Math.max(mapa.get(v.produtoId) ?? 0, (Number(v.peso) || 0) * 1000));
+    }
+    return mapa;
+  }, [variantes, clienteId]);
+
+  const comFoto = useMemo(
+    () => new Set((imagens ?? []).map((i) => i.produtoId).filter(Boolean)),
+    [imagens]
+  );
 
   const [fMarket, setFMarket] = useState("Todos");
   const [fStatus, setFStatus] = useState("Todos");
@@ -518,17 +541,50 @@ export default function ClienteProdutos() {
             </span>
           </div>
 
-          <Table headers={["Produto", "Marketplace", "Estoque", "Preço", "Status", "Score IA", "Ação"]}>
+          <Table headers={["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"]}>
             {filtrados.length === 0 ? (
               <EmptyRow colSpan={7} />
             ) : (
               filtrados.map((p) => {
                 const status = statusDoProduto(p);
                 const score = scorePorProduto.get(p.id) ?? null;
+                const lacunas = lacunasDoProduto({
+                  custo: p.custo,
+                  precoVenda: p.precoVenda,
+                  pesoGramas: pesoPorProduto.get(p.id) ?? 0,
+                  temFoto: comFoto.has(p.id),
+                  ...(typeof p.vendedorPagaFrete === "boolean"
+                    ? { vendedorPagaFrete: p.vendedorPagaFrete }
+                    : {}),
+                });
                 return (
                   <tr key={p.id} className="hover:bg-white/[0.02]">
                     <TdMain sub={p.sku || p.codErp || undefined}>{p.nome}</TdMain>
-                    <Td>{p.marketplace}</Td>
+                    <Td>
+                      {/* O que falta NESTA linha, com o caminho para resolver.
+                          Marketplace saiu daqui: é "Mercado Livre" em 100% da
+                          base, ou seja, uma coluna que não distingue nada. */}
+                      {lacunas.length === 0 ? (
+                        <span className="text-xs text-emerald-400">completo</span>
+                      ) : (
+                        <span className="flex flex-wrap gap-1">
+                          {lacunas.map((l) => (
+                            <Link
+                              key={l.tipo}
+                              href={l.href}
+                              title={l.impede}
+                              // O chip mede 22px de altura, e o mínimo tocável é
+                              // 44. Em vez de inchar a linha da tabela, a área de
+                              // toque cresce por baixo (pseudo-elemento invisível):
+                              // o dedo acerta, o olho continua vendo um chip.
+                              className="relative rounded border border-amber-500/25 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300 hover:border-amber-500/50 before:absolute before:inset-x-0 before:-inset-y-[11px] before:content-['']"
+                            >
+                              {l.rotulo}
+                            </Link>
+                          ))}
+                        </span>
+                      )}
+                    </Td>
                     <Td className={p.estoque <= 0 ? "text-red-400" : ""}>{p.estoque}</Td>
                     <Td>{formatBRL(p.precoVenda)}</Td>
                     <Td>
