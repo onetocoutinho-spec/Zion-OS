@@ -130,7 +130,7 @@ export default function PesoDosProdutos() {
                       return n;
                     })
                   }
-                  className="flex items-center gap-1.5 text-sm font-medium hover:text-violet-300"
+                  className="flex items-center gap-1.5 text-sm font-medium hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
                 >
                   {aberta ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                   {f.titulo}
@@ -209,7 +209,7 @@ function Campo({
         inputMode="decimal"
         defaultValue={padrao && padrao > 0 ? String(padrao) : ""}
         placeholder="—"
-        className={`${largura} rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-sm text-white outline-none focus:border-violet-500/40`}
+        className={`${largura} rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-right text-sm text-white outline-none focus:border-violet-500/40 [@media(pointer:coarse)]:min-h-11`}
       />
       {rotulo}
     </label>

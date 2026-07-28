@@ -214,16 +214,16 @@ export default function ClienteConfiguracoes() {
             <LifeBuoy size={19} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-zinc-300">Fale com o seu gerente de conta na Zion Company.</p>
+            <p className="text-sm text-zinc-300">Travou em alguma coisa? A gente responde.</p>
             <p className="text-xs text-zinc-500">
-              Tire dúvidas sobre otimização, preços, publicação nos marketplaces e seu plano.
+              Antes disso, a página de Ajuda cobre as dúvidas mais comuns — e costuma ser mais rápida.
             </p>
           </div>
           <a
             href="mailto:contato@zioncompany.com"
-            className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-sm font-medium text-violet-300 hover:bg-violet-500/20"
+            className="rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-sm font-medium text-violet-300 hover:bg-violet-500/20 [@media(pointer:coarse)]:min-h-11"
           >
-            Falar com a Zion
+            Escrever para o suporte
           </a>
         </div>
       </Card>
