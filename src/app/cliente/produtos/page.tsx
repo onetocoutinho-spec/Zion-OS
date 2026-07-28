@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight, Truck } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +30,7 @@ import {
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
+import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -193,6 +194,32 @@ export default function ClienteProdutos() {
       setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao importar custos." });
     } finally {
       setImportandoCusto(false);
+    }
+  }
+
+  // --- Atualizar quem paga o frete, SEM apagar nada ---
+  const [atualizandoFrete, setAtualizandoFrete] = useState(false);
+  async function aoAtualizarFrete() {
+    if (atualizandoFrete) return;
+    setAtualizandoFrete(true);
+    setMsgML(null);
+    try {
+      const r = await atualizarFreteDosProdutos(clienteId);
+      const partes = [
+        `${r.atualizados} produto(s) atualizados`,
+        `${r.vendedorPaga} com frete grátis (você paga)`,
+        `${r.compradorPaga} em que o comprador paga`,
+      ];
+      if (r.semInformacao > 0) partes.push(`${r.semInformacao} sem informação no ML`);
+      setMsgML({
+        tipo: r.aviso ? "erro" : "ok",
+        texto: [partes.join(" · ") + ".", r.aviso].filter(Boolean).join(" "),
+      });
+      reload();
+    } catch (err) {
+      setMsgML({ tipo: "erro", texto: err instanceof Error ? err.message : "Falha ao atualizar o frete." });
+    } finally {
+      setAtualizandoFrete(false);
     }
   }
 
@@ -361,6 +388,15 @@ export default function ClienteProdutos() {
               {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
               {importandoCusto ? "Importando…" : "Custos"}
               <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => void aoAtualizarFrete()}
+              disabled={atualizandoFrete}
+              title="Busca no Mercado Livre quem paga o frete de cada anúncio. Não apaga nem reimporta nada — só preenche esse campo."
+            >
+              {atualizandoFrete ? <Loader2 size={15} className="animate-spin" /> : <Truck size={15} />}{" "}
+              {atualizandoFrete ? "Buscando…" : "Frete"}
             </Button>
             <Button variant="ghost" onClick={() => pesoInputRef.current?.click()} disabled={importandoPeso} title="Importar peso e medidas (CSV/Excel) — colunas: sku (ou ean) + peso_kg (ou peso_g); altura, largura e comprimento em cm são opcionais">
               {importandoPeso ? <Loader2 size={15} className="animate-spin" /> : <Weight size={15} />}{" "}
