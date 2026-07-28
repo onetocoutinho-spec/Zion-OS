@@ -56,8 +56,12 @@ export function parseNumeroCusto(s: string): number {
   if (t.includes(",")) {
     // Com vírgula presente, ela é o decimal e o ponto é milhar. Sem ambiguidade.
     normalizado = t.replace(/\./g, "").replace(",", ".");
-  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) {
+  } else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) {
     // Só pontos, todos agrupando de 3 em 3 → separador de milhar.
+    //
+    // O primeiro grupo não pode começar com zero: ninguém escreve "0.850" para
+    // oitocentos e cinquenta. Sem essa guarda, um custo de R$ 0,850 virava
+    // R$ 850 — mil vezes maior, e o preço mínimo junto.
     normalizado = t.replace(/\./g, "");
   } else {
     // Um ponto com 1, 2 ou 4+ dígitos depois → decimal.

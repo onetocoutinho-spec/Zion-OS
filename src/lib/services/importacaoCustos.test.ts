@@ -41,6 +41,15 @@ test("três casas depois do ponto é milhar; uma ou duas é decimal", () => {
   assert.equal(parseNumeroCusto("1.234"), 1234);
 });
 
+test("zero à esquerda não é agrupamento de milhar", () => {
+  // Ninguém escreve "0.850" para oitocentos e cinquenta. Sem essa guarda um
+  // custo de R$ 0,850 virava R$ 850 — mil vezes maior, e o piso junto.
+  assert.equal(parseNumeroCusto("0.850"), 0.85);
+  assert.equal(parseNumeroCusto("0.999"), 0.999);
+  // e o caso legítimo continua valendo
+  assert.equal(parseNumeroCusto("1.850"), 1850);
+});
+
 test("lixo não vira número", () => {
   assert.equal(parseNumeroCusto(""), 0);
   assert.equal(parseNumeroCusto("consultar"), 0);

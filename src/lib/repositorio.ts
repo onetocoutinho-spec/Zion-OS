@@ -52,19 +52,46 @@ export function criarRepositorio<T extends { id: string }, Row>(
   const { tabela, colecao, prefixoIdLocal, selecao, paraApp, paraBanco } = config;
   const ordenarPor = config.ordenarPor ?? "created_at";
 
+  /**
+   * Lista TUDO, em páginas.
+   *
+   * O PostgREST corta toda resposta em 1.000 linhas e não avisa: devolve 200,
+   * sem erro, com `content-range: 0-999`. Quem chamava `listar()` recebia um
+   * array perfeitamente válido — e concluía que aquilo era a base inteira.
+   *
+   * Numa base de 3.085 variantes isso significava que 2.085 delas simplesmente
+   * não existiam para quem casava planilha com produto. A importação de custos
+   * rodou assim: reportou "sem produto correspondente" para SKUs que estavam lá,
+   * e o lojista leu como planilha errada. Nenhum teste pega isso, porque em
+   * memória e em base pequena o comportamento é idêntico.
+   *
+   * O desempate por `id` é o que torna a paginação confiável: ordenar só por
+   * created_at, com registros importados no mesmo instante, deixa a ordem livre
+   * entre páginas — a mesma linha podia vir duas vezes e outra, nenhuma.
+   */
   async function listar(filtro?: FiltroIgual<T>): Promise<T[]> {
     if (!supabaseConfigurado) {
       const itens = listAll<T>(colecao);
       return filtro ? itens.filter((i) => i[filtro.campoLocal] === filtro.valor) : itens;
     }
-    let query = getSupabase()
-      .from(tabela)
-      .select(selecao)
-      .order(ordenarPor, { ascending: false });
-    if (filtro) query = query.eq(filtro.coluna, filtro.valor);
-    const { data, error } = await query;
-    if (error) erroSupabase(`listar ${tabela}`, error.message);
-    return ((data ?? []) as Row[]).map(paraApp);
+    const PAGINA = 1000;
+    const TETO_PAGINAS = 200; // 200 mil linhas: trava de segurança, não limite real
+    const linhas: Row[] = [];
+    for (let pagina = 0; pagina < TETO_PAGINAS; pagina++) {
+      let query = getSupabase()
+        .from(tabela)
+        .select(selecao)
+        .order(ordenarPor, { ascending: false })
+        .order("id", { ascending: true })
+        .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+      if (filtro) query = query.eq(filtro.coluna, filtro.valor);
+      const { data, error } = await query;
+      if (error) erroSupabase(`listar ${tabela}`, error.message);
+      const lote = (data ?? []) as Row[];
+      linhas.push(...lote);
+      if (lote.length < PAGINA) break;
+    }
+    return linhas.map(paraApp);
   }
 
   async function buscar(id: string): Promise<T | null> {
@@ -136,14 +163,35 @@ export function criarRepositorio<T extends { id: string }, Row>(
   }
 
   /**
-   * Atualiza muitos registros de uma vez (upsert por id).
+   * Atualiza muitos registros de uma vez.
    *
-   * Aceita registros PARCIAIS: `{ id, custo }` atualiza só o custo, sem tocar
-   * no resto da linha. Mandar o objeto inteiro parece inofensivo mas acopla a
+   * Aceita registros PARCIAIS: `{ id, custo }` muda só o custo, sem tocar no
+   * resto da linha. Mandar o objeto inteiro parece inofensivo mas acopla a
    * operação a TODAS as colunas — se uma delas não existir no banco (migração
    * não aplicada, schema à frente do código), o lote inteiro falha por causa de
    * um campo que a operação nem queria mudar. Foi assim que uma importação de
    * custos morreu com "Could not find the 'tabela_medidas' column".
+   *
+   * POR QUE UPDATE E NÃO UPSERT
+   *
+   * A versão anterior usava `upsert(..., { onConflict: "id" })`, e isso NÃO
+   * podia funcionar. O upsert vira `insert ... on conflict (id) do update`, e o
+   * Postgres valida NOT NULL na linha PROPOSTA — antes de descobrir que o id já
+   * existe e que o caminho seria um update. Um payload `{ id, peso }` numa
+   * tabela onde `produto_id` é obrigatório morre com
+   * "null value in column produto_id violates not-null constraint", mesmo com a
+   * linha existindo e o update sendo inofensivo.
+   *
+   * Efeito prático: toda gravação parcial em `produto_variantes` e `produtos`
+   * falhava. A importação de custos de 1.806 produtos gravou 1.
+   *
+   * `update ... where id in (...)` não tem esse problema: só mexe em coluna
+   * declarada, e linha que não existe simplesmente não é tocada — em vez de
+   * virar um insert acidental pela metade.
+   *
+   * As atualizações são agrupadas por payload IDÊNTICO, então o número de
+   * requisições acompanha a quantidade de valores distintos, não a de linhas:
+   * propagar um custo para 40 variações é uma requisição, não 40.
    *
    * Com retry por lote.
    */
@@ -156,21 +204,36 @@ export function criarRepositorio<T extends { id: string }, Row>(
       for (const r of registros) updateItem<T>(colecao, r.id, r);
       return;
     }
-    for (let i = 0; i < registros.length; i += chunk) {
-      const lote = registros.slice(i, i + chunk).map((r) => ({
-        ...paraBanco(r as Partial<T>),
-        id: r.id,
-      }));
-      for (let tentativa = 1; ; tentativa++) {
-        try {
-          const { error } = await getSupabase().from(tabela).upsert(lote, { onConflict: "id" });
-          if (error) throw new Error(error.message);
-          break;
-        } catch (e) {
-          if (tentativa >= 5) {
-            erroSupabase(`atualizar registros em ${tabela}`, e instanceof Error ? e.message : String(e));
+
+    // Agrupa por conteúdo: mesmos campos e mesmos valores → uma requisição.
+    const grupos = new Map<string, { dados: Record<string, unknown>; ids: string[] }>();
+    for (const r of registros) {
+      const dados = paraBanco(r as Partial<T>);
+      delete dados.id; // o id é o alvo do where, não um campo a escrever
+      const chave = JSON.stringify(dados, Object.keys(dados).sort());
+      const grupo = grupos.get(chave);
+      if (grupo) grupo.ids.push(r.id);
+      else grupos.set(chave, { dados, ids: [r.id] });
+    }
+
+    for (const { dados, ids } of grupos.values()) {
+      if (Object.keys(dados).length === 0) continue; // nada a mudar
+      for (let i = 0; i < ids.length; i += chunk) {
+        const lote = ids.slice(i, i + chunk);
+        for (let tentativa = 1; ; tentativa++) {
+          try {
+            const { error } = await getSupabase().from(tabela).update(dados).in("id", lote);
+            if (error) throw new Error(error.message);
+            break;
+          } catch (e) {
+            if (tentativa >= 5) {
+              erroSupabase(
+                `atualizar registros em ${tabela}`,
+                e instanceof Error ? e.message : String(e)
+              );
+            }
+            await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
           }
-          await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
         }
       }
     }
