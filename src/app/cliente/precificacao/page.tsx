@@ -14,6 +14,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
+import { custosDoLojista } from "@/lib/services/custosCliente";
 import { custosDoCliente, embalagemDasVariantes } from "@/lib/services/taxasDoCliente";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
 import {
@@ -51,6 +52,9 @@ export default function ClientePrecificacao() {
   useEffect(() => {
     let vivo = true;
     margemMinimaDoCliente().then((m) => vivo && setMargem(m));
+    // Imposto, comissões internas e embalagem entram na MESMA conta. Sem eles a
+    // margem saía otimista: 20,7% onde a planilha do lojista mostrava 6%.
+    custosDoLojista().then((c) => vivo && setTaxasBase((t) => ({ ...t, custosDoLojista: c })));
     return () => {
       vivo = false;
     };

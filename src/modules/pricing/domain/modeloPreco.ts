@@ -30,6 +30,13 @@ import {
   type Embalagem,
   type ReputacaoEnvio,
 } from "./custosML.ts";
+import {
+  custoPercentualEmReais,
+  fixosDoLojista,
+  percentuaisDoLojista,
+  SEM_CUSTOS_DO_LOJISTA,
+  type CustosDoLojista,
+} from "./custosDoLojista";
 
 export { LIMIAR_FRETE_GRATIS, COMISSAO_MODA, REPUTACAO_PADRAO };
 export type { Embalagem, ComissaoPorTipo, ReputacaoEnvio };
@@ -58,6 +65,15 @@ export interface ModeloTaxas {
   taxaFixaVendaML?: number | null;
   /** Reputação do lojista: escolhe qual das três tabelas de envio vale. */
   reputacao: ReputacaoEnvio;
+  /**
+   * O que o lojista paga ALÉM do marketplace: imposto, comissões internas,
+   * embalagem, etiqueta, informativos, cupom.
+   *
+   * Ausente = tudo zero, e a conta sai idêntica à de antes. Não é detalhe: sem
+   * isto o modelo declarava 20,7% de margem onde a planilha do lojista mostrava
+   * 6%, e chamava o produto de "Saudável".
+   */
+  custosDoLojista?: CustosDoLojista | null;
   /** Medidas da variante. null = sem peso, e o envio vira pendência. */
   embalagem: Embalagem | null;
 }
@@ -139,13 +155,23 @@ export function custoDaVenda(
   if (envio === null) {
     return { comissao, taxaFixa, envio: null, total: null, pendencia: SEM_PESO };
   }
+  // Imposto, comissões internas, embalagem, etiqueta e informativos. Sem eles o
+  // "custo da venda" era só a parte que o marketplace cobra, e a margem saía
+  // otimista — 20,7% onde a planilha do lojista mostrava 6%.
+  const c = custosDo(taxas);
+  const doLojista = custoPercentualEmReais(preco, c) + fixosDoLojista(c);
   return {
     comissao,
     taxaFixa,
     envio,
-    total: arredondar(comissao + taxaFixa + envio),
+    total: arredondar(comissao + taxaFixa + envio + doLojista),
     pendencia: null,
   };
+}
+
+/** Os custos do lojista deste modelo, já normalizados. */
+function custosDo(taxas: ModeloTaxas): CustosDoLojista {
+  return taxas.custosDoLojista ?? SEM_CUSTOS_DO_LOJISTA;
 }
 
 /** Soma das taxas, ou null quando falta o peso. */
@@ -216,7 +242,12 @@ export function precoMinimo(
   margemDesejada: number,
   taxas: ModeloTaxas = TAXAS_PADRAO
 ): ResultadoPrecoMinimo {
-  const divisor = 1 - comissaoPercentual(taxas) / 100 - margemDesejada / 100;
+  // Todos os percentuais dividem o mesmo preço: comissão do marketplace,
+  // imposto, comissões internas e cupom. Por isso entram no MESMO divisor — é
+  // a estrutura que a planilha do lojista chegou sozinha, com (custo+5,15)/0,66.
+  const c = custosDo(taxas);
+  const divisor =
+    1 - comissaoPercentual(taxas) / 100 - percentuaisDoLojista(c) / 100 - margemDesejada / 100;
   if (divisor <= 0) return { ok: false, motivo: "margem_impossivel" };
   if (!taxas.embalagem) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
 
@@ -228,7 +259,7 @@ export function precoMinimo(
     const envio = envioDoModelo(amostra, taxas);
     if (envio === null) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
 
-    const candidato = (custo + taxaFixaVenda(taxas) + envio) / divisor;
+    const candidato = (custo + taxaFixaVenda(taxas) + envio + fixosDoLojista(c)) / divisor;
     if (candidato <= teto) {
       // Nunca abaixo do piso da própria faixa: se o cálculo cair antes dela, é
       // porque a faixa anterior não coube — o preço é o começo desta.
@@ -254,7 +285,8 @@ export function precoMinimoOuNull(
 export function margemValida(margem: number, taxas: ModeloTaxas = TAXAS_PADRAO): boolean {
   if (!Number.isFinite(margem)) return false;
   if (margem < MARGEM_MINIMA_PERMITIDA || margem > MARGEM_MAXIMA_PERMITIDA) return false;
-  return comissaoPercentual(taxas) / 100 + margem / 100 < 1;
+  const c = custosDo(taxas);
+  return comissaoPercentual(taxas) / 100 + percentuaisDoLojista(c) / 100 + margem / 100 < 1;
 }
 
 export type SaudeMargem = "Saudável" | "Atenção" | "Risco" | "Prejuízo" | "—";

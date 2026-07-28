@@ -15,6 +15,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  type ModeloTaxas,
   custoDaVenda,
   custoDasTaxas,
   lucroLiquido,
@@ -226,4 +227,72 @@ test("sem custo NÃO se afirma lucro", () => {
 test("margem também não sai sem custo — as duas colunas contam a mesma história", () => {
   const comPeso: ModeloTaxas = { ...TAXAS_PADRAO, embalagem: { pesoGramas: 700, alturaCm: 13, larguraCm: 13, comprimentoCm: 13 } };
   assert.equal(margemLiquida(0, 128, comPeso), null);
+});
+
+// ---- Custos do lojista: o que faltava na conta ----
+
+/** Os parâmetros reais da planilha da Chinelaria Leilane. */
+const CUSTOS_LEILANE = {
+  embalagem: 0.5,
+  etiqueta: 0.15,
+  informativos: 0.5,
+  impostoPercentual: 12,
+  comissaoGestorPercentual: 1,
+  comissaoSistemaPercentual: 1,
+  cupomPercentual: 0,
+};
+
+const COM_PESO: ModeloTaxas = {
+  ...TAXAS_PADRAO,
+  embalagem: { pesoGramas: 700, alturaCm: 13, larguraCm: 13, comprimentoCm: 13 },
+};
+
+test("sem custos do lojista, a conta é IDÊNTICA à de antes", () => {
+  // O default zero é o que permite ligar isto sem mexer em quem já usava.
+  const semCampo = custoDasTaxas(150, COM_PESO);
+  const comZeros = custoDasTaxas(150, { ...COM_PESO, custosDoLojista: null });
+  assert.equal(semCampo, comZeros);
+});
+
+test("o caso real: a margem cai de otimista para verdadeira", () => {
+  // Sandália Vizzano, custo R$ 69, preço R$ 150. O Zion dizia 20,7% de margem
+  // e "Saudável"; a planilha do lojista mostrava ~6%, porque contava imposto,
+  // comissões internas e os fixos por pedido.
+  const comCustos: ModeloTaxas = { ...COM_PESO, custosDoLojista: CUSTOS_LEILANE };
+
+  // O lucro está em REAIS e é exato — a margem arredonda a uma casa, e
+  // reconstruir reais a partir dela perderia centavos.
+  const lucroAntes = lucroLiquido(69, 150, COM_PESO);
+  const lucroDepois = lucroLiquido(69, 150, comCustos);
+  assert.ok(lucroAntes !== null && lucroDepois !== null);
+  // 14% de 150 = R$ 21, mais R$ 1,15 de fixos = R$ 22,15 a menos de lucro.
+  assert.equal(Math.round((lucroAntes - lucroDepois) * 100) / 100, 22.15);
+
+  const antes = margemLiquida(69, 150, COM_PESO);
+  const depois = margemLiquida(69, 150, comCustos);
+  assert.ok(antes !== null && depois !== null);
+  assert.ok(depois < antes - 14, "a diferença tem que ser material, não decimal");
+});
+
+test("o preço mínimo sobe quando os custos entram no divisor", () => {
+  const semCustos = precoMinimo(69, 10, COM_PESO);
+  const comCustos = precoMinimo(69, 10, { ...COM_PESO, custosDoLojista: CUSTOS_LEILANE });
+  assert.ok(semCustos.ok && comCustos.ok);
+  assert.ok(
+    comCustos.preco > semCustos.preco,
+    "cobrir imposto e comissões internas exige preço maior"
+  );
+});
+
+test("percentuais que somam 100 ou mais tornam a margem impossível", () => {
+  // Sem esta guarda o divisor viraria zero ou negativo, e o preço mínimo
+  // explodiria para infinito ou ficaria negativo — número absurdo com cara de
+  // resposta, que é o defeito que este sistema mais repetiu.
+  const absurdo: ModeloTaxas = {
+    ...COM_PESO,
+    custosDoLojista: { ...CUSTOS_LEILANE, impostoPercentual: 90 },
+  };
+  const r = precoMinimo(69, 10, absurdo);
+  assert.equal(r.ok, false);
+  assert.ok(!r.ok && r.motivo === "margem_impossivel");
 });
