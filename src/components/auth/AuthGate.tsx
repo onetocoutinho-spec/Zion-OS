@@ -20,6 +20,7 @@ import { RealtimeSync } from "./RealtimeSync";
 import { carregarPerfil, type Perfil } from "@/lib/services/perfil";
 import { decidirRota } from "@/lib/auth/roteamentoPapel";
 import { decidirEstadoAuth, type FasePerfil, type FaseSessao } from "@/lib/auth/estadoAuth";
+import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 // Timeout do carregamento do perfil (A-01): 12s (entre 10 e 15). Antes eram 8s,
 // o que marcava conexões só um pouco lentas como "erro".
@@ -39,12 +40,46 @@ function TelaLogin() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  /**
+   * Entrar ou criar conta.
+   *
+   * O cadastro é `signUp` NO NAVEGADOR de propósito: o Supabase já traz limite
+   * de tentativas e confirmação de e-mail, melhor do que faríamos. A loja em si
+   * só nasce depois, com sessão válida, em /api/loja/provisionar — nunca num
+   * endpoint anônimo com poder de admin.
+   */
+  const [modo, setModo] = useState<"entrar" | "criar">("entrar");
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
     setErro(null);
+    setAviso(null);
     setEnviando(true);
+
+    if (modo === "criar") {
+      const { data, error } = await getSupabase().auth.signUp({
+        email: email.trim(),
+        password: senha,
+      });
+      setEnviando(false);
+      if (error) {
+        setErro(
+          /already registered|already exists/i.test(error.message)
+            ? "Já existe uma conta com esse e-mail. Entre em vez de criar."
+            : `Não foi possível criar a conta: ${error.message}`
+        );
+        return;
+      }
+      // Sem sessão na resposta = o projeto exige confirmar o e-mail. Dizer isso
+      // é obrigatório: senão a pessoa fica olhando uma tela que não muda.
+      if (!data.session) {
+        setAviso("Conta criada. Confirme o e-mail que enviamos para entrar.");
+      }
+      return; // com sessão, o onAuthStateChange troca a tela sozinho
+    }
+
     const { error } = await getSupabase().auth.signInWithPassword({
       email: email.trim(),
       password: senha,
@@ -91,7 +126,7 @@ function TelaLogin() {
             <Field label="Senha" required>
               <Input
                 type="password"
-                autoComplete="current-password"
+                autoComplete={modo === "criar" ? "new-password" : "current-password"}
                 value={senha}
                 onChange={(e) => setSenha(e.target.value)}
                 placeholder="••••••••"
@@ -105,23 +140,59 @@ function TelaLogin() {
               {erro}
             </p>
           )}
+          {aviso && (
+            <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
+              {aviso}
+            </p>
+          )}
 
           <Button type="submit" disabled={enviando} className="mt-6 w-full">
-            {enviando ? "Entrando…" : "Entrar no Zion OS"}
+            {enviando
+              ? modo === "criar"
+                ? "Criando…"
+                : "Entrando…"
+              : modo === "criar"
+                ? "Criar minha conta"
+                : "Entrar no Zion OS"}
           </Button>
 
-          <p className="mt-4 text-center text-[11px] leading-relaxed text-zinc-600">
-            Acesso restrito à equipe. Contas são criadas pelo administrador no
-            painel do Supabase.
-          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setModo(modo === "criar" ? "entrar" : "criar");
+              setErro(null);
+              setAviso(null);
+            }}
+            className="mt-4 w-full text-center text-[11px] text-zinc-500 hover:text-violet-400"
+          >
+            {modo === "criar"
+              ? "Já tenho conta — entrar"
+              : "Ainda não tenho conta — criar a minha loja"}
+          </button>
         </form>
       </div>
     </div>
   );
 }
 
-function TelaSemAcesso() {
+/**
+ * Sessão válida, mas ainda sem loja — o estado normal de quem acabou de criar
+ * a conta.
+ *
+ * Esta tela dizia "Fale com a equipe da Zion para liberar o seu acesso": era a
+ * porta da frente do produto pedindo para o cliente abrir um chamado. Com o
+ * modelo de SaaS puro, quem libera o acesso é o próprio cadastro.
+ *
+ * O "Sair" continua ali para quem chegou por engano — e a recusa 409 (conta de
+ * equipe) é mostrada como está, porque nesse caso a pessoa REALMENTE não deve
+ * ganhar uma loja.
+ */
+function TelaMontarLoja() {
+  const [nomeDaLoja, setNomeDaLoja] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
   const [saindo, setSaindo] = useState(false);
+
   async function sair() {
     setSaindo(true);
     try {
@@ -130,25 +201,70 @@ function TelaSemAcesso() {
       window.location.reload();
     }
   }
+
+  async function montar(e: React.FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      const resposta = await fetch("/api/loja/provisionar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+        body: JSON.stringify({ nomeDaLoja }),
+      });
+      const dados = (await resposta.json()) as { erro?: string };
+      if (!resposta.ok) {
+        setErro(dados.erro ?? "Não foi possível criar sua loja agora.");
+        setEnviando(false);
+        return;
+      }
+      // O perfil acabou de nascer; recarregar é o jeito mais simples e honesto
+      // de o AuthGate reavaliar tudo do zero.
+      window.location.reload();
+    } catch {
+      setErro("Não foi possível falar com o servidor. Tente de novo.");
+      setEnviando(false);
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08080d] px-4">
-      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6 text-center">
+      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600">
           <Zap size={22} className="text-white" />
         </div>
-        <h1 className="text-base font-semibold text-white">Acesso não liberado</h1>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-400">
-          Sua conta está autenticada, mas ainda não tem um perfil de acesso no
-          Zion OS. Fale com a equipe da Zion para liberar o seu acesso.
+        <h1 className="text-center text-base font-semibold text-white">
+          Vamos montar sua loja
+        </h1>
+        <p className="mt-2 text-center text-xs leading-relaxed text-zinc-400">
+          Só falta o nome. Depois disso você já pode trazer seus produtos.
         </p>
-        <div className="mt-6 flex flex-col gap-2">
-          <Button onClick={() => window.location.reload()} variant="ghost">
-            Tentar de novo
+
+        <form onSubmit={montar} className="mt-6">
+          <Field label="Nome da sua loja" required>
+            <Input
+              value={nomeDaLoja}
+              onChange={(e) => setNomeDaLoja(e.target.value)}
+              placeholder="Chinelaria da Ana"
+              autoFocus
+              required
+            />
+          </Field>
+
+          {erro && (
+            <p className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              {erro}
+            </p>
+          )}
+
+          <Button type="submit" disabled={enviando || !nomeDaLoja.trim()} className="mt-6 w-full">
+            {enviando ? "Criando sua loja…" : "Criar minha loja"}
           </Button>
-          <Button onClick={sair} disabled={saindo}>
-            {saindo ? "Saindo…" : "Sair"}
-          </Button>
-        </div>
+        </form>
+
+        <Button onClick={sair} disabled={saindo} variant="ghost" className="mt-2 w-full">
+          {saindo ? "Saindo…" : "Sair"}
+        </Button>
       </div>
     </div>
   );
@@ -337,7 +453,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     case "sem_sessao":
       return <TelaLogin />;
     case "sem_perfil":
-      return <TelaSemAcesso />;
+      return <TelaMontarLoja />;
     case "perfil_inativo":
       return <TelaAcessoDesativado />;
     case "erro_perfil":
@@ -372,7 +488,10 @@ function RoteadorPapel({ perfil, children }: { perfil: Perfil; children: React.R
     if (alvo) router.replace(alvo);
   }, [alvo, router]);
 
-  if (decisao.tipo === "sem_acesso") return <TelaSemAcesso />;
+  // Aqui o perfil EXISTE (inativo, ou cliente sem empresa). Não é o caso de
+  // montar loja — quem já tem perfil receberia "já provisionado", recarregaria
+  // e voltaria a esta mesma tela, em laço e sem explicação.
+  if (decisao.tipo === "sem_acesso") return <TelaAcessoDesativado />;
   if (alvo) return <TelaCarregando />;
   return <>{children}</>;
 }
