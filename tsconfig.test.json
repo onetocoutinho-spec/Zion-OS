@@ -1,0 +1,25 @@
+{
+  // Type-check dos TESTES — separado do build de produção.
+  //
+  // POR QUE ESTE ARQUIVO EXISTE
+  //
+  // `tsconfig.json` exclui `**/*.test.ts`. A consequência foi medida, não
+  // suposta: uma mudança de contrato (`EstadoDaLoja` ganhou campo obrigatório)
+  // tornou um fixture de teste inválido, `tsc` permaneceu VERDE, e três testes
+  // preexistentes só falharam em runtime — com `NaN`, sem erro de tipo.
+  //
+  // Ou seja: "tsc 0" provava os tipos da produção e não dizia nada sobre a rede
+  // que deveria protegê-la.
+  //
+  // POR QUE SEPARADO, E NÃO REMOVENDO O `exclude`
+  //
+  // Remover o exclude do tsconfig principal jogaria os testes dentro do escopo
+  // que o Next usa para o build. Duas responsabilidades diferentes com um botão
+  // só: um erro em teste passaria a poder derrubar o build de produção, e um
+  // afrouxamento feito para o build passaria a valer para os testes.
+  //
+  // Aqui cada um responde por si, e o portão roda as duas checagens.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "src/**/*.tsx", "next-env.d.ts"],
+  "exclude": ["node_modules"]
+}

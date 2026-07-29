@@ -30,7 +30,6 @@ import {
   TAXAS_PADRAO,
   MARGEM_MINIMA_PADRAO,
   LIMIAR_FRETE_GRATIS,
-  type ModeloTaxas,
 } from "./modeloPreco.ts";
 
 /** Caixa de chinelo: 30×20×10 cm e 400 g → 1000 g cobráveis por cubagem. */

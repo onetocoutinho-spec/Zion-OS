@@ -161,7 +161,7 @@ test("CRITÉRIO DE ACEITE: Magazord → canônico → Application (CriarProdutoM
 
   // A Application aceita e converte para o domínio sem perda — compatibilidade total.
   const dados = paraDadosCriacao(comando, "pm-1", "2026-07-13T00:00:00.000Z");
-  assert.ok(dados.ok, dados.ok ? "" : dados.erro.mensagem);
+  assert.ok(dados.ok, dados.ok ? "" : dados.erro.message);
   if (dados.ok) {
     assert.equal(dados.valor.skuOrigem.valor, "FORN-9");
     assert.equal(dados.valor.nome, "Fone TWS");
