@@ -359,7 +359,11 @@ export function ChatDaOperacao({
           : "Ligar modo conversa (mais capaz, mais caro)"}
       </button>
 
-      {turnos.length > 0 && (
+      {/* Em altura cheia o container existe SEMPRE, mesmo vazio: e ele que
+          come o espaco e empurra a barra de digitar para o pe. Sem isso a
+          barra fica colada no topo com o vazio embaixo, que e o oposto do
+          que a mao espera num chat. */}
+      {(alturaCheia || turnos.length > 0) && (
         <div
           className={`mt-4 space-y-4 overflow-y-auto pr-1 ${
             alturaCheia ? "min-h-0 flex-1" : "max-h-96"

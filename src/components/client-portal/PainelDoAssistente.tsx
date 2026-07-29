@@ -17,7 +17,7 @@
  */
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { MessagesSquare, X } from "lucide-react";
 import { ChatDaOperacao } from "./ChatDaOperacao";
 import { useContextoDaPergunta } from "./useEstadoDaLoja";
@@ -47,6 +47,8 @@ function Painel() {
   const params = useSearchParams();
   const chat = useContextoDaPergunta(clienteId, params.get("produto"));
 
+  const pathname = usePathname();
+
   // Esc fecha. É o que a mão faz sem pensar, e sem isso o painel vira uma
   // armadilha em telas estreitas, onde o X pode estar fora de alcance.
   useEffect(() => {
@@ -57,6 +59,20 @@ function Painel() {
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
   }, [aberto]);
+
+  /**
+   * Na página do assistente o painel não aparece.
+   *
+   * Seriam dois chats vivos gravando na mesma chave do storage, brigando pela
+   * mesma conversa — o mesmo defeito que tirar as caixas embutidas resolveu, e
+   * ele voltaria pela porta dos fundos. Um botão flutuante que abre uma cópia
+   * do que já está na tela também não faz sentido para quem clica.
+   *
+   * A saída fica DEPOIS dos hooks: um `return` antes deles muda a quantidade
+   * de hooks entre renderizações, e o React quebra em produção mesmo com o
+   * type-check verde.
+   */
+  if (pathname?.startsWith("/cliente/assistente")) return null;
 
   return (
     <>
