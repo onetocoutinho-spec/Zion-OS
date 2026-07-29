@@ -30,9 +30,18 @@ const ESQUEMA = {
         "proximo_passo",
         "por_que_travado",
         "sobre_este_produto",
+        "preencher",
         "fora_do_alcance",
       ],
     },
+    // ---- Só para "preencher". Nada aqui é gravado direto: vira PROPOSTA, e
+    // alguém confirma antes de qualquer escrita. Ver `propostaDeCorrecao`.
+    campo: { type: "string", enum: ["peso", "custo", "nenhum"] },
+    /** O número COMO FOI DITO — a vírgula decimal precisa sobreviver. */
+    valor: { type: "string" },
+    unidade: { type: "string" },
+    /** O que a frase diz sobre QUAL produto. Sem filtrar — filtrar é do código. */
+    termosDoAlvo: { type: "array", items: { type: "string" } },
     // "nenhum" e não "" para dizer "não se aplica": o Gemini recusa o schema
     // inteiro com `enum ... cannot be empty`, e o erro chegava aqui como um 502
     // genérico porque o catch abaixo engole a mensagem do provedor. Medido
@@ -53,7 +62,18 @@ const ESQUEMA = {
     capacidade: { type: "string", enum: ["precificar", "anunciar", "publicar", "nenhum"] },
     interpretacao: { type: "string" },
   },
-  required: ["entendeu", "perguntar", "intencao", "assunto", "capacidade", "interpretacao"],
+  required: [
+    "entendeu",
+    "perguntar",
+    "intencao",
+    "assunto",
+    "capacidade",
+    "campo",
+    "valor",
+    "unidade",
+    "termosDoAlvo",
+    "interpretacao",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -70,6 +90,7 @@ ${temProdutoAberto ? `CONTEXTO: há um produto aberto na tela — "${nomeDoProdu
 - "por_que_travado": quer saber por que algo não funciona ou não sai. Preencha "capacidade".
 - "estado_geral": quer um panorama — como está a loja, o que falta no geral, o que tem de errado.
 - "sobre_este_produto": quer saber o que falta no produto que está aberto.
+- "preencher": o lojista está DITANDO UM VALOR para ser gravado — "o peso do chinelo zaxy é 300 gramas", "custo desse aqui 17,16", "põe 0,4 kg nesse". Preencha "campo", "valor", "unidade" e "termosDoAlvo".
 - "fora_do_alcance": a pergunta não é nenhuma das acima. Inclui previsão de vendas, opinião de mercado, o que o concorrente faz, preço ideal de um item específico, e qualquer coisa que dependa de dado que a loja não tem. Em "interpretacao", diga em uma frase o que você não consegue responder, sem prometer que outro sistema consegue.
 
 "assunto" (só para "contagem"), escolha um:
@@ -82,6 +103,14 @@ ${temProdutoAberto ? `CONTEXTO: há um produto aberto na tela — "${nomeDoProdu
 - "precificacao": produtos prontos para precificar, com preço mínimo calculado
 
 "capacidade" (só para "por_que_travado"): "precificar", "anunciar" ou "publicar".
+
+Campos de "preencher" (deixe "campo" como "nenhum", "valor" e "unidade" vazios e "termosDoAlvo" como lista vazia nas outras intenções):
+- "campo": "peso" ou "custo".
+- "valor": o número EXATAMENTE como apareceu na frase, incluindo a vírgula decimal. "0,3" é "0,3", nunca "0.3" nem "3". Só o número, sem unidade e sem "R$".
+- "unidade": a unidade dita — "g", "kg", "reais". Se a frase não disser nenhuma, deixe vazio. NÃO invente uma: quem deduz é o código, e a dedução é mostrada ao lojista antes de gravar.
+- "termosDoAlvo": as palavras que dizem QUAL produto — nome, marca, modelo, código. Copie como aparecem. Se a frase disser apenas "este", "esse aqui", "ele", deixe a lista VAZIA: o produto aberto na tela é o alvo. Não julgue se o produto existe e não omita termo nenhum.
+
+DISTINÇÃO QUE IMPORTA: perguntar não é mandar. "quanto pesa o chinelo?" é uma pergunta ("fora_do_alcance", eu não sei peso de produto). "o chinelo pesa 300 g" é uma ordem de preenchimento ("preencher"). Na dúvida entre as duas, use "entendeu": false e pergunte.
 
 Use "nenhum" em "assunto" e em "capacidade" quando não se aplicarem.
 

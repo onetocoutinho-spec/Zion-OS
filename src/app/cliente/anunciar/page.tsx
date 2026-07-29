@@ -103,8 +103,8 @@ function Jornada() {
   const params = useSearchParams();
 
   const [produtoId, setProdutoIdBruto] = useState<string | null>(null);
-  /** O que o chat desta tela pode responder. `null` enquanto carrega. */
-  const contextoDaPergunta = useContextoDaPergunta(clienteId, produtoId);
+  /** O que o chat desta tela pode responder e sobre quais produtos. */
+  const chat = useContextoDaPergunta(clienteId, produtoId);
   /** Já retomamos uma vez? Sem isto, a retomada brigaria com a escolha manual. */
   const [retomou, setRetomou] = useState(false);
   const [cadastrando, setCadastrando] = useState(false);
@@ -562,9 +562,11 @@ function Jornada() {
           por isso que o contexto leva o produto em foco. O peso vem da lista
           com variantes, não do `Produto` da tela: este não carrega peso, e
           passar 0 diria "falta peso" para quem tem. */}
-      {contextoDaPergunta && (
+      {chat.contexto && (
         <ChatDaOperacao
-          contexto={contextoDaPergunta}
+          contexto={chat.contexto}
+          produtos={chat.produtos}
+          clienteId={clienteId}
           titulo={produto ? `Pergunte sobre ${produto.nome}` : "Pergunte sobre a sua loja"}
         />
       )}

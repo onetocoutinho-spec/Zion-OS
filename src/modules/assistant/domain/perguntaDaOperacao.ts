@@ -45,6 +45,15 @@ export interface CriterioDaPergunta {
   capacidade: string;
   /** O que o modelo entendeu, em uma frase. Mostrado a quem perguntou. */
   interpretacao: string;
+  // ---- Só usados quando a intenção é "preencher". Vivem no mesmo objeto
+  // porque a rota devolve UM objeto: separar em dois tipos faria alguém montar
+  // o segundo a partir do primeiro, e é aí que campo e valor se desencontram.
+  // Quem os lê é `propostaDeCorrecao`, que os valida antes de propor qualquer
+  // coisa. Aqui eles só trafegam.
+  campo: string;
+  valor: string;
+  unidade: string;
+  termosDoAlvo: string[];
 }
 
 /** O sentinela de "não se aplica". Um valor real porque `""` não é aceito. */

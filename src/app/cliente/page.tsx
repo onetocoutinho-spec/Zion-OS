@@ -172,7 +172,11 @@ export default function ClienteHome() {
           tinha onde ser feita, e a resposta estava espalhada por seis telas.
           O que ele responde sai DAQUI — do mesmo `lacunas.estado` que alimenta
           "O que falta" logo abaixo, e não de um modelo que adivinha número. */}
-      <ChatDaOperacao contexto={{ loja: lacunas.estado }} />
+      <ChatDaOperacao
+        contexto={{ loja: lacunas.estado }}
+        produtos={produtos ?? []}
+        clienteId={clienteId}
+      />
 
       {/* O que você quer fazer hoje? */}
       <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">
