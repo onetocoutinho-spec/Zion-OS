@@ -33,6 +33,8 @@ import {
   pesoPendente,
   situacaoDePeso,
 } from "@/modules/catalog/domain/familiaDeProduto";
+import { resolverConsulta, type ResultadoConsulta } from "@/modules/catalog/domain/consultaDePeso";
+import { interpretarConsulta, registrarUso } from "@/lib/services/consultaPeso";
 import { formatBRL } from "@/lib/format";
 import { useSearchParams } from "next/navigation";
 
@@ -54,15 +56,28 @@ function PesoDosProdutosInterno() {
 
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [soPendentes, setSoPendentes] = useState(false);
+  // A consulta em texto não cria uma resposta paralela: ela produz o MESMO
+  // recorte que os controles produzem, e a lista abaixo é o conjunto real.
+  // Resposta do modelo em cima com a tabela mostrando outra coisa seria pior
+  // que não ter campo nenhum.
+  const [frase, setFrase] = useState("");
+  const [interpretando, setInterpretando] = useState(false);
+  const [consulta, setConsulta] = useState<{ pedido: string; r: ResultadoConsulta } | null>(null);
   const [gravando, setGravando] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   const familias = useMemo(() => {
-    const base = produtos ?? [];
+    let base = produtos ?? [];
+    // Consulta e filtro COMPÕEM — escrever e clicar são duas entradas da mesma
+    // superfície, não dois caminhos que podem divergir.
+    if (consulta && consulta.r.produtoIds.length > 0) {
+      const alvo = new Set(consulta.r.produtoIds);
+      base = base.filter((p) => alvo.has(p.id));
+    }
     // O filtro age sobre o PRODUTO e depois reagrupa: esconder a família
     // inteira por causa de um irmão pronto tiraria da tela o que falta.
     return agruparPorFamilia(soPendentes ? base.filter(pesoPendente) : base);
-  }, [produtos, soPendentes]);
+  }, [produtos, soPendentes, consulta]);
 
   /** A família do produto pedido no endereço, se houver. */
   const familiaAlvo = useMemo(
@@ -89,6 +104,39 @@ function PesoDosProdutosInterno() {
   const comGrade = (produtos ?? []).filter((p) => p.quantidadeVariantes > 0);
   const comPeso = contarCompletos(comGrade);
   const pendentes = contarPendentes(produtos ?? []);
+
+  /** Interpreta a frase e resolve contra os produtos que a tela já tem. */
+  async function perguntar(e: React.FormEvent) {
+    e.preventDefault();
+    const texto = frase.trim();
+    if (!texto || interpretando) return;
+    setInterpretando(true);
+    setMsg(null);
+    try {
+      const marcas = [...new Set((produtos ?? []).map((p) => p.marca).filter(Boolean))];
+      const criterio = await interpretarConsulta(texto, marcas);
+      // A resolução é DAQUI, contra dado real. O modelo devolveu só critério.
+      const r = resolverConsulta(criterio, produtos ?? [], marcas);
+      setConsulta({ pedido: criterio.interpretacao || texto, r });
+      registrarUso({
+        origem: "texto",
+        desfecho: r.desfecho,
+        produtos: r.produtoIds.length,
+        temFronteira: r.fronteira.length > 0,
+        em: new Date().toISOString(),
+      });
+    } catch (err) {
+      setConsulta(null);
+      setMsg(err instanceof Error ? err.message : "Não consegui interpretar agora.");
+    } finally {
+      setInterpretando(false);
+    }
+  }
+
+  function limparConsulta() {
+    setConsulta(null);
+    setFrase("");
+  }
 
   async function gravar(chave: string, ids: string[], form: HTMLFormElement) {
     const dado = new FormData(form);
@@ -141,7 +189,18 @@ function PesoDosProdutosInterno() {
         {(pendentes > 0 || soPendentes) && (
           <button
             type="button"
-            onClick={() => setSoPendentes((v) => !v)}
+            onClick={() => {
+              const ligando = !soPendentes;
+              setSoPendentes(ligando);
+              // O outro lado da medição: o mesmo recorte, alcançado por clique.
+              registrarUso({
+                origem: "filtro",
+                desfecho: ligando ? "encontrado" : null,
+                produtos: ligando ? pendentes : (produtos ?? []).length,
+                temFronteira: false,
+                em: new Date().toISOString(),
+              });
+            }}
             className={`mt-3 rounded-lg border px-2.5 py-1.5 text-xs transition-colors [@media(pointer:coarse)]:min-h-11 ${
               soPendentes
                 ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
@@ -162,6 +221,50 @@ function PesoDosProdutosInterno() {
           correio — não o produto nu. Peso em gramas; altura, largura e comprimento em centímetros
           são opcionais, mas sem os três o frete usa só o peso real, sem cubagem.
         </p>
+      </div>
+
+
+      {/* ── Perguntar em vez de filtrar ─────────────────────────────────── */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <form onSubmit={perguntar} className="flex flex-wrap items-center gap-2">
+          <input
+            value={frase}
+            onChange={(e) => setFrase(e.target.value)}
+            disabled={interpretando}
+            placeholder="Pergunte sobre os produtos — ex.: quais Havaianas estão sem peso?"
+            className="min-w-[16rem] flex-1 rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors focus:border-violet-500/60 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+          />
+          <Button type="submit" disabled={interpretando || !frase.trim()}>
+            {interpretando ? <Loader2 size={15} className="animate-spin" /> : <Scale size={15} />}{" "}
+            {interpretando ? "Lendo…" : "Perguntar"}
+          </Button>
+          {consulta && (
+            <button type="button" onClick={limparConsulta} className="text-xs text-white/45 hover:text-white/70">
+              limpar
+            </button>
+          )}
+        </form>
+
+        {consulta && (
+          <div className="mt-3 border-t border-white/5 pt-3 text-sm">
+            {/* A interpretação vem ANTES do resultado: é ela que mostra qual
+                parte virou fato e qual o Zion não sabe provar. */}
+            <p className="text-white/45">
+              Você pediu: <span className="text-white/75">{consulta.pedido}</span>
+            </p>
+            <p
+              className={`mt-1 ${
+                consulta.r.desfecho === "invalido"
+                  ? "text-amber-300"
+                  : consulta.r.desfecho === "vazio"
+                    ? "text-white/60"
+                    : "text-zinc-200"
+              }`}
+            >
+              {consulta.r.mensagem}
+            </p>
+          </div>
+        )}
       </div>
 
       {msg && (
