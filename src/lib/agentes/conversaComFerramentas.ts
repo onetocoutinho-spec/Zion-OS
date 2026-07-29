@@ -55,6 +55,96 @@ export const MAXIMO_DE_PASSOS = 6;
  */
 export const FALAS_MANTIDAS = 24;
 
+/**
+ * O mesmo turno, em pedaços.
+ *
+ * O texto chega enquanto o modelo escreve, em vez de aparecer inteiro depois de
+ * cinco segundos parados. É a diferença mais sentida entre "uma caixa que
+ * responde" e "uma conversa" — e é só isso: a resposta é a mesma.
+ *
+ * `aoTexto` é chamado a cada pedaço. O retorno é o turno completo, igual ao de
+ * `pedirTurno`, porque o laço lá em cima precisa do total para decidir se
+ * continua.
+ *
+ * Sem retentativa: um 503 no meio de um fluxo já entregou pedaço de texto ao
+ * leitor, e recomeçar duplicaria o que ele já leu. Quem retenta é a chamada não
+ * transmitida, que ainda não escreveu nada na tela.
+ */
+export async function pedirTurnoEmFluxo(
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  aoTexto: (pedaco: string) => void
+): Promise<TurnoDoModelo> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY ausente.");
+  const modelo = process.env.GEMINI_MODELO_CONVERSA ?? "gemini-2.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:streamGenerateContent?alt=sse&key=${key}`;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: historico.slice(-FALAS_MANTIDAS),
+      tools: [{ functionDeclarations: paraDeclaracoesGemini(ferramentas) }],
+      generationConfig: { temperature: 0 },
+    }),
+  });
+
+  if (!resp.ok || !resp.body) {
+    if (resp.status === 503) {
+      throw new Error("O Gemini está sobrecarregado no momento (tente de novo em instantes).");
+    }
+    const detalhe = await resp.text().catch(() => "");
+    throw new Error(`Gemini ${resp.status}: ${detalhe.slice(0, 200)}`);
+  }
+
+  const leitor = resp.body.getReader();
+  const decodificador = new TextDecoder();
+  let sobra = "";
+  let texto = "";
+  const chamadas: { nome: string; args: Record<string, unknown> }[] = [];
+  let tokens = 0;
+
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    // O corte da rede não respeita linha: o resto de uma linha pela metade fica
+    // em `sobra` até o pedaço seguinte completá-la. Sem isso, um JSON partido
+    // no meio derrubaria a resposta.
+    sobra += decodificador.decode(value, { stream: true });
+    const linhas = sobra.split("\n");
+    sobra = linhas.pop() ?? "";
+    for (const linha of linhas) {
+      if (!linha.startsWith("data:")) continue;
+      const cru = linha.slice(5).trim();
+      if (!cru || cru === "[DONE]") continue;
+      let evento: {
+        candidates?: { content?: { parts?: Parte[] }; finishReason?: string }[];
+        usageMetadata?: { totalTokenCount?: number };
+      };
+      try {
+        evento = JSON.parse(cru);
+      } catch {
+        continue; // pedaço inválido não derruba o fluxo inteiro
+      }
+      if (evento.usageMetadata?.totalTokenCount) tokens = evento.usageMetadata.totalTokenCount;
+      for (const p of evento.candidates?.[0]?.content?.parts ?? []) {
+        if (p.text) {
+          texto += p.text;
+          aoTexto(p.text);
+        }
+        if (p.functionCall) {
+          chamadas.push({ nome: p.functionCall.name, args: p.functionCall.args ?? {} });
+        }
+      }
+    }
+  }
+
+  return { texto: texto.trim(), chamadas, tokens };
+}
+
 export function paraDeclaracoesGemini(fs: readonly Ferramenta[]) {
   return fs.map((f) => ({
     name: f.nome,

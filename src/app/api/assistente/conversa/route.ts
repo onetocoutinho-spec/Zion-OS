@@ -21,7 +21,11 @@
 // os vê: ele vê só o que uma ferramenta devolveu. É essa distância que impede
 // "cerca de 40" quando são 43.
 
-import { pedirTurno, MAXIMO_DE_PASSOS, type Fala } from "@/lib/agentes/conversaComFerramentas";
+import {
+  pedirTurnoEmFluxo,
+  MAXIMO_DE_PASSOS,
+  type Fala,
+} from "@/lib/agentes/conversaComFerramentas";
 import { FERRAMENTAS } from "@/modules/assistant/domain/ferramentasDoAssistente";
 import {
   executarFerramenta,
@@ -45,7 +49,15 @@ Perguntar não é mandar. "quanto pesa o chinelo?" é uma pergunta sobre um dado
 
 ${produtoAberto ? `O lojista está com "${produtoAberto}" aberto na tela. Quando ele disser "este", "esse aqui" ou "ele", é deste produto que fala.` : ""}
 
-Seja breve — duas ou três frases. Conduza: depois de responder, diga qual é o próximo passo útil. Escreva em português do Brasil, como quem fala com um lojista, não com um programador.`;
+COMO ESCREVER. Você fala com um lojista, não com um programador. Português do Brasil, direto, sem jargão.
+
+Use markdown quando ele ajudar a ler: **negrito** no que importa, listas quando são itens, e TABELA quando estiver comparando coisas ou mostrando vários produtos com seus estados. Uma tabela de três produtos e o que falta em cada um se lê num relance; a mesma coisa em prosa vira parágrafo que ninguém termina.
+
+Não seja telegráfico. Se a resposta tem contexto que muda a decisão, dê o contexto — mas não encha linguiça. Uma frase que não muda o que ele vai fazer é uma frase a menos.
+
+Preserve as distinções que as ferramentas fazem. Quando a contagem distingue produtos SEM PESO NENHUM de produtos com peso em PARTE das variações, essa diferença importa: para os parciais o frete sai, e chamar os dois de "sem peso" é falso. Não resuma isso para um número só.
+
+Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
 
 export async function POST(request: Request) {
@@ -86,60 +98,104 @@ export async function POST(request: Request) {
     { role: "user", parts: [{ text: mensagem }] },
   ];
 
-  let tokens = 0;
-  /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
-  let proposta: Proposta | undefined;
-  const usadas: string[] = [];
+  /**
+   * A resposta vai em EVENTOS, uma linha de JSON cada.
+   *
+   * Não é enfeite: com ferramentas, uma resposta leva de 2 a 8 segundos, e
+   * nesse tempo a tela mostrava "Lendo os seus dados…" e nada mais. Aqui o
+   * lojista vê a ferramenta ser chamada e o texto sendo escrito. É a diferença
+   * entre uma caixa que responde e uma conversa.
+   *
+   * Linhas de JSON e não SSE puro porque quem lê é o nosso próprio código, e
+   * `split("\n") + JSON.parse` é tudo que ele precisa.
+   */
+  const fluxo = new ReadableStream({
+    async start(controlador) {
+      const cod = new TextEncoder();
+      const mandar = (e: unknown) => controlador.enqueue(cod.encode(JSON.stringify(e) + "\n"));
 
-  try {
-    for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
-      const turno = await pedirTurno(system(corpo.produtoAberto ?? ""), historico, FERRAMENTAS);
-      tokens += turno.tokens;
+      let tokens = 0;
+      /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
+      let proposta: Proposta | undefined;
+      const usadas: string[] = [];
 
-      if (turno.chamadas.length === 0) {
-        historico.push({ role: "model", parts: [{ text: turno.texto }] });
-        return Response.json({
-          texto: turno.texto,
+      try {
+        for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
+          const turno = await pedirTurnoEmFluxo(
+            system(corpo.produtoAberto ?? ""),
+            historico,
+            FERRAMENTAS,
+            (pedaco) => mandar({ tipo: "texto", delta: pedaco })
+          );
+          tokens += turno.tokens;
+
+          if (turno.chamadas.length === 0) {
+            historico.push({ role: "model", parts: [{ text: turno.texto }] });
+            mandar({
+              tipo: "fim",
+              texto: turno.texto,
+              falas: historico,
+              ferramentas: usadas,
+              tokens,
+              ...(proposta ? { proposta } : {}),
+            });
+            controlador.close();
+            return;
+          }
+
+          historico.push({
+            role: "model",
+            parts: turno.chamadas.map((c) => ({ functionCall: { name: c.nome, args: c.args } })),
+          });
+          const respostas = turno.chamadas.map((c) => {
+            usadas.push(c.nome);
+            // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
+            // ferramenta roda, no lugar do silêncio.
+            mandar({ tipo: "ferramenta", nome: c.nome });
+            const r = executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+            // A última proposta vence. Duas no mesmo turno seria o modelo se
+            // corrigindo, e é a corrigida que o lojista deve ver.
+            if (r.proposta) proposta = r.proposta;
+            return { functionResponse: { name: c.nome, response: r.saida } };
+          });
+          historico.push({ role: "user", parts: respostas });
+        }
+
+        // Estourou o teto de passos. Dizer isso é melhor que entregar a última
+        // resposta parcial como se fosse conclusão.
+        mandar({
+          tipo: "fim",
+          texto: "Me perdi no meio do caminho. Pode reformular?",
           falas: historico,
           ferramentas: usadas,
           tokens,
-          ...(proposta ? { proposta } : {}),
         });
+        controlador.close();
+      } catch (e) {
+        // A causa vai para o log — este mesmo catch, na outra rota, escondeu
+        // por horas um erro de schema que era trivial de corrigir.
+        console.error("[assistente/conversa] falha:", e);
+        const msg = e instanceof Error ? e.message : "";
+        // "sobrecarregado, tente de novo" é acionável para quem digitou; um
+        // erro de schema não é, e ainda pode carregar configuração do servidor.
+        mandar({
+          tipo: "erro",
+          erro: /sobrecarregado/.test(msg)
+            ? msg
+            : "Não consegui responder agora. Tente de novo em instantes.",
+        });
+        controlador.close();
       }
+    },
+  });
 
-      historico.push({
-        role: "model",
-        parts: turno.chamadas.map((c) => ({ functionCall: { name: c.nome, args: c.args } })),
-      });
-      const respostas = turno.chamadas.map((c) => {
-        usadas.push(c.nome);
-        const r = executarFerramenta({ nome: c.nome, args: c.args }, ctx);
-        // A última proposta vence. Duas no mesmo turno seria o modelo se
-        // corrigindo, e é a corrigida que o lojista deve ver.
-        if (r.proposta) proposta = r.proposta;
-        return { functionResponse: { name: c.nome, response: r.saida } };
-      });
-      historico.push({ role: "user", parts: respostas });
-    }
-
-    // Estourou o teto de passos. Dizer isso é melhor que devolver a última
-    // resposta parcial como se fosse conclusão.
-    return Response.json({
-      texto: "Me perdi no meio do caminho. Pode reformular?",
-      falas: historico,
-      ferramentas: usadas,
-      tokens,
-    });
-  } catch (e) {
-    // A causa vai para o log — este mesmo catch, na outra rota, escondeu por
-    // horas um erro de schema que era trivial de corrigir.
-    console.error("[assistente/conversa] falha:", e);
-    const msg = e instanceof Error ? e.message : "";
-    // "sobrecarregado, tente de novo" é acionável para quem digitou; um erro de
-    // schema não é, e ainda pode carregar configuração do servidor.
-    const paraOUsuario = /sobrecarregado/.test(msg)
-      ? msg
-      : "Não consegui responder agora. Tente de novo em instantes.";
-    return Response.json({ erro: paraOUsuario }, { status: 502 });
-  }
+  return new Response(fluxo, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+      // Alguns proxies bufferizam a resposta inteira e matam o streaming — o
+      // texto chegaria de uma vez só, no fim, exatamente como antes.
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

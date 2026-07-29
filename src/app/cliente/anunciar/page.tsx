@@ -562,14 +562,14 @@ function Jornada() {
           por isso que o contexto leva o produto em foco. O peso vem da lista
           com variantes, não do `Produto` da tela: este não carrega peso, e
           passar 0 diria "falta peso" para quem tem. */}
-      {chat.contexto && (
-        <ChatDaOperacao
+      {/* SEM `contexto &&` — ver produtos/page.tsx: desmontar o chat quando
+          uma consulta recarrega apagava a conversa no meio da resposta. */}
+      <ChatDaOperacao
           contexto={chat.contexto}
           produtos={chat.produtos}
           clienteId={clienteId}
           titulo={produto ? `Pergunte sobre ${produto.nome}` : "Pergunte sobre a sua loja"}
         />
-      )}
 
       {/* ── Passo 1: escolher o produto ─────────────────────────────────── */}
       {total === 0 ? (

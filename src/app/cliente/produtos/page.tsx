@@ -466,14 +466,15 @@ export default function ClienteProdutos() {
           Esta tela é onde o cadastro acontece e onde as perguntas nascem —
           "quantos ainda estão sem custo?", "por que a precificação não sai?".
           A resposta vem do banco, pelo mesmo caminho da home. */}
-      {chat.contexto && (
-        <ChatDaOperacao
+      {/* SEM `contexto &&`: o chat nao pode ser destruido quando uma consulta
+          recarrega e o contexto fica nulo por um instante — levava a conversa
+          inteira junto, no meio de uma resposta. Ele espera, nao some. */}
+      <ChatDaOperacao
           contexto={chat.contexto}
           produtos={chat.produtos}
           clienteId={clienteId}
           aoGravar={reload}
         />
-      )}
 
       {escolhendoML && (
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4">

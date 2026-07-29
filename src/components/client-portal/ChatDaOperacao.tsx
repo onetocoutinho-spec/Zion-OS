@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
 import { conversar } from "@/lib/services/conversaDoAssistente";
+import { Markdown } from "@/components/client-portal/Markdown";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
 import { executarProposta } from "@/lib/services/correcaoPeloChat";
 import {
@@ -98,7 +99,16 @@ export function ChatDaOperacao({
   titulo = "Pergunte sobre a sua loja",
   aoGravar,
 }: {
-  contexto: ContextoDaPergunta;
+  /**
+   * `null` enquanto os dados carregam — e o chat NÃO some por isso.
+   *
+   * Ele já sumiu: a tela montava com `{contexto && <ChatDaOperacao/>}`, e
+   * bastava uma das quatro consultas recarregar para o contexto ficar nulo por
+   * um instante, o React destruir o componente e a conversa inteira ir junto —
+   * no meio de uma resposta. Aceitar `null` aqui é o que mantém o componente
+   * vivo; ele só desabilita a entrada enquanto não sabe os números.
+   */
+  contexto: ContextoDaPergunta | null;
   /** O catálogo, para o código resolver de QUAL produto a frase fala. */
   produtos?: readonly ProdutoAlvo[];
   clienteId: string;
@@ -131,17 +141,37 @@ export function ChatDaOperacao({
   const perguntar = useCallback(
     async (texto: string) => {
       const pergunta = texto.trim();
-      if (!pergunta || ocupado) return;
+      // Sem contexto não há resposta honesta: responder com zeros seria pior
+      // que esperar meio segundo.
+      if (!pergunta || ocupado || !contexto) return;
       setFrase("");
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
       try {
         if (conversando) {
+          // O texto e o rastro de ferramenta chegam ao vivo, no lugar do
+          // "Lendo os seus dados…" parado. Com ferramentas, uma resposta leva
+          // de 2 a 8 segundos — tempo demais para uma tela muda.
+          const aoVivo = {
+            aoTexto: (acumulado: string) =>
+              setTurnos((t) =>
+                t.map((turno, i) => (i === t.length - 1 ? { ...turno, texto: acumulado } : turno))
+              ),
+            aoFerramenta: (nomeDaFerramenta: string) =>
+              setTurnos((t) =>
+                t.map((turno, i) =>
+                  i === t.length - 1
+                    ? { ...turno, ferramentas: [...(turno.ferramentas ?? []), nomeDaFerramenta] }
+                    : turno
+                )
+              ),
+          };
           const r = await conversar(
             pergunta,
             falas,
             { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
-            contexto.produto?.nome
+            contexto.produto?.nome,
+            aoVivo
           );
           setFalas(r.falas);
           setTurnos((t) =>
@@ -235,7 +265,7 @@ export function ChatDaOperacao({
     );
   }, []);
 
-  const sugestoes = contexto.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
+  const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
 
   return (
     <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4">
@@ -282,7 +312,7 @@ export function ChatDaOperacao({
                 </p>
               ) : t.texto !== undefined || t.proposta ? (
                 <div className="space-y-2">
-                  {t.texto && <p className="text-sm text-zinc-200">{t.texto}</p>}
+                  {t.texto && <Markdown texto={t.texto} />}
                   {t.proposta && (
                     <CartaoDaProposta
                       p={t.proposta}
@@ -337,7 +367,7 @@ export function ChatDaOperacao({
         <input
           value={frase}
           onChange={(e) => setFrase(e.target.value)}
-          placeholder={contexto.produto ? "O que falta neste produto?" : "O que eu resolvo primeiro?"}
+          placeholder={contexto?.produto ? "O que falta neste produto?" : "O que eu resolvo primeiro?"}
           disabled={ocupado}
           className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400/50 focus:outline-none disabled:opacity-50"
         />

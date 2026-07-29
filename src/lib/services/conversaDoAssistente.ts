@@ -25,26 +25,81 @@ export interface RespostaDaConversa {
   proposta?: Proposta;
 }
 
+/** O que a tela recebe enquanto a resposta acontece. */
+export interface AoVivo {
+  /** Um pedaço de texto acabou de chegar. Some com o acumulado e redesenha. */
+  aoTexto: (textoAcumulado: string) => void;
+  /** Uma ferramenta começou a rodar. Aparece na tela no lugar do silêncio. */
+  aoFerramenta: (nome: string) => void;
+}
+
+/**
+ * Conversa, entregando a resposta enquanto ela chega.
+ *
+ * A promessa só resolve no fim — quem quiser o total espera; quem quiser o
+ * texto aparecendo usa `aoVivo`. As duas coisas ao mesmo tempo evitam que a
+ * tela tenha que remontar o estado final a partir dos pedaços.
+ */
 export async function conversar(
   mensagem: string,
   falas: readonly Fala[],
   contexto: ContextoDasFerramentas,
-  produtoAberto?: string
+  produtoAberto?: string,
+  aoVivo?: AoVivo
 ): Promise<RespostaDaConversa> {
   const resposta = await fetch("/api/assistente/conversa", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({ mensagem, falas, contexto, produtoAberto: produtoAberto ?? "" }),
   });
-  const dados = (await resposta.json()) as Partial<RespostaDaConversa> & { erro?: string };
-  if (!resposta.ok || typeof dados.texto !== "string") {
-    throw new Error(dados.erro ?? "Não consegui responder agora.");
+  if (!resposta.ok || !resposta.body) {
+    const erro = await resposta.json().catch(() => ({}));
+    throw new Error((erro as { erro?: string }).erro ?? "Não consegui responder agora.");
   }
-  return {
-    texto: dados.texto,
-    falas: dados.falas ?? [],
-    ferramentas: dados.ferramentas ?? [],
-    tokens: dados.tokens ?? 0,
-    ...(dados.proposta ? { proposta: dados.proposta } : {}),
-  };
+
+  const leitor = resposta.body.getReader();
+  const decodificador = new TextDecoder();
+  let sobra = "";
+  let acumulado = "";
+  let fim: RespostaDaConversa | null = null;
+  let erro: string | null = null;
+
+  for (;;) {
+    const { done, value } = await leitor.read();
+    if (done) break;
+    // O corte da rede não respeita linha: a metade de um JSON fica em `sobra`
+    // até o pedaço seguinte completá-la.
+    sobra += decodificador.decode(value, { stream: true });
+    const linhas = sobra.split("\n");
+    sobra = linhas.pop() ?? "";
+    for (const linha of linhas) {
+      if (!linha.trim()) continue;
+      let e: Record<string, unknown>;
+      try {
+        e = JSON.parse(linha);
+      } catch {
+        continue;
+      }
+      if (e.tipo === "texto" && typeof e.delta === "string") {
+        acumulado += e.delta;
+        aoVivo?.aoTexto(acumulado);
+      } else if (e.tipo === "ferramenta" && typeof e.nome === "string") {
+        aoVivo?.aoFerramenta(e.nome);
+      } else if (e.tipo === "erro") {
+        erro = typeof e.erro === "string" ? e.erro : "Não consegui responder agora.";
+      } else if (e.tipo === "fim") {
+        fim = {
+          texto: typeof e.texto === "string" ? e.texto : acumulado,
+          falas: (e.falas as Fala[]) ?? [],
+          ferramentas: (e.ferramentas as string[]) ?? [],
+          tokens: (e.tokens as number) ?? 0,
+          ...(e.proposta ? { proposta: e.proposta as Proposta } : {}),
+        };
+      }
+    }
+  }
+
+  if (erro) throw new Error(erro);
+  if (!fim) throw new Error("A resposta foi interrompida no meio.");
+  return fim;
 }
