@@ -113,6 +113,17 @@ export interface EntidadesContexto {
    * falsa trava a publicação para sempre: publicar exige a lista vazia.
    */
   quantidadeFotos?: number | null;
+  /**
+   * O bloco de atributos obrigatórios do marketplace, já resolvido contra o
+   * cadastro (`publication/domain/atributosDoMarketplace`).
+   *
+   * Sem ele o A10 inventava requisito: cobrava "antiderrapante", "vegano" e
+   * "materiais reciclados" — medido na API do ML, NENHUM existe na categoria
+   * de calçados — e não cobrava Gênero nem Tipo de calçado, que são
+   * obrigatórios de verdade. Rigor no lugar errado trava a publicação, porque
+   * publicar exige a lista de pendências vazia.
+   */
+  atributosObrigatorios?: string | null;
   produto?: Produto | null;
   anuncio?: Anuncio | null;
   variantes?: ProdutoVariante[] | null;
@@ -159,10 +170,12 @@ export function montarContexto({
   variantes,
   tabelasMedidas,
   quantidadeFotos,
+  atributosObrigatorios,
 }: EntidadesContexto): string {
   const vs = variantes ?? [];
   return [
     cliente ? contextoDoCliente(cliente) : null,
+    atributosObrigatorios && atributosObrigatorios.trim() ? atributosObrigatorios : null,
     typeof quantidadeFotos === "number"
       ? `FOTOS: ${quantidadeFotos} imagem(ns) já cadastrada(s) para este produto. ` +
         `NÃO liste "imagens do produto" como pendência quando houver ao menos uma.`

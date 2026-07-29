@@ -43,6 +43,10 @@ import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarContexto } from "@/lib/contexto";
 import {
+  briefingDosAtributos,
+  resolverObrigatorios,
+} from "@/modules/publication/domain/atributosDoMarketplace";
+import {
   listarAnunciosGeradosDoCliente,
   aprovarAnuncioGerado,
   rejeitarAnuncioGerado,
@@ -60,6 +64,12 @@ import {
   type ContextoJornada,
 } from "@/modules/publication/domain/jornada";
 import { produtoParaRetomar, chaveUltimoProduto } from "@/modules/publication/domain/retomada";
+import {
+  chaveAnuncioPendente,
+  lerAnuncioPendente,
+  serveParaOProduto,
+  type AnuncioPendenteDeGravacao,
+} from "@/modules/publication/domain/anuncioNaoGravado";
 import {
   chaveProgresso,
   etapasRetomaveis,
@@ -108,6 +118,8 @@ function Jornada() {
   const [fotos, setFotos] = useState<string[]>([]);
   const [quota, setQuota] = useState<number | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  /** Anúncio já montado, esperando gravação. Aparece só quando é DESTE produto. */
+  const [pendente, setPendente] = useState<AnuncioPendenteDeGravacao | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -200,6 +212,42 @@ function Jornada() {
     },
     [produto, clienteId, briefing]
   );
+
+  // ── O anúncio montado que ainda não chegou ao banco ────────────────────────
+  //
+  // Três gerações em 29/07 registraram `POST /api/agentes/esteira 200` e nenhuma
+  // linha entrou em `anuncios_gerados`. O anúncio existia inteiro e sumia.
+  const lerPendente = useCallback((): AnuncioPendenteDeGravacao | null => {
+    try {
+      return lerAnuncioPendente(localStorage.getItem(chaveAnuncioPendente(clienteId)));
+    } catch {
+      return null;
+    }
+  }, [clienteId]);
+
+  const guardarPendente = useCallback(
+    (p: AnuncioPendenteDeGravacao) => {
+      try {
+        localStorage.setItem(chaveAnuncioPendente(clienteId), JSON.stringify(p));
+      } catch {
+        // Sem storage a geração roda igual — só deixa de ser resgatável.
+      }
+    },
+    [clienteId]
+  );
+
+  const descartarPendente = useCallback(() => {
+    try {
+      localStorage.removeItem(chaveAnuncioPendente(clienteId));
+    } catch {
+      /* nada a fazer */
+    }
+  }, [clienteId]);
+
+  useEffect(() => {
+    const p = lerPendente();
+    setPendente(serveParaOProduto(p, produtoId) ? p : null);
+  }, [produtoId, lerPendente]);
 
   const limparProgresso = useCallback(() => {
     try {
@@ -298,10 +346,23 @@ function Jornada() {
       // vazia, então uma acusação sobre dado presente trava o anúncio para
       // sempre. `/esteira` (a tela da equipe) já passava contexto; a tela do
       // cliente, não.
+      // Os 6 obrigatórios do ML, resolvidos contra o cadastro. Marca e cor vêm
+      // de campo; gênero e tipo, do nome — e null quando o nome não diz, que
+      // vira pergunta em vez de chute.
+      const atributos = briefingDosAtributos(
+        resolverObrigatorios({
+          nome: produto.nome,
+          marca: produto.marca,
+          modelo: produto.modelo,
+          cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
+          tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
+        })
+      );
       const contexto = montarContexto({
         produto,
         variantes,
         quantidadeFotos: fotos.length,
+        atributosObrigatorios: atributos,
       });
       const r = await rodarCadeiaEsteira({
         produto: produto.nome,
@@ -312,6 +373,16 @@ function Jornada() {
         onPasso: setPassos,
         retomarDe: retomavel,
         onEtapaConcluida: (_, todas) => gravarProgresso(todas),
+      });
+      // GUARDA ANTES DE GRAVAR. A montagem final custa 30 s e é a única que
+      // produz o anúncio; se a gravação falhar depois dela, o trabalho não pode
+      // sumir. Mesma razão de `onEtapaConcluida` existir, um passo adiante.
+      guardarPendente({
+        produtoId: produto.id,
+        produtoNome: produto.nome,
+        anuncio: r.anuncio,
+        tipoExecucao: r.tipo,
+        montadoEm: new Date().toISOString(),
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
       await criarAnuncioGerado({
@@ -334,6 +405,8 @@ function Jornada() {
         observacoes: "Gerado pelo lojista no portal.",
       } as Omit<AnuncioGeradoRegistro, "id">);
       if (r.aviso) setAviso(r.aviso);
+      // Gravado: nada mais a resgatar.
+      descartarPendente();
       // Anúncio gravado: o rascunho da esteira cumpriu o papel e sai de cena.
       limparProgresso();
       setRetomavel([]);
@@ -342,7 +415,18 @@ function Jornada() {
     } catch (e) {
       // O progresso guardado FICA. É exatamente aqui que ele vale: a próxima
       // tentativa começa de onde parou, sem repagar o que já foi entregue.
-      setErro(e instanceof Error ? e.message : "Não foi possível gerar o anúncio agora.");
+      //
+      // E os dois erros são DIFERENTES. Falha de IA é "não foi gerado"; falha
+      // de gravação é "foi gerado e não guardei" — dizer a primeira quando é a
+      // segunda faz a pessoa refazer três minutos de trabalho que já existe.
+      const pendente = lerPendente();
+      setErro(
+        serveParaOProduto(pendente, produto.id)
+          ? "O anúncio foi gerado, mas não consegui gravá-lo. Ele está guardado aqui — use “Gravar o anúncio gerado” abaixo."
+          : e instanceof Error
+            ? e.message
+            : "Não foi possível gerar o anúncio agora."
+      );
     } finally {
       setRodando(false);
     }
@@ -376,6 +460,37 @@ function Jornada() {
     try {
       await rejeitarAnuncioGerado(registro.id, "Refazer solicitado pelo lojista.");
       await recarregarAnuncios();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  /** Grava o anúncio que já foi gerado — sem repagar os três minutos de esteira. */
+  async function gravarPendente() {
+    if (!produto || !pendente || ocupado) return;
+    setOcupado(true);
+    setErro(null);
+    try {
+      const a = pendente.anuncio as {
+        vereditoA10?: string; pendencias?: unknown[]; notaDiagnostico?: number;
+      };
+      const passou = a.vereditoA10 === "aprovado" && (a.pendencias?.length ?? 0) === 0;
+      await criarAnuncioGerado({
+        clienteId, cliente: nome, produtoId: produto.id, produto: produto.nome,
+        auditoriaId: null, marketplace: produto.marketplace ?? marketplace, origem: "esteira",
+        tipoExecucao: pendente.tipoExecucao, notaDiagnostico: a.notaDiagnostico ?? 0,
+        vereditoA10: a.vereditoA10 ?? "reprovado", qtdPendencias: a.pendencias?.length ?? 0,
+        anuncio: pendente.anuncio, status: passou ? "aguardando_aprovacao" : "rascunho",
+        aprovadoPor: "", aprovadoEm: null, criadoEm: new Date().toISOString(),
+        observacoes: "Gerado pelo lojista no portal (gravado em segunda tentativa).",
+      } as Omit<AnuncioGeradoRegistro, "id">);
+      descartarPendente();
+      setPendente(null);
+      limparProgresso();
+      setRetomavel([]);
+      await recarregarAnuncios();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Ainda não consegui gravar. O anúncio continua guardado.");
     } finally {
       setOcupado(false);
     }
@@ -499,6 +614,30 @@ function Jornada() {
 
       {/* ── Passos da geração ───────────────────────────────────────────── */}
       {rodando && <PassosDaEsteira passos={passos} />}
+
+      {pendente && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+          <p className="text-sm text-amber-200">
+            <strong>Este anúncio já foi gerado</strong> e não chegou a ser gravado.
+          </p>
+          <p className="mt-1 text-xs text-amber-200/70">
+            A IA terminou o trabalho — são cerca de três minutos de geração que não precisam ser
+            refeitos. Grave para continuar de onde parou.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button onClick={() => void gravarPendente()} disabled={ocupado}>
+              {ocupado ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />} Gravar o
+              anúncio gerado
+            </Button>
+            <button
+              onClick={() => { descartarPendente(); setPendente(null); }}
+              className="text-xs text-amber-200/60 hover:text-amber-200"
+            >
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
 
       {erro && (
         <p className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
