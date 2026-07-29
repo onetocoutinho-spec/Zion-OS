@@ -1,3 +1,15 @@
+// CACHE DE UI da conversa — não a fonte autoritativa.
+//
+// Desde a migração 035 a verdade do histórico vive em `copilot_conversas` e
+// `copilot_mensagens`, gravadas pela ROTA com o tenant vindo da sessão. Este
+// módulo continua existindo porque redesenhar a conversa instantaneamente ao
+// abrir o painel é bom, e esperar uma ida ao banco para isso não é.
+//
+// A diferença que importa: se este cache discordar do banco, o BANCO está
+// certo. Ele não atravessa dispositivo, não sobrevive à limpeza do navegador e
+// não sabe nada sobre tenant — três coisas que a fonte de um histórico
+// operacional precisa saber.
+//
 // A conversa que sobrevive ao recarregamento.
 //
 // Puro: entra e sai estrutura, e quem toca em `localStorage` é a camada de

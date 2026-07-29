@@ -24,6 +24,17 @@ export interface RespostaDaConversa {
   tokens: number;
   /** Um cartão para confirmar. Nada foi gravado. */
   proposta?: Proposta;
+  /**
+   * O ID da proposta PERSISTIDA — é o que autoriza a execução.
+   *
+   * Sem ele não há botão: uma proposta que não chegou ao banco não pode ser
+   * confirmada, porque a confirmação precisa referenciar um registro que o
+   * servidor consiga carregar, conferir o tenant e revalidar contra o estado
+   * atual. O objeto `proposta` acima serve só para DESENHAR o cartão.
+   */
+  propostaId?: string;
+  /** O fio no banco. A tela devolve na próxima chamada. */
+  conversaId?: string;
   /** Um cartão para GERAR o anúncio. Nada foi gerado — leva minutos e cota. */
   propostaDeAnuncio?: PropostaDeAnuncio;
 }
@@ -97,6 +108,8 @@ export async function conversar(
           ferramentas: (e.ferramentas as string[]) ?? [],
           tokens: (e.tokens as number) ?? 0,
           ...(e.proposta ? { proposta: e.proposta as Proposta } : {}),
+          ...(typeof e.propostaId === "string" ? { propostaId: e.propostaId } : {}),
+          ...(typeof e.conversaId === "string" ? { conversaId: e.conversaId } : {}),
           ...(e.propostaDeAnuncio
             ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
             : {}),
@@ -108,4 +121,42 @@ export async function conversar(
   if (erro) throw new Error(erro);
   if (!fim) throw new Error("A resposta foi interrompida no meio.");
   return fim;
+}
+
+/**
+ * Confirma uma proposta — pelo ID, contra o servidor.
+ *
+ * A tela NÃO grava mais. Ela manda o id e o servidor faz o trabalho que só ele
+ * pode fazer com confiança: carregar a proposta do banco, conferir o tenant
+ * contra a sessão, revalidar as precondições contra o estado de agora, reservar
+ * a execução de forma atômica e auditar o resultado.
+ *
+ * Antes disso, `executarProposta` gravava do navegador com um objeto que a
+ * própria tela montou — e um objeto vindo do cliente pode ser qualquer coisa.
+ */
+export interface ResultadoDaConfirmacao {
+  ok: boolean;
+  mensagem: string;
+  /** Verdadeiro quando a proposta já tinha sido executada (duplo clique). */
+  jaFeito?: boolean;
+  motivo?: string;
+  afetados?: number;
+}
+
+export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
+  const resposta = await fetch("/api/assistente/proposta", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+    body: JSON.stringify({ propostaId }),
+  });
+  const dados = (await resposta.json().catch(() => ({}))) as Partial<ResultadoDaConfirmacao> & {
+    erro?: string;
+  };
+  return {
+    ok: Boolean(dados.ok),
+    mensagem: dados.mensagem ?? dados.erro ?? "Não consegui confirmar agora.",
+    ...(dados.jaFeito ? { jaFeito: true } : {}),
+    ...(dados.motivo ? { motivo: dados.motivo } : {}),
+    ...(typeof dados.afetados === "number" ? { afetados: dados.afetados } : {}),
+  };
 }

@@ -34,6 +34,10 @@ import {
 import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { criarProposta } from "@/lib/services/copilotPropostas";
+import { garantirConversa, gravarTurno } from "@/lib/services/copilotConversas";
+import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const maxDuration = 60;
 
@@ -61,12 +65,49 @@ Preserve as distinções que as ferramentas fazem. Quando a contagem distingue p
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
 
+/**
+ * O estado do produto lido do BANCO, para virar precondicao da proposta.
+ *
+ * NAO pode vir do corpo da requisicao. O contexto que a tela manda (produtos,
+ * custos, contagens) serve para o modelo raciocinar — mas se ele virasse a
+ * linha de base da revalidacao, o navegador mandaria um valor falso e a
+ * checagem de staleness casaria com a propria mentira.
+ *
+ * A precondicao e uma promessa sobre o mundo. Quem le o mundo e o servidor.
+ */
+async function estadoDoProdutoNoBanco(
+  produtoId: string,
+  clienteId: string
+): Promise<{ custo: number | null; variacoesSemPeso: number }> {
+  const admin = getSupabaseAdmin();
+  const [pai, variantes] = await Promise.all([
+    admin.from("produtos").select("custo").eq("id", produtoId).eq("cliente_id", clienteId).maybeSingle(),
+    admin.from("produto_variantes").select("peso").eq("produto_id", produtoId),
+  ]);
+  const custoBruto = (pai.data as { custo?: number | null } | null)?.custo;
+  const linhas = (variantes.data ?? []) as { peso: number | null }[];
+  return {
+    custo: custoBruto === null || custoBruto === undefined ? null : Number(custoBruto),
+    variacoesSemPeso: linhas.filter((v) => !v.peso || v.peso <= 0).length,
+  };
+}
+
 export async function POST(request: Request) {
+  let ctxAuth;
   try {
-    await exigirAutenticado(request);
+    ctxAuth = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
+  // O TENANT VEM DAQUI — nunca do corpo. Tudo que for persistido nesta
+  // requisicao (conversa, mensagens, propostas) usa este valor. Antes o
+  // resultado da autenticacao era DESCARTADO: a rota so checava que havia
+  // sessao, e o `clienteId` chegava no corpo, escolhido pelo navegador.
+  const clienteDaSessao = ctxAuth.perfil.clienteId;
+  if (!clienteDaSessao) {
+    return Response.json({ erro: "Sessao sem cliente associado." }, { status: 403 });
+  }
+  const usuarioId = ctxAuth.usuario?.id ?? null;
   if (!process.env.GEMINI_API_KEY) {
     return Response.json({ erro: "Nenhum provedor de IA configurado." }, { status: 503 });
   }
@@ -76,6 +117,9 @@ export async function POST(request: Request) {
     falas?: Fala[];
     contexto?: ContextoDasFerramentas;
     produtoAberto?: string;
+    /** O fio, para a conversa continuar a mesma linha no banco. */
+    conversaId?: string;
+    rota?: string;
   };
   try {
     corpo = await request.json();
@@ -97,6 +141,14 @@ export async function POST(request: Request) {
     // pendencia depois de tres minutos.
     paraAnunciar: corpo.contexto.paraAnunciar ?? [],
   };
+
+  // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
+  // como cache de UI — ele nao atravessa dispositivo, nao sobrevive a limpeza
+  // do navegador e nao sabe nada sobre tenant.
+  const conversaId = await garantirConversa(clienteDaSessao, usuarioId, corpo.conversaId ?? null, {
+    rota: corpo.rota,
+    produtoId: ctx.produtoAberto?.id ?? null,
+  });
 
   const historico: Fala[] = [
     ...(corpo.falas ?? []),
@@ -138,13 +190,50 @@ export async function POST(request: Request) {
 
           if (turno.chamadas.length === 0) {
             historico.push({ role: "model", parts: [{ text: turno.texto }] });
+            // A PROPOSTA VIRA REGISTRO antes de chegar na tela. O que a tela
+            // recebe e um ID — nao um objeto que ela poderia reescrever e
+            // devolver como "o que o lojista aprovou".
+            let propostaId: string | null = null;
+            if (proposta?.tipo === "pronta" && conversaId) {
+              try {
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: proposta.campo,
+                  alvos: [proposta.alvo.id],
+                  valor: proposta.valor,
+                  resumo: proposta.resumo,
+                  precondicoes: precondicoesDaProposta(
+                    proposta.campo,
+                    await estadoDoProdutoNoBanco(proposta.alvo.id, clienteDaSessao)
+                  ),
+                });
+                propostaId = gravada.id;
+              } catch (e) {
+                // Sem proposta persistida NAO ha confirmacao possivel — e
+                // melhor a tela nao mostrar botao do que mostrar um que grava
+                // sem registro.
+                console.error("[copilot] falha ao persistir proposta:", e);
+              }
+            }
+            if (conversaId) {
+              void gravarTurno(clienteDaSessao, conversaId, {
+                pergunta: mensagem,
+                resposta: turno.texto,
+                ferramentas: usadas,
+                tokens,
+              });
+            }
             mandar({
               tipo: "fim",
               texto: turno.texto,
               falas: historico,
               ferramentas: usadas,
               tokens,
-              ...(proposta ? { proposta } : {}),
+              ...(conversaId ? { conversaId } : {}),
+              // A proposta so vai com ID. Sem ID, a tela nao oferece botao.
+              ...(proposta && propostaId ? { proposta, propostaId } : {}),
               ...(propostaDeAnuncio ? { propostaDeAnuncio } : {}),
             });
             controlador.close();

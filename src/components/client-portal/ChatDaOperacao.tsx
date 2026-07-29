@@ -28,15 +28,15 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
-import { conversar } from "@/lib/services/conversaDoAssistente";
+import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
 import { Markdown } from "@/components/client-portal/Markdown";
+import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
 import {
   chaveDaConversa,
   lerGuardada,
   paraGuardar,
 } from "@/modules/assistant/domain/conversaGuardada";
-import { executarProposta } from "@/lib/services/correcaoPeloChat";
 import {
   montarProposta,
   type Proposta,
@@ -64,6 +64,14 @@ interface Turno {
    */
   proposta?: Proposta;
   /**
+   * O ID da proposta PERSISTIDA. Sem ele não existe botão.
+   *
+   * O objeto `proposta` acima desenha o cartão; este id é o que AUTORIZA. Uma
+   * proposta que não chegou ao banco não pode ser confirmada — e mostrar botão
+   * para ela seria oferecer uma ação que o servidor vai recusar.
+   */
+  propostaId?: string;
+  /**
    * O que aconteceu depois de confirmar. Trava o cartão contra duplo clique.
    *
    * `cegoParaAIL` é opcional porque um turno RETOMADO do disco não sabe — e
@@ -71,6 +79,14 @@ interface Turno {
    * muito bem não ter visto.
    */
   desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  /**
+   * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
+   *
+   * Separada da de gravação porque o botão faz outra coisa: em vez de escrever
+   * um campo, leva para a esteira e a dispara. São dois verbos diferentes e
+   * dois riscos diferentes — misturá-los num cartão só faria um deles mentir.
+   */
+  propostaDeAnuncio?: PropostaDeAnuncio;
   /** No modo conversa: a fala do assistente, escrita por ele. */
   texto?: string;
   /**
@@ -237,7 +253,12 @@ export function ChatDaOperacao({
                     ...turno,
                     texto: r.texto,
                     ferramentas: r.ferramentas,
-                    ...(r.proposta ? { proposta: r.proposta } : {}),
+                    ...(r.proposta && r.propostaId
+                      ? { proposta: r.proposta, propostaId: r.propostaId }
+                      : {}),
+                    ...(r.propostaDeAnuncio
+                      ? { propostaDeAnuncio: r.propostaDeAnuncio }
+                      : {}),
                   }
                 : turno
             )
@@ -287,27 +308,37 @@ export function ChatDaOperacao({
   const confirmar = useCallback(
     async (indice: number) => {
       const alvo = turnos[indice];
-      const p = alvo?.proposta;
-      if (!p || p.tipo !== "pronta" || alvo.desfecho || ocupado) return;
+      const id = alvo?.propostaId;
+      // Sem ID persistido não há o que confirmar. A checagem repete a do
+      // render de propósito: um clique que escapou (teclado, corrida de
+      // estado) não pode virar uma chamada sem autorização.
+      if (!id || alvo.desfecho || ocupado) return;
       setOcupado(true);
       try {
-        const r = await executarProposta(clienteId, p);
-        setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, desfecho: r } : turno)));
-        if (r.ok) aoGravar?.();
-      } catch (e) {
-        const erro = e instanceof Error ? e.message : "Não consegui gravar.";
+        // O SERVIDOR decide. Ele carrega a proposta do banco, confere o tenant
+        // contra a sessão, revalida as precondições contra o estado de agora,
+        // reserva a execução de forma atômica e audita. A tela só mostra.
+        const r = await confirmarProposta(id);
         setTurnos((t) =>
           t.map((turno, i) =>
             i === indice
-              ? { ...turno, desfecho: { ok: false, mensagem: erro, cegoParaAIL: false } }
+              ? { ...turno, desfecho: { ok: r.ok || Boolean(r.jaFeito), mensagem: r.mensagem } }
               : turno
+          )
+        );
+        if (r.ok) aoGravar?.();
+      } catch (e) {
+        const erro = e instanceof Error ? e.message : "Não consegui confirmar.";
+        setTurnos((t) =>
+          t.map((turno, i) =>
+            i === indice ? { ...turno, desfecho: { ok: false, mensagem: erro } } : turno
           )
         );
       } finally {
         setOcupado(false);
       }
     },
-    [turnos, clienteId, ocupado, aoGravar]
+    [turnos, ocupado, aoGravar]
   );
 
   /** Descarta a proposta sem gravar. O turno some da lista de pendentes. */
@@ -383,7 +414,8 @@ export function ChatDaOperacao({
               ) : t.texto !== undefined || t.proposta ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
-                  {t.proposta && (
+                  {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.proposta && t.propostaId && (
                     <CartaoDaProposta
                       p={t.proposta}
                       desfecho={t.desfecho}
@@ -450,6 +482,67 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * A proposta de gerar anúncio — e o botão que leva para a esteira.
+ *
+ * O botão NAVEGA em vez de rodar aqui. A esteira leva de dois a três minutos,
+ * tem barra de progresso, salva as entregas parciais e sabe se recuperar de uma
+ * aba fechada. Rodá-la dentro de um painel de chat seria uma segunda cópia
+ * dessa máquina — pior, e sem nada disso.
+ *
+ * Quando falta dado, NÃO existe botão. A pessoa lê o que falta e resolve; um
+ * botão ali gastaria três minutos para devolver um anúncio com pendência.
+ */
+function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
+  if (p.tipo === "sem_alvo") {
+    return <p className="text-sm text-zinc-300">{p.mensagem}</p>;
+  }
+
+  if (p.tipo === "falta_dado") {
+    return (
+      <div className="space-y-1.5 rounded-lg border border-amber-400/20 bg-amber-500/[0.04] p-3">
+        <p className="flex items-start gap-2 text-sm text-zinc-200">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+          {p.mensagem}
+        </p>
+        <Link
+          href={`/cliente/anunciar?produto=${encodeURIComponent(p.produtoId)}`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
+        >
+          Abrir o produto <ArrowRight size={12} />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-sm text-zinc-200">{p.resumo}</p>
+      {/* Os atributos com a ORIGEM de cada um: o que veio do cadastro e o que
+          foi lido do nome. Apresentar dedução como dado seria o começo do
+          mesmo problema que a esteira ja teve. */}
+      <ul className="flex flex-wrap gap-1.5">
+        {p.atributos.map((a) => (
+          <li
+            key={a.id}
+            className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-zinc-400"
+            title={a.origem === "nome" ? "lido do nome do produto" : "do cadastro"}
+          >
+            {a.nome}: <span className="text-zinc-300">{a.valor}</span>
+            {a.origem === "nome" && <span className="text-amber-400/70"> ·lido do nome</span>}
+          </li>
+        ))}
+      </ul>
+      <Link
+        href={`/cliente/anunciar?produto=${encodeURIComponent(p.produtoId)}&gerar=1`}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500"
+      >
+        <Sparkles size={13} /> {p.refazendo ? "Refazer o anúncio" : "Gerar o anúncio"}
+      </Link>
     </div>
   );
 }
