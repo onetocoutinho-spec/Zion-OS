@@ -94,11 +94,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "achar_produto",
     efeito: "le",
     descricao:
-      "Acha produtos do catálogo pelo nome ou marca. Use SEMPRE antes de propor qualquer coisa sobre um produto — é assim que você descobre se o alvo é único. Se voltar mais de um, PERGUNTE qual; nunca escolha por conta própria.",
+      "Acha produtos e variantes do catálogo. Aceita nome, marca, SKU, referência (o modelo, ex. 7178.102) e EAN. Use SEMPRE antes de propor qualquer coisa sobre um produto — é assim que você descobre se o alvo é único. IMPORTANTE: achar por identificador exato NÃO garante um só resultado; nesta base há SKUs e EANs repetidos. Se o desfecho vier \"ambiguo\", PERGUNTE ao lojista qual — nunca escolha. O campo \"casamento\" diz COMO foi achado: \"candidato_textual\" é semelhança de nome e não identifica ninguém.",
     parametros: {
       type: "OBJECT",
-      properties: { termos: { type: "STRING", description: "As palavras que o lojista usou." } },
-      required: ["termos"],
+      properties: {
+        termo: { type: "STRING", description: "O que o lojista disse: nome, SKU, referência ou EAN." },
+        tipo: {
+          type: "STRING",
+          enum: ["auto", "nome", "sku", "referencia", "ean"],
+          description: "Onde procurar. Use \"auto\" quando não tiver certeza do que o termo é.",
+        },
+        termos: { type: "STRING", description: "Compatibilidade: o mesmo que termo." },
+      },
+      required: ["termo"],
     },
   },
   {

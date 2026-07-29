@@ -38,6 +38,7 @@ import { criarProposta } from "@/lib/services/copilotPropostas";
 import { garantirConversa, gravarTurno } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
 
 export const maxDuration = 60;
 
@@ -140,6 +141,9 @@ export async function POST(request: Request) {
     // recusa em vez de propor — melhor que gerar um anuncio que volta com
     // pendencia depois de tres minutos.
     paraAnunciar: corpo.contexto.paraAnunciar ?? [],
+    // O PORTO de busca forte. O tenant vem da SESSAO — nunca do corpo — e por
+    // isso um EAN que so existe em outro cliente devolve zero linhas.
+    buscar: (t) => rodarTentativa(t, clienteDaSessao),
   };
 
   // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
@@ -177,7 +181,9 @@ export async function POST(request: Request) {
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
       let propostaDeAnuncio: PropostaDeAnuncio | undefined;
       /** O escopo de um lote, quando a proposta atinge mais de um alvo. */
-      let escopoDoLote: NonNullable<ReturnType<typeof executarFerramenta>["escopo"]> | undefined;
+      let escopoDoLote:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["escopo"]>
+        | undefined;
       const usadas: string[] = [];
 
       try {
@@ -292,19 +298,23 @@ export async function POST(request: Request) {
             role: "model",
             parts: turno.chamadas.map((c) => ({ functionCall: { name: c.nome, args: c.args } })),
           });
-          const respostas = turno.chamadas.map((c) => {
+          // SEQUENCIAL, nao Promise.all: a busca forte vai ao banco, e as
+          // ferramentas do mesmo turno costumam depender uma da outra (achar
+          // antes de propor). Paralelizar aqui trocaria ordem por microssegundos.
+          const respostas: { functionResponse: { name: string; response: unknown } }[] = [];
+          for (const c of turno.chamadas) {
             usadas.push(c.nome);
             // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
             // ferramenta roda, no lugar do silêncio.
             mandar({ tipo: "ferramenta", nome: c.nome });
-            const r = executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx);
             // A última proposta vence. Duas no mesmo turno seria o modelo se
             // corrigindo, e é a corrigida que o lojista deve ver.
             if (r.proposta) proposta = r.proposta;
             if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
             if (r.escopo) escopoDoLote = r.escopo;
-            return { functionResponse: { name: c.nome, response: r.saida } };
-          });
+            respostas.push({ functionResponse: { name: c.nome, response: r.saida } });
+          }
           historico.push({ role: "user", parts: respostas });
         }
 

@@ -26,6 +26,14 @@ import {
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
 import {
+  classificar,
+  paraOModelo,
+  tentativasPara,
+  type CampoDeBusca,
+  type LinhaEncontrada,
+  type Tentativa,
+} from "./buscaDeCatalogo";
+import {
   candidatosDoCatalogo,
   montarEscopo,
   type CampoDoLote,
@@ -50,6 +58,18 @@ export interface ContextoDasFerramentas {
    * ferramenta consulta.
    */
   paraAnunciar?: readonly ProdutoParaAnunciar[];
+  /**
+   * O PORTO de busca no catálogo. Opcional de propósito.
+   *
+   * Com ele, `achar_produto` faz busca forte no banco — SKU, EAN e referência,
+   * com tenant da sessão. SEM ele, cai no casamento em memória sobre os
+   * produtos que a tela já carregou, que é o comportamento anterior.
+   *
+   * Isso não é fallback inseguro: o caminho em memória sempre foi limitado a
+   * nome e marca, e continua sendo. O que ele não faz é fingir que achou por
+   * identificador.
+   */
+  buscar?: (t: Tentativa) => Promise<LinhaEncontrada[]>;
 }
 
 /**
@@ -110,10 +130,10 @@ function texto(args: Record<string, unknown>, chave: string): string {
  * e ele corrige no passo seguinte. Uma exceção mataria a conversa inteira por
  * um argumento errado que o próprio modelo consegue consertar.
  */
-export function executarFerramenta(
+export async function executarFerramenta(
   pedido: PedidoDeFerramenta,
   ctx: ContextoDasFerramentas
-): ResultadoDaFerramenta {
+): Promise<ResultadoDaFerramenta> {
   const { nome, args } = pedido;
 
   switch (nome) {
@@ -209,10 +229,26 @@ export function executarFerramenta(
     }
 
     case "achar_produto": {
-      const termos = texto(args, "termos").split(/\s+/).filter(Boolean);
+      const termo = texto(args, "termo") || texto(args, "termos");
+      const campo = (texto(args, "tipo") || "auto") as CampoDeBusca;
+
+      // ---- BUSCA FORTE: SKU, EAN e referência, no banco, com tenant ----
+      if (ctx.buscar && termo.trim()) {
+        // As tentativas vem do dominio, na ordem de FORCA DE BUSCA. A primeira
+        // que trouxer linha decide o `casamento` — e um casamento exato com
+        // varios resultados continua AMBIGUO, nunca resolvido.
+        for (const tentativa of tentativasPara(termo, campo)) {
+          const linhas = await ctx.buscar(tentativa);
+          if (linhas.length > 0) {
+            return { saida: paraOModelo(classificar(linhas, tentativa.casamento, termo)) };
+          }
+        }
+        return { saida: paraOModelo(classificar([], "candidato_textual", termo)) };
+      }
+
+      // ---- Caminho em memoria: nome e marca, como sempre foi ----
+      const termos = (texto(args, "termos") || termo).split(/\s+/).filter(Boolean);
       const achados = candidatos(termos, ctx.produtos);
-      // Um teto para o modelo não receber (nem repetir) meio catálogo. O total
-      // vai junto: sem ele, "achei 6" com 43 batendo seria mentira por omissão.
       return {
         saida: {
           total: achados.length,
