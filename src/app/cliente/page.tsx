@@ -24,18 +24,16 @@ import { PageHeader, ActionTile, Section, Pill } from "@/components/client-porta
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
-import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
-import {
-  lacunasDaLoja,
-  type EstadoDaLoja,
-} from "@/modules/publication/domain/prontidaoDaLoja";
+import { lacunasDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
+import { montarEstadoDaLoja } from "@/components/client-portal/useEstadoDaLoja";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
 import { portalProximasAcoes, quotaEsteira } from "@/lib/services/perfil";
+import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
 
 export default function ClienteHome() {
   const { clienteId, nome } = useClientPortal();
@@ -109,36 +107,15 @@ export default function ClienteHome() {
    * isso. O lojista não tinha como descobrir sozinho.
    */
   const lacunas = useMemo(() => {
-    const prods = produtos ?? [];
-    const ans = anuncios ?? [];
-    const produtosComAnuncio = new Set(ans.map((a) => a.produtoId).filter(Boolean));
-    const comFoto = new Set((imagens ?? []).map((i) => i.produtoId).filter(Boolean));
-
-    const estado: EstadoDaLoja = {
-      produtos: prods.length,
-      // COMPLETUDE, não "tem algum peso" (INC-001). O máximo entre as variantes
-      // dizia que um produto com 1 de 39 preenchidas estava pronto, e 12
-      // variações sem peso ficavam fora de toda contagem de pendência.
-      comPeso: prods.filter((p) => !pesoPendente(p)).length,
-      // Separado de propósito: para estes o frete SAI, e a frase de "sem peso"
-      // seria factualmente falsa (INC-001).
-      comPesoIncompleto: prods.filter((p) => situacaoDePeso(p) === "ausencia_parcial").length,
-      comCusto: prods.filter((p) => p.custo > 0).length,
-      // MEDIDO, não deduzido: o menor entre "com custo" e "com peso" parece um
-      // teto honesto e é chute — os conjuntos podem não se sobrepor.
-      //
-      // Aqui é CALCULABILIDADE, não completude, e por isso continua usando
-      // `pesoGramas` (o maior): com uma variante pesada o frete já sai, e o
-      // preço mínimo existe. Um produto pode legitimamente estar com o cadastro
-      // de peso incompleto E pronto para precificar — os dois indicadores
-      // respondem perguntas diferentes e não devem ser igualados.
-      prontosParaPrecificar: prods.filter((p) => p.custo > 0 && p.pesoGramas > 0).length,
-      comFoto: prods.filter((p) => comFoto.has(p.id)).length,
-      comAnuncio: prods.filter((p) => produtosComAnuncio.has(p.id)).length,
-      aguardandoAprovacao: ans.filter((a) => a.status === "aguardando_aprovacao").length,
-      aprovadosNaoPublicados: ans.filter((a) => a.status === "aprovado").length,
-      conectadoAoMarketplace: Boolean(canal?.ativo),
-    };
+    // A conta vive em `montarEstadoDaLoja`, não aqui. Ela era inline e a
+    // segunda tela que precisasse dela ia copiá-la — duas verdades sobre a
+    // mesma loja, que é exatamente como o INC-001 começou.
+    const estado = montarEstadoDaLoja(
+      produtos ?? [],
+      anuncios ?? [],
+      imagens ?? [],
+      Boolean(canal?.ativo)
+    );
     return { lista: lacunasDaLoja(estado), estado };
   }, [produtos, anuncios, imagens, canal]);
 
@@ -188,6 +165,14 @@ export default function ClienteHome() {
         <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
         <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
       </div>
+
+      {/* Perguntar sobre a própria loja.
+          Fica logo abaixo dos números de propósito: a pergunta que os cards
+          provocam ("por que 43 sem custo?", "qual eu resolvo primeiro?") não
+          tinha onde ser feita, e a resposta estava espalhada por seis telas.
+          O que ele responde sai DAQUI — do mesmo `lacunas.estado` que alimenta
+          "O que falta" logo abaixo, e não de um modelo que adivinha número. */}
+      <ChatDaOperacao contexto={{ loja: lacunas.estado }} />
 
       {/* O que você quer fazer hoje? */}
       <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">

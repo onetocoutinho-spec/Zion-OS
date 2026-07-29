@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
+import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
+import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
 import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import {
@@ -101,6 +103,8 @@ function Jornada() {
   const params = useSearchParams();
 
   const [produtoId, setProdutoIdBruto] = useState<string | null>(null);
+  /** O que o chat desta tela pode responder. `null` enquanto carrega. */
+  const contextoDaPergunta = useContextoDaPergunta(clienteId, produtoId);
   /** Já retomamos uma vez? Sem isto, a retomada brigaria com a escolha manual. */
   const [retomou, setRetomou] = useState(false);
   const [cadastrando, setCadastrando] = useState(false);
@@ -552,6 +556,18 @@ function Jornada() {
       {publicado && <AvisoPublicado resultado={publicado} />}
 
       <Trilha trilha={trilha} />
+
+      {/* Perguntar sem sair da esteira.
+          Aqui a pergunta quase sempre tem sujeito — "o que falta NESTE?" — e é
+          por isso que o contexto leva o produto em foco. O peso vem da lista
+          com variantes, não do `Produto` da tela: este não carrega peso, e
+          passar 0 diria "falta peso" para quem tem. */}
+      {contextoDaPergunta && (
+        <ChatDaOperacao
+          contexto={contextoDaPergunta}
+          titulo={produto ? `Pergunte sobre ${produto.nome}` : "Pergunte sobre a sua loja"}
+        />
+      )}
 
       {/* ── Passo 1: escolher o produto ─────────────────────────────────── */}
       {total === 0 ? (
