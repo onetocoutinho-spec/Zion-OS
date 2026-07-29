@@ -32,6 +32,7 @@ import {
   type ContextoDasFerramentas,
 } from "@/modules/assistant/domain/executarFerramenta";
 import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
+import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 60;
@@ -91,6 +92,10 @@ export async function POST(request: Request) {
     pergunta: corpo.contexto.pergunta,
     produtos: corpo.contexto.produtos ?? [],
     produtoAberto: corpo.contexto.produtoAberto ?? null,
+    // Os dados que a checagem de anuncio exige. Sem eles `propor_anuncio`
+    // recusa em vez de propor — melhor que gerar um anuncio que volta com
+    // pendencia depois de tres minutos.
+    paraAnunciar: corpo.contexto.paraAnunciar ?? [],
   };
 
   const historico: Fala[] = [
@@ -117,6 +122,8 @@ export async function POST(request: Request) {
       let tokens = 0;
       /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
       let proposta: Proposta | undefined;
+      /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
+      let propostaDeAnuncio: PropostaDeAnuncio | undefined;
       const usadas: string[] = [];
 
       try {
@@ -138,6 +145,7 @@ export async function POST(request: Request) {
               ferramentas: usadas,
               tokens,
               ...(proposta ? { proposta } : {}),
+              ...(propostaDeAnuncio ? { propostaDeAnuncio } : {}),
             });
             controlador.close();
             return;
@@ -156,6 +164,7 @@ export async function POST(request: Request) {
             // A última proposta vence. Duas no mesmo turno seria o modelo se
             // corrigindo, e é a corrigida que o lojista deve ver.
             if (r.proposta) proposta = r.proposta;
+            if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
             return { functionResponse: { name: c.nome, response: r.saida } };
           });
           historico.push({ role: "user", parts: respostas });

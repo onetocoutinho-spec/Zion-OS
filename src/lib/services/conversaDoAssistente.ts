@@ -13,6 +13,7 @@ import { cabecalhoAutenticacao } from "../supabase/sessao";
 import type { Fala } from "../agentes/conversaComFerramentas";
 import type { ContextoDasFerramentas } from "../../modules/assistant/domain/executarFerramenta";
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
+import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaDeAnuncio";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -23,6 +24,8 @@ export interface RespostaDaConversa {
   tokens: number;
   /** Um cartão para confirmar. Nada foi gravado. */
   proposta?: Proposta;
+  /** Um cartão para GERAR o anúncio. Nada foi gerado — leva minutos e cota. */
+  propostaDeAnuncio?: PropostaDeAnuncio;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -94,6 +97,9 @@ export async function conversar(
           ferramentas: (e.ferramentas as string[]) ?? [],
           tokens: (e.tokens as number) ?? 0,
           ...(e.proposta ? { proposta: e.proposta as Proposta } : {}),
+          ...(e.propostaDeAnuncio
+            ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
+            : {}),
         };
       }
     }
