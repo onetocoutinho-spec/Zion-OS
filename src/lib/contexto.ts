@@ -33,7 +33,16 @@ export function contextoDoProduto(p: Produto): string {
     `- Marketplace: ${p.marketplace}`,
     `- Status: cadastro ${p.statusCadastro} · SEO ${p.statusSeo} · descrição ${p.statusDescricao} · imagens ${p.statusImagens} · precificação ${p.statusPrecificacao}`,
     `- Prioridade: ${p.prioridade}`,
-    p.observacoes ? `- Observações da equipe: ${p.observacoes}` : null,
+    // `observacoes` NÃO entra: ela descreve o PROCESSO, não o produto.
+    //
+    // A importação grava ali "Complete o custo para a margem" e nunca mais
+    // atualiza. Num produto com custo R$ 44,31 cadastrado, o contexto afirmava
+    // o custo numa linha e mandava completá-lo três linhas abaixo — e a IA
+    // acreditou na frase mais explícita, listando "Custo do produto" como
+    // pendência. Pendência falsa trava a publicação para sempre.
+    //
+    // Mesma família do preço mínimo fantasma de R$ 1,77 e da leitura por MAX:
+    // dado que foi verdade uma vez, não é mais, e ninguém o revisita.
   ]
     .filter(Boolean)
     .join("\n");
@@ -96,6 +105,14 @@ export function contextoDoAnuncio(a: Anuncio): string {
 
 export interface EntidadesContexto {
   cliente?: Cliente | null;
+  /**
+   * Quantas fotos o produto JÁ tem.
+   *
+   * A esteira pedia "imagens reais do produto" como pendência de um item com
+   * 8 fotos cadastradas — porque ninguém lhe dizia que existiam. Pendência
+   * falsa trava a publicação para sempre: publicar exige a lista vazia.
+   */
+  quantidadeFotos?: number | null;
   produto?: Produto | null;
   anuncio?: Anuncio | null;
   variantes?: ProdutoVariante[] | null;
@@ -141,10 +158,15 @@ export function montarContexto({
   anuncio,
   variantes,
   tabelasMedidas,
+  quantidadeFotos,
 }: EntidadesContexto): string {
   const vs = variantes ?? [];
   return [
     cliente ? contextoDoCliente(cliente) : null,
+    typeof quantidadeFotos === "number"
+      ? `FOTOS: ${quantidadeFotos} imagem(ns) já cadastrada(s) para este produto. ` +
+        `NÃO liste "imagens do produto" como pendência quando houver ao menos uma.`
+      : null,
     produto ? contextoDoProduto(produto) : null,
     produto ? contextoDoKit(produto) || null : null,
     vs.length > 0 ? contextoDasVariacoes(vs) : null,

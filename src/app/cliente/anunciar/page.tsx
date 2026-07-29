@@ -41,6 +41,7 @@ import { FotosDoProduto } from "@/components/client-portal/FotosDoProduto";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { montarContexto } from "@/lib/contexto";
 import {
   listarAnunciosGeradosDoCliente,
   aprovarAnuncioGerado,
@@ -286,8 +287,25 @@ function Jornada() {
       // SKU, EAN e estoque à IA tendo mandado só o nome do produto — e um
       // babuche branco voltou "Arco Iris" com SKU inventado.
       const variantes = await listarVariantesDoProduto(produto.id);
+      // O CONTEXTO estava faltando, e era ele que faltava.
+      //
+      // A cadeia recebia só o NOME do produto. O A10 então listava como
+      // pendência o custo (R$ 44,31 cadastrado), o SKU (que estava no próprio
+      // anúncio), a cor e as fotos (8 delas) — de um produto completo. Ele não
+      // alucinava: respondia honestamente sobre um briefing incompleto.
+      //
+      // Pendência falsa é pior que pendência ausente: publicar exige a lista
+      // vazia, então uma acusação sobre dado presente trava o anúncio para
+      // sempre. `/esteira` (a tela da equipe) já passava contexto; a tela do
+      // cliente, não.
+      const contexto = montarContexto({
+        produto,
+        variantes,
+        quantidadeFotos: fotos.length,
+      });
       const r = await rodarCadeiaEsteira({
         produto: produto.nome,
+        contexto,
         briefing,
         variantes,
         precoVenda: produto.precoVenda,
