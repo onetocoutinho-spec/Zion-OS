@@ -15,6 +15,7 @@ import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { lacunasDoProduto } from "@/modules/catalog/domain/lacunasDoProduto";
+import { pesoPendente } from "@/modules/catalog/domain/familiaDeProduto";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
@@ -60,12 +61,34 @@ export default function ClienteProdutos() {
   const { data: variantes } = useLiveQuery(listarTodasVariantes);
   const { data: imagens } = useLiveQuery(listarTodasImagens);
 
+  /**
+   * O peso do produto para o CÁLCULO: o maior entre as variantes, porque o frete
+   * cobra pela caixa que sai.
+   */
   const pesoPorProduto = useMemo(() => {
     const mapa = new Map<string, number>();
     for (const v of variantes ?? []) {
       if (v.clienteId !== clienteId || !v.produtoId) continue;
-      // O MAIOR entre as variantes: o frete cobra pela caixa que sai.
       mapa.set(v.produtoId, Math.max(mapa.get(v.produtoId) ?? 0, (Number(v.peso) || 0) * 1000));
+    }
+    return mapa;
+  }, [variantes, clienteId]);
+
+  /**
+   * A COMPLETUDE do peso, que é outra pergunta (INC-001).
+   *
+   * O maior respondia as duas, e por isso um produto com 9 de 18 variações
+   * preenchidas não mostrava a lacuna "peso" — o chip sumia como se estivesse
+   * pronto. São 12 variações inalcançáveis em dois produtos da base real.
+   */
+  const pesoCompletoPorProduto = useMemo(() => {
+    const mapa = new Map<string, { quantidadeVariantes: number; variacoesSemPeso: number }>();
+    for (const v of variantes ?? []) {
+      if (v.clienteId !== clienteId || !v.produtoId) continue;
+      const e = mapa.get(v.produtoId) ?? { quantidadeVariantes: 0, variacoesSemPeso: 0 };
+      e.quantidadeVariantes += 1;
+      if (!((Number(v.peso) || 0) > 0)) e.variacoesSemPeso += 1;
+      mapa.set(v.produtoId, e);
     }
     return mapa;
   }, [variantes, clienteId]);
@@ -554,7 +577,13 @@ export default function ClienteProdutos() {
                   {
                     custo: p.custo,
                     precoVenda: p.precoVenda,
-                    pesoGramas: pesoPorProduto.get(p.id) ?? 0,
+                    // A lacuna é sobre COMPLETUDE: grade incompleta mantém o
+                    // chip "peso" mesmo que o frete já saia pela maior variação.
+                    pesoGramas: pesoPendente(
+                      pesoCompletoPorProduto.get(p.id) ?? { quantidadeVariantes: 0, variacoesSemPeso: 0 }
+                    )
+                      ? 0
+                      : pesoPorProduto.get(p.id) ?? 0,
                     temFoto: comFoto.has(p.id),
                     ...(typeof p.vendedorPagaFrete === "boolean"
                       ? { vendedorPagaFrete: p.vendedorPagaFrete }

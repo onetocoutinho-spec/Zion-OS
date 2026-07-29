@@ -26,7 +26,13 @@ import { PageHeader } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso, definirPesoDosProdutos } from "@/lib/services/pesoDeProduto";
-import { agruparPorFamilia, contarComPeso } from "@/modules/catalog/domain/familiaDeProduto";
+import {
+  agruparPorFamilia,
+  contarCompletos,
+  contarPendentes,
+  pesoPendente,
+  situacaoDePeso,
+} from "@/modules/catalog/domain/familiaDeProduto";
 import { formatBRL } from "@/lib/format";
 import { useSearchParams } from "next/navigation";
 
@@ -47,10 +53,16 @@ function PesoDosProdutosInterno() {
   );
 
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
+  const [soPendentes, setSoPendentes] = useState(false);
   const [gravando, setGravando] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const familias = useMemo(() => agruparPorFamilia(produtos ?? []), [produtos]);
+  const familias = useMemo(() => {
+    const base = produtos ?? [];
+    // O filtro age sobre o PRODUTO e depois reagrupa: esconder a família
+    // inteira por causa de um irmão pronto tiraria da tela o que falta.
+    return agruparPorFamilia(soPendentes ? base.filter(pesoPendente) : base);
+  }, [produtos, soPendentes]);
 
   /** A família do produto pedido no endereço, se houver. */
   const familiaAlvo = useMemo(
@@ -71,7 +83,12 @@ function PesoDosProdutosInterno() {
     );
   }, [focou, familiaAlvo]);
   const total = produtos?.length ?? 0;
-  const comPeso = contarComPeso(produtos ?? []);
+  // Progresso por COMPLETUDE. O denominador exclui quem não tem grade: produto
+  // sem variação não tem onde guardar peso, e cobrá-lo criaria uma pendência
+  // que ninguém resolve nesta tela (são 3 na base real).
+  const comGrade = (produtos ?? []).filter((p) => p.quantidadeVariantes > 0);
+  const comPeso = contarCompletos(comGrade);
+  const pendentes = contarPendentes(produtos ?? []);
 
   async function gravar(chave: string, ids: string[], form: HTMLFormElement) {
     const dado = new FormData(form);
@@ -110,16 +127,36 @@ function PesoDosProdutosInterno() {
       <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
         <div className="flex items-baseline justify-between text-sm">
           <span className="text-white/70">
-            <strong className="text-white">{comPeso}</strong> de {total} produtos com peso
+            <strong className="text-white">{comPeso}</strong> de {comGrade.length} produtos com o
+            peso completo
           </span>
           <span className="text-xs text-white/40">{familias.length} linha(s) de produto</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
           <div
             className="h-full rounded-full bg-violet-500 transition-all"
-            style={{ width: total > 0 ? `${(comPeso / total) * 100}%` : "0%" }}
+            style={{ width: comGrade.length > 0 ? `${(comPeso / comGrade.length) * 100}%` : "0%" }}
           />
         </div>
+        {(pendentes > 0 || soPendentes) && (
+          <button
+            type="button"
+            onClick={() => setSoPendentes((v) => !v)}
+            className={`mt-3 rounded-lg border px-2.5 py-1.5 text-xs transition-colors [@media(pointer:coarse)]:min-h-11 ${
+              soPendentes
+                ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
+                : "border-amber-500/25 bg-amber-500/[0.06] text-amber-300 hover:border-amber-500/50"
+            }`}
+          >
+            {soPendentes ? `Ver todos · ${pendentes} com peso faltando` : `${pendentes} com peso faltando`}
+          </button>
+        )}
+        {total > comGrade.length && (
+          <p className="mt-2 text-xs text-white/35">
+            {total - comGrade.length} produto(s) sem variações cadastradas ficam de fora: sem grade
+            não é o mesmo que sem peso — não há onde guardar.
+          </p>
+        )}
         <p className="mt-3 text-xs text-white/45">
           Meça a <strong className="text-white/70">caixa fechada</strong>, como ela sai para o
           correio — não o produto nu. Peso em gramas; altura, largura e comprimento em centímetros
@@ -138,8 +175,16 @@ function PesoDosProdutosInterno() {
       {/* ── Uma linha por família ───────────────────────────────────────── */}
       <div className="space-y-2">
         {familias.map((f) => {
-          const feitos = contarComPeso(f.produtos);
-          const completa = feitos === f.produtos.length;
+          // Completude, não "tem algum peso": família com um produto parcial
+          // dentro não está pronta, e antes ela aparecia verde.
+          const feitos = contarCompletos(f.produtos);
+          // AVALIÁVEIS ≠ total da família: produto sem grade não tem onde
+          // guardar peso. Sem essa separação a família de um produto sem grade
+          // mostrava "1 produto(s) · 0 com peso" num card VERDE — três famílias
+          // na base real diziam isso.
+          const avaliaveis = f.produtos.filter((p) => p.quantidadeVariantes > 0).length;
+          const completa = avaliaveis > 0 && contarPendentes(f.produtos) === 0;
+          const nadaAAvaliar = avaliaveis === 0;
           const aberta = abertas.has(f.chave);
           const ids = f.produtos.map((p) => p.id);
           return (
@@ -147,7 +192,9 @@ function PesoDosProdutosInterno() {
               key={f.chave}
               id={`familia-${f.chave}`}
               className={`rounded-xl border p-4 ${
-                completa ? "border-emerald-500/20 bg-emerald-500/[0.03]" : "border-white/10 bg-white/[0.02]"
+                completa
+                  ? "border-emerald-500/20 bg-emerald-500/[0.03]"
+                  : "border-white/10 bg-white/[0.02]"
               }`}
             >
               <div className="flex flex-wrap items-center gap-3">
@@ -166,7 +213,11 @@ function PesoDosProdutosInterno() {
                   {f.titulo}
                 </button>
                 <span className="text-xs text-white/40">
-                  {f.produtos.length} produto(s) · {feitos} com peso
+                  {f.produtos.length} produto(s) ·{" "}
+                  {nadaAAvaliar ? "sem variações cadastradas" : `${feitos} de ${avaliaveis} com peso`}
+                  {!nadaAAvaliar && avaliaveis < f.produtos.length
+                    ? ` · ${f.produtos.length - avaliaveis} sem grade`
+                    : ""}
                 </span>
                 {completa && <Check size={15} className="text-emerald-400" />}
 
@@ -199,9 +250,23 @@ function PesoDosProdutosInterno() {
                       <span className="min-w-0 flex-1 truncate">{p.nome}</span>
                       <span className="text-white/35">{p.quantidadeVariantes} var.</span>
                       {p.custo > 0 && <span className="text-white/35">custo {formatBRL(p.custo)}</span>}
-                      <span className={p.pesoGramas > 0 ? "text-emerald-400" : "text-amber-400"}>
-                        {p.pesoGramas > 0 ? `${p.pesoGramas} g` : "sem peso"}
-                      </span>
+                      {/* Quatro estados, não dois (INC-001). O parcial existia
+                          e aparecia como se estivesse pronto — 9 de 18 e 3 de
+                          39 variações sumiam da tela. */}
+                      {(() => {
+                        const s = situacaoDePeso(p);
+                        if (s === "sem_grade")
+                          return <span className="text-white/35">sem variações cadastradas</span>;
+                        if (s === "completo")
+                          return <span className="text-emerald-400">{p.pesoGramas} g</span>;
+                        if (s === "ausencia_total")
+                          return <span className="text-amber-400">sem peso</span>;
+                        return (
+                          <span className="text-amber-400">
+                            {p.variacoesSemPeso} de {p.quantidadeVariantes} variações sem peso
+                          </span>
+                        );
+                      })()}
                     </li>
                   ))}
                 </ul>

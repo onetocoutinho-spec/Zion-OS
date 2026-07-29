@@ -12,6 +12,10 @@ import {
   chaveDaFamilia,
   codigoDoModelo,
   contarComPeso,
+  contarCompletos,
+  contarPendentes,
+  pesoPendente,
+  situacaoDePeso,
   marcaDoNome,
 } from "./familiaDeProduto.ts";
 
@@ -100,4 +104,62 @@ test("lista vazia não vira grupo nenhum", () => {
 test("contarComPeso conta só o que tem peso de verdade", () => {
   assert.equal(contarComPeso([{ pesoGramas: 400 }, { pesoGramas: 0 }, { pesoGramas: 350 }]), 2);
   assert.equal(contarComPeso([]), 0);
+});
+
+// ── Completude do cadastro de peso (INC-001) ────────────────────────────────
+//
+// O máximo entre as variantes respondia "tem peso?" e escondia o estado
+// PARCIAL. As duas sentinelas são produtos reais da base do primeiro cliente.
+
+const HAVAIANAS = { quantidadeVariantes: 18, variacoesSemPeso: 9 };  // Top Max Comfort
+const VIZZANO = { quantidadeVariantes: 39, variacoesSemPeso: 3 };    // Rasteira 6371.1005
+
+test("os quatro estados saem do par (total, sem)", () => {
+  assert.equal(situacaoDePeso({ quantidadeVariantes: 6, variacoesSemPeso: 0 }), "completo");
+  assert.equal(situacaoDePeso({ quantidadeVariantes: 6, variacoesSemPeso: 6 }), "ausencia_total");
+  assert.equal(situacaoDePeso(HAVAIANAS), "ausencia_parcial");
+  assert.equal(situacaoDePeso(VIZZANO), "ausencia_parcial");
+  assert.equal(situacaoDePeso({ quantidadeVariantes: 0, variacoesSemPeso: 0 }), "sem_grade");
+});
+
+test("as sentinelas do INC-001 deixam de ser invisíveis", () => {
+  // Antes: o maior peso > 0 fazia os dois contarem como completos, e as 12
+  // variações sem peso não apareciam em contagem, lista nem filtro.
+  assert.equal(pesoPendente(HAVAIANAS), true);
+  assert.equal(pesoPendente(VIZZANO), true);
+  assert.equal(contarPendentes([HAVAIANAS, VIZZANO]), 2);
+  assert.equal(HAVAIANAS.variacoesSemPeso + VIZZANO.variacoesSemPeso, 12);
+});
+
+test("SEM GRADE não é pendência de peso", () => {
+  // Produto sem variação não tem onde guardar peso. Cobrá-lo criaria uma
+  // pendência que ninguém resolve na tela de peso — e são 3 na base real.
+  const semGrade = { quantidadeVariantes: 0, variacoesSemPeso: 0 };
+  assert.equal(pesoPendente(semGrade), false);
+  assert.equal(contarPendentes([semGrade, semGrade, semGrade]), 0);
+  // E também NÃO é completo: não há o que completar.
+  assert.equal(contarCompletos([semGrade]), 0);
+});
+
+test("pendentes + completos + sem grade = total", () => {
+  const base = [
+    { quantidadeVariantes: 6, variacoesSemPeso: 0 },
+    HAVAIANAS,
+    { quantidadeVariantes: 4, variacoesSemPeso: 4 },
+    { quantidadeVariantes: 0, variacoesSemPeso: 0 },
+  ];
+  const semGrade = base.filter((p) => situacaoDePeso(p) === "sem_grade").length;
+  assert.equal(contarPendentes(base) + contarCompletos(base) + semGrade, base.length);
+});
+
+test("contarComPeso MANTÉM a semântica antiga — é sobre cálculo, não completude", () => {
+  // Guarda de não-contaminação: o parcial tem peso para o frete (o maior),
+  // e continua contando aqui. Quem quer completude chama contarPendentes.
+  assert.equal(contarComPeso([{ pesoGramas: 450 }, { pesoGramas: 0 }]), 1);
+  assert.equal(contarComPeso([{ pesoGramas: 450 }]), 1);
+});
+
+test("variacoesSemPeso maior que o total não quebra a classificação", () => {
+  // Defensivo: dado inconsistente não deve virar "parcial" silencioso.
+  assert.equal(situacaoDePeso({ quantidadeVariantes: 3, variacoesSemPeso: 5 }), "ausencia_total");
 });

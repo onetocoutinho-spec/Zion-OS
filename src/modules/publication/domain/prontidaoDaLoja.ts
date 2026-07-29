@@ -28,6 +28,7 @@ export type TipoLacuna =
   | "sem_produtos"
   | "sem_conexao"
   | "sem_peso"
+  | "peso_incompleto"
   | "sem_custo"
   | "sem_foto"
   | "sem_anuncio"
@@ -36,8 +37,19 @@ export type TipoLacuna =
 
 export interface EstadoDaLoja {
   produtos: number;
-  /** Produtos com ao menos uma variante com peso — o que libera o frete. */
+  /**
+   * Produtos com o cadastro de peso COMPLETO — todas as variações preenchidas —
+   * mais os que não têm grade (não há o que preencher).
+   *
+   * NÃO é "tem algum peso". Confundir as duas coisas escondia o estado parcial:
+   * um produto com 1 de 39 variações pesadas contava como pronto. Ver INC-001.
+   */
   comPeso: number;
+  /**
+   * Produtos com peso em PARTE das variações. Ficam fora de `comPeso` e fora de
+   * `semPeso`: o frete deles sai, então a frase de "sem peso" seria falsa.
+   */
+  comPesoIncompleto: number;
   comCusto: number;
   /**
    * Produtos com custo E peso — os únicos que produzem preço mínimo.
@@ -111,7 +123,11 @@ export function lacunasDaLoja(e: EstadoDaLoja): Lacuna[] {
     });
   }
 
-  const semPeso = e.produtos - e.comPeso;
+  // Ausência TOTAL e incompletude são consequências diferentes, e juntá-las
+  // produzia uma frase falsa (INC-001). Para quem tem alguma variação pesada, o
+  // frete SAI — pela maior caixa — e o preço mínimo existe. Dizer que ele "não
+  // sai" ensinaria a pessoa a desconfiar da tela quando ela vê o preço aparecer.
+  const semPeso = e.produtos - e.comPeso - e.comPesoIncompleto;
   if (semPeso > 0) {
     lacunas.push({
       tipo: "sem_peso",
@@ -124,6 +140,22 @@ export function lacunasDaLoja(e: EstadoDaLoja): Lacuna[] {
       href: "/cliente/peso",
       cta: "Informar peso",
       bloqueiaTudo: e.comPeso === 0,
+    });
+  }
+
+  if (e.comPesoIncompleto > 0) {
+    lacunas.push({
+      tipo: "peso_incompleto",
+      titulo: `${e.comPesoIncompleto} produto(s) com peso só em parte das variações`,
+      // O risco aqui não é o preço faltar — é ele sair BAIXO. O frete usa o
+      // maior peso conhecido, e o maior conhecido pode não ser o maior real.
+      trava:
+        "O preço sai, mas o frete é calculado só sobre as variações que têm peso. " +
+        "Se as que faltam forem mais pesadas, o preço mínimo fica abaixo do que você paga.",
+      quantos: e.comPesoIncompleto,
+      href: "/cliente/peso",
+      cta: "Completar o peso",
+      bloqueiaTudo: false,
     });
   }
 

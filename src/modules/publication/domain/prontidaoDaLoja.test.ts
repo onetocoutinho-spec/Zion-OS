@@ -15,6 +15,9 @@ function loja(over: Partial<EstadoDaLoja> = {}): EstadoDaLoja {
   return {
     produtos: 10,
     comPeso: 10,
+    // INC-001: loja-base sem nenhum produto parcialmente pesado. Os testes que
+    // querem incompletude a declaram explicitamente.
+    comPesoIncompleto: 0,
     comCusto: 10,
     prontosParaPrecificar: 10,
     comFoto: 10,
@@ -99,4 +102,47 @@ test("números negativos não viram lacuna", () => {
   // "-3 produtos sem peso" na tela do lojista.
   const l = lacunasDaLoja(loja({ produtos: 5, comPeso: 8, comCusto: 8, prontosParaPrecificar: 5, comFoto: 8, comAnuncio: 8 }));
   assert.deepEqual(l, []);
+});
+
+// ── INC-001 · ausência total ≠ incompletude ─────────────────────────────────
+//
+// Juntar as duas produzia uma frase FALSA: para quem tem alguma variação pesada
+// o frete sai (pela maior caixa) e o preço mínimo existe. Dizer que ele "não
+// sai" ensina a pessoa a desconfiar da tela quando vê o preço aparecer.
+
+const LOJA_BASE: EstadoDaLoja = {
+  produtos: 73, comPeso: 54, comPesoIncompleto: 0, comCusto: 30,
+  prontosParaPrecificar: 25, comFoto: 70, comAnuncio: 60,
+  aguardandoAprovacao: 0, aprovadosNaoPublicados: 0, conectadoAoMarketplace: true,
+};
+
+test("incompletude NÃO entra na contagem de 'sem peso'", () => {
+  // Base real: 17 ausência total + 2 parcial. A frase forte vale para 17.
+  const l = lacunasDaLoja({ ...LOJA_BASE, comPeso: 54, comPesoIncompleto: 2 });
+  const semPeso = l.find((x) => x.tipo === "sem_peso");
+  assert.equal(semPeso?.quantos, 73 - 54 - 2);
+});
+
+test("incompletude vira lacuna PRÓPRIA, com a consequência certa", () => {
+  const l = lacunasDaLoja({ ...LOJA_BASE, comPesoIncompleto: 2 });
+  const inc = l.find((x) => x.tipo === "peso_incompleto");
+  assert.ok(inc, "a lacuna de peso incompleto deveria existir");
+  assert.equal(inc.quantos, 2);
+  // O risco é o preço sair BAIXO, não faltar.
+  assert.match(inc.trava, /preço sai/);
+  assert.match(inc.trava, /abaixo do que você paga/);
+  assert.equal(inc.bloqueiaTudo, false);
+});
+
+test("sem incompletude, a lacuna não aparece", () => {
+  assert.equal(
+    lacunasDaLoja({ ...LOJA_BASE, comPesoIncompleto: 0 }).some((x) => x.tipo === "peso_incompleto"),
+    false
+  );
+});
+
+test("a frase forte de 'sem peso' continua intacta para ausência TOTAL", () => {
+  const semPeso = lacunasDaLoja({ ...LOJA_BASE, comPeso: 50, comPesoIncompleto: 2 })
+    .find((x) => x.tipo === "sem_peso");
+  assert.match(semPeso!.trava, /o preço mínimo não sai/);
 });

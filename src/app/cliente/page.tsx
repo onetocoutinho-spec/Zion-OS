@@ -24,6 +24,7 @@ import { PageHeader, ActionTile, Section, Pill } from "@/components/client-porta
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
+import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import {
@@ -115,10 +116,22 @@ export default function ClienteHome() {
 
     const estado: EstadoDaLoja = {
       produtos: prods.length,
-      comPeso: prods.filter((p) => p.pesoGramas > 0).length,
+      // COMPLETUDE, não "tem algum peso" (INC-001). O máximo entre as variantes
+      // dizia que um produto com 1 de 39 preenchidas estava pronto, e 12
+      // variações sem peso ficavam fora de toda contagem de pendência.
+      comPeso: prods.filter((p) => !pesoPendente(p)).length,
+      // Separado de propósito: para estes o frete SAI, e a frase de "sem peso"
+      // seria factualmente falsa (INC-001).
+      comPesoIncompleto: prods.filter((p) => situacaoDePeso(p) === "ausencia_parcial").length,
       comCusto: prods.filter((p) => p.custo > 0).length,
       // MEDIDO, não deduzido: o menor entre "com custo" e "com peso" parece um
       // teto honesto e é chute — os conjuntos podem não se sobrepor.
+      //
+      // Aqui é CALCULABILIDADE, não completude, e por isso continua usando
+      // `pesoGramas` (o maior): com uma variante pesada o frete já sai, e o
+      // preço mínimo existe. Um produto pode legitimamente estar com o cadastro
+      // de peso incompleto E pronto para precificar — os dois indicadores
+      // respondem perguntas diferentes e não devem ser igualados.
       prontosParaPrecificar: prods.filter((p) => p.custo > 0 && p.pesoGramas > 0).length,
       comFoto: prods.filter((p) => comFoto.has(p.id)).length,
       comAnuncio: prods.filter((p) => produtosComAnuncio.has(p.id)).length,
