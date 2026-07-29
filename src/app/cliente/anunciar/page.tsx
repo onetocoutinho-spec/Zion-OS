@@ -120,6 +120,8 @@ function Jornada() {
   const [ocupado, setOcupado] = useState(false);
   /** Anúncio já montado, esperando gravação. Aparece só quando é DESTE produto. */
   const [pendente, setPendente] = useState<AnuncioPendenteDeGravacao | null>(null);
+  /** Piscar o painel do anúncio quando a pessoa pede para revisar. */
+  const [destacarAnuncio, setDestacarAnuncio] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -454,12 +456,27 @@ function Jornada() {
     }
   }
 
+  /**
+   * Refazer em UM clique.
+   *
+   * Antes eram dois, com rótulos quase idênticos: este botão só rebobinava a
+   * jornada, e a geração acontecia num segundo botão que passava a se chamar
+   * "Refazer anúncio". Quem clicava via o rótulo do outro botão mudar e
+   * concluía que nada tinha acontecido — foi exatamente o que aconteceu comigo
+   * ao testar, e só entendi lendo o código.
+   *
+   * A confirmação existe porque a ação descarta o anúncio atual e gasta uma
+   * geração da quota.
+   */
   async function refazer() {
     if (!registro || ocupado) return;
+    if (!confirm("Refazer apaga o anúncio atual e gera outro do zero. Continuar?")) return;
     setOcupado(true);
     try {
       await rejeitarAnuncioGerado(registro.id, "Refazer solicitado pelo lojista.");
       await recarregarAnuncios();
+      // E gera, em vez de esperar um segundo clique num botão que mudou de nome.
+      await gerar();
     } finally {
       setOcupado(false);
     }
@@ -501,8 +518,21 @@ function Jornada() {
     if (acao.etapa === "gerar") return void gerar();
     if (acao.etapa === "aprovar") return void aprovar();
     if (acao.etapa === "publicar") return setPublicando(true);
-    // "produto", "fotos" e "revisar" não têm ação remota: o painel correspondente
-    // já está visível na tela, e o botão só existiria para repetir o óbvio.
+    if (acao.etapa === "revisar") {
+      // "Revisar" não tem ação REMOTA — mas tinha que ter alguma. Antes o clique
+      // chegava ao fim desta função sem fazer nada: um botão roxo, primário, no
+      // fim da página, prometendo o passo seguinte e devolvendo silêncio.
+      //
+      // O raciocínio original ("o painel já está visível") é verdade sobre a
+      // tela e falso sobre a promessa do botão. Mesma lição do chip "custo" que
+      // virou <span> no PR #76: controle que não faz nada ensina a não clicar
+      // em nenhum.
+      document.getElementById("anuncio-gerado")?.scrollIntoView({ block: "center" });
+      setDestacarAnuncio(true);
+      return;
+    }
+    // "produto" e "fotos" não têm ação: o painel correspondente é a própria
+    // tela onde a pessoa já está.
   }
 
   const total = (produtos ?? []).length;
@@ -653,7 +683,9 @@ function Jornada() {
       )}
 
       {/* ── O anúncio gerado ────────────────────────────────────────────── */}
-      {registro?.anuncio && !rodando && <AnuncioPronto registro={registro} />}
+      {registro?.anuncio && !rodando && (
+        <AnuncioPronto registro={registro} destacado={destacarAnuncio} />
+      )}
 
       {/* ── A única ação de agora ───────────────────────────────────────── */}
       {produto && !fim && acao && acao.etapa !== "fotos" && (
@@ -837,10 +869,21 @@ function PassosDaEsteira({ passos }: { passos: PassoCadeia[] }) {
 }
 
 /** O anúncio que a IA escreveu — para o lojista ler antes de aprovar. */
-function AnuncioPronto({ registro }: { registro: AnuncioGeradoRegistro }) {
+function AnuncioPronto({
+  registro,
+  destacado,
+}: {
+  registro: AnuncioGeradoRegistro;
+  destacado?: boolean;
+}) {
   const a = registro.anuncio!;
   return (
-    <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+    <div
+      id="anuncio-gerado"
+      className={`space-y-3 rounded-xl border p-4 transition-colors ${
+        destacado ? "border-violet-500/60 bg-violet-500/[0.07]" : "border-white/10 bg-white/[0.02]"
+      }`}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-zinc-100">Seu anúncio</p>
         <Pill tone={registro.notaDiagnostico >= 70 ? "green" : registro.notaDiagnostico >= 40 ? "yellow" : "red"}>
