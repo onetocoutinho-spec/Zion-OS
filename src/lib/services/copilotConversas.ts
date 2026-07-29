@@ -23,6 +23,14 @@ export interface TurnoGravado {
   resposta: string;
   ferramentas: readonly string[];
   tokens: number;
+  /**
+   * O que ESTA resposta apresentou — os ids e a ordem em que apareceram.
+   *
+   * É o que permite "o segundo" virar um id. Sem isto, a referência teria que
+   * ser reinterpretada no turno seguinte, contra uma lista que pode ter mudado
+   * de ordem. Ver `referenciasDaConversa`.
+   */
+  metadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -105,10 +113,44 @@ export async function gravarTurno(
           texto: turno.resposta,
           ferramentas: turno.ferramentas,
           tokens: turno.tokens,
+          metadata: turno.metadata ?? null,
         },
       ]);
   } catch (e) {
     // Ver o cabeçalho: perder o registro é ruim, perder a resposta é pior.
     console.error("[copilot] falha ao gravar turno:", e);
+  }
+}
+
+/**
+ * O que a ÚLTIMA fala do assistente apresentou.
+ *
+ * Uma mensagem só, a mais recente do assistente. Buscar "a lista mais recente
+ * que existir" acharia a de três turnos atrás e a trataria como corrente — e é
+ * exatamente esse erro que a referência estruturada existe para impedir. Se a
+ * última fala não mostrou lista, não há lista: "o segundo" não tem referente, e
+ * a resposta certa é perguntar.
+ *
+ * O TENANT entra na consulta. Uma conversa de outro cliente não devolve
+ * candidatos — devolve nada, que é indistinguível de não haver.
+ */
+export async function ultimaApresentacao(
+  clienteId: string,
+  conversaId: string
+): Promise<{ papel: string; metadata: unknown }[]> {
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from("copilot_mensagens")
+      .select("papel, metadata")
+      .eq("cliente_id", clienteId)
+      .eq("conversa_id", conversaId)
+      .eq("papel", "assistente")
+      .order("criada_em", { ascending: false })
+      .limit(1);
+    if (error || !data) return [];
+    return data as { papel: string; metadata: unknown }[];
+  } catch (e) {
+    console.error("[copilot] falha ao ler a última apresentação:", e);
+    return [];
   }
 }

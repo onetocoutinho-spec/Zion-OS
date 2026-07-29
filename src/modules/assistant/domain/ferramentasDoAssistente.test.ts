@@ -5,6 +5,7 @@ import {
   FERRAMENTAS,
   FERRAMENTAS_DE_LEITURA,
   FERRAMENTAS_DE_PROPOSTA,
+  FERRAMENTAS_DE_RASCUNHO,
   nenhumaFerramentaEscreve,
   type Efeito,
   type Ferramenta,
@@ -17,20 +18,30 @@ import {
  * esta linha para de compilar e o `typecheck:test` reprova a build — antes de
  * qualquer teste rodar, antes de qualquer revisão humana esquecer.
  *
- * É a parte com dentes. O teste de runtime abaixo pega o caso mais comum
- * (alguém adiciona uma ferramenta nova); este pega o caso mais perigoso
- * (alguém alarga a fronteira).
+ * ELA JÁ DISPAROU UMA VEZ, em 2026-07-29, quando `rascunha` entrou para o
+ * cadastro conversacional. Foi o desenho funcionando: a build reprovou, a
+ * decisão foi tomada por gente e está escrita em `ferramentasDoAssistente`. A
+ * lista abaixo é a fronteira de hoje — o QUARTO efeito reprova de novo.
  */
 type Igual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-const _aFronteiraNaoCresceu: Igual<Efeito, "le" | "propoe"> = true;
+const _aFronteiraNaoCresceu: Igual<Efeito, "le" | "rascunha" | "propoe"> = true;
 void _aFronteiraNaoCresceu;
 
-test("nenhuma ferramenta do assistente escreve", () => {
+test("nenhuma ferramenta do assistente escreve no catálogo", () => {
   // O modelo pode propor qualquer coisa; só o clique de um humano grava.
   // Enquanto isso for verdade, um modelo pior, um prompt vazado ou um turno
   // estranho não conseguem tocar no banco — não porque foram instruídos a não
   // fazer, mas porque não existe caminho.
   assert.ok(nenhumaFerramentaEscreve());
+});
+
+test("rascunhar não é escrever: nenhuma ferramenta declara efeito no catálogo", () => {
+  // `rascunha` toca `copilot_cadastros`, que é estado da CONVERSA. A garantia
+  // que continua valendo é sobre `produtos` e `produto_variantes`: nenhuma
+  // ferramenta tem caminho até lá. O produto nasce por Proposal + clique.
+  for (const f of FERRAMENTAS) {
+    assert.notEqual(f.efeito as string, "escreve", `"${f.nome}" declara escrita`);
+  }
 });
 
 test("a fronteira vale para qualquer lista, não só para a de hoje", () => {
@@ -49,15 +60,34 @@ test("nome de ferramenta não promete escrita", () => {
   }
 });
 
-test("as duas listas não se sobrepõem e formam o catálogo", () => {
+test("as três listas não se sobrepõem e formam o catálogo", () => {
   const nomes = FERRAMENTAS.map((f) => f.nome);
   assert.equal(new Set(nomes).size, nomes.length, "ferramenta duplicada");
   assert.equal(
     FERRAMENTAS.length,
-    FERRAMENTAS_DE_LEITURA.length + FERRAMENTAS_DE_PROPOSTA.length
+    FERRAMENTAS_DE_LEITURA.length +
+      FERRAMENTAS_DE_RASCUNHO.length +
+      FERRAMENTAS_DE_PROPOSTA.length
   );
   assert.ok(FERRAMENTAS_DE_LEITURA.every((f) => f.efeito === "le"));
+  assert.ok(FERRAMENTAS_DE_RASCUNHO.every((f) => f.efeito === "rascunha"));
   assert.ok(FERRAMENTAS_DE_PROPOSTA.every((f) => f.efeito === "propoe"));
+});
+
+test("o cadastro é UMA ferramenta com operações, não vinte microferramentas", () => {
+  // Vinte nomes parecidos fariam o modelo escolher entre vinte caminhos a cada
+  // frase. A interpretação é dele; a transição válida é do domínio.
+  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
+  const cadastro = FERRAMENTAS_DE_RASCUNHO[0];
+  assert.equal(cadastro.nome, "gerenciar_cadastro");
+  const props = cadastro.parametros.properties as Record<string, { enum?: string[] }>;
+  assert.ok(props.operacao.enum?.includes("propor_criacao"));
+  assert.ok(props.operacao.enum?.includes("cancelar"));
+  assert.ok(props.operacao.enum?.includes("retomar"));
+  // A descrição precisa dizer que não cria: é ela que o modelo lê antes de
+  // prometer ao lojista que o produto já existe.
+  assert.match(cadastro.descricao, /NÃO cria nada/);
+  assert.match(cadastro.descricao, /nunca deduza/);
 });
 
 test("toda ferramenta se descreve — é o que o modelo lê para decidir", () => {

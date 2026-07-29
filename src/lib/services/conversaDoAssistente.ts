@@ -14,6 +14,7 @@ import type { Fala } from "../agentes/conversaComFerramentas";
 import type { ContextoDasFerramentas } from "../../modules/assistant/domain/executarFerramenta";
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaDeAnuncio";
+import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -54,6 +55,14 @@ export interface RespostaDaConversa {
   };
   /** Um cartão para GERAR o anúncio. Nada foi gerado — leva minutos e cota. */
   propostaDeAnuncio?: PropostaDeAnuncio;
+  /**
+   * O cadastro em conversa — o que já se sabe, a grade, e o que falta.
+   *
+   * Tudo vem do SERVIDOR, do Draft persistido. O `status` e o `prontoParaCriar`
+   * em especial: eles decidem se existe botão de criar, e um estado escrito pelo
+   * modelo seria um botão oferecido por quem não leu o banco.
+   */
+  cadastro?: CadastroNaTela;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -131,6 +140,7 @@ export async function conversar(
           ...(e.propostaDeAnuncio
             ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
             : {}),
+          ...(e.cadastro ? { cadastro: e.cadastro as CadastroNaTela } : {}),
         };
       }
     }
@@ -159,6 +169,8 @@ export interface ResultadoDaConfirmacao {
   jaFeito?: boolean;
   motivo?: string;
   afetados?: number;
+  /** O produto que nasceu, quando a proposta era de cadastro. */
+  produtoId?: string;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -176,5 +188,6 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     ...(dados.jaFeito ? { jaFeito: true } : {}),
     ...(dados.motivo ? { motivo: dados.motivo } : {}),
     ...(typeof dados.afetados === "number" ? { afetados: dados.afetados } : {}),
+    ...(typeof dados.produtoId === "string" ? { produtoId: dados.produtoId } : {}),
   };
 }

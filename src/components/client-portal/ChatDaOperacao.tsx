@@ -37,6 +37,13 @@ import {
   desfechoDaConfirmacao,
   estadoDoCartao,
 } from "@/modules/assistant/domain/cartaoDoLote";
+import {
+  desfechoDaCriacao,
+  escreverGrade,
+  estadoDoCartaoDeCadastro,
+  type CadastroNaTela,
+  type DesfechoDoCadastro,
+} from "@/modules/assistant/domain/cartaoDoCadastro";
 
 type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
@@ -93,7 +100,23 @@ interface Turno {
    * `false` ali seria uma afirmação falsa sobre uma gravação que a AIL pode
    * muito bem não ter visto.
    */
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  desfecho?: {
+    ok: boolean;
+    mensagem: string;
+    cegoParaAIL?: boolean;
+    /** O servidor recusou porque o catálogo mudou. Nada foi criado. */
+    stale?: boolean;
+    /** O produto que nasceu, quando a proposta era de cadastro. */
+    produtoId?: string;
+  };
+  /**
+   * O cadastro em conversa — estado do Draft PERSISTIDO, vindo do servidor.
+   *
+   * Fica no turno como a proposta: se a pessoa perguntar outra coisa antes de
+   * confirmar, o cartão continua no lugar dele em vez de flutuar apontando para
+   * um cadastro que já saiu de vista.
+   */
+  cadastro?: CadastroNaTela;
   /**
    * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
    *
@@ -277,6 +300,11 @@ export function ChatDaOperacao({
                     ...(r.propostaDeAnuncio
                       ? { propostaDeAnuncio: r.propostaDeAnuncio }
                       : {}),
+                    // O cadastro traz o próprio `propostaId` quando há
+                    // autorização montada. Ele NÃO passa pelo campo genérico:
+                    // os dois cartões oferecem verbos diferentes, e um id só
+                    // faria o botão errado aparecer.
+                    ...(r.cadastro ? { cadastro: r.cadastro } : {}),
                   }
                 : turno
             )
@@ -326,7 +354,10 @@ export function ChatDaOperacao({
   const confirmar = useCallback(
     async (indice: number) => {
       const alvo = turnos[indice];
-      const id = alvo?.propostaId;
+      // O cadastro carrega o próprio id: os dois cartões podem coexistir num
+      // turno, e confundir os dois confirmaria a proposta errada.
+      const id = alvo?.cadastro?.propostaId ?? alvo?.propostaId;
+      const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
       // render de propósito: um clique que escapou (teclado, corrida de
       // estado) não pode virar uma chamada sem autorização.
@@ -340,7 +371,10 @@ export function ChatDaOperacao({
         setTurnos((t) =>
           t.map((turno, i) =>
             i === indice
-              ? { ...turno, desfecho: desfechoDaConfirmacao(r) }
+              ? {
+                  ...turno,
+                  desfecho: ehCadastro ? desfechoDaCriacao(r) : desfechoDaConfirmacao(r),
+                }
               : turno
           )
         );
@@ -429,9 +463,18 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
-              ) : t.texto !== undefined || t.proposta ? (
+              ) : t.texto !== undefined || t.proposta || t.cadastro ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
+                  {t.cadastro && (
+                    <CartaoDoCadastro
+                      c={t.cadastro}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
                   {t.escopo && t.propostaId && (
                     <CartaoDoLote
@@ -509,6 +552,218 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * O cadastro em conversa — o que já se sabe, a grade, e o que ainda falta.
+ *
+ * TUDO AQUI VEM DO SERVIDOR. O status, a contagem de variantes, a lista do que
+ * falta e a existência do botão saem do Draft persistido e da Proposal — nunca
+ * do texto que o modelo escreveu. Um cartão que acreditasse na frase do modelo
+ * ofereceria "Criar produto" para um cadastro que o servidor recusaria.
+ *
+ * Os estados vêm de `estadoDoCartaoDeCadastro`, que é domínio provado: tela e
+ * teste calculando o mesmo em dois lugares divergem no primeiro ajuste.
+ */
+function CartaoDoCadastro({
+  c,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  c: CadastroNaTela;
+  desfecho?: DesfechoDoCadastro & { cegoParaAIL?: boolean };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDeCadastro(c, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <div className="space-y-1.5">
+        <p
+          className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-amber-300"}`}
+        >
+          {e.ok ? (
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          )}
+          {e.mensagem}
+        </p>
+        {e.produtoId && (
+          <Link
+            href={`/cliente/anunciar?produto=${encodeURIComponent(e.produtoId)}`}
+            className="inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
+          >
+            Abrir o produto <ArrowRight size={12} />
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (e.estado === "cancelado") {
+    return <p className="text-sm text-zinc-400">{e.mensagem}</p>;
+  }
+
+  if (e.estado === "escolha") {
+    return (
+      <div className="space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">Você tem mais de um cadastro em andamento:</p>
+        <ol className="space-y-1">
+          {e.opcoes.map((o) => (
+            <li key={o.id} className="text-xs text-zinc-400">
+              {o.ordem}. {o.rotulo}
+            </li>
+          ))}
+        </ol>
+        <p className="text-[11px] text-zinc-600">
+          Diga qual — eu não escolho por você.
+        </p>
+      </div>
+    );
+  }
+
+  const linhasDaGrade = escreverGrade(c.variantes);
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+          Cadastro em andamento
+        </p>
+        <p className="text-sm font-medium text-zinc-100">{e.titulo}</p>
+      </div>
+
+      {c.jaSei.length > 0 && (
+        <dl className="space-y-0.5 text-xs">
+          {c.jaSei.map((f) => (
+            <div key={f.campo} className="flex gap-2">
+              <dt className="w-32 shrink-0 text-zinc-500">{f.campo}</dt>
+              <dd className="text-zinc-200">
+                {f.valor}
+                {/* A PROCEDÊNCIA aparece quando não foi o lojista que disse. O
+                    que ele informou não precisa de selo; o que veio de outro
+                    lugar precisa, e esconder isso transformaria a confirmação
+                    em carimbo. */}
+                {f.procedencia !== "informado" && (
+                  <span className="text-amber-400/70"> ·{f.procedencia}</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {c.variantes.total > 0 && (
+        <div className="text-xs">
+          <p className="text-zinc-500">
+            Variantes: <span className="text-zinc-200">{c.variantes.total}</span>
+            {c.variantes.semSku > 0 && (
+              <span className="text-amber-300"> · {c.variantes.semSku} sem SKU</span>
+            )}
+          </p>
+          <ul className="mt-0.5 space-y-0.5">
+            {linhasDaGrade.map((linha) => (
+              <li key={linha} className="text-zinc-400">
+                {linha}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {c.conflitos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          {c.conflitos.map((k) => (
+            <p key={k.campo} className="flex items-start gap-1.5 text-xs text-amber-300">
+              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+              Você me disse dois valores de {k.campo}: {k.valorAtual} e {k.valorNovo}. Qual vale?
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* POSSÍVEL duplicidade — nunca identidade. Casamento exato não fecha
+          nada nesta base: 117 SKUs e 112 EANs se repetem. O cartão mostra e
+          pergunta; ele não funde e não bloqueia. */}
+      {c.candidatos && c.candidatos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          <p className="flex items-start gap-1.5 text-xs text-amber-300">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            {c.candidatosMensagem ??
+              "Encontrei produtos que podem corresponder a este cadastro."}
+          </p>
+          <ul className="space-y-0.5">
+            {c.candidatos.map((k, indice) => (
+              <li key={k.produtoId} className="text-[11px] text-zinc-400">
+                {indice + 1}.{" "}
+                <Link
+                  href={`/cliente/anunciar?produto=${encodeURIComponent(k.produtoId)}`}
+                  className="text-violet-400 hover:text-violet-300"
+                >
+                  {[k.marca, k.nome].filter(Boolean).join(" ")}
+                </Link>
+                {k.referencia && <span className="text-zinc-600"> · ref {k.referencia}</span>}
+                {k.sku && <span className="text-zinc-600"> · SKU {k.sku}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {e.estado === "coletando" && e.falta.length > 0 && (
+        <div className="text-xs">
+          <p className="text-zinc-500">Ainda preciso de:</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {e.falta.map((f) => (
+              <li key={f.o_que} className="flex items-start gap-1.5">
+                <span className={f.bloqueia ? "text-amber-400" : "text-zinc-600"}>·</span>
+                <span>
+                  <span className={f.bloqueia ? "text-zinc-200" : "text-zinc-400"}>{f.o_que}</span>
+                  <span className="text-zinc-600"> — {f.porque}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(e.estado === "pronto" || e.estado === "proposta") && e.resumo && (
+        <p className="rounded-lg border border-white/5 bg-black/20 p-2 text-sm text-zinc-200">
+          {e.resumo}
+        </p>
+      )}
+
+      {/* O BOTÃO SÓ EXISTE NO ESTADO `proposta` — quer dizer: com uma Proposal
+          persistida, do tenant certo, sobre um cadastro que `validarRascunho`
+          aprovou. Nos outros estados não há o que confirmar, e um botão ali
+          seria oferecer uma ação que o servidor vai recusar. */}
+      {e.estado === "proposta" && (
+        <div className="flex gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={aoConfirmar}
+            disabled={ocupado}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+          >
+            {ocupado ? "Criando…" : e.rotuloBotao}
+          </button>
+          <button
+            type="button"
+            onClick={aoDescartar}
+            disabled={ocupado}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+          >
+            Agora não
+          </button>
+        </div>
+      )}
     </div>
   );
 }

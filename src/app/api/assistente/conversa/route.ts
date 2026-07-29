@@ -35,10 +35,31 @@ import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { criarProposta } from "@/lib/services/copilotPropostas";
-import { garantirConversa, gravarTurno } from "@/lib/services/copilotConversas";
+import {
+  garantirConversa,
+  gravarTurno,
+  ultimaApresentacao,
+} from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
+import {
+  draftAbertoDaConversa,
+  draftsAbertos,
+  novoDraft,
+  salvarDraft,
+} from "@/lib/services/copilotCadastros";
+import {
+  aguardarConfirmacao,
+  comoResumo,
+  type DraftDeCadastro,
+} from "@/modules/assistant/domain/draftDeCadastro";
+import {
+  conjuntoVigente,
+  paraMetadata,
+  type ConjuntoApresentado,
+} from "@/modules/assistant/domain/referenciasDaConversa";
+import type { CadastroNaTela } from "@/modules/assistant/domain/cartaoDoCadastro";
 
 export const maxDuration = 60;
 
@@ -62,6 +83,16 @@ Use markdown quando ele ajudar a ler: **negrito** no que importa, listas quando 
 Não seja telegráfico. Se a resposta tem contexto que muda a decisão, dê o contexto — mas não encha linguiça. Uma frase que não muda o que ele vai fazer é uma frase a menos.
 
 Preserve as distinções que as ferramentas fazem. Quando a contagem distingue produtos SEM PESO NENHUM de produtos com peso em PARTE das variações, essa diferença importa: para os parciais o frete sai, e chamar os dois de "sem peso" é falso. Não resuma isso para um número só.
+
+CADASTRAR UM PRODUTO NOVO. Quando o lojista quiser cadastrar, use gerenciar_cadastro. Ele acumula o que já foi dito e devolve o que ainda falta — você NÃO monta o produto, e não existe um JSON de produto que você escreva. Você extrai o que ele disse, campo a campo, e o domínio guarda.
+
+Regras do cadastro, e elas não têm exceção:
+- Só registre o que ele DISSE. Custo, preço, SKU, EAN e peso não se deduzem: se ele não falou, pergunte.
+- Copie o número como ele escreveu, com a vírgula. "47,80" é "47,80". SKU com zero à esquerda mantém o zero: "01040533" nunca vira 1040533.
+- Se a ferramenta recusar, ela diz por quê — repasse o motivo e peça o que falta. Não tente de novo com um valor arrumado por você.
+- Quando ela devolver possíveis produtos existentes, MOSTRE os candidatos e pergunte se é algum deles. Casamento exato não é o mesmo produto: nesta base há SKUs e EANs repetidos.
+- Quando ela devolver uma lista para escolher, pergunte qual e depois use a operação "escolher" com o que ele responder ("o segundo").
+- Nada é criado até ele clicar. Depois de propor_criacao, diga o que vai ser criado e que falta ele confirmar. Nunca diga que o produto já existe.
 
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
@@ -154,6 +185,37 @@ export async function POST(request: Request) {
     produtoId: ctx.produtoAberto?.id ?? null,
   });
 
+  // ---- O CADASTRO EM CONVERSA ----
+  //
+  // Tudo aqui vem do SERVIDOR: o Draft desta conversa, os cadastros abertos do
+  // lojista, e o conjunto que a última fala do assistente apresentou. Nada disso
+  // pode chegar pelo corpo — um Draft escolhido pelo navegador seria o mesmo
+  // buraco que a Proposal persistida fechou.
+  const agoraISO = new Date().toISOString();
+  if (conversaId) {
+    const [draftDaConversa, abertos, ultima] = await Promise.all([
+      draftAbertoDaConversa(clienteDaSessao, conversaId),
+      draftsAbertos(clienteDaSessao),
+      ultimaApresentacao(clienteDaSessao, conversaId),
+    ]);
+    ctx.cadastro = {
+      agoraISO,
+      draft: draftDaConversa,
+      abertos,
+      referencias: conjuntoVigente(ultima),
+      novo: () => novoDraft(clienteDaSessao, conversaId, usuarioId, agoraISO),
+      // O mesmo porto da busca forte, uma tentativa por vez, com o tenant da
+      // sessão. Um EAN que só existe em outro cliente devolve zero linhas.
+      buscarCandidatos: async (tentativas) => {
+        const saida: { casamento: (typeof tentativas)[number]["casamento"]; linhas: Awaited<ReturnType<typeof rodarTentativa>> }[] = [];
+        for (const t of tentativas) {
+          saida.push({ casamento: t.casamento, linhas: await rodarTentativa(t, clienteDaSessao) });
+        }
+        return saida;
+      },
+    };
+  }
+
   const historico: Fala[] = [
     ...(corpo.falas ?? []),
     { role: "user", parts: [{ text: mensagem }] },
@@ -183,6 +245,16 @@ export async function POST(request: Request) {
       /** O escopo de um lote, quando a proposta atinge mais de um alvo. */
       let escopoDoLote:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["escopo"]>
+        | undefined;
+      /**
+       * O efeito acumulado no cadastro em conversa.
+       *
+       * ACUMULADO e não "o último": um turno costuma informar três fatos, e cada
+       * chamada devolve o Draft já com o anterior dentro. O que importa guardar é
+       * o ÚLTIMO Draft (que contém todos) e o pedido de Proposal, se houve.
+       */
+      let efeitoNoCadastro:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["cadastro"]>
         | undefined;
       const usadas: string[] = [];
 
@@ -255,12 +327,90 @@ export async function POST(request: Request) {
                 console.error("[copilot] falha ao persistir proposta:", e);
               }
             }
+            // ---- O CADASTRO EM CONVERSA vira linha ----
+            //
+            // A ORDEM importa e é imposta pelo banco: a Proposal referencia o
+            // Draft por chave estrangeira, então o Draft precisa existir antes.
+            // E a transição para `aguardando_confirmacao` precisa do id da
+            // Proposal, então ela é uma segunda gravação. Três passos, cada um
+            // pelo motivo que o anterior criou.
+            let cadastroNaTela: CadastroNaTela | undefined;
+            const conjuntoApresentado: ConjuntoApresentado | undefined =
+              efeitoNoCadastro?.apresentou;
+            if (efeitoNoCadastro && conversaId) {
+              let draftFinal: DraftDeCadastro = efeitoNoCadastro.draft;
+              await salvarDraft(draftFinal);
+
+              let propostaDeCadastro: string | null = null;
+              if (efeitoNoCadastro.proporCriacao) {
+                try {
+                  const p = efeitoNoCadastro.proporCriacao;
+                  const gravada = await criarProposta({
+                    clienteId: clienteDaSessao,
+                    conversaId,
+                    criadaPor: usuarioId,
+                    tipo: "cadastro",
+                    // O ALVO é o Draft: o que está sendo autorizado é a
+                    // materialização daquele cadastro, não uma escrita num
+                    // produto que já existe.
+                    alvos: [draftFinal.id],
+                    valor: p.valor,
+                    resumo: p.resumo,
+                    precondicoes: p.precondicoes,
+                    draftId: draftFinal.id,
+                  });
+                  const transicao = aguardarConfirmacao(draftFinal, gravada.id, agoraISO);
+                  if (transicao.ok) {
+                    draftFinal = transicao.draft;
+                    await salvarDraft(draftFinal);
+                    propostaDeCadastro = gravada.id;
+                  }
+                } catch (e) {
+                  // Sem Proposal persistida NÃO há confirmação possível — e é
+                  // melhor a tela não mostrar botão do que mostrar um que grava
+                  // sem registro.
+                  console.error("[copilot] falha ao persistir proposta de cadastro:", e);
+                }
+              }
+
+              cadastroNaTela = {
+                ...comoResumo(draftFinal),
+                // A lista de cadastros em andamento vai para a TELA, não só
+                // para o modelo. Ela é uma escolha do lojista, e uma escolha
+                // que só existe dentro de um parágrafo é uma escolha que ele
+                // tem que reconstruir lendo.
+                ...(conjuntoApresentado?.origem === "cadastros"
+                  ? {
+                      escolhaDeCadastros: conjuntoApresentado.itens.map((i) => ({
+                        ordem: i.ordem,
+                        id: i.id,
+                        rotulo: i.rotulo,
+                      })),
+                    }
+                  : {}),
+                ...(efeitoNoCadastro.candidatos
+                  ? {
+                      candidatos: efeitoNoCadastro.candidatos,
+                      candidatosMensagem: efeitoNoCadastro.candidatosMensagem,
+                    }
+                  : {}),
+                ...(propostaDeCadastro ? { propostaId: propostaDeCadastro } : {}),
+                ...(efeitoNoCadastro.proporCriacao
+                  ? { resumo: efeitoNoCadastro.proporCriacao.resumo }
+                  : {}),
+                ...(draftFinal.produtoId ? { produtoId: draftFinal.produtoId } : {}),
+              };
+            }
+
             if (conversaId) {
               void gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
                 resposta: turno.texto,
                 ferramentas: usadas,
                 tokens,
+                // O QUE ESTA RESPOSTA MOSTROU. É o que faz "o segundo" resolver
+                // para um id no turno seguinte, contra a lista certa.
+                metadata: conjuntoApresentado ? paraMetadata(conjuntoApresentado) : null,
               });
             }
             mandar({
@@ -289,6 +439,9 @@ export async function POST(request: Request) {
                   }
                 : {}),
               ...(propostaDeAnuncio ? { propostaDeAnuncio } : {}),
+              // O cartão do cadastro. As contagens e o status vêm DAQUI, do
+              // servidor — nunca do texto que o modelo escreveu.
+              ...(cadastroNaTela ? { cadastro: cadastroNaTela } : {}),
             });
             controlador.close();
             return;
@@ -313,6 +466,19 @@ export async function POST(request: Request) {
             if (r.proposta) proposta = r.proposta;
             if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
             if (r.escopo) escopoDoLote = r.escopo;
+            if (r.cadastro) {
+              efeitoNoCadastro = {
+                ...r.cadastro,
+                // O pedido de Proposal sobrevive a uma chamada seguinte que não
+                // o repita — "propor_criacao" e depois "resumo" no mesmo turno
+                // não pode apagar a autorização que estava sendo montada.
+                proporCriacao: r.cadastro.proporCriacao ?? efeitoNoCadastro?.proporCriacao,
+              };
+              // O PRÓXIMO passo do mesmo turno enxerga o Draft já atualizado.
+              // Sem isto, informar marca e depois modelo perderia a marca: as
+              // duas chamadas partiriam do mesmo estado antigo.
+              if (ctx.cadastro) ctx.cadastro.draft = r.cadastro.draft;
+            }
             respostas.push({ functionResponse: { name: c.nome, response: r.saida } });
           }
           historico.push({ role: "user", parts: respostas });

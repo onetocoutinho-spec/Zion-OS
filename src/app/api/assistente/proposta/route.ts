@@ -36,6 +36,15 @@ import {
 } from "@/modules/assistant/domain/propostaPersistida";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { buscarDraft, marcarDraftCriado } from "@/lib/services/copilotCadastros";
+import { criarProdutoDoDraft, CadastroInvalido } from "@/lib/services/criacaoDeProduto";
+import { draftVisivelPara } from "@/modules/assistant/domain/draftDeCadastro";
+import {
+  ehCampoDeCandidato,
+  estadoDosCandidatos,
+  tentativasDoCadastro,
+} from "@/modules/assistant/domain/candidatosDoCadastro";
+import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
 
 export const maxDuration = 30;
 
@@ -51,6 +60,29 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   const campos = new Set(p.precondicoes.map((c) => c.campo));
   const estado: Record<string, number | null> = {};
   const produtoId = p.alvos[0];
+
+  // ---- CADASTRO: o conjunto de possíveis duplicatas, relido AGORA.
+  //
+  // Entre T0 (a proposta nasceu) e T1 (o clique) o catálogo muda: a importação
+  // roda, outra aba cadastra, o ERP sincroniza. A busca feita durante a conversa
+  // não vale como autorização — esta aqui vale.
+  //
+  // O cenário obrigatório: T0 sem 7178.102, T2 a importação cria um, T3 o
+  // cliente confirma. `candidatosDoCadastro` passa de 0 para 1, o domínio vê a
+  // precondição quebrada, e NADA é criado.
+  const camposDeCandidato = [...campos].filter(ehCampoDeCandidato);
+  if (camposDeCandidato.length > 0) {
+    const draft = await buscarDraft(p.draftId ?? p.alvos[0]);
+    // Draft de outro tenant é tratado como inexistente: sem tentativas, o
+    // conjunto de agora fica vazio e qualquer candidato guardado invalida.
+    const tentativas = draftVisivelPara(draft, p.clienteId) ? tentativasDoCadastro(draft!) : [];
+    const ids: string[] = [];
+    for (const t of tentativas) {
+      const linhas = await rodarTentativa(t, p.clienteId);
+      for (const l of linhas) ids.push(l.produtoId);
+    }
+    return estadoDosCandidatos(camposDeCandidato, ids);
+  }
 
   // ---- LOTE: uma precondicao POR ALVO, na forma `variacoesSemPeso:<id>`.
   //
@@ -113,6 +145,42 @@ async function gravar(
 ): Promise<{ afetados: number; antes: unknown; depois: unknown }> {
   const admin = getSupabaseAdmin();
   const produtoId = p.alvos[0];
+
+  // ---- CADASTRO: o produto nasce aqui, e por um caminho só.
+  //
+  // A regra e a conversão são de `cadastroManual` (`validarRascunho`,
+  // `montarProduto`) — as MESMAS do formulário. `criacaoDeProduto` coordena;
+  // ele não é um segundo backend de catálogo.
+  //
+  // A reserva atômica já aconteceu quando esta função é chamada: duplo clique,
+  // retry e refresh disputaram a linha da proposta, um ganhou, e os outros nem
+  // chegam aqui. É essa transição que garante um produto, não dois.
+  if (p.tipo === "cadastro") {
+    const draft = await buscarDraft(p.draftId ?? produtoId);
+    if (!draftVisivelPara(draft, p.clienteId)) {
+      // Não encontrado e outro tenant produzem a MESMA resposta. A distinção
+      // fica no `resultado: falhou` da auditoria, que é onde ela serve.
+      throw new Error("cadastro não encontrado");
+    }
+    const criado = await criarProdutoDoDraft(draft!, p.clienteId);
+    await marcarDraftCriado(draft!.id, p.clienteId, criado.produtoId, new Date().toISOString());
+    return {
+      // Um produto. A grade não conta como "afetados": o que foi autorizado foi
+      // a criação do produto, e é ela que aconteceu ou não.
+      afetados: 1,
+      // Nada ANTES: o produto não existia. Dizer `{}` seria afirmar que existia
+      // e estava vazio.
+      antes: null,
+      depois: {
+        produtoId: criado.produtoId,
+        nome: criado.nome,
+        sku: criado.sku,
+        variantesCriadas: criado.variantesCriadas,
+        variantesPedidas: criado.variantesPedidas,
+        draftId: draft!.id,
+      },
+    };
+  }
 
   if (p.tipo === "custo") {
     const { data: antes } = await admin
@@ -177,6 +245,30 @@ async function gravar(
     .select("id, peso");
   if (error) throw new Error(error.message);
   return { afetados: data?.length ?? 0, antes, depois: data ?? null };
+}
+
+/**
+ * Sucesso, parcial ou falha — a partir do que a gravação devolveu.
+ *
+ * `parcial` existe porque ele é a verdade em um caso concreto: o produto nasceu
+ * e a grade não. Chamar isso de sucesso esconderia seis variantes que não
+ * existem; chamar de falha esconderia um produto que existe.
+ */
+function desfechoDaGravacao(
+  afetados: number,
+  depois: unknown
+): "sucesso" | "parcial" | "falhou" {
+  if (afetados === 0) return "falhou";
+  const d = depois as { variantesCriadas?: number; variantesPedidas?: number } | null;
+  if (
+    d &&
+    typeof d.variantesCriadas === "number" &&
+    typeof d.variantesPedidas === "number" &&
+    d.variantesCriadas < d.variantesPedidas
+  ) {
+    return "parcial";
+  }
+  return "sucesso";
 }
 
 export async function POST(request: Request) {
@@ -275,6 +367,7 @@ export async function POST(request: Request) {
 
   try {
     const { afetados, antes, depois } = await gravar(p);
+    const resultado = desfechoDaGravacao(afetados, depois);
     await registrarAcao({
       clienteId: clienteDaSessao,
       conversaId: p.conversaId,
@@ -286,7 +379,7 @@ export async function POST(request: Request) {
       depois,
       // Zero linhas com a reserva feita significa que o alvo sumiu entre a
       // revalidação e a escrita. Chamar isso de sucesso seria mentir.
-      resultado: afetados === 0 ? "falhou" : "sucesso",
+      resultado,
       afetados,
     });
     if (afetados === 0) {
@@ -296,8 +389,40 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
-    return Response.json({ ok: true, afetados, mensagem: `Pronto. ${p.resumo}` });
+    const criado = depois as { produtoId?: string; nome?: string } | null;
+    return Response.json({
+      ok: true,
+      afetados,
+      mensagem:
+        p.tipo === "cadastro"
+          ? `Produto criado: ${criado?.nome ?? p.resumo}`
+          : `Pronto. ${p.resumo}`,
+      ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
+    });
   } catch (e) {
+    // Cadastro que não passa em `validarRascunho` no servidor não é erro de
+    // infraestrutura: é um cadastro incompleto que chegou aqui. A frase precisa
+    // dizer isso, porque é acionável — e NADA foi criado.
+    if (e instanceof CadastroInvalido) {
+      await marcarProposta(p.id, "falhou", e.message);
+      await registrarAcao({
+        clienteId: clienteDaSessao,
+        conversaId: p.conversaId,
+        propostaId: p.id,
+        executadaPor: usuario,
+        ferramenta: `confirmar:${p.tipo}`,
+        alvos: p.alvos,
+        antes: null,
+        depois: null,
+        resultado: "recusada",
+        afetados: 0,
+        erro: e.message,
+      });
+      return Response.json(
+        { ok: false, motivo: "incompleto", mensagem: `Não criei o produto: ${e.message}` },
+        { status: 409 }
+      );
+    }
     const msg = e instanceof Error ? e.message : "falha desconhecida";
     console.error("[copilot/proposta] falha ao executar:", e);
     await marcarProposta(p.id, "falhou", msg);

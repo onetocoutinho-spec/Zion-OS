@@ -44,6 +44,36 @@ import {
   type ProdutoParaAnunciar,
   type PropostaDeAnuncio,
 } from "./propostaDeAnuncio";
+import {
+  associarNaVariante,
+  cancelar,
+  comoResumo,
+  definirGrade,
+  draftEstaAberto,
+  ehCampoDoCadastro,
+  escolherParaRetomar,
+  informar,
+  numeroDe,
+  prontidao,
+  resolverConflito,
+  resumoDaCriacao,
+  rotuloDoDraft,
+  type DraftDeCadastro,
+} from "./draftDeCadastro";
+import {
+  avaliarDuplicidade,
+  candidatoEnxuto,
+  precondicoesDeCadastro,
+  tentativasDoCadastro,
+  unirAchados,
+} from "./candidatosDoCadastro";
+import {
+  apresentar,
+  resolverEscolha,
+  type ConjuntoApresentado,
+} from "./referenciasDaConversa";
+import { centavosParaReais } from "./fatosDoCadastro";
+import type { Precondicao } from "./propostaPersistida";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
@@ -70,6 +100,58 @@ export interface ContextoDasFerramentas {
    * identificador.
    */
   buscar?: (t: Tentativa) => Promise<LinhaEncontrada[]>;
+  /**
+   * O contexto do CADASTRO EM CONVERSA. Montado pela ROTA, nunca pelo corpo.
+   *
+   * A rota constrói `ContextoDasFerramentas` campo a campo, e este não está
+   * entre os que ela lê da requisição. Se viesse do navegador, o Draft de outro
+   * tenant e o conjunto de referências seriam escolhidos por quem manda o
+   * corpo — que é a definição do problema que a Proposal existe para resolver.
+   */
+  cadastro?: ContextoDoCadastro;
+}
+
+/** Tudo que a ferramenta de cadastro precisa e não pode inventar sozinha. */
+export interface ContextoDoCadastro {
+  /** O relógio vem de fora: o domínio é puro e não lê `Date.now()`. */
+  agoraISO: string;
+  /** O Draft aberto DESTA conversa, já conferido contra o tenant da sessão. */
+  draft: DraftDeCadastro | null;
+  /** Todos os cadastros abertos do lojista. Serve à retomada. */
+  abertos: readonly DraftDeCadastro[];
+  /** O conjunto que a ÚLTIMA fala do assistente mostrou. Resolve "o segundo". */
+  referencias: ConjuntoApresentado | null;
+  /** Cria um Draft vazio — id e relógio são da borda. */
+  novo: () => DraftDeCadastro;
+  /** O porto de busca por candidatos, com tenant. Sem ele, não se busca. */
+  buscarCandidatos?: (
+    tentativas: readonly Tentativa[]
+  ) => Promise<{ casamento: Tentativa["casamento"]; linhas: LinhaEncontrada[] }[]>;
+}
+
+/**
+ * O que a ferramenta de cadastro devolve para a ROTA persistir.
+ *
+ * A ferramenta NÃO grava. Ela devolve o Draft novo, e a rota o salva com o
+ * tenant da sessão — do mesmo jeito que já salva conversa e proposta. É isso
+ * que mantém `executarFerramenta` puro e testável sem banco.
+ */
+export interface EfeitoNoCadastro {
+  draft: DraftDeCadastro;
+  /** Uma lista foi apresentada: vai para `copilot_mensagens.metadata`. */
+  apresentou?: ConjuntoApresentado;
+  /** Possíveis duplicatas encontradas agora. Nunca fundidas, nunca escolhidas. */
+  candidatos?: readonly ReturnType<typeof candidatoEnxuto>[];
+  candidatosMensagem?: string;
+  /** Pedido de Proposal de criação. A rota persiste e devolve o id. */
+  proporCriacao?: {
+    resumo: string;
+    /** Em REAIS — a unidade canônica da coluna `valor` para dinheiro. */
+    valor: number;
+    precondicoes: readonly Precondicao[];
+  };
+  /** O cadastro foi cancelado nesta chamada. */
+  cancelou?: boolean;
 }
 
 /**
@@ -97,6 +179,14 @@ export interface ResultadoDaFerramenta {
    * esteira. Um campo só, com união, faria o cartão adivinhar qual botão pôr.
    */
   propostaDeAnuncio?: PropostaDeAnuncio;
+  /**
+   * O efeito no CADASTRO EM CONVERSA — o Draft novo, para a rota persistir.
+   *
+   * Separado de tudo o mais porque o que a rota faz com ele é outro verbo:
+   * `proposta` vira cartão, `escopo` vira cartão de lote, e este vira uma linha
+   * em `copilot_cadastros` mais, quando for o caso, uma Proposal.
+   */
+  cadastro?: EfeitoNoCadastro;
 }
 
 /** Um pedido do modelo, ainda não validado. */
@@ -415,9 +505,356 @@ export async function executarFerramenta(
       };
     }
 
+    case "gerenciar_cadastro":
+      return gerenciarCadastro(args, ctx);
+
     default:
       return { saida: { erro: `Ferramenta desconhecida: ${nome}` } };
   }
+}
+
+/**
+ * O cadastro em conversa — todas as operações, num lugar só.
+ *
+ * O modelo escolhe a OPERAÇÃO; o domínio decide se ela é válida. Nenhuma
+ * transição depende de o modelo ter dito que o cadastro está pronto: prontidão
+ * é `validarRascunho` sobre a conversão, e nada mais.
+ *
+ * Toda saída aqui é TEXTO E CONTAGEM para o modelo ler — o Draft inteiro nunca
+ * atravessa. Ele voltaria depois numa frase, com um valor a mais que ninguém
+ * disse.
+ */
+async function gerenciarCadastro(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const c = ctx.cadastro;
+  if (!c) {
+    return { saida: { erro: "O cadastro em conversa não está disponível nesta tela." } };
+  }
+  const operacao = texto(args, "operacao");
+
+  // ---- retomar e escolher NÃO exigem Draft aberto: eles é que o encontram ----
+  if (operacao === "retomar") {
+    const r = escolherParaRetomar(c.abertos, texto(args, "dica"));
+    if (r.desfecho === "nenhum") {
+      return { saida: { retomado: false, motivo: "Você não tem nenhum cadastro em andamento." } };
+    }
+    if (r.desfecho === "unico") {
+      return {
+        cadastro: { draft: r.draft },
+        saida: { retomado: true, cadastro: comoResumo(r.draft) },
+      };
+    }
+    // VÁRIOS: mostra e pergunta. Escolher aqui gravaria os fatos do produto
+    // certo no cadastro errado, e ninguém veria isso acontecer.
+    const conjunto = apresentar(
+      "cadastros",
+      r.candidatos.map((k) => ({ tipo: "cadastro" as const, id: k.id, rotulo: k.rotulo }))
+    );
+    return {
+      cadastro: { draft: c.draft ?? c.abertos[0], apresentou: conjunto },
+      saida: {
+        retomado: false,
+        mensagem: r.mensagem,
+        opcoes: conjunto.itens.map((i) => ({ ordem: i.ordem, rotulo: i.rotulo })),
+        aviso: "PERGUNTE qual. Não escolha por ele.",
+      },
+    };
+  }
+
+  if (operacao === "escolher") {
+    const escolhido = resolverEscolha(texto(args, "escolha"), c.referencias);
+    if (!escolhido.ok) return { saida: { escolhido: false, motivo: escolhido.motivo } };
+    if (escolhido.item.tipo === "cadastro") {
+      const draft = c.abertos.find((d) => d.id === escolhido.item.id);
+      if (!draft) {
+        return { saida: { escolhido: false, motivo: "Esse cadastro não está mais em andamento." } };
+      }
+      return {
+        cadastro: { draft },
+        saida: { escolhido: true, cadastro: comoResumo(draft) },
+      };
+    }
+    // Um PRODUTO escolhido no meio de uma possível duplicidade. O cadastro não
+    // vira uma edição daquele produto: completar um produto existente a partir
+    // de um Draft é outro caminho de escrita, e ele não existe. Dizer isso é
+    // melhor que fingir que funcionou.
+    return {
+      saida: {
+        escolhido: true,
+        tipo: "produto",
+        produtoId: escolhido.item.id,
+        rotulo: escolhido.item.rotulo,
+        aviso:
+          "Eu não sei completar um produto que já existe a partir deste cadastro. Se for o mesmo produto, abra ele; se for outro, seguimos com o cadastro novo.",
+      },
+    };
+  }
+
+  if (operacao === "iniciar") {
+    // Um cadastro aberto NESTA conversa é reusado. Duas chamadas de "iniciar"
+    // no mesmo fio são o modelo se repetindo, não o lojista querendo dois
+    // produtos — e dois Drafts abertos fariam a próxima frase virar uma pergunta
+    // de desambiguação sem motivo.
+    const draft = c.draft ?? c.novo();
+    return {
+      cadastro: { draft },
+      saida: {
+        cadastro: comoResumo(draft),
+        aviso: "Nada foi criado. Peça o que ele já sabe sobre o produto.",
+      },
+    };
+  }
+
+  const draft = c.draft;
+  if (!draft) {
+    return {
+      saida: { erro: 'Nenhum cadastro em andamento. Use a operação "iniciar" antes.' },
+    };
+  }
+
+  switch (operacao) {
+    case "resumo":
+      return { saida: { cadastro: comoResumo(draft) } };
+
+    case "cancelar": {
+      const r = cancelar(draft, c.agoraISO);
+      if (!r.ok) return { saida: { cancelado: false, motivo: r.motivo } };
+      return {
+        cadastro: { draft: r.draft, cancelou: true },
+        saida: { cancelado: true, mensagem: "Cadastro cancelado. Nada foi criado." },
+      };
+    }
+
+    case "informar": {
+      const campo = texto(args, "campo");
+      if (!ehCampoDoCadastro(campo)) {
+        return { saida: { registrado: false, motivo: `Não sei guardar "${campo}".` } };
+      }
+      const r = informar(
+        draft,
+        campo,
+        texto(args, "valor"),
+        // SEMPRE `informado`: esta operação existe para o que o LOJISTA DISSE.
+        // Um caminho que aceitasse `inferido` daqui seria a porta pela qual o
+        // modelo gravaria um custo deduzido — e `aceitarFato` recusaria, mas a
+        // porta não deve existir.
+        "informado",
+        c.agoraISO,
+        texto(args, "unidade")
+      );
+      if (!r.ok) {
+        return {
+          // Mesmo recusando, o Draft pode ter mudado: um conflito aberto é
+          // estado que precisa sobreviver ao turno para a pergunta fazer sentido.
+          ...(r.draft ? { cadastro: { draft: r.draft } } : {}),
+          saida: {
+            registrado: false,
+            motivo: r.motivo,
+            ...(r.conflito ? { conflito: true } : {}),
+          },
+        };
+      }
+      return await comPossivelDuplicidade(r.draft, c, {
+        registrado: true,
+        campo,
+        ...(r.unidadeDeduzida ? { unidadeDeduzida: true } : {}),
+      });
+    }
+
+    case "variantes": {
+      const r = definirGrade(
+        draft,
+        { cores: lista(args, "cores"), tamanhos: lista(args, "tamanhos") },
+        c.agoraISO
+      );
+      if (!r.ok) return { saida: { montada: false, motivo: r.motivo } };
+      return await comPossivelDuplicidade(r.draft, c, { montada: true, variantes: r.total });
+    }
+
+    case "identificador": {
+      const campo = texto(args, "campo");
+      if (campo !== "sku" && campo !== "ean") {
+        return { saida: { associado: false, motivo: "Só associo SKU ou EAN a uma variante." } };
+      }
+      const r = associarNaVariante(
+        draft,
+        campo,
+        texto(args, "valor"),
+        { cor: texto(args, "cor") || undefined, tamanho: texto(args, "tamanho") || undefined },
+        c.agoraISO
+      );
+      if (!r.ok) {
+        return {
+          saida: {
+            associado: false,
+            motivo: r.motivo,
+            ...(r.candidatos ? { candidatos: r.candidatos } : {}),
+            aviso: "PERGUNTE de qual variante é. Não escolha.",
+          },
+        };
+      }
+      return await comPossivelDuplicidade(r.draft, c, { associado: true, variante: r.variante });
+    }
+
+    case "resolver_conflito": {
+      const campo = texto(args, "campo");
+      if (!ehCampoDoCadastro(campo)) {
+        return { saida: { resolvido: false, motivo: `Não sei guardar "${campo}".` } };
+      }
+      const escolha = texto(args, "conflito") === "novo" ? "novo" : "atual";
+      const r = resolverConflito(draft, campo, escolha, c.agoraISO);
+      if (!r.ok) return { saida: { resolvido: false, motivo: r.motivo } };
+      return { cadastro: { draft: r.draft }, saida: { resolvido: true, cadastro: comoResumo(r.draft) } };
+    }
+
+    case "propor_criacao": {
+      // ABERTO ANTES DE PRONTO. Um cadastro cancelado continua tendo nome, SKU
+      // e preço — `prontidao` olha os campos e diria que está pronto. Sem esta
+      // linha, "esquece esse cadastro" seguido de "pode criar" montaria uma
+      // Proposal para um cadastro que o lojista abandonou.
+      if (!draftEstaAberto(draft)) {
+        return {
+          saida: {
+            proposta: false,
+            motivo: `Esse cadastro está ${draft.status} — não dá para criar a partir dele.`,
+          },
+        };
+      }
+      const p = prontidao(draft);
+      if (!p.pronto) {
+        // NÃO monta uma Proposal que a revalidação recusaria depois do clique.
+        // "Clique aqui para falhar" é pior que não oferecer o botão.
+        return {
+          saida: {
+            proposta: false,
+            motivo: "Esse cadastro ainda não está completo.",
+            falta: comoResumo(draft).falta,
+          },
+        };
+      }
+
+      // A BUSCA DE AGORA, não a do começo da conversa. É este conjunto que a
+      // Proposal congela — e é contra ele que a confirmação revalida.
+      const { candidatos: achados, ids } = await procurarCandidatos(draft, c);
+      const preco = numeroDe(draft, "precoVenda") ?? 0;
+      const resumo = resumoDaCriacao(draft);
+
+      return {
+        cadastro: {
+          draft,
+          proporCriacao: {
+            resumo,
+            valor: centavosParaReais(preco),
+            precondicoes: precondicoesDeCadastro(ids),
+          },
+          ...(achados.length > 0
+            ? {
+                candidatos: achados,
+                candidatosMensagem:
+                  "Ainda existem produtos que podem corresponder a este cadastro. Confira antes de criar.",
+              }
+            : {}),
+        },
+        saida: {
+          proposta: true,
+          resumo,
+          possiveisExistentes: achados.length,
+          aviso:
+            "Mostre o resumo e diga que o produto só será criado quando ele clicar. Não afirme que já foi criado.",
+        },
+      };
+    }
+
+    default:
+      return { saida: { erro: `Operação desconhecida: ${operacao}` } };
+  }
+}
+
+/**
+ * Roda a busca de possíveis duplicatas — quando os fatos já a justificam.
+ *
+ * Sem porto de busca (tela que não passa o contexto de servidor) devolve vazio,
+ * e o cadastro segue. Isso NÃO é inseguro: a revalidação da confirmação roda no
+ * servidor de qualquer jeito, e é ela que impede a duplicata de verdade.
+ */
+async function procurarCandidatos(
+  draft: DraftDeCadastro,
+  c: ContextoDoCadastro
+): Promise<{ candidatos: ReturnType<typeof candidatoEnxuto>[]; ids: string[]; mensagem: string }> {
+  const tentativas = tentativasDoCadastro(draft);
+  if (tentativas.length === 0 || !c.buscarCandidatos) {
+    return { candidatos: [], ids: [], mensagem: "" };
+  }
+  const porTentativa = await c.buscarCandidatos(tentativas);
+  const { linhas, casamento } = unirAchados(porTentativa);
+  const termo = rotuloDoDraft(draft);
+  const d = avaliarDuplicidade(linhas, casamento, termo);
+  if (d.desfecho === "nenhum") return { candidatos: [], ids: [], mensagem: "" };
+  return {
+    candidatos: d.candidatos.map(candidatoEnxuto),
+    ids: linhas.map((l) => l.produtoId),
+    mensagem: d.mensagem,
+  };
+}
+
+/**
+ * Junta o resultado da operação com a busca por possíveis duplicatas.
+ *
+ * A busca acontece a cada fato novo porque é a chegada do fato que a torna
+ * possível: sem referência nem SKU não há o que procurar, e o momento em que
+ * eles chegam é o momento útil de avisar. Avisar só no fim faria o lojista
+ * descrever seis variantes antes de descobrir que o produto já existia.
+ */
+async function comPossivelDuplicidade(
+  draft: DraftDeCadastro,
+  c: ContextoDoCadastro,
+  saidaBase: Record<string, unknown>
+): Promise<ResultadoDaFerramenta> {
+  const { candidatos: achados, mensagem } = await procurarCandidatos(draft, c);
+  const conjunto =
+    achados.length > 0
+      ? apresentar(
+          "duplicidade",
+          achados.map((a) => ({
+            tipo: "produto" as const,
+            id: a.produtoId,
+            rotulo: [a.marca, a.nome, a.referencia].filter(Boolean).join(" "),
+          }))
+        )
+      : undefined;
+
+  return {
+    cadastro: {
+      draft,
+      ...(conjunto ? { apresentou: conjunto } : {}),
+      ...(achados.length > 0 ? { candidatos: achados, candidatosMensagem: mensagem } : {}),
+    },
+    saida: {
+      ...saidaBase,
+      cadastro: comoResumo(draft),
+      ...(achados.length > 0
+        ? {
+            possiveisExistentes: {
+              mensagem,
+              // NUNCA fundir e NUNCA escolher: nesta base SKU, EAN e modelo se
+              // repetem legitimamente, e casamento exato não é identidade.
+              aviso:
+                "Casamento exato NÃO é o mesmo produto. Mostre os candidatos e pergunte se é algum deles.",
+              candidatos: achados,
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+/** Uma lista de strings vinda do modelo, limpa do que não é string. */
+function lista(args: Record<string, unknown>, chave: string): string[] {
+  const v = args[chave];
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
 }
 
 function alvoPeloId(

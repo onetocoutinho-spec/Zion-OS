@@ -28,10 +28,32 @@
  * `escreve` NÃO EXISTE de propósito. Se um dia alguém precisar de uma
  * ferramenta que grava, vai ter que adicionar o valor aqui — e aí o teste da
  * invariante quebra, a revisão acontece, e a decisão é tomada por gente.
+ *
+ * ---------------------------------------------------------------------------
+ * `rascunha` FOI ADICIONADO EM 2026-07-29, e o mecanismo funcionou: o
+ * `typecheck:test` reprovou a build, a revisão aconteceu, e esta é a decisão.
+ *
+ * O cadastro conversacional precisa acumular estado entre turnos — fatos,
+ * grade, conflitos. Esse estado é da CONVERSA, não do catálogo: ele mora em
+ * `copilot_cadastros`, ao lado de `copilot_mensagens`, que a rota já grava a
+ * cada turno sem que ninguém chame isso de escrita.
+ *
+ * A garantia que importa continua exatamente onde estava:
+ *
+ *     NENHUMA ferramenta toca em `produtos` nem em `produto_variantes`
+ *
+ * Uma ferramenta `rascunha` recebe o Draft e DEVOLVE o Draft modificado. Ela não
+ * persiste — quem persiste é a rota, com o tenant da sessão, do mesmo jeito que
+ * já persiste conversa e proposta. `executarFerramenta` continua puro.
+ *
+ * O produto continua nascendo por um caminho só: Proposal → clique humano →
+ * `/api/assistente/proposta` → revalidação → reserva atômica → criação.
  */
 export type Efeito =
   /** Lê dado medido. Não muda nada. */
   | "le"
+  /** Acumula estado da CONVERSA. Não toca no catálogo do lojista. */
+  | "rascunha"
   /** Monta uma proposta para um humano confirmar. Não muda nada. */
   | "propoe";
 
@@ -170,17 +192,122 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
   },
 ];
 
+/**
+ * As ferramentas de RASCUNHO — o cadastro em conversa.
+ *
+ * UMA ferramenta com operações, e não vinte microferramentas
+ * (`adicionar_cor`, `adicionar_tamanho`, `informar_sku`…). Vinte nomes fariam o
+ * modelo escolher entre vinte caminhos parecidos a cada frase, e cada nome novo
+ * seria uma chance a mais de ele escolher errado. Uma ferramenta com `operacao`
+ * fechada deixa a interpretação com o Gemini e a TRANSIÇÃO com o domínio, que é
+ * a divisão que este sistema inteiro usa.
+ */
+export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
+  {
+    nome: "gerenciar_cadastro",
+    efeito: "rascunha",
+    descricao:
+      "O cadastro de um produto NOVO, em conversa. Acumula o que o lojista já disse e diz o que ainda falta. NÃO cria nada: a criação só acontece depois que ele lê o resumo e clica. Operações: \"iniciar\" abre um cadastro; \"informar\" registra dados que ele DISSE (nunca deduza custo, preço, SKU, EAN ou peso — se ele não disser, pergunte); \"variantes\" monta a grade a partir das cores e tamanhos; \"identificador\" associa um SKU ou EAN a UMA variante (diga a cor e o tamanho; se não souber qual, pergunte); \"resumo\" mostra o estado; \"retomar\" continua um cadastro anterior; \"escolher\" resolve qual, quando eu mostrei uma lista; \"resolver_conflito\" decide entre dois valores que ele deu para o mesmo campo; \"cancelar\" desiste; \"propor_criacao\" monta a autorização para ele confirmar. Use \"propor_criacao\" só quando o resumo disser que está pronto.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        operacao: {
+          type: "STRING",
+          enum: [
+            "iniciar",
+            "informar",
+            "variantes",
+            "identificador",
+            "resumo",
+            "retomar",
+            "escolher",
+            "resolver_conflito",
+            "cancelar",
+            "propor_criacao",
+          ],
+        },
+        campo: {
+          type: "STRING",
+          enum: [
+            "nome",
+            "marca",
+            "modelo",
+            "categoria",
+            "sku",
+            "ean",
+            "custo",
+            "precoVenda",
+            "estoque",
+            "cor",
+            "tamanho",
+            "pesoGramas",
+            "alturaCm",
+            "larguraCm",
+            "comprimentoCm",
+          ],
+          description:
+            "Para \"informar\" e \"resolver_conflito\". \"modelo\" é o que o lojista chama de referência (ex. 7178.102).",
+        },
+        valor: {
+          type: "STRING",
+          description:
+            "O que ele disse, EXATAMENTE como disse — com a vírgula decimal e com os zeros à esquerda. \"47,80\" é \"47,80\"; \"01040533\" é \"01040533\", nunca 1040533.",
+        },
+        unidade: {
+          type: "STRING",
+          description: "Só para peso: g, kg. Vazio se ele não disse nenhuma.",
+        },
+        cores: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Para \"variantes\": as cores ditas, uma por item.",
+        },
+        tamanhos: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Para \"variantes\": os tamanhos ditos, um por item.",
+        },
+        cor: { type: "STRING", description: "Para \"identificador\": a cor da variante alvo." },
+        tamanho: {
+          type: "STRING",
+          description: "Para \"identificador\": o tamanho da variante alvo.",
+        },
+        escolha: {
+          type: "STRING",
+          description:
+            "Para \"escolher\": o que ele disse — \"o segundo\", \"2\", ou o id, se ele deu o id. Não invente um id.",
+        },
+        conflito: {
+          type: "STRING",
+          enum: ["atual", "novo"],
+          description: "Para \"resolver_conflito\": qual dos dois valores vale.",
+        },
+        dica: {
+          type: "STRING",
+          description:
+            "Para \"retomar\": o que ele disse sobre qual cadastro (\"o da Modare\"). Vazio se ele não disse.",
+        },
+      },
+      required: ["operacao"],
+    },
+  },
+];
+
 export const FERRAMENTAS: readonly Ferramenta[] = [
   ...FERRAMENTAS_DE_LEITURA,
+  ...FERRAMENTAS_DE_RASCUNHO,
   ...FERRAMENTAS_DE_PROPOSTA,
 ];
 
 /**
- * Verdadeiro quando nenhuma ferramenta escreve.
+ * Verdadeiro quando nenhuma ferramenta escreve NO CATÁLOGO DO LOJISTA.
  *
- * Existe como função, e não como comentário, para o teste poder chamá-la.
+ * Existe como função, e não como comentário, para o teste poder chamá-la. A
+ * lista de permitidos é escrita à mão de propósito: derivá-la do tipo faria o
+ * quarto efeito passar sozinho, e é justamente o quarto efeito que precisa de
+ * uma pessoa olhando.
  */
 export function nenhumaFerramentaEscreve(fs: readonly Ferramenta[] = FERRAMENTAS): boolean {
-  const permitidos: readonly Efeito[] = ["le", "propoe"];
+  const permitidos: readonly Efeito[] = ["le", "rascunha", "propoe"];
   return fs.every((f) => permitidos.includes(f.efeito));
 }
