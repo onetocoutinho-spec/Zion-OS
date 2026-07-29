@@ -28,9 +28,15 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
-import { conversar } from "@/lib/services/conversaDoAssistente";
+import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
+import { Markdown } from "@/components/client-portal/Markdown";
+import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
-import { executarProposta } from "@/lib/services/correcaoPeloChat";
+import {
+  chaveDaConversa,
+  lerGuardada,
+  paraGuardar,
+} from "@/modules/assistant/domain/conversaGuardada";
 import {
   montarProposta,
   type Proposta,
@@ -57,8 +63,30 @@ interface Turno {
    * flutuar na tela apontando para algo que já saiu de vista.
    */
   proposta?: Proposta;
-  /** O que aconteceu depois de confirmar. Trava o cartão contra duplo clique. */
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  /**
+   * O ID da proposta PERSISTIDA. Sem ele não existe botão.
+   *
+   * O objeto `proposta` acima desenha o cartão; este id é o que AUTORIZA. Uma
+   * proposta que não chegou ao banco não pode ser confirmada — e mostrar botão
+   * para ela seria oferecer uma ação que o servidor vai recusar.
+   */
+  propostaId?: string;
+  /**
+   * O que aconteceu depois de confirmar. Trava o cartão contra duplo clique.
+   *
+   * `cegoParaAIL` é opcional porque um turno RETOMADO do disco não sabe — e
+   * `false` ali seria uma afirmação falsa sobre uma gravação que a AIL pode
+   * muito bem não ter visto.
+   */
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  /**
+   * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
+   *
+   * Separada da de gravação porque o botão faz outra coisa: em vez de escrever
+   * um campo, leva para a esteira e a dispara. São dois verbos diferentes e
+   * dois riscos diferentes — misturá-los num cartão só faria um deles mentir.
+   */
+  propostaDeAnuncio?: PropostaDeAnuncio;
   /** No modo conversa: a fala do assistente, escrita por ele. */
   texto?: string;
   /**
@@ -96,13 +124,31 @@ export function ChatDaOperacao({
   produtos = [],
   clienteId,
   titulo = "Pergunte sobre a sua loja",
+  alturaCheia = false,
   aoGravar,
 }: {
-  contexto: ContextoDaPergunta;
+  /**
+   * `null` enquanto os dados carregam — e o chat NÃO some por isso.
+   *
+   * Ele já sumiu: a tela montava com `{contexto && <ChatDaOperacao/>}`, e
+   * bastava uma das quatro consultas recarregar para o contexto ficar nulo por
+   * um instante, o React destruir o componente e a conversa inteira ir junto —
+   * no meio de uma resposta. Aceitar `null` aqui é o que mantém o componente
+   * vivo; ele só desabilita a entrada enquanto não sabe os números.
+   */
+  contexto: ContextoDaPergunta | null;
   /** O catálogo, para o código resolver de QUAL produto a frase fala. */
   produtos?: readonly ProdutoAlvo[];
   clienteId: string;
   titulo?: string;
+  /**
+   * No painel e na página: ocupa a altura toda e a conversa rola dentro dela.
+   *
+   * Embutido numa página, o chat precisa de teto (`max-h-96`) para não empurrar
+   * o resto. Num painel dedicado, esse mesmo teto é o que faz a resposta rolar
+   * numa janelinha com espaço vazio embaixo.
+   */
+  alturaCheia?: boolean;
   /** Chamado depois de uma gravação, para a tela recarregar o que mudou. */
   aoGravar?: () => void;
 }) {
@@ -128,20 +174,76 @@ export function ChatDaOperacao({
     fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [turnos]);
 
+  /**
+   * Retoma a conversa guardada — uma vez, na montagem.
+   *
+   * `retomou` existe porque sem ele um recarregamento das consultas
+   * reescreveria os turnos por cima do que a pessoa acabou de dizer. É a mesma
+   * trava da retomada de produto na esteira, pelo mesmo motivo.
+   */
+  const [retomou, setRetomou] = useState(false);
+  useEffect(() => {
+    if (retomou) return;
+    setRetomou(true);
+    try {
+      const g = lerGuardada(localStorage.getItem(chaveDaConversa(clienteId)));
+      if (!g || g.turnos.length === 0) return;
+      setTurnos(g.turnos.map((t) => ({ ...t })));
+      setFalas(g.falas as Fala[]);
+      // Só faz sentido retomar no modo que produziu aquele fio.
+      setConversando(true);
+    } catch {
+      // storage indisponível (aba anônima, cota): a conversa começa do zero
+    }
+  }, [retomou, clienteId]);
+
+  // Grava a cada mudança. A PROPOSTA não atravessa — ver `conversaGuardada`.
+  useEffect(() => {
+    if (!retomou || turnos.length === 0) return;
+    try {
+      localStorage.setItem(
+        chaveDaConversa(clienteId),
+        JSON.stringify(paraGuardar(turnos, falas))
+      );
+    } catch {
+      // cota estourada: a conversa continua na tela, só não sobrevive ao F5
+    }
+  }, [turnos, falas, clienteId, retomou]);
+
   const perguntar = useCallback(
     async (texto: string) => {
       const pergunta = texto.trim();
-      if (!pergunta || ocupado) return;
+      // Sem contexto não há resposta honesta: responder com zeros seria pior
+      // que esperar meio segundo.
+      if (!pergunta || ocupado || !contexto) return;
       setFrase("");
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
       try {
         if (conversando) {
+          // O texto e o rastro de ferramenta chegam ao vivo, no lugar do
+          // "Lendo os seus dados…" parado. Com ferramentas, uma resposta leva
+          // de 2 a 8 segundos — tempo demais para uma tela muda.
+          const aoVivo = {
+            aoTexto: (acumulado: string) =>
+              setTurnos((t) =>
+                t.map((turno, i) => (i === t.length - 1 ? { ...turno, texto: acumulado } : turno))
+              ),
+            aoFerramenta: (nomeDaFerramenta: string) =>
+              setTurnos((t) =>
+                t.map((turno, i) =>
+                  i === t.length - 1
+                    ? { ...turno, ferramentas: [...(turno.ferramentas ?? []), nomeDaFerramenta] }
+                    : turno
+                )
+              ),
+          };
           const r = await conversar(
             pergunta,
             falas,
             { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
-            contexto.produto?.nome
+            contexto.produto?.nome,
+            aoVivo
           );
           setFalas(r.falas);
           setTurnos((t) =>
@@ -151,7 +253,12 @@ export function ChatDaOperacao({
                     ...turno,
                     texto: r.texto,
                     ferramentas: r.ferramentas,
-                    ...(r.proposta ? { proposta: r.proposta } : {}),
+                    ...(r.proposta && r.propostaId
+                      ? { proposta: r.proposta, propostaId: r.propostaId }
+                      : {}),
+                    ...(r.propostaDeAnuncio
+                      ? { propostaDeAnuncio: r.propostaDeAnuncio }
+                      : {}),
                   }
                 : turno
             )
@@ -201,27 +308,37 @@ export function ChatDaOperacao({
   const confirmar = useCallback(
     async (indice: number) => {
       const alvo = turnos[indice];
-      const p = alvo?.proposta;
-      if (!p || p.tipo !== "pronta" || alvo.desfecho || ocupado) return;
+      const id = alvo?.propostaId;
+      // Sem ID persistido não há o que confirmar. A checagem repete a do
+      // render de propósito: um clique que escapou (teclado, corrida de
+      // estado) não pode virar uma chamada sem autorização.
+      if (!id || alvo.desfecho || ocupado) return;
       setOcupado(true);
       try {
-        const r = await executarProposta(clienteId, p);
-        setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, desfecho: r } : turno)));
-        if (r.ok) aoGravar?.();
-      } catch (e) {
-        const erro = e instanceof Error ? e.message : "Não consegui gravar.";
+        // O SERVIDOR decide. Ele carrega a proposta do banco, confere o tenant
+        // contra a sessão, revalida as precondições contra o estado de agora,
+        // reserva a execução de forma atômica e audita. A tela só mostra.
+        const r = await confirmarProposta(id);
         setTurnos((t) =>
           t.map((turno, i) =>
             i === indice
-              ? { ...turno, desfecho: { ok: false, mensagem: erro, cegoParaAIL: false } }
+              ? { ...turno, desfecho: { ok: r.ok || Boolean(r.jaFeito), mensagem: r.mensagem } }
               : turno
+          )
+        );
+        if (r.ok) aoGravar?.();
+      } catch (e) {
+        const erro = e instanceof Error ? e.message : "Não consegui confirmar.";
+        setTurnos((t) =>
+          t.map((turno, i) =>
+            i === indice ? { ...turno, desfecho: { ok: false, mensagem: erro } } : turno
           )
         );
       } finally {
         setOcupado(false);
       }
     },
-    [turnos, clienteId, ocupado, aoGravar]
+    [turnos, ocupado, aoGravar]
   );
 
   /** Descarta a proposta sem gravar. O turno some da lista de pendentes. */
@@ -235,10 +352,16 @@ export function ChatDaOperacao({
     );
   }, []);
 
-  const sugestoes = contexto.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
+  const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4">
+    <div
+      className={
+        alturaCheia
+          ? "flex h-full flex-col p-4"
+          : "rounded-xl border border-white/10 bg-zinc-900/40 p-4"
+      }
+    >
       <div className="flex items-center gap-2">
         <Sparkles size={16} className="text-violet-400" />
         <h3 className="text-sm font-medium text-zinc-200">{titulo}</h3>
@@ -267,8 +390,16 @@ export function ChatDaOperacao({
           : "Ligar modo conversa (mais capaz, mais caro)"}
       </button>
 
-      {turnos.length > 0 && (
-        <div className="mt-4 max-h-96 space-y-4 overflow-y-auto pr-1">
+      {/* Em altura cheia o container existe SEMPRE, mesmo vazio: e ele que
+          come o espaco e empurra a barra de digitar para o pe. Sem isso a
+          barra fica colada no topo com o vazio embaixo, que e o oposto do
+          que a mao espera num chat. */}
+      {(alturaCheia || turnos.length > 0) && (
+        <div
+          className={`mt-4 space-y-4 overflow-y-auto pr-1 ${
+            alturaCheia ? "min-h-0 flex-1" : "max-h-96"
+          }`}
+        >
           {turnos.map((t, i) => (
             <div key={i} className="space-y-2">
               <p className="text-sm font-medium text-zinc-300">
@@ -282,8 +413,9 @@ export function ChatDaOperacao({
                 </p>
               ) : t.texto !== undefined || t.proposta ? (
                 <div className="space-y-2">
-                  {t.texto && <p className="text-sm text-zinc-200">{t.texto}</p>}
-                  {t.proposta && (
+                  {t.texto && <Markdown texto={t.texto} />}
+                  {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.proposta && t.propostaId && (
                     <CartaoDaProposta
                       p={t.proposta}
                       desfecho={t.desfecho}
@@ -328,7 +460,7 @@ export function ChatDaOperacao({
       )}
 
       <form
-        className="mt-4 flex gap-2"
+        className={`flex gap-2 ${alturaCheia ? "mt-3 shrink-0" : "mt-4"}`}
         onSubmit={(e) => {
           e.preventDefault();
           void perguntar(frase);
@@ -337,7 +469,7 @@ export function ChatDaOperacao({
         <input
           value={frase}
           onChange={(e) => setFrase(e.target.value)}
-          placeholder={contexto.produto ? "O que falta neste produto?" : "O que eu resolvo primeiro?"}
+          placeholder={contexto?.produto ? "O que falta neste produto?" : "O que eu resolvo primeiro?"}
           disabled={ocupado}
           className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400/50 focus:outline-none disabled:opacity-50"
         />
@@ -350,6 +482,67 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * A proposta de gerar anúncio — e o botão que leva para a esteira.
+ *
+ * O botão NAVEGA em vez de rodar aqui. A esteira leva de dois a três minutos,
+ * tem barra de progresso, salva as entregas parciais e sabe se recuperar de uma
+ * aba fechada. Rodá-la dentro de um painel de chat seria uma segunda cópia
+ * dessa máquina — pior, e sem nada disso.
+ *
+ * Quando falta dado, NÃO existe botão. A pessoa lê o que falta e resolve; um
+ * botão ali gastaria três minutos para devolver um anúncio com pendência.
+ */
+function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
+  if (p.tipo === "sem_alvo") {
+    return <p className="text-sm text-zinc-300">{p.mensagem}</p>;
+  }
+
+  if (p.tipo === "falta_dado") {
+    return (
+      <div className="space-y-1.5 rounded-lg border border-amber-400/20 bg-amber-500/[0.04] p-3">
+        <p className="flex items-start gap-2 text-sm text-zinc-200">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+          {p.mensagem}
+        </p>
+        <Link
+          href={`/cliente/anunciar?produto=${encodeURIComponent(p.produtoId)}`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
+        >
+          Abrir o produto <ArrowRight size={12} />
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-sm text-zinc-200">{p.resumo}</p>
+      {/* Os atributos com a ORIGEM de cada um: o que veio do cadastro e o que
+          foi lido do nome. Apresentar dedução como dado seria o começo do
+          mesmo problema que a esteira ja teve. */}
+      <ul className="flex flex-wrap gap-1.5">
+        {p.atributos.map((a) => (
+          <li
+            key={a.id}
+            className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-zinc-400"
+            title={a.origem === "nome" ? "lido do nome do produto" : "do cadastro"}
+          >
+            {a.nome}: <span className="text-zinc-300">{a.valor}</span>
+            {a.origem === "nome" && <span className="text-amber-400/70"> ·lido do nome</span>}
+          </li>
+        ))}
+      </ul>
+      <Link
+        href={`/cliente/anunciar?produto=${encodeURIComponent(p.produtoId)}&gerar=1`}
+        className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500"
+      >
+        <Sparkles size={13} /> {p.refazendo ? "Refazer o anúncio" : "Gerar o anúncio"}
+      </Link>
     </div>
   );
 }
@@ -373,7 +566,7 @@ function CartaoDaProposta({
   aoDescartar,
 }: {
   p: Proposta;
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
   ocupado: boolean;
   aoConfirmar: () => void;
   aoDescartar: () => void;

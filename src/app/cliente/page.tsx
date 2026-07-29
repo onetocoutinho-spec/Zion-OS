@@ -33,7 +33,6 @@ import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
 import { portalProximasAcoes, quotaEsteira } from "@/lib/services/perfil";
-import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
 
 export default function ClienteHome() {
   const { clienteId, nome } = useClientPortal();
@@ -166,17 +165,6 @@ export default function ClienteHome() {
         <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
       </div>
 
-      {/* Perguntar sobre a própria loja.
-          Fica logo abaixo dos números de propósito: a pergunta que os cards
-          provocam ("por que 43 sem custo?", "qual eu resolvo primeiro?") não
-          tinha onde ser feita, e a resposta estava espalhada por seis telas.
-          O que ele responde sai DAQUI — do mesmo `lacunas.estado` que alimenta
-          "O que falta" logo abaixo, e não de um modelo que adivinha número. */}
-      <ChatDaOperacao
-        contexto={{ loja: lacunas.estado }}
-        produtos={produtos ?? []}
-        clienteId={clienteId}
-      />
 
       {/* O que você quer fazer hoje? */}
       <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">

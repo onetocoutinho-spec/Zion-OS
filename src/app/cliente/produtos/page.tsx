@@ -7,7 +7,6 @@ import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
-import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
 import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
@@ -462,18 +461,6 @@ export default function ClienteProdutos() {
         }
       />
 
-      {/* Perguntar sobre a base sem sair dela.
-          Esta tela é onde o cadastro acontece e onde as perguntas nascem —
-          "quantos ainda estão sem custo?", "por que a precificação não sai?".
-          A resposta vem do banco, pelo mesmo caminho da home. */}
-      {chat.contexto && (
-        <ChatDaOperacao
-          contexto={chat.contexto}
-          produtos={chat.produtos}
-          clienteId={clienteId}
-          aoGravar={reload}
-        />
-      )}
 
       {escolhendoML && (
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4">

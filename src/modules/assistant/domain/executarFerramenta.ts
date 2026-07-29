@@ -23,11 +23,25 @@ import {
   type Proposta,
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import {
+  montarPropostaDeAnuncio,
+  type ProdutoParaAnunciar,
+  type PropostaDeAnuncio,
+} from "./propostaDeAnuncio";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
   produtos: readonly ProdutoAlvo[];
   produtoAberto?: { id: string; nome: string } | null;
+  /**
+   * Os produtos com os dados que a checagem de anúncio exige — marca, modelo,
+   * cores, tamanhos.
+   *
+   * Separado de `produtos` porque `ProdutoAlvo` não carrega isso, e inflar
+   * aquele tipo faria toda tela que usa o chat pagar por um dado que só uma
+   * ferramenta consulta.
+   */
+  paraAnunciar?: readonly ProdutoParaAnunciar[];
 }
 
 /**
@@ -41,6 +55,12 @@ export interface ContextoDasFerramentas {
 export interface ResultadoDaFerramenta {
   saida: unknown;
   proposta?: Proposta;
+  /**
+   * Uma proposta de GERAR ANÚNCIO — separada da de gravação porque a tela faz
+   * coisas diferentes com cada uma: uma grava um campo, a outra dispara a
+   * esteira. Um campo só, com união, faria o cartão adivinhar qual botão pôr.
+   */
+  propostaDeAnuncio?: PropostaDeAnuncio;
 }
 
 /** Um pedido do modelo, ainda não validado. */
@@ -229,6 +249,43 @@ export function executarFerramenta(
           proposta.tipo === "pronta"
             ? { montada: true, resumo: proposta.resumo, unidadeDeduzida: proposta.unidadeDeduzida }
             : { montada: false, motivo: mensagemDaRecusa(proposta) },
+      };
+    }
+
+    case "propor_anuncio": {
+      const id = texto(args, "produtoId");
+      // A checagem de prontidão precisa de marca, modelo, cores e tamanhos —
+      // que não cabem em `ProdutoAlvo`. Quem tem isso é a tela, e ela manda
+      // separado. Sem os dados, dizemos que não sabemos em vez de propor uma
+      // geração que vai voltar com pendência.
+      const p = ctx.paraAnunciar?.find((x) => x.id === id);
+      if (!p) {
+        return {
+          saida: {
+            erro: "Não tenho os dados deste produto para conferir se ele está pronto. Use achar_produto antes.",
+          },
+        };
+      }
+      const proposta = montarPropostaDeAnuncio(p);
+      return {
+        propostaDeAnuncio: proposta,
+        // O modelo recebe o VEREDITO e o que falta — nunca o objeto. Ele
+        // explica ao lojista; quem dispara é o clique, com o objeto da tela.
+        saida:
+          proposta.tipo === "pronto"
+            ? {
+                pronto: true,
+                resumo: proposta.resumo,
+                refazendo: proposta.refazendo,
+                atributos: proposta.atributos.map((a) => ({
+                  nome: a.nome,
+                  valor: a.valor,
+                  origem: a.origem,
+                })),
+              }
+            : proposta.tipo === "falta_dado"
+              ? { pronto: false, faltando: proposta.faltando, motivo: proposta.mensagem }
+              : { pronto: false, motivo: proposta.mensagem },
       };
     }
 

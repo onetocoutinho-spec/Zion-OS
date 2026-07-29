@@ -144,6 +144,17 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
       required: ["produtoId", "campo", "valor", "unidade"],
     },
   },
+  {
+    nome: "propor_anuncio",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de GERAR O ANÚNCIO de um produto — título, descrição e ficha técnica. NÃO gera nada: quem dispara é o lojista, clicando, e leva alguns minutos. Antes de propor, ela confere se o produto tem tudo que o anúncio precisa; se faltar algo, devolve o que falta em vez de propor. Use com um produtoId que veio de achar_produto.",
+    parametros: {
+      type: "OBJECT",
+      properties: { produtoId: { type: "STRING" } },
+      required: ["produtoId"],
+    },
+  },
 ];
 
 export const FERRAMENTAS: readonly Ferramenta[] = [

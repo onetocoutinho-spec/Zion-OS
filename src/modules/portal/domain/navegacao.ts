@@ -54,6 +54,9 @@ export const AREAS: readonly AreaDoPortal[] = [
     principal: "/cliente",
     telas: [
       { href: "/cliente", label: "Visão geral" },
+      // A conversa com a tela inteira. Fica em "Hoje" porque e por onde se
+      // comeca o dia quando nao se sabe por onde comecar.
+      { href: "/cliente/assistente", label: "Assistente" },
       { href: "/cliente/pendencias", label: "Pendências" },
     ],
   },

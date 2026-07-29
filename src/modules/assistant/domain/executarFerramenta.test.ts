@@ -191,3 +191,57 @@ test("ferramenta desconhecida vira erro de dado, não exceção", () => {
   const { saida } = rodar("apagar_tudo") as { saida: { erro?: string } };
   assert.match(saida.erro ?? "", /desconhecida/);
 });
+
+// ---- propor_anuncio ----
+
+const PARA_ANUNCIAR = [
+  {
+    id: "p1",
+    nome: "Chinelo Slide Feminino Nuvem Zaxy Air 19419",
+    estado: { custo: 17.16, precoVenda: 49.9, pesoGramas: 300, temFoto: true },
+    dados: {
+      nome: "Chinelo Slide Feminino Nuvem Zaxy Air 19419",
+      marca: "Zaxy",
+      modelo: "19419",
+      cores: ["Preto"],
+      tamanhos: ["35", "36"],
+    },
+    jaTemAnuncio: false,
+  },
+  {
+    id: "p2",
+    nome: "Papete Slide Feminina Moleca 5556.100",
+    estado: { custo: 0, precoVenda: 0, pesoGramas: 0, temFoto: false },
+    dados: { nome: "Papete Slide Feminina Moleca 5556.100", marca: "", modelo: "", cores: [], tamanhos: [] },
+    jaTemAnuncio: false,
+  },
+];
+
+const ctxAnuncio = { ...ctx, paraAnunciar: PARA_ANUNCIAR };
+
+test("propor_anuncio devolve pronto quando o produto tem tudo", () => {
+  const r = rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
+  assert.equal(r.propostaDeAnuncio?.tipo, "pronto");
+  assert.equal((r.saida as { pronto: boolean }).pronto, true);
+});
+
+test("propor_anuncio RECUSA quando falta dado — não queima três minutos à toa", () => {
+  const r = rodar("propor_anuncio", { produtoId: "p2" }, ctxAnuncio);
+  assert.equal(r.propostaDeAnuncio?.tipo, "falta_dado");
+  const s = r.saida as { pronto: boolean; faltando: string[] };
+  assert.equal(s.pronto, false);
+  assert.ok(s.faltando.length > 0);
+});
+
+test("propor_anuncio sem os dados do produto diz que não sabe", () => {
+  // Sem `paraAnunciar` a checagem de prontidão é impossível. Propor assim
+  // mesmo geraria um anúncio que volta com pendência.
+  const r = rodar("propor_anuncio", { produtoId: "p1" });
+  assert.match((r.saida as { erro?: string }).erro ?? "", /achar_produto antes/);
+});
+
+test("o modelo recebe o veredito e os atributos, nunca o objeto da proposta", () => {
+  const r = rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
+  const chaves = Object.keys(r.saida as object).sort();
+  assert.deepEqual(chaves, ["atributos", "pronto", "refazendo", "resumo"]);
+});

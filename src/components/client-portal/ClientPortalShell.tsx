@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PainelDoAssistente } from "./PainelDoAssistente";
 import {
   Home,
   Package,
@@ -229,6 +230,11 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
 
           <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-5xl space-y-6">{children}</div>
+            {/* O assistente existe em TODA tela do portal, e nao so nas tres
+                que o embutiram. Fica aqui e nao em cada pagina porque a
+                conversa e sobre a operacao inteira — e porque uma peca
+                repetida em N paginas diverge na primeira que alguem esquecer. */}
+            <PainelDoAssistente />
           </main>
         </div>
       </div>
