@@ -96,6 +96,14 @@ export function contextoDoAnuncio(a: Anuncio): string {
 
 export interface EntidadesContexto {
   cliente?: Cliente | null;
+  /**
+   * Quantas fotos o produto JÁ tem.
+   *
+   * A esteira pedia "imagens reais do produto" como pendência de um item com
+   * 8 fotos cadastradas — porque ninguém lhe dizia que existiam. Pendência
+   * falsa trava a publicação para sempre: publicar exige a lista vazia.
+   */
+  quantidadeFotos?: number | null;
   produto?: Produto | null;
   anuncio?: Anuncio | null;
   variantes?: ProdutoVariante[] | null;
@@ -141,10 +149,15 @@ export function montarContexto({
   anuncio,
   variantes,
   tabelasMedidas,
+  quantidadeFotos,
 }: EntidadesContexto): string {
   const vs = variantes ?? [];
   return [
     cliente ? contextoDoCliente(cliente) : null,
+    typeof quantidadeFotos === "number"
+      ? `FOTOS: ${quantidadeFotos} imagem(ns) já cadastrada(s) para este produto. ` +
+        `NÃO liste "imagens do produto" como pendência quando houver ao menos uma.`
+      : null,
     produto ? contextoDoProduto(produto) : null,
     produto ? contextoDoKit(produto) || null : null,
     vs.length > 0 ? contextoDasVariacoes(vs) : null,
