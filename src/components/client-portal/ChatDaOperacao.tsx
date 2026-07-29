@@ -32,6 +32,13 @@ import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistent
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
+import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
+import {
+  desfechoDaConfirmacao,
+  estadoDoCartao,
+} from "@/modules/assistant/domain/cartaoDoLote";
+
+type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
   chaveDaConversa,
   lerGuardada,
@@ -71,6 +78,14 @@ interface Turno {
    * para ela seria oferecer uma ação que o servidor vai recusar.
    */
   propostaId?: string;
+  /**
+   * O escopo de um LOTE. Presente só quando a proposta atinge vários alvos.
+   *
+   * As contagens vêm do SERVIDOR, nunca do modelo: o que está sendo aprovado é
+   * justamente a quantidade, e um número que o modelo escreveu é um número que
+   * ele pode ter errado.
+   */
+  escopo?: EscopoNaTela;
   /**
    * O que aconteceu depois de confirmar. Trava o cartão contra duplo clique.
    *
@@ -256,6 +271,9 @@ export function ChatDaOperacao({
                     ...(r.proposta && r.propostaId
                       ? { proposta: r.proposta, propostaId: r.propostaId }
                       : {}),
+                    ...(r.escopo && r.propostaId
+                      ? { escopo: r.escopo, propostaId: r.propostaId }
+                      : {}),
                     ...(r.propostaDeAnuncio
                       ? { propostaDeAnuncio: r.propostaDeAnuncio }
                       : {}),
@@ -322,7 +340,7 @@ export function ChatDaOperacao({
         setTurnos((t) =>
           t.map((turno, i) =>
             i === indice
-              ? { ...turno, desfecho: { ok: r.ok || Boolean(r.jaFeito), mensagem: r.mensagem } }
+              ? { ...turno, desfecho: desfechoDaConfirmacao(r) }
               : turno
           )
         );
@@ -415,6 +433,15 @@ export function ChatDaOperacao({
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
                   {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.escopo && t.propostaId && (
+                    <CartaoDoLote
+                      e={t.escopo}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.proposta && t.propostaId && (
                     <CartaoDaProposta
                       p={t.proposta}
@@ -558,6 +585,121 @@ function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
  * aparece em destaque. É o único ponto onde o sistema completou o que o cliente
  * não disse, e esconder isso transformaria a confirmação em carimbo.
  */
+/**
+ * O cartão de um LOTE — o que a pessoa lê antes de mexer em dezenas de linhas.
+ *
+ * Todas as contagens vêm do SERVIDOR. O cartão não pergunta ao modelo quantos
+ * serão alterados: é justamente a quantidade que está sendo aprovada, e um
+ * número escrito pelo modelo é um número que ele pode ter errado.
+ *
+ * A unidade é KG porque é o que o domínio guarda (`peso: number // kg`, usado
+ * no frete). A conversa aceita "420 g" e a Proposal carrega gramas, mas o que
+ * aparece aqui é o que vai para o banco — e não existe "peso embalado" nem
+ * "peso líquido" no modelo, então o rótulo é só "Peso".
+ *
+ * Três estados, e nenhum deles deixa o botão ativo por engano:
+ *   pendente  → mostra o escopo e oferece aplicar
+ *   concluído → vira registro, sem botão
+ *   obsoleto  → diz que nada foi alterado, sem botão
+ */
+function CartaoDoLote({
+  e,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  e: EscopoNaTela;
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  // Já decidido: o cartão vira registro. Sem botão, não há como gravar duas
+  // vezes — e "já foi feito" chega aqui como SUCESSO, porque foi.
+  if (desfecho) {
+    return (
+      <p
+        className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}
+      >
+        {desfecho.ok ? (
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        )}
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+
+  // As decisões vêm do domínio provado (`cartaoDoLote`), não daqui: tela e
+  // teste calculando o mesmo em dois lugares divergem no primeiro ajuste.
+  const c = estadoDoCartao(e);
+  if (c.estado !== "pendente") return null;
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Alterar {e.campo}
+      </p>
+
+      <dl className="space-y-1 text-sm">
+        <div className="flex gap-2">
+          <dt className="w-32 shrink-0 text-zinc-500">Novo valor</dt>
+          <dd className="font-medium text-zinc-100">
+            {c.valorEscrito}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-32 shrink-0 text-zinc-500">Afeta</dt>
+          <dd className="text-zinc-200">
+            {c.alvo}
+            {e.campo === "peso" && e.produtosAfetados > 1 && (
+              <span className="text-zinc-500"> · {e.produtosAfetados} produtos</span>
+            )}
+          </dd>
+        </div>
+        {e.naoAlterados > 0 && (
+          <div className="flex gap-2">
+            <dt className="w-32 shrink-0 text-zinc-500">Já têm {e.campo}</dt>
+            <dd className="text-amber-300">
+              {e.naoAlterados} — não {e.naoAlterados > 1 ? "serão alterados" : "será alterado"}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {e.amostra.length > 0 && (
+        // AMOSTRA, não a lista: com centenas de alvos isto viraria uma parede.
+        // Os ids vivem na Proposal, no servidor.
+        <p className="text-xs text-zinc-500">
+          {e.amostra.slice(0, 3).join(" · ")}
+          {e.produtosAfetados > 3 && ` e mais ${e.produtosAfetados - 3}`}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Aplicando…" : c.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CartaoDaProposta({
   p,
   desfecho,

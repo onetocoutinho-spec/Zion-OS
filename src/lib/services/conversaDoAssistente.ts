@@ -35,6 +35,23 @@ export interface RespostaDaConversa {
   propostaId?: string;
   /** O fio no banco. A tela devolve na próxima chamada. */
   conversaId?: string;
+  /**
+   * O escopo de um LOTE — contagens vindas do SERVIDOR.
+   *
+   * O cartão não pergunta ao modelo quantos serão alterados: ele lê daqui. Um
+   * número que o modelo escreveu é um número que ele pode ter errado, e o que
+   * está sendo aprovado é justamente a quantidade.
+   */
+  escopo?: {
+    campo: "peso" | "custo";
+    /** Unidade canônica da Proposal: gramas. A tela converte para exibir. */
+    valor: number;
+    resumo: string;
+    produtosAfetados: number;
+    variacoesAfetadas: number;
+    naoAlterados: number;
+    amostra: string[];
+  };
   /** Um cartão para GERAR o anúncio. Nada foi gerado — leva minutos e cota. */
   propostaDeAnuncio?: PropostaDeAnuncio;
 }
@@ -110,6 +127,7 @@ export async function conversar(
           ...(e.proposta ? { proposta: e.proposta as Proposta } : {}),
           ...(typeof e.propostaId === "string" ? { propostaId: e.propostaId } : {}),
           ...(typeof e.conversaId === "string" ? { conversaId: e.conversaId } : {}),
+          ...(e.escopo ? { escopo: e.escopo as RespostaDaConversa["escopo"] } : {}),
           ...(e.propostaDeAnuncio
             ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
             : {}),
