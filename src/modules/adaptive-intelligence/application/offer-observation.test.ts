@@ -14,7 +14,8 @@ import { AUTOR_OFERTA, VERSAO_CONTRATO_OFERTA, type Oferta } from "../domain/off
 import { observarOferta, observarOfertas, type ReposObservacao } from "./offer-observation.ts";
 
 function oferta(o: Partial<Oferta> & { id: string }): Oferta {
-  return {
+  const base = {
+    id: o.id,
     oferecidaEm: "2026-07-22T10:00:00.000Z",
     empresa: "cli-01",
     contexto: "catalogo",
@@ -27,9 +28,18 @@ function oferta(o: Partial<Oferta> & { id: string }): Oferta {
     autorDaOferta: AUTOR_OFERTA,
     versaoContrato: VERSAO_CONTRATO_OFERTA,
     origemExplicacao: "explicarConfidence(RFC-AIL-004 §4.3/§4.4)",
+    // Faltavam TRÊS campos, não um. O `...o` no fim tornava tudo opcional aos
+    // olhos do TS, e o fixture montava uma Oferta que o contrato não aceita.
+    versaoEngine: null,
+    versaoConfidence: null,
+    versaoExplainability: null,
     correlacao: null,
-    ...o,
-  };
+  } satisfies Oferta;
+  // `satisfies` na BASE é a garantia que importa: campo novo obrigatório em
+  // Oferta quebra a compilação aqui. O cast cobre só a mesclagem, porque
+  // `Partial<T>` reintroduz `undefined` em cada chave sem
+  // `exactOptionalPropertyTypes` — limitação do TS, não do fixture.
+  return { ...base, ...o } as Oferta;
 }
 
 function decisao(d: Partial<Decision> & { id: string; timestamp: string }): Decision {

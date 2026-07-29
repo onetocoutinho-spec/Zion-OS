@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "gate": "npm run typecheck && npm run typecheck:test && npm run lint && npm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

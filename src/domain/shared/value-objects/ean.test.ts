@@ -6,7 +6,7 @@ import { Ean } from "./ean.ts";
 test("aceita EAN-13 válido", () => {
   // 7891234567895 é um GTIN-13 com dígito verificador correto
   const r = Ean.criar("7891234567895");
-  assert.equal(r.ok, true, r.ok ? "" : r.erro.mensagem);
+  assert.equal(r.ok, true, r.ok ? "" : r.erro.message);
 });
 
 test("aceita GTIN-8 válido", () => {

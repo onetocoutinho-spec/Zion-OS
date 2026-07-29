@@ -10,7 +10,9 @@ import { dirname, join } from "node:path";
 
 import { foundation, fnd } from "./foundation.generated.ts";
 
-type Leaf = { $value?: unknown; $extensions: { zion: { posicao: string } } };
+// `completude` faltava no tipo e o teste já a lia — o type-check dos testes
+// (tsconfig.test.json) tornou isso visível.
+type Leaf = { $value?: unknown; $extensions: { zion: { posicao: string; completude: string } } };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const doc = JSON.parse(readFileSync(join(HERE, "..", "tokens.json"), "utf8")) as Record<string, unknown>;
@@ -39,6 +41,7 @@ test("Fidelidade: todo valor gerado é IDÊNTICO ao do tokens.json (nada inventa
 
 test("Só Foundation com $value é emitido; nenhum Incompleto vaza valor", () => {
   const critical = source.get("color.critical-content");
+  assert.ok(critical, "color.critical-content ausente no tokens.json");
   assert.equal(critical.leaf.$extensions.zion.completude, "I");
   assert.equal(foundation.Color["color.critical-content" as keyof typeof foundation.Color], undefined);
   // contagem: bate com a Foundation-com-valor da derivação (132)

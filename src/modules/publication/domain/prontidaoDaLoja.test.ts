@@ -74,6 +74,7 @@ test("cada lacuna diz o que TRAVA, não só o que falta", () => {
   // ignorar. O texto do peso precisa explicar a cadeia inteira.
   const l = lacunasDaLoja(loja({ comPeso: 0, prontosParaPrecificar: 0 }));
   const peso = l.find((x) => x.tipo === "sem_peso");
+  assert.ok(peso, "a lacuna de peso deveria existir");
   assert.match(peso.trava, /frete/i);
   assert.match(peso.trava, /preço mínimo/i);
   for (const x of l) assert.ok(x.trava.length > 20, `${x.tipo} sem consequência escrita`);
