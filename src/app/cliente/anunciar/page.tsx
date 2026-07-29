@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
-import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
 import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
@@ -557,19 +556,6 @@ function Jornada() {
 
       <Trilha trilha={trilha} />
 
-      {/* Perguntar sem sair da esteira.
-          Aqui a pergunta quase sempre tem sujeito — "o que falta NESTE?" — e é
-          por isso que o contexto leva o produto em foco. O peso vem da lista
-          com variantes, não do `Produto` da tela: este não carrega peso, e
-          passar 0 diria "falta peso" para quem tem. */}
-      {/* SEM `contexto &&` — ver produtos/page.tsx: desmontar o chat quando
-          uma consulta recarrega apagava a conversa no meio da resposta. */}
-      <ChatDaOperacao
-          contexto={chat.contexto}
-          produtos={chat.produtos}
-          clienteId={clienteId}
-          titulo={produto ? `Pergunte sobre ${produto.nome}` : "Pergunte sobre a sua loja"}
-        />
 
       {/* ── Passo 1: escolher o produto ─────────────────────────────────── */}
       {total === 0 ? (

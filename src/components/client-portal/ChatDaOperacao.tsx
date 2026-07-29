@@ -31,6 +31,11 @@ import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
 import { conversar } from "@/lib/services/conversaDoAssistente";
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
+import {
+  chaveDaConversa,
+  lerGuardada,
+  paraGuardar,
+} from "@/modules/assistant/domain/conversaGuardada";
 import { executarProposta } from "@/lib/services/correcaoPeloChat";
 import {
   montarProposta,
@@ -58,8 +63,14 @@ interface Turno {
    * flutuar na tela apontando para algo que já saiu de vista.
    */
   proposta?: Proposta;
-  /** O que aconteceu depois de confirmar. Trava o cartão contra duplo clique. */
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  /**
+   * O que aconteceu depois de confirmar. Trava o cartão contra duplo clique.
+   *
+   * `cegoParaAIL` é opcional porque um turno RETOMADO do disco não sabe — e
+   * `false` ali seria uma afirmação falsa sobre uma gravação que a AIL pode
+   * muito bem não ter visto.
+   */
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
   /** No modo conversa: a fala do assistente, escrita por ele. */
   texto?: string;
   /**
@@ -97,6 +108,7 @@ export function ChatDaOperacao({
   produtos = [],
   clienteId,
   titulo = "Pergunte sobre a sua loja",
+  alturaCheia = false,
   aoGravar,
 }: {
   /**
@@ -113,6 +125,14 @@ export function ChatDaOperacao({
   produtos?: readonly ProdutoAlvo[];
   clienteId: string;
   titulo?: string;
+  /**
+   * No painel e na página: ocupa a altura toda e a conversa rola dentro dela.
+   *
+   * Embutido numa página, o chat precisa de teto (`max-h-96`) para não empurrar
+   * o resto. Num painel dedicado, esse mesmo teto é o que faz a resposta rolar
+   * numa janelinha com espaço vazio embaixo.
+   */
+  alturaCheia?: boolean;
   /** Chamado depois de uma gravação, para a tela recarregar o que mudou. */
   aoGravar?: () => void;
 }) {
@@ -137,6 +157,42 @@ export function ChatDaOperacao({
   useEffect(() => {
     fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [turnos]);
+
+  /**
+   * Retoma a conversa guardada — uma vez, na montagem.
+   *
+   * `retomou` existe porque sem ele um recarregamento das consultas
+   * reescreveria os turnos por cima do que a pessoa acabou de dizer. É a mesma
+   * trava da retomada de produto na esteira, pelo mesmo motivo.
+   */
+  const [retomou, setRetomou] = useState(false);
+  useEffect(() => {
+    if (retomou) return;
+    setRetomou(true);
+    try {
+      const g = lerGuardada(localStorage.getItem(chaveDaConversa(clienteId)));
+      if (!g || g.turnos.length === 0) return;
+      setTurnos(g.turnos.map((t) => ({ ...t })));
+      setFalas(g.falas as Fala[]);
+      // Só faz sentido retomar no modo que produziu aquele fio.
+      setConversando(true);
+    } catch {
+      // storage indisponível (aba anônima, cota): a conversa começa do zero
+    }
+  }, [retomou, clienteId]);
+
+  // Grava a cada mudança. A PROPOSTA não atravessa — ver `conversaGuardada`.
+  useEffect(() => {
+    if (!retomou || turnos.length === 0) return;
+    try {
+      localStorage.setItem(
+        chaveDaConversa(clienteId),
+        JSON.stringify(paraGuardar(turnos, falas))
+      );
+    } catch {
+      // cota estourada: a conversa continua na tela, só não sobrevive ao F5
+    }
+  }, [turnos, falas, clienteId, retomou]);
 
   const perguntar = useCallback(
     async (texto: string) => {
@@ -268,7 +324,13 @@ export function ChatDaOperacao({
   const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4">
+    <div
+      className={
+        alturaCheia
+          ? "flex h-full flex-col p-4"
+          : "rounded-xl border border-white/10 bg-zinc-900/40 p-4"
+      }
+    >
       <div className="flex items-center gap-2">
         <Sparkles size={16} className="text-violet-400" />
         <h3 className="text-sm font-medium text-zinc-200">{titulo}</h3>
@@ -298,7 +360,11 @@ export function ChatDaOperacao({
       </button>
 
       {turnos.length > 0 && (
-        <div className="mt-4 max-h-96 space-y-4 overflow-y-auto pr-1">
+        <div
+          className={`mt-4 space-y-4 overflow-y-auto pr-1 ${
+            alturaCheia ? "min-h-0 flex-1" : "max-h-96"
+          }`}
+        >
           {turnos.map((t, i) => (
             <div key={i} className="space-y-2">
               <p className="text-sm font-medium text-zinc-300">
@@ -358,7 +424,7 @@ export function ChatDaOperacao({
       )}
 
       <form
-        className="mt-4 flex gap-2"
+        className={`flex gap-2 ${alturaCheia ? "mt-3 shrink-0" : "mt-4"}`}
         onSubmit={(e) => {
           e.preventDefault();
           void perguntar(frase);
@@ -403,7 +469,7 @@ function CartaoDaProposta({
   aoDescartar,
 }: {
   p: Proposta;
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
   ocupado: boolean;
   aoConfirmar: () => void;
   aoDescartar: () => void;
