@@ -19,6 +19,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Sparkles, ArrowRight, Send, AlertTriangle, Lightbulb, CheckCircle2, Loader2 } from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
+import { executarProposta } from "@/lib/services/correcaoPeloChat";
+import {
+  montarProposta,
+  type Proposta,
+  type ProdutoAlvo,
+} from "@/modules/assistant/domain/propostaDeCorrecao";
 import {
   responder,
   type ContextoDaPergunta,
@@ -31,6 +37,17 @@ interface Turno {
   /** O que o modelo entendeu. Mostrado em cinza — é auditoria, não resposta. */
   interpretacao?: string;
   resposta?: RespostaDaOperacao;
+  /**
+   * Uma mudança PROPOSTA, ainda não executada.
+   *
+   * Fica aqui e não numa variável de estado solta porque a confirmação
+   * pertence ao turno: se a pessoa perguntar outra coisa antes de confirmar, a
+   * proposta antiga continua visível no seu lugar, em vez de o botão "Gravar"
+   * flutuar na tela apontando para algo que já saiu de vista.
+   */
+  proposta?: Proposta;
+  /** O que aconteceu depois de confirmar. Trava o cartão contra duplo clique. */
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
   erro?: string;
 }
 
@@ -55,10 +72,18 @@ const SUGESTOES_PRODUTO = [
 
 export function ChatDaOperacao({
   contexto,
+  produtos = [],
+  clienteId,
   titulo = "Pergunte sobre a sua loja",
+  aoGravar,
 }: {
   contexto: ContextoDaPergunta;
+  /** O catálogo, para o código resolver de QUAL produto a frase fala. */
+  produtos?: readonly ProdutoAlvo[];
+  clienteId: string;
   titulo?: string;
+  /** Chamado depois de uma gravação, para a tela recarregar o que mudou. */
+  aoGravar?: () => void;
 }) {
   const [frase, setFrase] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -78,12 +103,27 @@ export function ChatDaOperacao({
       setTurnos((t) => [...t, { pergunta }]);
       try {
         const criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
-        // A resposta é montada AQUI, contra o estado real. O que voltou do
-        // servidor foi só a intenção.
-        const resposta = responder(criterio, contexto);
+        // Ditar um valor não é perguntar. Vira PROPOSTA — nada é gravado até
+        // alguém ler o cartão e clicar. Ver `propostaDeCorrecao`.
+        const encerra =
+          criterio.intencao === "preencher"
+            ? {
+                proposta: montarProposta(
+                  criterio,
+                  produtos,
+                  contexto.produto
+                    ? { id: contexto.produto.id, nome: contexto.produto.nome }
+                    : null
+                ),
+              }
+            : // A resposta é montada AQUI, contra o estado real. O que voltou do
+              // servidor foi só a intenção.
+              { resposta: responder(criterio, contexto) };
         setTurnos((t) =>
           t.map((turno, i) =>
-            i === t.length - 1 ? { ...turno, resposta, interpretacao: criterio.interpretacao } : turno
+            i === t.length - 1
+              ? { ...turno, ...encerra, interpretacao: criterio.interpretacao }
+              : turno
           )
         );
       } catch (e) {
@@ -93,8 +133,51 @@ export function ChatDaOperacao({
         setOcupado(false);
       }
     },
-    [contexto, ocupado]
+    [contexto, ocupado, produtos]
   );
+
+  /**
+   * Grava — só a partir de uma proposta que já está na tela.
+   *
+   * O índice do turno é o que amarra o cartão à gravação: `executarProposta`
+   * recebe o objeto que a pessoa leu, não campos remontados a partir da frase.
+   */
+  const confirmar = useCallback(
+    async (indice: number) => {
+      const alvo = turnos[indice];
+      const p = alvo?.proposta;
+      if (!p || p.tipo !== "pronta" || alvo.desfecho || ocupado) return;
+      setOcupado(true);
+      try {
+        const r = await executarProposta(clienteId, p);
+        setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, desfecho: r } : turno)));
+        if (r.ok) aoGravar?.();
+      } catch (e) {
+        const erro = e instanceof Error ? e.message : "Não consegui gravar.";
+        setTurnos((t) =>
+          t.map((turno, i) =>
+            i === indice
+              ? { ...turno, desfecho: { ok: false, mensagem: erro, cegoParaAIL: false } }
+              : turno
+          )
+        );
+      } finally {
+        setOcupado(false);
+      }
+    },
+    [turnos, clienteId, ocupado, aoGravar]
+  );
+
+  /** Descarta a proposta sem gravar. O turno some da lista de pendentes. */
+  const descartar = useCallback((indice: number) => {
+    setTurnos((t) =>
+      t.map((turno, i) =>
+        i === indice
+          ? { ...turno, desfecho: { ok: false, mensagem: "Descartado. Nada foi gravado.", cegoParaAIL: false } }
+          : turno
+      )
+    );
+  }, []);
 
   const sugestoes = contexto.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
 
@@ -121,6 +204,14 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
+              ) : t.proposta ? (
+                <CartaoDaProposta
+                  p={t.proposta}
+                  desfecho={t.desfecho}
+                  ocupado={ocupado}
+                  aoConfirmar={() => void confirmar(i)}
+                  aoDescartar={() => descartar(i)}
+                />
               ) : t.resposta ? (
                 <Resposta r={t.resposta} interpretacao={t.interpretacao} />
               ) : (
@@ -173,6 +264,98 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * A proposta na tela — e o botão que a torna real.
+ *
+ * Tudo que será gravado está escrito aqui antes de existir botão: qual produto,
+ * qual valor, quantas variações. O `resumo` não é decorativo — é o contrato que
+ * a pessoa está aceitando, e é o mesmo objeto que vai para `executarProposta`.
+ *
+ * Quando a unidade foi DEDUZIDA (a frase disse "300" e não "300 g"), isso
+ * aparece em destaque. É o único ponto onde o sistema completou o que o cliente
+ * não disse, e esconder isso transformaria a confirmação em carimbo.
+ */
+function CartaoDaProposta({
+  p,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: Proposta;
+  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (p.tipo !== "pronta") {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-sm text-zinc-200">{p.tipo === "ambigua" ? p.mensagem : p.mensagem}</p>
+        {p.tipo === "ambigua" && (
+          <ul className="space-y-1">
+            {p.candidatos.map((c) => (
+              <li key={c.id} className="text-xs text-zinc-400">
+                · {c.nome}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  // Já decidido: o cartão vira registro. Sem botão, não há como gravar duas
+  // vezes clicando rápido.
+  if (desfecho) {
+    return (
+      <div className="space-y-1">
+        <p
+          className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}
+        >
+          {desfecho.ok ? (
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          )}
+          {desfecho.mensagem}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-sm text-zinc-200">{p.resumo}</p>
+      {p.unidadeDeduzida && (
+        <p className="flex items-start gap-1.5 text-xs text-amber-300">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          Você não disse a unidade — entendi <strong>{p.valorEscrito}</strong>. Confira antes de
+          gravar.
+        </p>
+      )}
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Gravando…" : "Gravar"}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

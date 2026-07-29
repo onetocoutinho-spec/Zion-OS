@@ -70,10 +70,23 @@ export function montarEstadoDaLoja(
  * "0 de 0 produtos" com toda a confiança do mundo, por meio segundo. Meio
  * segundo de número errado continua sendo número errado.
  */
+export interface ContextoDoChat {
+  /** `null` enquanto carrega. */
+  contexto: ContextoDaPergunta | null;
+  /**
+   * O catálogo, para o CÓDIGO resolver de qual produto a frase fala.
+   *
+   * Vai junto do contexto e não numa consulta própria: são os mesmos produtos,
+   * e duas listas carregadas em momentos diferentes divergem exatamente quando
+   * alguém está gravando.
+   */
+  produtos: readonly ProdutoComPeso[];
+}
+
 export function useContextoDaPergunta(
   clienteId: string,
   produtoEmFoco?: string | null
-): ContextoDaPergunta | null {
+): ContextoDoChat {
   const { data: produtos } = useLiveQuery(() => listarProdutosComPeso(clienteId), [clienteId]);
   const { data: anuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
@@ -82,8 +95,8 @@ export function useContextoDaPergunta(
   const { data: imagens } = useLiveQuery(listarTodasImagens);
   const { data: canal } = useLiveQuery(() => buscarCanal(clienteId, "Mercado Livre"), [clienteId]);
 
-  return useMemo(() => {
-    if (!produtos || !anuncios) return null;
+  return useMemo((): ContextoDoChat => {
+    if (!produtos || !anuncios) return { contexto: null, produtos: [] };
     const loja = montarEstadoDaLoja(produtos, anuncios, imagens ?? [], Boolean(canal?.ativo));
 
     // O produto vem DESTA lista, não da que a tela já tinha: `Produto` não
@@ -91,10 +104,10 @@ export function useContextoDaPergunta(
     // "falta peso" para quem tem. Sem o produto na lista, não há produto em
     // foco — melhor responder só sobre a loja do que sobre um peso inventado.
     const p = produtoEmFoco ? produtos.find((x) => x.id === produtoEmFoco) : undefined;
-    if (!p) return { loja };
+    if (!p) return { contexto: { loja }, produtos };
 
     const comFoto = new Set((imagens ?? []).map((i) => i.produtoId).filter(Boolean));
-    return {
+    const contexto: ContextoDaPergunta = {
       loja,
       produto: {
         id: p.id,
@@ -112,5 +125,6 @@ export function useContextoDaPergunta(
         },
       },
     };
+    return { contexto, produtos };
   }, [produtos, anuncios, imagens, canal, produtoEmFoco]);
 }

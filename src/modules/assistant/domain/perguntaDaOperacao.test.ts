@@ -28,15 +28,22 @@ function loja(mudancas: Partial<EstadoDaLoja> = {}): EstadoDaLoja {
 }
 
 function criterio(c: Partial<CriterioDaPergunta> = {}): CriterioDaPergunta {
-  return {
+  // `satisfies` na base, não `: CriterioDaPergunta` no retorno: `Partial<T>`
+  // reintroduz `undefined` em cada chave, e um campo esquecido aqui passaria
+  // como `undefined` em vez de virar erro de compilação.
+  const base = {
     entendeu: true,
     perguntar: "",
     intencao: "estado_geral",
     assunto: "",
     capacidade: "",
     interpretacao: "",
-    ...c,
-  };
+    campo: "nenhum",
+    valor: "",
+    unidade: "",
+    termosDoAlvo: [],
+  } satisfies CriterioDaPergunta;
+  return { ...base, ...c };
 }
 
 const ctx = (e: EstadoDaLoja): ContextoDaPergunta => ({ loja: e });
