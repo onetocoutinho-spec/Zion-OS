@@ -17,8 +17,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Sparkles, ArrowRight, Send, AlertTriangle, Lightbulb, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  Sparkles,
+  ArrowRight,
+  Send,
+  AlertTriangle,
+  Lightbulb,
+  CheckCircle2,
+  Loader2,
+  MessagesSquare,
+} from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
+import { conversar } from "@/lib/services/conversaDoAssistente";
+import type { Fala } from "@/lib/agentes/conversaComFerramentas";
 import { executarProposta } from "@/lib/services/correcaoPeloChat";
 import {
   montarProposta,
@@ -48,6 +59,16 @@ interface Turno {
   proposta?: Proposta;
   /** O que aconteceu depois de confirmar. Trava o cartão contra duplo clique. */
   desfecho?: { ok: boolean; mensagem: string; cegoParaAIL: boolean };
+  /** No modo conversa: a fala do assistente, escrita por ele. */
+  texto?: string;
+  /**
+   * Quais ferramentas rodaram para produzir esta resposta.
+   *
+   * Fica visível de propósito. É a única forma de quem lê saber se um número
+   * veio do banco ou de lugar nenhum — e num chat que conversa livre, essa
+   * distinção não se enxerga pela forma da frase.
+   */
+  ferramentas?: readonly string[];
   erro?: string;
 }
 
@@ -88,6 +109,19 @@ export function ChatDaOperacao({
   const [frase, setFrase] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [ocupado, setOcupado] = useState(false);
+  /**
+   * Modo conversa: o laço com ferramentas, que guarda o fio e conduz.
+   *
+   * Fica DESLIGADO por padrão porque custa de 6 a 19 vezes mais que a rota de
+   * intenção (medido: ~2.600 tokens por conversa contra ~400 por pergunta), e a
+   * maioria das perguntas é uma só — "quantos sem custo?" não precisa de fio.
+   *
+   * Os dois vivem lado a lado de propósito. Trocar um pelo outro deixaria a
+   * operação sem base de comparação e sem saída se o custo doer.
+   */
+  const [conversando, setConversando] = useState(false);
+  /** O fio. Vive aqui, não no servidor: fechar a aba encerra a conversa. */
+  const [falas, setFalas] = useState<readonly Fala[]>([]);
   const fimDaLista = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -102,6 +136,28 @@ export function ChatDaOperacao({
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
       try {
+        if (conversando) {
+          const r = await conversar(
+            pergunta,
+            falas,
+            { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
+            contexto.produto?.nome
+          );
+          setFalas(r.falas);
+          setTurnos((t) =>
+            t.map((turno, i) =>
+              i === t.length - 1
+                ? {
+                    ...turno,
+                    texto: r.texto,
+                    ferramentas: r.ferramentas,
+                    ...(r.proposta ? { proposta: r.proposta } : {}),
+                  }
+                : turno
+            )
+          );
+          return;
+        }
         const criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
         // Ditar um valor não é perguntar. Vira PROPOSTA — nada é gravado até
         // alguém ler o cartão e clicar. Ver `propostaDeCorrecao`.
@@ -133,7 +189,7 @@ export function ChatDaOperacao({
         setOcupado(false);
       }
     },
-    [contexto, ocupado, produtos]
+    [contexto, ocupado, produtos, conversando, falas]
   );
 
   /**
@@ -191,6 +247,26 @@ export function ChatDaOperacao({
         Respondo com os seus números — e digo quando não sei.
       </p>
 
+      {/* O interruptor entre os dois modos.
+          Aparece porque a diferença é real e o lojista sente: o modo conversa
+          guarda o fio e conduz, e custa de 6 a 19 vezes mais. Esconder isso
+          faria a conta chegar sem explicação. Trocar de modo limpa o fio — o
+          histórico de um não serve ao outro. */}
+      <button
+        type="button"
+        onClick={() => {
+          setConversando((v) => !v);
+          setFalas([]);
+        }}
+        disabled={ocupado}
+        className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-500 transition hover:text-violet-300 disabled:opacity-50"
+      >
+        <MessagesSquare size={12} />
+        {conversando
+          ? "Modo conversa ligado — guarda o fio e conduz. Desligar"
+          : "Ligar modo conversa (mais capaz, mais caro)"}
+      </button>
+
       {turnos.length > 0 && (
         <div className="mt-4 max-h-96 space-y-4 overflow-y-auto pr-1">
           {turnos.map((t, i) => (
@@ -204,14 +280,24 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
-              ) : t.proposta ? (
-                <CartaoDaProposta
-                  p={t.proposta}
-                  desfecho={t.desfecho}
-                  ocupado={ocupado}
-                  aoConfirmar={() => void confirmar(i)}
-                  aoDescartar={() => descartar(i)}
-                />
+              ) : t.texto !== undefined || t.proposta ? (
+                <div className="space-y-2">
+                  {t.texto && <p className="text-sm text-zinc-200">{t.texto}</p>}
+                  {t.proposta && (
+                    <CartaoDaProposta
+                      p={t.proposta}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.ferramentas && t.ferramentas.length > 0 && (
+                    <p className="text-[11px] text-zinc-600">
+                      Consultei: {t.ferramentas.join(" · ")}
+                    </p>
+                  )}
+                </div>
               ) : t.resposta ? (
                 <Resposta r={t.resposta} interpretacao={t.interpretacao} />
               ) : (
