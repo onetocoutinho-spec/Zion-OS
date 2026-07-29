@@ -51,8 +51,8 @@ const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as 
 
 export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
-  /** O que o chat desta tela pode responder. `null` enquanto carrega. */
-  const contextoDaPergunta = useContextoDaPergunta(clienteId);
+  /** O que o chat desta tela pode responder e sobre quais produtos. */
+  const chat = useContextoDaPergunta(clienteId);
   const { data: produtos, reload } = useLiveQuery(listarProdutos);
   const { data: anuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
@@ -466,7 +466,14 @@ export default function ClienteProdutos() {
           Esta tela é onde o cadastro acontece e onde as perguntas nascem —
           "quantos ainda estão sem custo?", "por que a precificação não sai?".
           A resposta vem do banco, pelo mesmo caminho da home. */}
-      {contextoDaPergunta && <ChatDaOperacao contexto={contextoDaPergunta} />}
+      {chat.contexto && (
+        <ChatDaOperacao
+          contexto={chat.contexto}
+          produtos={chat.produtos}
+          clienteId={clienteId}
+          aoGravar={reload}
+        />
+      )}
 
       {escolhendoML && (
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4">
