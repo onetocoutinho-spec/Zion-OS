@@ -124,7 +124,68 @@ export function agruparPorFamilia<T extends ProdutoParaAgrupar>(
   return [...grupos.values()];
 }
 
-/** Quantos produtos de uma lista já têm peso. Para a barra de progresso. */
+/**
+ * Quantos produtos têm ALGUM peso — o maior entre as variantes é maior que zero.
+ *
+ * ATENÇÃO: isto responde "dá para calcular frete?", NÃO "o cadastro está
+ * completo?". Um produto com 1 de 39 variantes preenchidas conta aqui.
+ * Para completude, use `contarPendentes`.
+ *
+ * Semântica preservada de propósito: `pesoGramas` é o MAIOR entre as variantes
+ * porque o frete cobra pela caixa que sai, e essa conta depende dela.
+ */
 export function contarComPeso(produtos: readonly { pesoGramas: number }[]): number {
   return produtos.filter((p) => p.pesoGramas > 0).length;
+}
+
+// ── Completude do cadastro de peso (INC-001) ────────────────────────────────
+//
+// O sistema usava UM número para responder DUAS perguntas:
+//
+//   "quanto pesa a caixa?"   → o MAIOR entre as variantes (certo: é o frete)
+//   "tem peso cadastrado?"   → TODAS têm? (conjunção, não máximo)
+//
+// Reusar o máximo como predicado de completude escondia 12 variações sem peso
+// em dois produtos — o lojista não tinha contagem, lista nem filtro que as
+// alcançasse. Trocar por MIN inverteria o defeito: o frete passaria a ser
+// calculado pela menor caixa e o preço mínimo sairia abaixo do que se paga.
+//
+// A saída é aditiva: a representação do CÁLCULO fica intacta, e a completude
+// passa a derivar do par (quantidadeVariantes, variacoesSemPeso).
+
+export type SituacaoPeso = "completo" | "ausencia_total" | "ausencia_parcial" | "sem_grade";
+
+export interface EstadoDePeso {
+  quantidadeVariantes: number;
+  variacoesSemPeso: number;
+}
+
+/**
+ * Em qual dos quatro estados este produto está.
+ *
+ * `sem_grade` é o quarto de propósito: produto sem variação nenhuma não tem
+ * onde guardar peso. Chamá-lo de "sem peso" criaria uma pendência que ninguém
+ * consegue resolver na tela de peso — e são 3 produtos na base real.
+ */
+export function situacaoDePeso(p: EstadoDePeso): SituacaoPeso {
+  if (p.quantidadeVariantes === 0) return "sem_grade";
+  if (p.variacoesSemPeso === 0) return "completo";
+  if (p.variacoesSemPeso >= p.quantidadeVariantes) return "ausencia_total";
+  return "ausencia_parcial";
+}
+
+/** O produto tem peso faltando em alguma variação? `sem_grade` NÃO conta. */
+export function pesoPendente(p: EstadoDePeso): boolean {
+  const s = situacaoDePeso(p);
+  return s === "ausencia_total" || s === "ausencia_parcial";
+}
+
+/** Quantos produtos têm peso faltando. É este o número da barra de progresso. */
+export function contarPendentes(produtos: readonly EstadoDePeso[]): number {
+  return produtos.filter(pesoPendente).length;
+}
+
+/** Quantos produtos estão com o cadastro de peso COMPLETO (grade cheia). */
+export function contarCompletos(produtos: readonly EstadoDePeso[]): number {
+  return produtos.filter((p) => situacaoDePeso(p) === "completo").length;
 }

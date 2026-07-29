@@ -23,12 +23,27 @@ export interface ProdutoComPeso {
   marca: string;
   custo: number;
   precoVenda: number;
-  /** 0 = não informado. Em GRAMAS, que é como a pessoa pensa. */
+  /**
+   * O MAIOR entre as variantes, em GRAMAS. 0 = nenhuma variante tem peso.
+   *
+   * Serve ao CÁLCULO (o frete cobra pela caixa que sai) e por isso a semântica
+   * é preservada. NÃO serve para responder "o cadastro está completo?" — para
+   * isso existe `variacoesSemPeso`. Ver INC-001.
+   */
   pesoGramas: number;
   alturaCm: number;
   larguraCm: number;
   comprimentoCm: number;
   quantidadeVariantes: number;
+  /**
+   * Quantas variantes estão sem peso. Com `quantidadeVariantes`, é o par de onde
+   * derivam os quatro estados (`catalog/domain/familiaDeProduto.situacaoDePeso`).
+   *
+   * Existe porque o máximo escondia o estado PARCIAL: um produto com 1 de 39
+   * variantes preenchidas reportava peso e desaparecia de toda contagem de
+   * pendência. Eram 12 variações inalcançáveis na base real.
+   */
+  variacoesSemPeso: number;
 }
 
 /** Gramas ↔ quilos num lugar só, para o arredondamento não vazar pela tela. */
@@ -65,6 +80,9 @@ export async function listarProdutosComPeso(clienteId: string): Promise<ProdutoC
       larguraCm: maior("largura"),
       comprimentoCm: maior("comprimento"),
       quantidadeVariantes: vs.length,
+      // Contado, não deduzido do máximo: é a diferença entre "tem algum peso" e
+      // "está completo", e foi confundi-las que escondeu o estado parcial.
+      variacoesSemPeso: vs.filter((v) => !((Number(v.peso) || 0) > 0)).length,
     };
   });
 }
