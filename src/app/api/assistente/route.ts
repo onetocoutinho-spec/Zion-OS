@@ -1,0 +1,137 @@
+// Classificação da pergunta do operador sobre a própria operação.
+//
+// A rota devolve INTENÇÃO, nunca resposta. Ela não consulta o banco, não conta
+// nada e não sabe quantos produtos existem — quem responde é
+// `assistant/domain/perguntaDaOperacao`, contra o estado real, no cliente.
+//
+// Mandar as contagens para cá pareceria mais simples e seria a porta pela qual
+// o número errado entra: um modelo que vê "43 sem custo" escreve "cerca de 40",
+// "a maioria", "quase todos". Ele não vê, então não pode.
+//
+// Mesma divisão medida no EXP-004 (3 rodadas, 39 turnos): extração de intenção
+// 39/39, resolvedor determinístico sem erro. As rodadas que falharam falharam
+// por pedir ao modelo que julgasse o que o domínio já conhece.
+
+import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
+import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+
+export const maxDuration = 30;
+
+const ESQUEMA = {
+  type: "object",
+  properties: {
+    entendeu: { type: "boolean" },
+    perguntar: { type: "string" },
+    intencao: {
+      type: "string",
+      enum: [
+        "estado_geral",
+        "contagem",
+        "proximo_passo",
+        "por_que_travado",
+        "sobre_este_produto",
+        "fora_do_alcance",
+      ],
+    },
+    // "nenhum" e não "" para dizer "não se aplica": o Gemini recusa o schema
+    // inteiro com `enum ... cannot be empty`, e o erro chegava aqui como um 502
+    // genérico porque o catch abaixo engole a mensagem do provedor. Medido
+    // contra a API real — o schema com "" passava no type-check e no teste.
+    assunto: {
+      type: "string",
+      enum: [
+        "peso",
+        "custo",
+        "foto",
+        "anuncio",
+        "aprovacao",
+        "publicacao",
+        "precificacao",
+        "nenhum",
+      ],
+    },
+    capacidade: { type: "string", enum: ["precificar", "anunciar", "publicar", "nenhum"] },
+    interpretacao: { type: "string" },
+  },
+  required: ["entendeu", "perguntar", "intencao", "assunto", "capacidade", "interpretacao"],
+  additionalProperties: false,
+} as const;
+
+function system(temProdutoAberto: boolean, nomeDoProduto: string): string {
+  return `Você classifica a INTENÇÃO de uma frase de um lojista sobre a operação da própria loja. Você NÃO consulta dados, NÃO conta, NÃO estima, NÃO lista produtos e NÃO responde a pergunta. Outro sistema responde, com os números reais.
+
+NUNCA escreva números, quantidades, percentuais ou palavras de quantidade ("muitos", "a maioria", "quase todos", "poucos") em nenhum campo. Você não tem acesso aos dados e qualquer número seu seria inventado.
+
+${temProdutoAberto ? `CONTEXTO: há um produto aberto na tela — "${nomeDoProduto}". Perguntas sobre "este produto", "esse aqui", "o que falta nele" ou sem sujeito explícito enquanto se olha um produto são "sobre_este_produto".` : "CONTEXTO: nenhum produto aberto. Não use \"sobre_este_produto\"."}
+
+"intencao", escolha uma:
+- "contagem": quer saber QUANTOS estão em alguma condição. Preencha "assunto".
+- "proximo_passo": quer saber por onde começar, o que fazer primeiro, qual a prioridade.
+- "por_que_travado": quer saber por que algo não funciona ou não sai. Preencha "capacidade".
+- "estado_geral": quer um panorama — como está a loja, o que falta no geral, o que tem de errado.
+- "sobre_este_produto": quer saber o que falta no produto que está aberto.
+- "fora_do_alcance": a pergunta não é nenhuma das acima. Inclui previsão de vendas, opinião de mercado, o que o concorrente faz, preço ideal de um item específico, e qualquer coisa que dependa de dado que a loja não tem. Em "interpretacao", diga em uma frase o que você não consegue responder, sem prometer que outro sistema consegue.
+
+"assunto" (só para "contagem"), escolha um:
+- "peso": peso, gramas, frete, medidas de envio
+- "custo": custo, quanto pago, preço de compra
+- "foto": foto, imagem
+- "anuncio": anúncio gerado, otimização, produto sem anúncio
+- "aprovacao": anúncio esperando aval, para aprovar, para revisar
+- "publicacao": anúncio para publicar, para subir, para ir ao ar
+- "precificacao": produtos prontos para precificar, com preço mínimo calculado
+
+"capacidade" (só para "por_que_travado"): "precificar", "anunciar" ou "publicar".
+
+Use "nenhum" em "assunto" e em "capacidade" quando não se aplicarem.
+
+"entendeu": false só quando a frase é ambígua a ponto de duas classificações diferentes serem igualmente plausíveis. Nesse caso escreva em "perguntar" a pergunta curta que desfaz a dúvida. Quando a frase é clara mas está fora do alcance, "entendeu" é true e "intencao" é "fora_do_alcance".
+
+"interpretacao": uma frase curta, em português, do que você entendeu. É mostrada ao lojista.`;
+}
+
+export async function POST(request: Request) {
+  try {
+    await exigirAutenticado(request);
+  } catch (e) {
+    return respostaErroAutorizacao(e);
+  }
+
+  if (!provedorConfigurado()) {
+    return Response.json({ erro: "Nenhum provedor de IA configurado no servidor." }, { status: 503 });
+  }
+
+  let corpo: { frase?: string; produtoAberto?: string };
+  try {
+    corpo = await request.json();
+  } catch {
+    return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
+  }
+
+  const frase = (corpo?.frase ?? "").trim();
+  // Só o NOME do produto atravessa — nunca custo, peso ou preço. O modelo
+  // classifica a intenção; para isso o nome basta, e o resto seria dado exposto
+  // sem ganho.
+  const produtoAberto = (corpo?.produtoAberto ?? "").trim().slice(0, 120);
+  if (!frase) return Response.json({ erro: "Escreva o que você quer saber." }, { status: 400 });
+
+  try {
+    const { json } = await chamarIAEstruturada({
+      system: system(Boolean(produtoAberto), produtoAberto),
+      mensagem: frase,
+      schema: ESQUEMA,
+      maxTokens: 400,
+    });
+    return Response.json({ criterio: JSON.parse(json) });
+  } catch (e) {
+    // A mensagem do provedor NÃO vai na resposta: ela não ajuda quem digitou e
+    // às vezes carrega configuração do servidor. Mas vai no log — este catch
+    // já escondeu por horas um `enum ... cannot be empty` que era trivial de
+    // corrigir, e "tente de novo em instantes" não era falso, era inútil.
+    console.error("[assistente] falha ao classificar:", e);
+    return Response.json(
+      { erro: "Não consegui entender agora. Tente de novo em instantes." },
+      { status: 502 }
+    );
+  }
+}
