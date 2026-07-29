@@ -176,6 +176,8 @@ export async function POST(request: Request) {
       let proposta: Proposta | undefined;
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
       let propostaDeAnuncio: PropostaDeAnuncio | undefined;
+      /** O escopo de um lote, quando a proposta atinge mais de um alvo. */
+      let escopoDoLote: NonNullable<ReturnType<typeof executarFerramenta>["escopo"]> | undefined;
       const usadas: string[] = [];
 
       try {
@@ -194,7 +196,37 @@ export async function POST(request: Request) {
             // recebe e um ID — nao um objeto que ela poderia reescrever e
             // devolver como "o que o lojista aprovou".
             let propostaId: string | null = null;
-            if (proposta?.tipo === "pronta" && conversaId) {
+            // ---- LOTE: persiste os IDS CONCRETOS aprovados, nunca o filtro.
+            // Um criterio e uma promessa sobre o futuro; uma lista e um fato
+            // sobre o presente. Reexecutar o filtro na confirmacao deixaria o
+            // escopo crescer entre a leitura e o clique.
+            if (escopoDoLote && conversaId && escopoDoLote.incluidos.length > 0) {
+              try {
+                const alvos = escopoDoLote.incluidos.map((c) => c.id);
+                // Uma precondicao POR ALVO. A chave carrega o id, entao o
+                // `podeExecutar` existente compara alvo a alvo sem mudar de
+                // forma — e um alvo preenchido por outro caminho invalida a
+                // proposta inteira, que e o comportamento pedido: nao alterar
+                // 39 quando o lojista aprovou 47.
+                const precondicoes = escopoDoLote.incluidos.map((c) => ({
+                  campo: `variacoesSemPeso:${c.id}`,
+                  valorNaCriacao: c.unidadesSemDado,
+                }));
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: escopoDoLote.campo,
+                  alvos,
+                  valor: escopoDoLote.valor,
+                  resumo: escopoDoLote.resumo,
+                  precondicoes,
+                });
+                propostaId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta em lote:", e);
+              }
+            } else if (proposta?.tipo === "pronta" && conversaId) {
               try {
                 const gravada = await criarProposta({
                   clienteId: clienteDaSessao,
@@ -234,6 +266,22 @@ export async function POST(request: Request) {
               ...(conversaId ? { conversaId } : {}),
               // A proposta so vai com ID. Sem ID, a tela nao oferece botao.
               ...(proposta && propostaId ? { proposta, propostaId } : {}),
+              ...(escopoDoLote && propostaId
+                ? {
+                    escopo: {
+                      campo: escopoDoLote.campo,
+                      valor: escopoDoLote.valor,
+                      resumo: escopoDoLote.resumo,
+                      produtosAfetados: escopoDoLote.incluidos.length,
+                      variacoesAfetadas: escopoDoLote.unidadesAfetadas,
+                      naoAlterados: escopoDoLote.jaTemDado.length,
+                      // AMOSTRA, nao a lista: com 2.000 alvos o cartao viraria
+                      // uma parede. Os ids ficam na Proposal, no servidor.
+                      amostra: escopoDoLote.incluidos.slice(0, 8).map((c) => c.nome),
+                    },
+                    propostaId,
+                  }
+                : {}),
               ...(propostaDeAnuncio ? { propostaDeAnuncio } : {}),
             });
             controlador.close();
@@ -254,6 +302,7 @@ export async function POST(request: Request) {
             // corrigindo, e é a corrigida que o lojista deve ver.
             if (r.proposta) proposta = r.proposta;
             if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
+            if (r.escopo) escopoDoLote = r.escopo;
             return { functionResponse: { name: c.nome, response: r.saida } };
           });
           historico.push({ role: "user", parts: respostas });

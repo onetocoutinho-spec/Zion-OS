@@ -125,11 +125,16 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_gravacao",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com um produtoId que veio de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou.",
+      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm.",
     parametros: {
       type: "OBJECT",
       properties: {
-        produtoId: { type: "STRING" },
+        produtoId: { type: "STRING", description: "Um produto só. Use este OU produtoIds." },
+        produtoIds: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description: "Vários produtos, para aplicar peso em lote. Todos vindos de achar_produto.",
+        },
         campo: { type: "STRING", enum: ["peso", "custo"] },
         valor: {
           type: "STRING",
@@ -141,7 +146,7 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
           description: "A unidade que ele disse: g, kg, reais. Vazio se ele não disse nenhuma.",
         },
       },
-      required: ["produtoId", "campo", "valor", "unidade"],
+      required: ["campo", "valor", "unidade"],
     },
   },
   {

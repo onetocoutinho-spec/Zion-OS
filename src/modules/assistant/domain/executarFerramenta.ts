@@ -18,11 +18,19 @@
 import { responder, type ContextoDaPergunta } from "./perguntaDaOperacao";
 import {
   candidatos,
+  lerNumero,
   montarProposta,
+  paraGramas,
   type ProdutoAlvo,
   type Proposta,
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import {
+  candidatosDoCatalogo,
+  montarEscopo,
+  type CampoDoLote,
+  type EscopoDoLote,
+} from "./escopoDoLote";
 import {
   montarPropostaDeAnuncio,
   type ProdutoParaAnunciar,
@@ -56,6 +64,14 @@ export interface ResultadoDaFerramenta {
   saida: unknown;
   proposta?: Proposta;
   /**
+   * O escopo de um LOTE, quando a proposta atinge mais de um alvo.
+   *
+   * Separado da `proposta` individual porque o que a rota persiste e o que a
+   * tela desenha sao diferentes: aqui os `alvos` sao muitos, e o cartao precisa
+   * mostrar quem fica de fora e por que.
+   */
+  escopo?: EscopoDoLote & { campo: CampoDoLote; valor: number };
+  /**
    * Uma proposta de GERAR ANÚNCIO — separada da de gravação porque a tela faz
    * coisas diferentes com cada uma: uma grava um campo, a outra dispara a
    * esteira. Um campo só, com união, faria o cartão adivinhar qual botão pôr.
@@ -67,6 +83,19 @@ export interface ResultadoDaFerramenta {
 export interface PedidoDeFerramenta {
   nome: string;
   args: Record<string, unknown>;
+}
+
+/**
+ * Os ids alvo — aceita `produtoId` (fluxo individual, que continua igual) ou
+ * `produtoIds` (lote). Normalizar aqui e o que evita duas implementacoes.
+ */
+function ids(args: Record<string, unknown>): string[] {
+  const lista = args.produtoIds;
+  if (Array.isArray(lista)) {
+    return lista.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+  }
+  const um = args.produtoId;
+  return typeof um === "string" && um.trim() ? [um] : [];
 }
 
 function texto(args: Record<string, unknown>, chave: string): string {
@@ -225,6 +254,65 @@ export function executarFerramenta(
     }
 
     case "propor_gravacao": {
+      const alvos = ids(args);
+      const campo = texto(args, "campo");
+
+      // ---- LOTE ----
+      if (alvos.length > 1) {
+        // CUSTO NAO VAI EM LOTE. Variantes da mesma familia nao tem custo igual
+        // so por serem da mesma familia, e o dominio nao tem como estabelecer
+        // isso com evidencia. Capacidade menor e correta > capacidade maior e
+        // errada: esta base ja recebeu R$ 30 milhoes de custo por generalizacao.
+        if (campo === "custo") {
+          return {
+            saida: {
+              montada: false,
+              motivo:
+                "Não aplico custo em lote. Produtos da mesma família não têm o mesmo custo só por serem parecidos, e eu não tenho como provar que têm. Me diga o custo de cada um, ou faça um por vez.",
+            },
+          };
+        }
+        if (campo !== "peso") {
+          return { saida: { montada: false, motivo: "Só sei aplicar peso em lote." } };
+        }
+
+        const numero = lerNumero(texto(args, "valor"));
+        if (numero === null || numero <= 0) {
+          return { saida: { montada: false, motivo: `Não consegui ler "${texto(args, "valor")}" como um valor.` } };
+        }
+        const emGramas = paraGramas(numero, texto(args, "unidade"));
+        if (!emGramas) {
+          return { saida: { montada: false, motivo: "Não consegui ler isso como peso." } };
+        }
+
+        // Os candidatos vem do CATALOGO real, filtrados pelos ids. Id que o
+        // modelo alucinou nao vira alvo.
+        const candidatos = candidatosDoCatalogo(ctx.produtos, alvos);
+        if (candidatos.length === 0) {
+          return { saida: { montada: false, motivo: "Nenhum desses produtos existe no seu catálogo. Use achar_produto antes." } };
+        }
+        const escopo = montarEscopo("peso", candidatos, emGramas.gramas, (v) => `${v} g`);
+        if (escopo.incluidos.length === 0) {
+          return { saida: { montada: false, motivo: escopo.resumo } };
+        }
+        return {
+          escopo: { ...escopo, campo: "peso", valor: emGramas.gramas },
+          // O modelo recebe CONTAGEM e AMOSTRA — nunca a lista inteira. Com
+          // 2.000 alvos, mandar os nomes estouraria o contexto e nao ajudaria
+          // ninguem a decidir. Os ids ficam no servidor, na Proposal.
+          saida: {
+            montada: true,
+            resumo: escopo.resumo,
+            produtosAfetados: escopo.incluidos.length,
+            variacoesAfetadas: escopo.unidadesAfetadas,
+            naoAlterados: escopo.jaTemDado.length,
+            amostra: escopo.incluidos.slice(0, 5).map((c) => c.nome),
+            unidadeDeduzida: emGramas.deduzida,
+          },
+        };
+      }
+
+      // ---- INDIVIDUAL — o caminho de antes, intacto ----
       const proposta = montarProposta(
         {
           entendeu: true,
@@ -239,7 +327,9 @@ export function executarFerramenta(
           interpretacao: "",
         },
         ctx.produtos,
-        alvoPeloId(texto(args, "produtoId"), ctx.produtos)
+        // `ids(args)[0]` e nao `produtoId`: uma lista de um elemento e um
+        // caso legitimo, e ler so o campo antigo perdia o alvo em silencio.
+        alvoPeloId(ids(args)[0] ?? "", ctx.produtos)
       );
       return {
         proposta,

@@ -52,6 +52,37 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   const estado: Record<string, number | null> = {};
   const produtoId = p.alvos[0];
 
+  // ---- LOTE: uma precondicao POR ALVO, na forma `variacoesSemPeso:<id>`.
+  //
+  // Cada alvo e relido do banco e conferido contra o TENANT DA PROPOSTA. Nao
+  // basta validar a Proposal: um id de outro cliente dentro do array seria um
+  // vetor para escrever fora do tenant. O `.eq("cliente_id", ...)` no produto
+  // pai e o que fecha isso — alvo que nao pertence ao cliente nao e encontrado
+  // e vira `null`, que o dominio trata como mudanca e invalida tudo.
+  const porAlvo = [...campos].filter((c) => c.startsWith("variacoesSemPeso:"));
+  if (porAlvo.length > 0) {
+    const idsDaProposta = porAlvo.map((c) => c.slice("variacoesSemPeso:".length));
+    const { data: doTenant } = await admin
+      .from("produtos")
+      .select("id")
+      .in("id", idsDaProposta)
+      .eq("cliente_id", p.clienteId);
+    const permitidos = new Set(((doTenant ?? []) as { id: string }[]).map((r) => r.id));
+
+    const { data: vars } = await admin
+      .from("produto_variantes")
+      .select("produto_id, peso")
+      .in("produto_id", idsDaProposta);
+    const semPeso = new Map<string, number>();
+    for (const v of (vars ?? []) as { produto_id: string; peso: number | null }[]) {
+      if (!v.peso || v.peso <= 0) semPeso.set(v.produto_id, (semPeso.get(v.produto_id) ?? 0) + 1);
+    }
+    for (const id of idsDaProposta) {
+      estado[`variacoesSemPeso:${id}`] = permitidos.has(id) ? (semPeso.get(id) ?? 0) : null;
+    }
+    return estado;
+  }
+
   if (campos.has("custo")) {
     const { data } = await admin
       .from("produtos")
@@ -99,8 +130,40 @@ async function gravar(
     return { afetados: data?.length ?? 0, antes, depois: data?.[0] ?? null };
   }
 
-  // PESO — em quilos na base, gramas na proposta. Converter aqui e não no
-  // domínio mantém a unidade canônica da proposta legível para quem audita.
+  // ---- LOTE de peso: grava nos ALVOS APROVADOS, e so neles.
+  //
+  // `.in("produto_id", p.alvos)` usa a LISTA da Proposal — nunca um filtro
+  // reexecutado. A 48a variante que apareceu depois nao esta em `p.alvos` e
+  // por isso nao e tocada.
+  if (p.alvos.length > 1) {
+    const emKgLote = p.valor / 1000;
+    const { data: antesLote } = await admin
+      .from("produto_variantes")
+      .select("id, produto_id, peso")
+      .in("produto_id", p.alvos);
+    const { data, error } = await admin
+      .from("produto_variantes")
+      .update({ peso: emKgLote })
+      .in("produto_id", p.alvos)
+      .eq("cliente_id", p.clienteId)
+      .select("id, produto_id");
+    if (error) throw new Error(error.message);
+    return {
+      afetados: data?.length ?? 0,
+      // RESUMO, nao a lista inteira: com milhares de alvos o payload de
+      // auditoria viraria um problema proprio. O que precisa ser reconstruivel
+      // sao os IDS (ja em `alvos`) e o ESTADO — a contagem por alvo basta.
+      antes: {
+        variacoesLidas: (antesLote ?? []).length,
+        semPesoAntes: ((antesLote ?? []) as { peso: number | null }[]).filter(
+          (v) => !v.peso || v.peso <= 0
+        ).length,
+      },
+      depois: { variacoesAtualizadas: data?.length ?? 0, pesoKg: emKgLote },
+    };
+  }
+
+  // PESO individual — em quilos na base, gramas na proposta.
   const emKg = p.valor / 1000;
   const { data: antes } = await admin
     .from("produto_variantes")
