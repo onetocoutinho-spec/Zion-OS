@@ -434,3 +434,38 @@ export function nenhumaFerramentaEscreve(fs: readonly Ferramenta[] = FERRAMENTAS
   const permitidos: readonly Efeito[] = ["le", "rascunha", "propoe"];
   return fs.every((f) => permitidos.includes(f.efeito));
 }
+
+/**
+ * As ferramentas que podem ser a PRIMEIRA ação de um turno — INC-003.
+ *
+ * ===========================================================================
+ * POR QUE ESTA LISTA EXISTE
+ * ===========================================================================
+ *
+ * O agente respondeu à Leilane que a Rasteira Vizzano tinha "2 variações sem
+ * peso" e que o peso médio era "300 g", e que havia "preparado um cartão".
+ * O real era 3, 410 g e nenhuma proposta — e ele não chamou ferramenta nenhuma.
+ * O prompt já proibia isso; proibir não é impedir.
+ *
+ * A partir daqui o primeiro passo roda com `mode: "ANY"`, que obriga o modelo a
+ * chamar uma função em vez de escrever texto. Só que ANY, sozinho, deixaria o
+ * modelo escolher QUALQUER uma das 16 — inclusive `propor_preco`, e um
+ * "obrigado" poderia deixar um cartão de troca de preço na tela de alguém.
+ *
+ * Daí `allowedFunctionNames`: no primeiro passo, só as que LEEM.
+ *
+ * ===========================================================================
+ * DERIVADA, NÃO ESCRITA À MÃO
+ * ===========================================================================
+ *
+ * Vem de `efeito === "le"`, que já é a metadata autoritativa deste módulo —
+ * dez strings copiadas aqui seriam uma segunda verdade, e uma ferramenta nova
+ * classificada como `propoe` entraria na primeira ação por esquecimento.
+ *
+ * O oposto de `nenhumaFerramentaEscreve`, que é manual DE PROPÓSITO: lá o que
+ * se quer é que um quarto efeito reprove e obrigue alguém a olhar. Aqui o que
+ * se quer é que um efeito novo fique fora sozinho.
+ */
+export const PRIMEIRA_ACAO: readonly string[] = FERRAMENTAS.filter(
+  (f) => f.efeito === "le"
+).map((f) => f.nome);
