@@ -35,9 +35,53 @@ import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { criarProposta } from "@/lib/services/copilotPropostas";
-import { garantirConversa, gravarTurno } from "@/lib/services/copilotConversas";
+import {
+  garantirConversa,
+  gravarTurno,
+  ultimaApresentacao,
+} from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
+import {
+  draftAbertoDaConversa,
+  draftsAbertos,
+  novoDraft,
+  salvarDraft,
+} from "@/lib/services/copilotCadastros";
+import {
+  aguardarConfirmacao,
+  comoResumo,
+  type DraftDeCadastro,
+} from "@/modules/assistant/domain/draftDeCadastro";
+import {
+  conjuntoVigente,
+  paraMetadata,
+  type ConjuntoApresentado,
+} from "@/modules/assistant/domain/referenciasDaConversa";
+import type { CadastroNaTela } from "@/modules/assistant/domain/cartaoDoCadastro";
+import {
+  catalogoParaAnalise,
+  fontesConectadas,
+  produtoParaAnalise,
+} from "@/lib/services/pendenciasDoCatalogo";
+import { historicoDoCampo } from "@/lib/services/procedencia";
+import { anomaliasDoCatalogo } from "@/modules/catalog/domain/anomaliasDoCatalogo";
+import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connectors/shared/capacidades";
+import {
+  anuncioParaTitulo,
+  catalogoParaPreparar,
+  margemDoCliente,
+  produtoParaPreparar,
+} from "@/lib/services/preparacaoDeAnuncio";
+import {
+  CAMPO_TITULO_ATUAL,
+  impressaoDoTitulo,
+} from "@/modules/publication/domain/preparacaoDoAnuncio";
+import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
+import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
+import { catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
+import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 
 export const maxDuration = 60;
 
@@ -61,6 +105,52 @@ Use markdown quando ele ajudar a ler: **negrito** no que importa, listas quando 
 Não seja telegráfico. Se a resposta tem contexto que muda a decisão, dê o contexto — mas não encha linguiça. Uma frase que não muda o que ele vai fazer é uma frase a menos.
 
 Preserve as distinções que as ferramentas fazem. Quando a contagem distingue produtos SEM PESO NENHUM de produtos com peso em PARTE das variações, essa diferença importa: para os parciais o frete sai, e chamar os dois de "sem peso" é falso. Não resuma isso para um número só.
+
+CADASTRAR UM PRODUTO NOVO. Quando o lojista quiser cadastrar, use gerenciar_cadastro. Ele acumula o que já foi dito e devolve o que ainda falta — você NÃO monta o produto, e não existe um JSON de produto que você escreva. Você extrai o que ele disse, campo a campo, e o domínio guarda.
+
+Regras do cadastro, e elas não têm exceção:
+- Só registre o que ele DISSE. Custo, preço, SKU, EAN e peso não se deduzem: se ele não falou, pergunte.
+- Copie o número como ele escreveu, com a vírgula. "47,80" é "47,80". SKU com zero à esquerda mantém o zero: "01040533" nunca vira 1040533.
+- Se a ferramenta recusar, ela diz por quê — repasse o motivo e peça o que falta. Não tente de novo com um valor arrumado por você.
+- Quando ela devolver possíveis produtos existentes, MOSTRE os candidatos e pergunte se é algum deles. Casamento exato não é o mesmo produto: nesta base há SKUs e EANs repetidos.
+- Quando ela devolver uma lista para escolher, pergunte qual e depois use a operação "escolher" com o que ele responder ("o segundo").
+- Nada é criado até ele clicar. Depois de propor_criacao, diga o que vai ser criado e que falta ele confirmar. Nunca diga que o produto já existe.
+
+O QUE PRECISA DELE. Quando ele perguntar o que falta, o que está com problema, o que você consegue resolver, ou pedir "resolva o que conseguir", use a ferramenta pendencias. Ela já ANALISOU: devolve quantas pendências existem, quantas você prepara sem pedir dado novo, as decisões dele já AGRUPADAS e em ordem de impacto, os conflitos e o que não se resolve por aqui. Você comunica; você não soma. Nunca escreva um número que ela não devolveu.
+
+Apresente o panorama assim: quantas pendências, quantas você trata sem pedir nada, e QUANTAS DECISÕES dele destravam o resto. Depois ofereça a primeira — a lista já vem na ordem certa. Não despeje as centenas de pendências.
+
+Quando uma decisão vier marcada como "umaRespostaServeParaTodos", uma resposta dele resolve o grupo inteiro — diga isso e diga quantos. Quando NÃO vier, é uma pergunta com várias respostas (EAN e SKU identificam uma unidade cada): peça os valores, não um valor.
+
+Para o que você consegue preparar sozinho, chame preparar_resolucao com o alvo que pendencias devolveu. Isso monta um cartão. NÃO grava: preparar sem perguntar o valor é diferente de aplicar sem confirmar, e o lojista continua clicando.
+
+DE ONDE VEIO. Para "de onde veio esse custo?", "quem colocou esse peso?", "esse SKU veio da planilha?", use procedencia. Ela devolve a frase pronta — repasse. Quando a origem não foi registrada, DIGA ISSO. A maior parte desta base é anterior ao registro de procedência, e sugerir de onde o valor "provavelmente" veio é inventar.
+
+Você NÃO tem fonte externa de custo, preço ou estoque. Nenhum ERP conectado declara saber esses dados. Nunca ofereça buscá-los lá.
+
+PREPARAR ANÚNCIO. Para "quais produtos já podem virar anúncio?", "prepare todos que estiverem prontos", "o que falta para esse anúncio?" e "por que esse não foi?", use preparacao_de_anuncio. Ela devolve o estado REAL: as etapas (identidade, conteúdo, imagens, pricing, publicação), o que trava cada uma, e no lote quantos são elegíveis e por que os outros não são. Os números vêm dela.
+
+PREPARAR NÃO É PUBLICAR. Em nenhum momento "preparar" coloca anúncio no ar. Publicar é outro passo, com outra confirmação, e não é seu. Nunca diga que o anúncio foi publicado.
+
+As etapas são INDEPENDENTES onde o domínio diz que são: o texto do anúncio não depende de custo nem de peso. Se o pricing estiver travado e o conteúdo apto, diga isso — "o texto eu consigo agora, o preço depende do peso" é mais útil que "está bloqueado".
+
+Para preparar de fato, chame propor_anuncio com o produtoId. Ela monta o cartão; quem dispara a geração é o lojista, clicando, e leva alguns minutos.
+
+MELHORAR O TÍTULO. Use propor_titulo. Ela roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO. MOSTRE OS DOIS — trocar título é fácil de piorar sem ver. Nada é gravado até ele confirmar, e você não escreve o título: quem escreve é o agente.
+
+Você não inventa característica de produto. Material, garantia, tecnologia e origem não se deduzem do nome — se não estão no cadastro, não existem para você.
+
+PREÇO E MARGEM. VOCÊ NÃO FAZ CONTA DE DINHEIRO. Nunca subtraia, divida ou multiplique valores para responder sobre preço, lucro, margem, comissão ou frete — chame a ferramenta pricing e repasse os números dela. Uma conta sua estaria errada no dia em que a comissão mudasse, e ninguém perceberia.
+
+Use pricing para: "por quanto posso vender?", "se eu vender por R$ 89,90 quanto sobra?", "quero ganhar 10%", "qual o menor preço sem prejuízo?", "por que ficou tão alto?", "está dando prejuízo?", "quais produtos estão abaixo da margem?". Para simular cenários, passe os preços em "precos" como ele escreveu. Para uma margem alvo, passe "margemAlvo".
+
+MARGEM, no Zion, é sempre MARGEM LÍQUIDA sobre o preço de venda — o que sobra depois de custo, comissão do ML, frete, taxa fixa, imposto e os custos do lojista. NÃO é markup (lucro sobre o custo) e NÃO é margem bruta. Nunca converta entre eles, e nunca chame markup de margem: os dois pedem preços diferentes, e confundir vende no prejuízo com cara de lucro.
+
+Se ele disser "quero ganhar 10%" e não estiver claro se é margem líquida, assuma margem líquida (é o padrão do Zion) e DIGA que assumiu.
+
+Quando pricing devolver estado diferente de "calculavel", não invente número: diga o que falta. E quando a comissão vier como estimativa da tabela, diga isso — não é a comissão exata da conta dele.
+
+Para aplicar um preço, use propor_preco. Ela monta o cartão; o lojista confirma clicando. APLICAR PREÇO MUDA O CATÁLOGO DO ZION, não o anúncio que está no ar — publicar é outra coisa e não é sua. Nunca diga que o preço foi para o Mercado Livre.
 
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
@@ -90,6 +180,41 @@ async function estadoDoProdutoNoBanco(
     custo: custoBruto === null || custoBruto === undefined ? null : Number(custoBruto),
     variacoesSemPeso: linhas.filter((v) => !v.peso || v.peso <= 0).length,
   };
+}
+
+/**
+ * O valor de agora, lido do CATÁLOGO — não da trilha.
+ *
+ * A trilha diz de onde o valor veio; quem manda sobre quanto ele é hoje é a
+ * coluna. Uma trilha desatualizada afirmando um valor que o banco já não tem
+ * seria pior que silêncio: a pessoa conferiria o número errado.
+ */
+async function valorDoCampo(
+  clienteId: string,
+  alvo: { tipo: "produto" | "variante"; id: string },
+  campo: string
+): Promise<string | null> {
+  const admin = getSupabaseAdmin();
+  const colunas: Record<string, string> = {
+    custo: "custo",
+    preco: "preco_venda",
+    peso: "peso",
+    sku: "sku",
+    ean: "ean",
+    estoque: "estoque",
+  };
+  const coluna = colunas[campo];
+  if (!coluna) return null;
+  const tabela = alvo.tipo === "variante" ? "produto_variantes" : "produtos";
+  const { data } = await admin
+    .from(tabela)
+    .select(coluna)
+    .eq("id", alvo.id)
+    .eq("cliente_id", clienteId)
+    .maybeSingle();
+  const bruto = (data as Record<string, unknown> | null)?.[coluna];
+  if (bruto === null || bruto === undefined || bruto === "") return null;
+  return String(bruto);
 }
 
 export async function POST(request: Request) {
@@ -140,6 +265,66 @@ export async function POST(request: Request) {
     // recusa em vez de propor — melhor que gerar um anuncio que volta com
     // pendencia depois de tres minutos.
     paraAnunciar: corpo.contexto.paraAnunciar ?? [],
+    // O PORTO de busca forte. O tenant vem da SESSAO — nunca do corpo — e por
+    // isso um EAN que so existe em outro cliente devolve zero linhas.
+    buscar: (t) => rodarTentativa(t, clienteDaSessao),
+    // ---- A ANÁLISE DO CATÁLOGO, em PORTOS e não em dados ----
+    //
+    // Carregar 500 produtos e as variantes deles a cada turno pagaria o preço da
+    // análise em toda pergunta, inclusive nas que não a usam. Assim quem paga é
+    // quem chama — e o tenant fica preso aqui, na sessão, em todos eles.
+    analise: {
+      catalogo: async () => {
+        const c = await catalogoParaAnalise(clienteDaSessao);
+        return { produtos: c.produtos, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
+      },
+      produto: (id) => produtoParaAnalise(clienteDaSessao, id),
+      fontes: async () => {
+        // As capacidades vêm DECLARADAS pelo conector, não de um `if` de ERP.
+        // Hoje nenhum conector ligado declara `ler_custo` — e por isso o Copilot
+        // não promete buscar custo em ERP nenhum.
+        const fontes = await fontesConectadas(clienteDaSessao);
+        return fontes.map((f) => ({
+          nome: f.nome,
+          capacidades: f.capacidades as ReadonlySet<CapacidadeDeFonte>,
+        }));
+      },
+      // Anomalia é CONFLITO, não origem duvidosa: um custo de trinta milhões
+      // precisa de decisão humana, e a validação que o detecta já existe.
+      conflitos: async (produtos) => anomaliasDoCatalogo(produtos),
+      procedencia: async (alvo, campo) => {
+        const valorAtual = await valorDoCampo(clienteDaSessao, alvo, campo);
+        return historicoDoCampo(clienteDaSessao, alvo, campo, valorAtual);
+      },
+    },
+    // ---- A PREPARAÇÃO DE ANÚNCIO ----
+    //
+    // Também em portos: avaliar 300 produtos a cada turno pagaria o preço da
+    // varredura em toda pergunta. E tudo com o tenant da SESSÃO — o que antes
+    // vinha em `paraAnunciar`, montado pela tela, agora vem do banco.
+    anuncio: {
+      doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
+      catalogo: async () => {
+        const c = await catalogoParaPreparar(clienteDaSessao);
+        return { itens: c.itens, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
+      },
+      margem: () => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO),
+      anuncioParaTitulo: async (produtoId) => {
+        const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
+        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual } : null;
+      },
+      // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
+      // segundo motor de título — existe um segundo chamador do mesmo prompt.
+      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
+    },
+    // ---- O PRICING ----
+    //
+    // A conta e do dominio; estes portos so trazem o que ela precisa do banco.
+    // O modelo nunca ve custo nem taxas — ele ve o resultado.
+    preco: {
+      doProduto: (id) => precoDoProduto(clienteDaSessao, id),
+      catalogo: () => catalogoParaTriagem(clienteDaSessao),
+    },
   };
 
   // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
@@ -149,6 +334,37 @@ export async function POST(request: Request) {
     rota: corpo.rota,
     produtoId: ctx.produtoAberto?.id ?? null,
   });
+
+  // ---- O CADASTRO EM CONVERSA ----
+  //
+  // Tudo aqui vem do SERVIDOR: o Draft desta conversa, os cadastros abertos do
+  // lojista, e o conjunto que a última fala do assistente apresentou. Nada disso
+  // pode chegar pelo corpo — um Draft escolhido pelo navegador seria o mesmo
+  // buraco que a Proposal persistida fechou.
+  const agoraISO = new Date().toISOString();
+  if (conversaId) {
+    const [draftDaConversa, abertos, ultima] = await Promise.all([
+      draftAbertoDaConversa(clienteDaSessao, conversaId),
+      draftsAbertos(clienteDaSessao),
+      ultimaApresentacao(clienteDaSessao, conversaId),
+    ]);
+    ctx.cadastro = {
+      agoraISO,
+      draft: draftDaConversa,
+      abertos,
+      referencias: conjuntoVigente(ultima),
+      novo: () => novoDraft(clienteDaSessao, conversaId, usuarioId, agoraISO),
+      // O mesmo porto da busca forte, uma tentativa por vez, com o tenant da
+      // sessão. Um EAN que só existe em outro cliente devolve zero linhas.
+      buscarCandidatos: async (tentativas) => {
+        const saida: { casamento: (typeof tentativas)[number]["casamento"]; linhas: Awaited<ReturnType<typeof rodarTentativa>> }[] = [];
+        for (const t of tentativas) {
+          saida.push({ casamento: t.casamento, linhas: await rodarTentativa(t, clienteDaSessao) });
+        }
+        return saida;
+      },
+    };
+  }
 
   const historico: Fala[] = [
     ...(corpo.falas ?? []),
@@ -176,6 +392,49 @@ export async function POST(request: Request) {
       let proposta: Proposta | undefined;
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
       let propostaDeAnuncio: PropostaDeAnuncio | undefined;
+      /** O escopo de um lote, quando a proposta atinge mais de um alvo. */
+      let escopoDoLote:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["escopo"]>
+        | undefined;
+      /**
+       * O efeito acumulado no cadastro em conversa.
+       *
+       * ACUMULADO e não "o último": um turno costuma informar três fatos, e cada
+       * chamada devolve o Draft já com o anterior dentro. O que importa guardar é
+       * o ÚLTIMO Draft (que contém todos) e o pedido de Proposal, se houve.
+       */
+      let efeitoNoCadastro:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["cadastro"]>
+        | undefined;
+      /**
+       * O plano de resolucao — para a TELA desenhar o painel estruturado.
+       *
+       * O modelo recebeu o resumo; a tela recebe os grupos inteiros. Sao os
+       * MESMOS numeros: os dois saem do mesmo `plano`, calculado no dominio.
+       */
+      let planoDePendencias:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["pendencias"]>
+        | undefined;
+      /** O historico de um campo — a resposta de "de onde veio isso?". */
+      let procedenciaConsultada:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["procedencia"]>
+        | undefined;
+      /** O estado da preparação de anúncio — para o painel da tela. */
+      let preparacaoDeAnuncio:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["preparacao"]>
+        | undefined;
+      /** A proposta de trocar o título: atual e proposto, lado a lado. */
+      let propostaDeTitulo:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTitulo"]>
+        | undefined;
+      /** O pricing — situacao de um produto, ou a triagem do catalogo. */
+      let pricing:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["pricing"]>
+        | undefined;
+      /** A proposta de trocar o preco, com a decomposicao que a justifica. */
+      let propostaDePreco:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePreco"]>
+        | undefined;
       const usadas: string[] = [];
 
       try {
@@ -194,7 +453,37 @@ export async function POST(request: Request) {
             // recebe e um ID — nao um objeto que ela poderia reescrever e
             // devolver como "o que o lojista aprovou".
             let propostaId: string | null = null;
-            if (proposta?.tipo === "pronta" && conversaId) {
+            // ---- LOTE: persiste os IDS CONCRETOS aprovados, nunca o filtro.
+            // Um criterio e uma promessa sobre o futuro; uma lista e um fato
+            // sobre o presente. Reexecutar o filtro na confirmacao deixaria o
+            // escopo crescer entre a leitura e o clique.
+            if (escopoDoLote && conversaId && escopoDoLote.incluidos.length > 0) {
+              try {
+                const alvos = escopoDoLote.incluidos.map((c) => c.id);
+                // Uma precondicao POR ALVO. A chave carrega o id, entao o
+                // `podeExecutar` existente compara alvo a alvo sem mudar de
+                // forma — e um alvo preenchido por outro caminho invalida a
+                // proposta inteira, que e o comportamento pedido: nao alterar
+                // 39 quando o lojista aprovou 47.
+                const precondicoes = escopoDoLote.incluidos.map((c) => ({
+                  campo: `variacoesSemPeso:${c.id}`,
+                  valorNaCriacao: c.unidadesSemDado,
+                }));
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: escopoDoLote.campo,
+                  alvos,
+                  valor: escopoDoLote.valor,
+                  resumo: escopoDoLote.resumo,
+                  precondicoes,
+                });
+                propostaId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta em lote:", e);
+              }
+            } else if (proposta?.tipo === "pronta" && conversaId) {
               try {
                 const gravada = await criarProposta({
                   clienteId: clienteDaSessao,
@@ -217,12 +506,158 @@ export async function POST(request: Request) {
                 console.error("[copilot] falha ao persistir proposta:", e);
               }
             }
+            // ---- O CADASTRO EM CONVERSA vira linha ----
+            //
+            // A ORDEM importa e é imposta pelo banco: a Proposal referencia o
+            // Draft por chave estrangeira, então o Draft precisa existir antes.
+            // E a transição para `aguardando_confirmacao` precisa do id da
+            // Proposal, então ela é uma segunda gravação. Três passos, cada um
+            // pelo motivo que o anterior criou.
+            let cadastroNaTela: CadastroNaTela | undefined;
+            const conjuntoApresentado: ConjuntoApresentado | undefined =
+              efeitoNoCadastro?.apresentou;
+            if (efeitoNoCadastro && conversaId) {
+              let draftFinal: DraftDeCadastro = efeitoNoCadastro.draft;
+              await salvarDraft(draftFinal);
+
+              let propostaDeCadastro: string | null = null;
+              if (efeitoNoCadastro.proporCriacao) {
+                try {
+                  const p = efeitoNoCadastro.proporCriacao;
+                  const gravada = await criarProposta({
+                    clienteId: clienteDaSessao,
+                    conversaId,
+                    criadaPor: usuarioId,
+                    tipo: "cadastro",
+                    // O ALVO é o Draft: o que está sendo autorizado é a
+                    // materialização daquele cadastro, não uma escrita num
+                    // produto que já existe.
+                    alvos: [draftFinal.id],
+                    valor: p.valor,
+                    resumo: p.resumo,
+                    precondicoes: p.precondicoes,
+                    draftId: draftFinal.id,
+                  });
+                  const transicao = aguardarConfirmacao(draftFinal, gravada.id, agoraISO);
+                  if (transicao.ok) {
+                    draftFinal = transicao.draft;
+                    await salvarDraft(draftFinal);
+                    propostaDeCadastro = gravada.id;
+                  }
+                } catch (e) {
+                  // Sem Proposal persistida NÃO há confirmação possível — e é
+                  // melhor a tela não mostrar botão do que mostrar um que grava
+                  // sem registro.
+                  console.error("[copilot] falha ao persistir proposta de cadastro:", e);
+                }
+              }
+
+              cadastroNaTela = {
+                ...comoResumo(draftFinal),
+                // A lista de cadastros em andamento vai para a TELA, não só
+                // para o modelo. Ela é uma escolha do lojista, e uma escolha
+                // que só existe dentro de um parágrafo é uma escolha que ele
+                // tem que reconstruir lendo.
+                ...(conjuntoApresentado?.origem === "cadastros"
+                  ? {
+                      escolhaDeCadastros: conjuntoApresentado.itens.map((i) => ({
+                        ordem: i.ordem,
+                        id: i.id,
+                        rotulo: i.rotulo,
+                      })),
+                    }
+                  : {}),
+                ...(efeitoNoCadastro.candidatos
+                  ? {
+                      candidatos: efeitoNoCadastro.candidatos,
+                      candidatosMensagem: efeitoNoCadastro.candidatosMensagem,
+                    }
+                  : {}),
+                ...(propostaDeCadastro ? { propostaId: propostaDeCadastro } : {}),
+                ...(efeitoNoCadastro.proporCriacao
+                  ? { resumo: efeitoNoCadastro.proporCriacao.resumo }
+                  : {}),
+                ...(draftFinal.produtoId ? { produtoId: draftFinal.produtoId } : {}),
+              };
+            }
+
+            // ---- A PROPOSTA DE TÍTULO vira registro ----
+            //
+            // A precondição é a IMPRESSÃO do título atual: se alguém trocar
+            // entre a proposta e o clique, a impressão muda e nada é
+            // sobrescrito. `alvos` carrega o ID DO ANÚNCIO — é ele que muda,
+            // não o produto.
+            let propostaDeTituloId: string | null = null;
+            if (propostaDeTitulo && conversaId) {
+              try {
+                const t = propostaDeTitulo;
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "titulo",
+                  alvos: [t.anuncioId],
+                  // O número que importa num título é o tamanho: o limite de 60
+                  // caracteres do ML é a razão de o agente existir.
+                  valor: t.tituloProposto.length,
+                  texto: t.tituloProposto,
+                  resumo: `Trocar o título de "${t.nome}" para "${t.tituloProposto}".`,
+                  precondicoes: [
+                    { campo: CAMPO_TITULO_ATUAL, valorNaCriacao: impressaoDoTitulo(t.tituloAtual) },
+                  ],
+                });
+                propostaDeTituloId = gravada.id;
+              } catch (e) {
+                // Sem Proposal persistida NÃO há confirmação possível — melhor
+                // a tela não mostrar botão do que mostrar um que grava sem
+                // registro.
+                console.error("[copilot] falha ao persistir proposta de título:", e);
+              }
+            }
+
+            // ---- A PROPOSTA DE PRECO vira registro ----
+            //
+            // `valor` carrega o preco em REAIS — a unidade canonica da coluna
+            // para dinheiro. As precondicoes congelam as QUATRO entradas da
+            // conta: custo, preco atual, peso cobravel e a configuracao fiscal.
+            let propostaDePrecoId: string | null = null;
+            if (propostaDePreco && conversaId) {
+              try {
+                const alvo = await precoDoProduto(clienteDaSessao, propostaDePreco.produtoId);
+                if (alvo) {
+                  const gravada = await criarProposta({
+                    clienteId: clienteDaSessao,
+                    conversaId,
+                    criadaPor: usuarioId,
+                    tipo: "preco",
+                    alvos: [propostaDePreco.produtoId],
+                    valor: propostaDePreco.preco,
+                    resumo: propostaDePreco.resumo,
+                    precondicoes: precondicoesDePreco({
+                      custo: alvo.entradas.custo,
+                      precoAtual: alvo.entradas.precoAtual,
+                      taxas: alvo.entradas.taxas,
+                    }),
+                  });
+                  propostaDePrecoId = gravada.id;
+                }
+              } catch (e) {
+                // Sem Proposal persistida NAO ha confirmacao possivel — melhor
+                // a tela nao mostrar botao do que mostrar um que grava sem
+                // registro.
+                console.error("[copilot] falha ao persistir proposta de preco:", e);
+              }
+            }
+
             if (conversaId) {
               void gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
                 resposta: turno.texto,
                 ferramentas: usadas,
                 tokens,
+                // O QUE ESTA RESPOSTA MOSTROU. É o que faz "o segundo" resolver
+                // para um id no turno seguinte, contra a lista certa.
+                metadata: conjuntoApresentado ? paraMetadata(conjuntoApresentado) : null,
               });
             }
             mandar({
@@ -234,7 +669,44 @@ export async function POST(request: Request) {
               ...(conversaId ? { conversaId } : {}),
               // A proposta so vai com ID. Sem ID, a tela nao oferece botao.
               ...(proposta && propostaId ? { proposta, propostaId } : {}),
+              ...(escopoDoLote && propostaId
+                ? {
+                    escopo: {
+                      campo: escopoDoLote.campo,
+                      valor: escopoDoLote.valor,
+                      resumo: escopoDoLote.resumo,
+                      produtosAfetados: escopoDoLote.incluidos.length,
+                      variacoesAfetadas: escopoDoLote.unidadesAfetadas,
+                      naoAlterados: escopoDoLote.jaTemDado.length,
+                      // AMOSTRA, nao a lista: com 2.000 alvos o cartao viraria
+                      // uma parede. Os ids ficam na Proposal, no servidor.
+                      amostra: escopoDoLote.incluidos.slice(0, 8).map((c) => c.nome),
+                    },
+                    propostaId,
+                  }
+                : {}),
               ...(propostaDeAnuncio ? { propostaDeAnuncio } : {}),
+              // O cartão do cadastro. As contagens e o status vêm DAQUI, do
+              // servidor — nunca do texto que o modelo escreveu.
+              ...(cadastroNaTela ? { cadastro: cadastroNaTela } : {}),
+              // O painel de pendencias e a procedencia. Numeros do DOMINIO, os
+              // mesmos que o modelo recebeu — a tela nao recalcula nada.
+              ...(planoDePendencias ? { pendencias: planoDePendencias } : {}),
+              ...(procedenciaConsultada ? { procedencia: procedenciaConsultada } : {}),
+              // O painel da preparação e o cartão do título. Estados do
+              // DOMÍNIO — a tela não recalcula nada, e o modelo não os escreveu.
+              ...(preparacaoDeAnuncio ? { preparacao: preparacaoDeAnuncio } : {}),
+              // A proposta de título só vai com ID. Sem ID, a tela mostra os
+              // dois títulos e nenhum botão.
+              ...(propostaDeTitulo && propostaDeTituloId
+                ? { propostaDeTitulo, propostaDeTituloId }
+                : {}),
+              // O painel de preco e o cartao da proposta. Numeros do DOMINIO —
+              // a tela nao recalcula, e o modelo nao os escreveu.
+              ...(pricing ? { pricing } : {}),
+              ...(propostaDePreco && propostaDePrecoId
+                ? { propostaDePreco, propostaDePrecoId }
+                : {}),
             });
             controlador.close();
             return;
@@ -244,18 +716,42 @@ export async function POST(request: Request) {
             role: "model",
             parts: turno.chamadas.map((c) => ({ functionCall: { name: c.nome, args: c.args } })),
           });
-          const respostas = turno.chamadas.map((c) => {
+          // SEQUENCIAL, nao Promise.all: a busca forte vai ao banco, e as
+          // ferramentas do mesmo turno costumam depender uma da outra (achar
+          // antes de propor). Paralelizar aqui trocaria ordem por microssegundos.
+          const respostas: { functionResponse: { name: string; response: unknown } }[] = [];
+          for (const c of turno.chamadas) {
             usadas.push(c.nome);
             // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
             // ferramenta roda, no lugar do silêncio.
             mandar({ tipo: "ferramenta", nome: c.nome });
-            const r = executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx);
             // A última proposta vence. Duas no mesmo turno seria o modelo se
             // corrigindo, e é a corrigida que o lojista deve ver.
             if (r.proposta) proposta = r.proposta;
             if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
-            return { functionResponse: { name: c.nome, response: r.saida } };
-          });
+            if (r.escopo) escopoDoLote = r.escopo;
+            if (r.pendencias) planoDePendencias = r.pendencias;
+            if (r.procedencia) procedenciaConsultada = r.procedencia;
+            if (r.preparacao) preparacaoDeAnuncio = r.preparacao;
+            if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
+            if (r.pricing) pricing = r.pricing;
+            if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
+            if (r.cadastro) {
+              efeitoNoCadastro = {
+                ...r.cadastro,
+                // O pedido de Proposal sobrevive a uma chamada seguinte que não
+                // o repita — "propor_criacao" e depois "resumo" no mesmo turno
+                // não pode apagar a autorização que estava sendo montada.
+                proporCriacao: r.cadastro.proporCriacao ?? efeitoNoCadastro?.proporCriacao,
+              };
+              // O PRÓXIMO passo do mesmo turno enxerga o Draft já atualizado.
+              // Sem isto, informar marca e depois modelo perderia a marca: as
+              // duas chamadas partiriam do mesmo estado antigo.
+              if (ctx.cadastro) ctx.cadastro.draft = r.cadastro.draft;
+            }
+            respostas.push({ functionResponse: { name: c.nome, response: r.saida } });
+          }
           historico.push({ role: "user", parts: respostas });
         }
 

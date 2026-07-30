@@ -14,6 +14,15 @@ import type { Fala } from "../agentes/conversaComFerramentas";
 import type { ContextoDasFerramentas } from "../../modules/assistant/domain/executarFerramenta";
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaDeAnuncio";
+import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
+import type { PendenciasNaTela } from "../../modules/assistant/domain/cartaoDePendencias";
+import type { HistoricoDeCampo } from "../../modules/catalog/domain/procedenciaDeCampo";
+import type { Consequencia } from "../../modules/workspace/domain/consequencia";
+import type {
+  Preparacao,
+  selecionarParaPreparar,
+} from "../../modules/publication/domain/preparacaoDoAnuncio";
+import type { PrecoNaTela, PropostaDePrecoNaTela } from "../../modules/assistant/domain/cartaoDePreco";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -35,8 +44,73 @@ export interface RespostaDaConversa {
   propostaId?: string;
   /** O fio no banco. A tela devolve na próxima chamada. */
   conversaId?: string;
+  /**
+   * O escopo de um LOTE — contagens vindas do SERVIDOR.
+   *
+   * O cartão não pergunta ao modelo quantos serão alterados: ele lê daqui. Um
+   * número que o modelo escreveu é um número que ele pode ter errado, e o que
+   * está sendo aprovado é justamente a quantidade.
+   */
+  escopo?: {
+    campo: "peso" | "custo";
+    /** Unidade canônica da Proposal: gramas. A tela converte para exibir. */
+    valor: number;
+    resumo: string;
+    produtosAfetados: number;
+    variacoesAfetadas: number;
+    naoAlterados: number;
+    amostra: string[];
+  };
   /** Um cartão para GERAR o anúncio. Nada foi gerado — leva minutos e cota. */
   propostaDeAnuncio?: PropostaDeAnuncio;
+  /**
+   * O cadastro em conversa — o que já se sabe, a grade, e o que falta.
+   *
+   * Tudo vem do SERVIDOR, do Draft persistido. O `status` e o `prontoParaCriar`
+   * em especial: eles decidem se existe botão de criar, e um estado escrito pelo
+   * modelo seria um botão oferecido por quem não leu o banco.
+   */
+  cadastro?: CadastroNaTela;
+  /**
+   * O painel de pendências — o plano inteiro, com os grupos.
+   *
+   * O modelo recebeu o RESUMO; a tela recebe os grupos. São os mesmos números:
+   * os dois saem do mesmo plano, calculado no domínio. A tela não soma nada.
+   */
+  pendencias?: PendenciasNaTela;
+  /** O histórico de um campo — a resposta de "de onde veio isso?". */
+  procedencia?: HistoricoDeCampo;
+  /**
+   * O estado da preparação de anúncio — de um produto ou do catálogo.
+   *
+   * Do SERVIDOR. `estado`, `etapas` e a seleção do lote em especial: eles
+   * decidem o que a tela oferece, e um estado escrito pelo modelo seria uma
+   * oferta feita por quem não leu o banco.
+   */
+  preparacao?: {
+    produto?: Preparacao;
+    selecao?: ReturnType<typeof selecionarParaPreparar>;
+  };
+  /** Título atual e proposto, lado a lado. Sem `propostaDeTituloId`, sem botão. */
+  propostaDeTitulo?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    tituloAtual: string;
+    tituloProposto: string;
+    justificativa: string;
+  };
+  propostaDeTituloId?: string;
+  /**
+   * O preço — situação de um produto com cenários, ou a triagem do catálogo.
+   *
+   * Do SERVIDOR, calculado pelo motor financeiro. A tela ESCREVE os números;
+   * ela não os produz, e o modelo também não.
+   */
+  pricing?: PrecoNaTela;
+  /** A proposta de trocar o preço, com a decomposição que a justifica. */
+  propostaDePreco?: PropostaDePrecoNaTela & { produtoId: string };
+  propostaDePrecoId?: string;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -110,8 +184,28 @@ export async function conversar(
           ...(e.proposta ? { proposta: e.proposta as Proposta } : {}),
           ...(typeof e.propostaId === "string" ? { propostaId: e.propostaId } : {}),
           ...(typeof e.conversaId === "string" ? { conversaId: e.conversaId } : {}),
+          ...(e.escopo ? { escopo: e.escopo as RespostaDaConversa["escopo"] } : {}),
           ...(e.propostaDeAnuncio
             ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
+            : {}),
+          ...(e.cadastro ? { cadastro: e.cadastro as CadastroNaTela } : {}),
+          ...(e.pendencias ? { pendencias: e.pendencias as PendenciasNaTela } : {}),
+          ...(e.procedencia ? { procedencia: e.procedencia as HistoricoDeCampo } : {}),
+          ...(e.preparacao
+            ? { preparacao: e.preparacao as RespostaDaConversa["preparacao"] }
+            : {}),
+          ...(e.propostaDeTitulo
+            ? { propostaDeTitulo: e.propostaDeTitulo as RespostaDaConversa["propostaDeTitulo"] }
+            : {}),
+          ...(typeof e.propostaDeTituloId === "string"
+            ? { propostaDeTituloId: e.propostaDeTituloId }
+            : {}),
+          ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
+          ...(e.propostaDePreco
+            ? { propostaDePreco: e.propostaDePreco as RespostaDaConversa["propostaDePreco"] }
+            : {}),
+          ...(typeof e.propostaDePrecoId === "string"
+            ? { propostaDePrecoId: e.propostaDePrecoId }
             : {}),
         };
       }
@@ -141,6 +235,16 @@ export interface ResultadoDaConfirmacao {
   jaFeito?: boolean;
   motivo?: string;
   afetados?: number;
+  /** O produto que nasceu, quando a proposta era de cadastro. */
+  produtoId?: string;
+  /**
+   * O que esta operação comprovadamente causou — calculado pelo DOMÍNIO, no
+   * servidor, sobre os registros que a proposta ofereceu.
+   *
+   * `null` quando não é demonstrável, e `null` é resultado válido. A tela NÃO
+   * recalcula, não estima e não transforma `null` em zero: ela só apresenta.
+   */
+  consequencia?: Consequencia | null;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -158,5 +262,9 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     ...(dados.jaFeito ? { jaFeito: true } : {}),
     ...(dados.motivo ? { motivo: dados.motivo } : {}),
     ...(typeof dados.afetados === "number" ? { afetados: dados.afetados } : {}),
+    ...(typeof dados.produtoId === "string" ? { produtoId: dados.produtoId } : {}),
+    // Atravessa como veio. Este arquivo só transporta — não deriva contagem,
+    // não completa campo faltante e não troca `null` por zero.
+    ...(dados.consequencia !== undefined ? { consequencia: dados.consequencia } : {}),
   };
 }

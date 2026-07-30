@@ -49,49 +49,49 @@ const ctx: ContextoDasFerramentas = {
   produtos: [CHINELO, PAPETE_A, PAPETE_B],
 };
 
-const rodar = (nome: string, args: Record<string, unknown> = {}, c = ctx) =>
+const rodar = async (nome: string, args: Record<string, unknown> = {}, c = ctx) =>
   executarFerramenta({ nome, args }, c);
 
-test("contar devolve o número medido, não um arredondado", () => {
-  const { saida } = rodar("contar", { assunto: "custo" }) as { saida: Record<string, number> };
+test("contar devolve o número medido, não um arredondado", async () => {
+  const { saida } = await rodar("contar", { assunto: "custo" }) as { saida: Record<string, number> };
   assert.equal(saida.quantos, 43); // 73 - 30
   assert.equal(saida.total, 73);
 });
 
-test("contar peso carrega a distinção entre ausência total e parcial", () => {
+test("contar peso carrega a distinção entre ausência total e parcial", async () => {
   // O número sozinho apagaria o INC-001: 17 "sem peso" inclui 11 que TÊM peso
   // em parte das variações, e para esses o frete sai.
-  const { saida } = rodar("contar", { assunto: "peso" }) as { saida: { frase: string } };
+  const { saida } = await rodar("contar", { assunto: "peso" }) as { saida: { frase: string } };
   assert.match(saida.frase, /11 têm peso em parte/);
 });
 
-test("contar assunto inválido não chuta um assunto", () => {
-  const { saida } = rodar("contar", { assunto: "vibe" }) as { saida: { erro?: string } };
+test("contar assunto inválido não chuta um assunto", async () => {
+  const { saida } = await rodar("contar", { assunto: "vibe" }) as { saida: { erro?: string } };
   assert.ok(saida.erro);
 });
 
-test("achar_produto avisa quando bate mais de um, e manda perguntar", () => {
+test("achar_produto avisa quando bate mais de um, e manda perguntar", async () => {
   // É o aviso que faz o modelo parar. Medido no EXP-006: com ele, "a papete
   // pesa 400g" perguntou qual em vez de escolher.
-  const { saida } = rodar("achar_produto", { termos: "papete" }) as {
+  const { saida } = await rodar("achar_produto", { termos: "papete" }) as {
     saida: { total: number; aviso?: string };
   };
   assert.equal(saida.total, 2);
   assert.match(saida.aviso ?? "", /Pergunte ao lojista/);
 });
 
-test("achar_produto avisa quando não bate nada", () => {
-  const { saida } = rodar("achar_produto", { termos: "havaianas" }) as {
+test("achar_produto avisa quando não bate nada", async () => {
+  const { saida } = await rodar("achar_produto", { termos: "havaianas" }) as {
     saida: { total: number; aviso?: string };
   };
   assert.equal(saida.total, 0);
   assert.match(saida.aviso ?? "", /Nenhum produto/);
 });
 
-test("achar_produto devolve o TOTAL, não só a fatia mostrada", () => {
+test("achar_produto devolve o TOTAL, não só a fatia mostrada", async () => {
   // "achei 8" com 43 batendo seria mentira por omissão.
   const muitos = Array.from({ length: 12 }, (_, i) => ({ ...PAPETE_A, id: `x${i}` }));
-  const { saida } = rodar("achar_produto", { termos: "papete" }, {
+  const { saida } = await rodar("achar_produto", { termos: "papete" }, {
     ...ctx,
     produtos: muitos,
   }) as { saida: { total: number; achados: unknown[] } };
@@ -99,8 +99,8 @@ test("achar_produto devolve o TOTAL, não só a fatia mostrada", () => {
   assert.equal(saida.achados.length, 8);
 });
 
-test("propor_gravacao monta o cartão a partir do produtoId, não de texto", () => {
-  const r = rodar("propor_gravacao", {
+test("propor_gravacao monta o cartão a partir do produtoId, não de texto", async () => {
+  const r = await rodar("propor_gravacao", {
     produtoId: "p3",
     campo: "peso",
     valor: "450",
@@ -111,9 +111,9 @@ test("propor_gravacao monta o cartão a partir do produtoId, não de texto", () 
   assert.match((r.saida as { resumo: string }).resumo, /todas as 8 varia/);
 });
 
-test("propor_gravacao com produtoId inventado não grava em ninguém", () => {
+test("propor_gravacao com produtoId inventado não grava em ninguém", async () => {
   // O modelo pode alucinar um id. O código não pode aceitá-lo.
-  const r = rodar("propor_gravacao", {
+  const r = await rodar("propor_gravacao", {
     produtoId: "p999",
     campo: "peso",
     valor: "300",
@@ -123,9 +123,9 @@ test("propor_gravacao com produtoId inventado não grava em ninguém", () => {
   assert.equal((r.saida as { montada: boolean }).montada, false);
 });
 
-test("propor_gravacao preserva a vírgula decimal até o fim", () => {
+test("propor_gravacao preserva a vírgula decimal até o fim", async () => {
   // "0,3" lido como 3 viraria 3 kg — dez vezes o peso, e o frete junto.
-  const r = rodar("propor_gravacao", {
+  const r = await rodar("propor_gravacao", {
     produtoId: "p1",
     campo: "peso",
     valor: "0,3",
@@ -135,10 +135,10 @@ test("propor_gravacao preserva a vírgula decimal até o fim", () => {
   assert.equal(r.proposta.valor, 300);
 });
 
-test("o modelo recebe o resumo, nunca o objeto da proposta", () => {
+test("o modelo recebe o resumo, nunca o objeto da proposta", async () => {
   // Se o objeto vazasse para o modelo, ele poderia repeti-lo alterado e a tela
   // não teria como saber qual dos dois é o que o lojista leu.
-  const r = rodar("propor_gravacao", {
+  const r = await rodar("propor_gravacao", {
     produtoId: "p1",
     campo: "custo",
     valor: "24,90",
@@ -148,22 +148,22 @@ test("o modelo recebe o resumo, nunca o objeto da proposta", () => {
   assert.deepEqual(chaves.sort(), ["montada", "resumo", "unidadeDeduzida"].sort());
 });
 
-test("unidade deduzida chega marcada até a tela", () => {
-  const r = rodar("propor_gravacao", { produtoId: "p1", campo: "peso", valor: "300", unidade: "" });
+test("unidade deduzida chega marcada até a tela", async () => {
+  const r = await rodar("propor_gravacao", { produtoId: "p1", campo: "peso", valor: "300", unidade: "" });
   assert.equal(r.proposta?.tipo, "pronta");
   assert.equal(r.proposta.unidadeDeduzida, true);
   assert.equal((r.saida as { unidadeDeduzida: boolean }).unidadeDeduzida, true);
 });
 
-test("o_que_falta_no_produto exige um id conhecido", () => {
-  const { saida } = rodar("o_que_falta_no_produto", { produtoId: "nada" }) as {
+test("o_que_falta_no_produto exige um id conhecido", async () => {
+  const { saida } = await rodar("o_que_falta_no_produto", { produtoId: "nada" }) as {
     saida: { erro?: string };
   };
   assert.match(saida.erro ?? "", /achar_produto antes/);
 });
 
-test("o_que_falta_no_produto responde sobre o produto certo", () => {
-  const { saida } = rodar("o_que_falta_no_produto", { produtoId: "p2" }) as {
+test("o_que_falta_no_produto responde sobre o produto certo", async () => {
+  const { saida } = await rodar("o_que_falta_no_produto", { produtoId: "p2" }) as {
     saida: { nome: string; completo: boolean; falta: { o_que: string }[] };
   };
   assert.match(saida.nome, /Moleca/);
@@ -171,24 +171,24 @@ test("o_que_falta_no_produto responde sobre o produto certo", () => {
   assert.ok(saida.falta.some((f) => /custo/i.test(f.o_que)));
 });
 
-test("proximo_passo devolve o que trava, com o porquê", () => {
-  const { saida } = rodar("proximo_passo") as { saida: { titulo?: string; porque?: string } };
+test("proximo_passo devolve o que trava, com o porquê", async () => {
+  const { saida } = await rodar("proximo_passo") as { saida: { titulo?: string; porque?: string } };
   assert.ok(saida.titulo);
   assert.ok(saida.porque);
 });
 
-test("o_que_impede separa as capacidades", () => {
+test("o_que_impede separa as capacidades", async () => {
   const semConexao = { ...ctx, pergunta: { loja: { ...LOJA, conectadoAoMarketplace: false } } };
-  const { saida } = rodar("o_que_impede", { capacidade: "publicar" }, semConexao) as {
+  const { saida } = await rodar("o_que_impede", { capacidade: "publicar" }, semConexao) as {
     saida: { impedimento?: string };
   };
   assert.match(saida.impedimento ?? "", /conect/i);
 });
 
-test("ferramenta desconhecida vira erro de dado, não exceção", () => {
+test("ferramenta desconhecida vira erro de dado, não exceção", async () => {
   // Lançar mataria a conversa por um nome errado que o modelo corrige sozinho
   // no passo seguinte.
-  const { saida } = rodar("apagar_tudo") as { saida: { erro?: string } };
+  const { saida } = await rodar("apagar_tudo") as { saida: { erro?: string } };
   assert.match(saida.erro ?? "", /desconhecida/);
 });
 
@@ -219,29 +219,29 @@ const PARA_ANUNCIAR = [
 
 const ctxAnuncio = { ...ctx, paraAnunciar: PARA_ANUNCIAR };
 
-test("propor_anuncio devolve pronto quando o produto tem tudo", () => {
-  const r = rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
+test("propor_anuncio devolve pronto quando o produto tem tudo", async () => {
+  const r = await rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
   assert.equal(r.propostaDeAnuncio?.tipo, "pronto");
   assert.equal((r.saida as { pronto: boolean }).pronto, true);
 });
 
-test("propor_anuncio RECUSA quando falta dado — não queima três minutos à toa", () => {
-  const r = rodar("propor_anuncio", { produtoId: "p2" }, ctxAnuncio);
+test("propor_anuncio RECUSA quando falta dado — não queima três minutos à toa", async () => {
+  const r = await rodar("propor_anuncio", { produtoId: "p2" }, ctxAnuncio);
   assert.equal(r.propostaDeAnuncio?.tipo, "falta_dado");
   const s = r.saida as { pronto: boolean; faltando: string[] };
   assert.equal(s.pronto, false);
   assert.ok(s.faltando.length > 0);
 });
 
-test("propor_anuncio sem os dados do produto diz que não sabe", () => {
+test("propor_anuncio sem os dados do produto diz que não sabe", async () => {
   // Sem `paraAnunciar` a checagem de prontidão é impossível. Propor assim
   // mesmo geraria um anúncio que volta com pendência.
-  const r = rodar("propor_anuncio", { produtoId: "p1" });
+  const r = await rodar("propor_anuncio", { produtoId: "p1" });
   assert.match((r.saida as { erro?: string }).erro ?? "", /achar_produto antes/);
 });
 
-test("o modelo recebe o veredito e os atributos, nunca o objeto da proposta", () => {
-  const r = rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
+test("o modelo recebe o veredito e os atributos, nunca o objeto da proposta", async () => {
+  const r = await rodar("propor_anuncio", { produtoId: "p1" }, ctxAnuncio);
   const chaves = Object.keys(r.saida as object).sort();
   assert.deepEqual(chaves, ["atributos", "pronto", "refazendo", "resumo"]);
 });

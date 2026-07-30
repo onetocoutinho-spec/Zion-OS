@@ -46,8 +46,19 @@ export type StatusProposta =
  */
 export type NivelDeRisco = "leitura" | "baixo" | "medio" | "alto" | "critico";
 
-/** O que a proposta pretende mudar. Lista fechada: o que não está aqui não executa. */
-export type TipoDeProposta = "peso" | "custo";
+/**
+ * O que a proposta pretende mudar. Lista fechada: o que não está aqui não executa.
+ *
+ * `cadastro` é o único que CRIA em vez de corrigir. Ele entra aqui, e não numa
+ * segunda primitive de aprovação, porque as três proteções são exatamente as
+ * mesmas: identidade (o id vem do banco), precondições (o conjunto de possíveis
+ * duplicatas não pode ter mudado) e idempotência (duplo clique não cria dois
+ * produtos). Uma segunda máquina de aprovação teria que reprovar tudo isso.
+ *
+ * Nele, `alvos` carrega o ID DO DRAFT — o que está sendo autorizado é a
+ * materialização daquele cadastro, e não uma escrita num produto que já existe.
+ */
+export type TipoDeProposta = "peso" | "custo" | "cadastro" | "titulo" | "preco";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -83,6 +94,10 @@ export interface PropostaPersistida {
   precondicoes: readonly Precondicao[];
   criadaEm: string;
   expiraEm: string;
+  /** O cadastro em conversa que esta proposta materializa. Só em `cadastro`. */
+  draftId?: string | null;
+  /** O conteúdo proposto quando ele é texto. Só em `titulo`. */
+  texto?: string | null;
 }
 
 /**
@@ -102,6 +117,17 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Custo é a base de lucro, margem e piso. Esta base já recebeu R$ 30 milhões
   // de custo por escrita que ninguém revisou.
   custo: "alto",
+  // Criar produto é a única escrita que ADICIONA linha ao catálogo. Um produto
+  // duplicado não dispara alarme nenhum: ele fica lá, recebe anúncio, recebe
+  // estoque, e só aparece quando alguém tenta conciliar.
+  cadastro: "alto",
+  // Trocar título é reversível e não move dinheiro — mas é o texto que o
+  // comprador lê primeiro, e um título pior derruba a busca sem avisar. Médio:
+  // exige confirmação, não exige o cuidado de uma escrita irreversível.
+  titulo: "medio",
+  // Preço é o número de onde sai o faturamento. Um preço abaixo do piso vende
+  // no prejuízo em silêncio, e o estrago só aparece no fechamento do mês.
+  preco: "alto",
 };
 
 /** O que impede uma proposta de ser executada agora. */

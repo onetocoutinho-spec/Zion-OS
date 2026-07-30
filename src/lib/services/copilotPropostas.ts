@@ -35,6 +35,8 @@ interface LinhaProposta {
   precondicoes: Precondicao[] | null;
   criada_em: string;
   expira_em: string;
+  draft_id?: string | null;
+  texto?: string | null;
 }
 
 function paraDominio(l: LinhaProposta): PropostaPersistida {
@@ -52,6 +54,8 @@ function paraDominio(l: LinhaProposta): PropostaPersistida {
     precondicoes: l.precondicoes ?? [],
     criadaEm: l.criada_em,
     expiraEm: l.expira_em,
+    ...(l.draft_id ? { draftId: l.draft_id } : {}),
+    ...(l.texto ? { texto: l.texto } : {}),
   };
 }
 
@@ -66,6 +70,16 @@ export interface NovaProposta {
   precondicoes: readonly Precondicao[];
   /** Reenvio antes da primeira resposta cai na mesma linha, não em duas. */
   chaveIdempotencia?: string | null;
+  /**
+   * O cadastro em conversa que esta proposta materializa, quando é de criação.
+   *
+   * `alvos` já carrega o mesmo id, porque a coluna exige pelo menos um alvo. A
+   * coluna existe além disso para a auditoria não depender de INTERPRETAR um
+   * array de uuids: com ela, "que cadastro virou esse produto?" é um join.
+   */
+  draftId?: string | null;
+  /** O conteúdo proposto quando ele é texto (título). Só neste tipo. */
+  texto?: string | null;
 }
 
 /**
@@ -93,6 +107,8 @@ export async function criarProposta(nova: NovaProposta): Promise<PropostaPersist
       criada_em: agora,
       expira_em: expiraEm(agora),
       chave_idempotencia: nova.chaveIdempotencia ?? null,
+      draft_id: nova.draftId ?? null,
+      texto: nova.texto ?? null,
     })
     .select("*")
     .single();

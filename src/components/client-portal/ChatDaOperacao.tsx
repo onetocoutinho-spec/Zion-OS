@@ -32,6 +32,45 @@ import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistent
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
+import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
+import type { Consequencia } from "@/modules/workspace/domain/consequencia";
+import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
+import {
+  desfechoDaConfirmacao,
+  estadoDoCartao,
+} from "@/modules/assistant/domain/cartaoDoLote";
+import {
+  desfechoDaCriacao,
+  escreverGrade,
+  estadoDoCartaoDeCadastro,
+  type CadastroNaTela,
+  type DesfechoDoCadastro,
+} from "@/modules/assistant/domain/cartaoDoCadastro";
+import {
+  comoPedir,
+  estadoDoPainel,
+  selosDaProcedencia,
+  type PendenciasNaTela,
+} from "@/modules/assistant/domain/cartaoDePendencias";
+import {
+  escreverProcedencia,
+  type HistoricoDeCampo,
+} from "@/modules/catalog/domain/procedenciaDeCampo";
+import {
+  estadoDoCartaoDeTitulo,
+  estadoDoPainelDePreparacao,
+  tomDaEtapa,
+  type PreparacaoNaTela,
+  type TituloNaTela,
+} from "@/modules/assistant/domain/cartaoDaPreparacao";
+import {
+  estadoDoCartaoDePreco,
+  estadoDoPainelDePreco,
+  type PrecoNaTela,
+  type PropostaDePrecoNaTela,
+} from "@/modules/assistant/domain/cartaoDePreco";
+
+type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
   chaveDaConversa,
   lerGuardada,
@@ -72,13 +111,67 @@ interface Turno {
    */
   propostaId?: string;
   /**
+   * O escopo de um LOTE. Presente só quando a proposta atinge vários alvos.
+   *
+   * As contagens vêm do SERVIDOR, nunca do modelo: o que está sendo aprovado é
+   * justamente a quantidade, e um número que o modelo escreveu é um número que
+   * ele pode ter errado.
+   */
+  escopo?: EscopoNaTela;
+  /**
    * O que aconteceu depois de confirmar. Trava o cartão contra duplo clique.
    *
    * `cegoParaAIL` é opcional porque um turno RETOMADO do disco não sabe — e
    * `false` ali seria uma afirmação falsa sobre uma gravação que a AIL pode
    * muito bem não ter visto.
    */
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  desfecho?: {
+    ok: boolean;
+    mensagem: string;
+    cegoParaAIL?: boolean;
+    /** O servidor recusou porque o catálogo mudou. Nada foi criado. */
+    stale?: boolean;
+    /** O produto que nasceu, quando a proposta era de cadastro. */
+    produtoId?: string;
+    /**
+     * O que a operação comprovadamente causou. Vem PRONTO do servidor.
+     *
+     * A tela não recalcula, não consulta produto, não deriva contagem e não
+     * transforma `null` em zero. Se vier `null`, não há cartão de consequência —
+     * e isso é um resultado, não uma lacuna a preencher.
+     */
+    consequencia?: Consequencia | null;
+  };
+  /**
+   * O cadastro em conversa — estado do Draft PERSISTIDO, vindo do servidor.
+   *
+   * Fica no turno como a proposta: se a pessoa perguntar outra coisa antes de
+   * confirmar, o cartão continua no lugar dele em vez de flutuar apontando para
+   * um cadastro que já saiu de vista.
+   */
+  cadastro?: CadastroNaTela;
+  /**
+   * O painel de pendências — o plano inteiro, vindo do domínio.
+   *
+   * Fica no turno como os outros cartões: se a pessoa perguntar outra coisa, o
+   * painel continua no lugar dele em vez de flutuar apontando para uma análise
+   * que já saiu de vista.
+   */
+  pendencias?: PendenciasNaTela;
+  /** A resposta de "de onde veio isso?" — com origem desconhecida quando é. */
+  procedencia?: HistoricoDeCampo;
+  /** O estado da preparação de anúncio — de um produto ou do catálogo. */
+  preparacao?: PreparacaoNaTela;
+  /** Título atual e proposto, lado a lado. */
+  propostaDeTitulo?: TituloNaTela;
+  /** O id que AUTORIZA a troca do título. Sem ele, não há botão. */
+  propostaDeTituloId?: string;
+  /** Preço, margem e lucro — do motor financeiro, nunca do modelo. */
+  pricing?: PrecoNaTela;
+  /** A proposta de trocar o preço, com o detalhamento que a justifica. */
+  propostaDePreco?: PropostaDePrecoNaTela;
+  /** O id que AUTORIZA a troca do preço. Sem ele, não há botão. */
+  propostaDePrecoId?: string;
   /**
    * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
    *
@@ -256,8 +349,32 @@ export function ChatDaOperacao({
                     ...(r.proposta && r.propostaId
                       ? { proposta: r.proposta, propostaId: r.propostaId }
                       : {}),
+                    ...(r.escopo && r.propostaId
+                      ? { escopo: r.escopo, propostaId: r.propostaId }
+                      : {}),
                     ...(r.propostaDeAnuncio
                       ? { propostaDeAnuncio: r.propostaDeAnuncio }
+                      : {}),
+                    // O cadastro traz o próprio `propostaId` quando há
+                    // autorização montada. Ele NÃO passa pelo campo genérico:
+                    // os dois cartões oferecem verbos diferentes, e um id só
+                    // faria o botão errado aparecer.
+                    ...(r.cadastro ? { cadastro: r.cadastro } : {}),
+                    ...(r.pendencias ? { pendencias: r.pendencias } : {}),
+                    ...(r.procedencia ? { procedencia: r.procedencia } : {}),
+                    ...(r.preparacao ? { preparacao: r.preparacao } : {}),
+                    ...(r.propostaDeTitulo
+                      ? {
+                          propostaDeTitulo: r.propostaDeTitulo,
+                          propostaDeTituloId: r.propostaDeTituloId,
+                        }
+                      : {}),
+                    ...(r.pricing ? { pricing: r.pricing } : {}),
+                    ...(r.propostaDePreco
+                      ? {
+                          propostaDePreco: r.propostaDePreco,
+                          propostaDePrecoId: r.propostaDePrecoId,
+                        }
                       : {}),
                   }
                 : turno
@@ -308,7 +425,14 @@ export function ChatDaOperacao({
   const confirmar = useCallback(
     async (indice: number) => {
       const alvo = turnos[indice];
-      const id = alvo?.propostaId;
+      // O cadastro carrega o próprio id: os dois cartões podem coexistir num
+      // turno, e confundir os dois confirmaria a proposta errada.
+      const id =
+        alvo?.cadastro?.propostaId ??
+        alvo?.propostaDeTituloId ??
+        alvo?.propostaDePrecoId ??
+        alvo?.propostaId;
+      const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
       // render de propósito: um clique que escapou (teclado, corrida de
       // estado) não pode virar uma chamada sem autorização.
@@ -322,7 +446,14 @@ export function ChatDaOperacao({
         setTurnos((t) =>
           t.map((turno, i) =>
             i === indice
-              ? { ...turno, desfecho: { ok: r.ok || Boolean(r.jaFeito), mensagem: r.mensagem } }
+              ? {
+                  ...turno,
+                  desfecho: {
+                    ...(ehCadastro ? desfechoDaCriacao(r) : desfechoDaConfirmacao(r)),
+                    // Atravessa como veio do servidor. Nada é derivado aqui.
+                    ...(r.consequencia !== undefined ? { consequencia: r.consequencia } : {}),
+                  },
+                }
               : turno
           )
         );
@@ -411,10 +542,58 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
-              ) : t.texto !== undefined || t.proposta ? (
+              ) : t.texto !== undefined ||
+                t.proposta ||
+                t.cadastro ||
+                t.pendencias ||
+                t.preparacao ||
+                t.pricing ||
+                t.propostaDePreco ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
+                  {t.pendencias && <PainelDePendencias p={t.pendencias} />}
+                  {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
+                  {t.pricing && <PainelDePreco p={t.pricing} />}
+                  {t.propostaDePreco && (
+                    <CartaoDePreco
+                      p={t.propostaDePreco}
+                      propostaId={t.propostaDePrecoId}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.propostaDeTitulo && (
+                    <CartaoDeTitulo
+                      t={t.propostaDeTitulo}
+                      propostaId={t.propostaDeTituloId}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.procedencia && <CartaoDeProcedencia h={t.procedencia} />}
+                  {t.cadastro && (
+                    <CartaoDoCadastro
+                      c={t.cadastro}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.escopo && t.propostaId && (
+                    <CartaoDoLote
+                      e={t.escopo}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.proposta && t.propostaId && (
                     <CartaoDaProposta
                       p={t.proposta}
@@ -482,6 +661,775 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * O painel de preço — o detalhamento, os pisos e os cenários.
+ *
+ * NENHUM NÚMERO AQUI É CALCULADO. Todos vêm de `conversaDePreco`, que vem de
+ * `modeloPreco`. A tela escreve; ela não faz conta. É a mesma regra que impede
+ * o modelo de fazer — e ela vale para os dois pela mesma razão: no dia em que a
+ * comissão mudar, só um lugar precisa mudar junto.
+ */
+function PainelDePreco({ p }: { p: PrecoNaTela }) {
+  const e = estadoDoPainelDePreco(p);
+  if (e.estado === "vazio") return null;
+
+  if (e.estado === "conflito") {
+    return (
+      <p className="flex items-start gap-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-3 text-sm text-amber-300">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        {e.motivo}
+      </p>
+    );
+  }
+
+  if (e.estado === "bloqueado") {
+    return (
+      <div className="space-y-1 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">
+          Não consigo calcular o preço de {e.nome} ainda.
+        </p>
+        <p className="text-xs text-zinc-500">Falta {e.falta.join(" e ")}.</p>
+      </div>
+    );
+  }
+
+  if (e.estado === "triagem") {
+    return (
+      <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">{e.frase}</p>
+        {e.piores.length > 0 && (
+          <ul className="space-y-0.5">
+            {e.piores.map((i) => (
+              <li key={i.produtoId} className="text-xs text-zinc-400">
+                <span className="text-amber-300">{i.margem}</span> · {i.nome}
+              </li>
+            ))}
+          </ul>
+        )}
+        {e.aviso && <p className="text-[11px] text-zinc-600">{e.aviso}</p>}
+        {/* A triagem roda com a TABELA de comissão. Dizer isso é o serviço: um
+            percentual de tabela apresentado como o da conta do lojista é a
+            diferença entre uma conversa e uma promessa. */}
+        {e.comissaoEstimada && (
+          <p className="text-[11px] text-zinc-600">
+            Comissão estimada pela tabela — o número exato sai produto a produto.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium text-zinc-100">{e.nome}</p>
+        <span className="text-[11px] text-zinc-500">{e.saude}</span>
+      </div>
+
+      {e.hoje && <Breakdown linhas={e.hoje} />}
+
+      <dl className="space-y-0.5 text-xs">
+        {e.minimoSemPrejuizo && (
+          <div className="flex gap-2">
+            <dt className="w-40 shrink-0 text-zinc-500">Menor preço sem prejuízo</dt>
+            <dd className="text-zinc-200">{e.minimoSemPrejuizo}</dd>
+          </div>
+        )}
+        {e.minimoNaMargem && (
+          <div className="flex gap-2">
+            <dt className="w-40 shrink-0 text-zinc-500">Menor preço na sua margem</dt>
+            <dd className="text-zinc-200">{e.minimoNaMargem}</dd>
+          </div>
+        )}
+      </dl>
+
+      {/* Os CENÁRIOS numa tabela: é assim que se compara. Três parágrafos com
+          três preços obrigam a pessoa a montar a tabela de cabeça. */}
+      {e.cenarios.length > 0 && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-zinc-500">
+              <th className="text-left font-normal">Preço</th>
+              <th className="text-right font-normal">Sobra</th>
+              <th className="text-right font-normal">Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {e.cenarios.map((c) => (
+              <tr key={c.preco} className={c.ok ? "text-zinc-300" : "text-zinc-600"}>
+                <td>{c.preco}</td>
+                <td className="text-right">{c.lucro}</td>
+                <td className="text-right">{c.margem}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {e.comissaoEstimada && (
+        <p className="text-[11px] text-zinc-600">
+          Comissão estimada pela tabela de Moda, não a da sua conta.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** O detalhamento em linhas. A soma tem que fechar de cima para baixo. */
+function Breakdown({ linhas }: { linhas: readonly { rotulo: string; valor: string; negativa: boolean; resultado?: boolean }[] }) {
+  return (
+    <dl className="space-y-0.5 text-xs">
+      {linhas.map((l) => (
+        <div
+          key={l.rotulo}
+          className={`flex gap-2 ${l.resultado ? "border-t border-white/5 pt-1" : ""}`}
+        >
+          <dt className={`w-40 shrink-0 ${l.resultado ? "text-zinc-300" : "text-zinc-500"}`}>
+            {l.rotulo}
+          </dt>
+          <dd
+            className={
+              l.resultado
+                ? "font-medium text-emerald-300"
+                : l.negativa
+                  ? "text-zinc-400"
+                  : "text-zinc-200"
+            }
+          >
+            {l.negativa ? "− " : ""}
+            {l.valor}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * A proposta de trocar o preço — DE → PARA, com o detalhamento.
+ *
+ * Os dois preços, sempre: um preço novo sozinho não deixa julgar o tamanho da
+ * mudança, e é o tamanho que assusta ou tranquiliza.
+ *
+ * Preço abaixo do piso NÃO bloqueia — vender no prejuízo pode ser estratégia.
+ * É aviso, pela mesma regra do `avisoDePreco` no cadastro manual: quem decide é
+ * quem vende, mas ninguém decide o que não vê.
+ */
+function CartaoDePreco({
+  p,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: PropostaDePrecoNaTela;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDePreco(p, propostaId, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <p
+        className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-zinc-400"}`}
+      >
+        {e.ok ? (
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        )}
+        {e.mensagem}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+          Trocar o preço · {p.comoVeio}
+        </p>
+        <p className="text-sm text-zinc-100">
+          <span className="text-zinc-500 line-through">{e.de}</span>{" "}
+          <ArrowRight size={12} className="inline text-zinc-600" />{" "}
+          <span className="font-medium">{e.para}</span>
+        </p>
+      </div>
+
+      <Breakdown linhas={e.linhas} />
+
+      {e.alerta && (
+        <p className="flex items-start gap-1.5 text-xs text-amber-300">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          {e.alerta} Você pode aplicar assim mesmo se for proposital.
+        </p>
+      )}
+
+      <p className="text-[11px] text-zinc-600">
+        Muda o preço no seu catálogo do Zion. Não publica no Mercado Livre.
+      </p>
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Aplicando…" : e.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Agora não
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O painel da preparação de anúncio — as etapas e o que trava cada uma.
+ *
+ * PREPARAR NÃO É PUBLICAR, e o painel diz isso: a etapa `publicacao` aparece
+ * como estado, nunca como botão. Publicar é outro passo, com outra confirmação.
+ *
+ * As situações vêm do orquestrador (`preparacaoDoAnuncio`), que é domínio puro.
+ * A tela não decide se uma etapa está pronta — ela desenha o que já foi
+ * decidido, e é por isso que "por que esse não foi?" tem a mesma resposta toda
+ * vez que alguém perguntar.
+ */
+function PainelDaPreparacao({ p }: { p: PreparacaoNaTela }) {
+  const e = estadoDoPainelDePreparacao(p);
+  if (e.estado === "vazio") return null;
+
+  if (e.estado === "lote") {
+    return (
+      <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">{e.frase}</p>
+        {e.aviso && <p className="text-[11px] text-amber-300">{e.aviso}</p>}
+        {e.travados.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+              O que está travando
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {e.travados.map((t) => (
+                <li key={t.motivo} className="text-xs text-zinc-400">
+                  <span className="text-zinc-200">{t.quantos}</span> por {t.motivo}
+                  <span className="text-zinc-600"> — {t.exemplos.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">Preparação do anúncio</p>
+        <p className="text-sm font-medium text-zinc-100">{e.frase}</p>
+      </div>
+
+      <ul className="space-y-1">
+        {e.etapas.map((etapa) => {
+          const tom = tomDaEtapa(etapa.situacao);
+          return (
+            <li key={etapa.etapa} className="flex items-start gap-2 text-xs">
+              <span
+                className={
+                  tom === "boa"
+                    ? "text-emerald-400"
+                    : tom === "atencao"
+                      ? "text-amber-400"
+                      : "text-zinc-600"
+                }
+              >
+                {tom === "boa" ? "✓" : tom === "atencao" ? "!" : "·"}
+              </span>
+              <div className="min-w-0">
+                <span className="text-zinc-200">{etapa.rotulo}</span>
+                {etapa.faltando.length > 0 && (
+                  <span className="text-zinc-500"> — falta {etapa.faltando.join(", ")}</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* NÃO há botão de preparar aqui. Quem monta o cartão com o custo em
+          minutos e cota é `propor_anuncio`, e é ele que traz o botão — este
+          painel responde "em que pé está", não "faça agora". */}
+      {e.jaTemAnuncio && (
+        <p className="text-[11px] text-zinc-600">
+          Já existe um anúncio gerado para este produto.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O título atual e o proposto, lado a lado.
+ *
+ * OS DOIS, sempre. Mostrar só o novo esconderia o que se está perdendo, e
+ * trocar título é a coisa mais fácil de piorar sem ver. As contagens aparecem
+ * porque o limite de 60 caracteres do Mercado Livre é a razão de o agente de
+ * título existir.
+ */
+function CartaoDeTitulo({
+  t,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  t: TituloNaTela;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDeTitulo(t, propostaId, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <p
+        className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-zinc-400"}`}
+      >
+        {e.ok ? (
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        )}
+        {e.mensagem}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Trocar o título</p>
+      <dl className="space-y-1.5 text-sm">
+        <div>
+          <dt className="text-[11px] text-zinc-500">Hoje ({e.caracteresAtual} caracteres)</dt>
+          <dd className="text-zinc-400 line-through decoration-zinc-700">
+            {t.tituloAtual || "(sem título)"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[11px] text-zinc-500">
+            Proposto ({e.caracteresProposto} caracteres)
+          </dt>
+          <dd className="font-medium text-zinc-100">{t.tituloProposto}</dd>
+        </div>
+      </dl>
+      {t.justificativa && <p className="text-xs text-zinc-500">{t.justificativa}</p>}
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Trocando…" : e.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Ficar com o atual
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O painel de pendências — centenas de linhas técnicas viram poucas decisões.
+ *
+ * TODO NÚMERO AQUI VEM DO PLANO, que é domínio puro e provado. A tela não soma
+ * nada e o modelo não escreveu nenhum deles: é por esse número que o lojista
+ * decide o dia dele.
+ *
+ * A ORDEM da leitura é deliberada: primeiro o tamanho do problema, depois o
+ * quanto dele NÃO é problema dele, e só então o que sobra. Começar pelo que ele
+ * precisa fazer transformaria um alívio em cobrança.
+ */
+function PainelDePendencias({ p }: { p: PendenciasNaTela }) {
+  const e = estadoDoPainel(p);
+
+  if (e.estado === "nada_a_fazer") {
+    return (
+      <p className="flex items-center gap-2 text-sm text-emerald-300">
+        <CheckCircle2 size={14} className="shrink-0" />
+        {e.frase}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <p className="text-sm text-zinc-200">{e.frase}</p>
+      {e.aviso && <p className="text-[11px] text-amber-300">{e.aviso}</p>}
+
+      {e.decisoes.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+            Preciso de {e.decisoes.length}{" "}
+            {e.decisoes.length > 1 ? "decisões suas" : "decisão sua"}
+          </p>
+          <ol className="mt-1 space-y-1.5">
+            {e.decisoes.map((d) => (
+              <li key={d.id} className="flex items-start gap-2">
+                <span className="mt-0.5 text-xs text-violet-400">{d.ordem}.</span>
+                <div className="min-w-0">
+                  <p className="text-sm text-zinc-200">{d.pergunta}</p>
+                  <p className="text-[11px] text-zinc-500">
+                    {/* A diferença que muda a pergunta: um valor para todos, ou
+                        um por alvo. Confundir os dois é como um EAN acabaria
+                        gravado em trinta variantes. */}
+                    {comoPedir(d)}
+                    {d.bloqueia.length > 0 && (
+                      <span className="text-amber-400/70"> · trava {d.bloqueia.join(", ")}</span>
+                    )}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {p.plano.preparaveis.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+            Consigo preparar sem te perguntar
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {p.plano.preparaveis.slice(0, 4).map((x) => (
+              <li key={x.produtoId} className="text-xs text-zinc-400">
+                · {x.resumo}
+              </li>
+            ))}
+            {p.plano.preparaveis.length > 4 && (
+              <li className="text-xs text-zinc-600">
+                e mais {p.plano.preparaveis.length - 4}
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* CONFLITO tem destaque próprio: não é "faltando", é "em dúvida". Um
+          custo de trinta milhões não pode sumir numa contagem de pendências. */}
+      {p.plano.conflitos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          <p className="flex items-start gap-1.5 text-xs font-medium text-amber-300">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            {p.plano.conflitos.length} em conflito — preciso da sua revisão
+          </p>
+          <ul className="space-y-0.5">
+            {p.plano.conflitos.slice(0, 4).map((c) => (
+              <li key={`${c.alvo.id}-${c.campo}`} className="text-[11px] text-zinc-400">
+                · {c.explicacao}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {p.plano.bloqueadas.length > 0 && (
+        <ul className="space-y-0.5">
+          {p.plano.bloqueadas.map((b) => (
+            <li key={b.tipo} className="text-[11px] text-zinc-500">
+              {b.quantos} de {b.tipo}: {b.motivo}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * De onde veio um valor — e o que dizer quando ninguém registrou.
+ *
+ * "Origem não registrada" aparece como FRASE, nunca como célula vazia. Uma
+ * célula vazia se lê como "ninguém preencheu ainda"; a verdade é outra — o valor
+ * existe, e a origem dele nunca foi registrada.
+ */
+function CartaoDeProcedencia({ h }: { h: HistoricoDeCampo }) {
+  const selo = selosDaProcedencia(h.procedencia.origem);
+  return (
+    <div className="space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <dl className="space-y-1 text-sm">
+        <div className="flex gap-2">
+          <dt className="w-28 shrink-0 text-zinc-500">{h.campo}</dt>
+          <dd className="font-medium text-zinc-100">{h.valorAtual ?? "não informado"}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-28 shrink-0 text-zinc-500">Origem</dt>
+          <dd className={selo.alerta ? "text-amber-300" : "text-zinc-200"}>
+            {escreverProcedencia(h.procedencia)}
+            {h.procedencia.momento && (
+              <span className="text-zinc-500"> · {h.procedencia.momento.slice(0, 10)}</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      {h.anteriores.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">Valor anterior</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {h.anteriores.map((a) => (
+              <li key={a.valor} className="text-xs text-zinc-400">
+                {a.valor}{" "}
+                <span className="text-zinc-600">· {escreverProcedencia(a.procedencia)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {h.anteriorAoRegistro && (
+        <p className="text-[11px] text-zinc-600">
+          Este valor é anterior ao registro de procedência. Daqui para frente, toda alteração fica
+          rastreável.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O cadastro em conversa — o que já se sabe, a grade, e o que ainda falta.
+ *
+ * TUDO AQUI VEM DO SERVIDOR. O status, a contagem de variantes, a lista do que
+ * falta e a existência do botão saem do Draft persistido e da Proposal — nunca
+ * do texto que o modelo escreveu. Um cartão que acreditasse na frase do modelo
+ * ofereceria "Criar produto" para um cadastro que o servidor recusaria.
+ *
+ * Os estados vêm de `estadoDoCartaoDeCadastro`, que é domínio provado: tela e
+ * teste calculando o mesmo em dois lugares divergem no primeiro ajuste.
+ */
+function CartaoDoCadastro({
+  c,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  c: CadastroNaTela;
+  desfecho?: DesfechoDoCadastro & { cegoParaAIL?: boolean };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDeCadastro(c, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <div className="space-y-1.5">
+        <p
+          className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-amber-300"}`}
+        >
+          {e.ok ? (
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          )}
+          {e.mensagem}
+        </p>
+        {e.produtoId && (
+          <Link
+            href={`/cliente/anunciar?produto=${encodeURIComponent(e.produtoId)}`}
+            className="inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
+          >
+            Abrir o produto <ArrowRight size={12} />
+          </Link>
+        )}
+      </div>
+    );
+  }
+
+  if (e.estado === "cancelado") {
+    return <p className="text-sm text-zinc-400">{e.mensagem}</p>;
+  }
+
+  if (e.estado === "escolha") {
+    return (
+      <div className="space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">Você tem mais de um cadastro em andamento:</p>
+        <ol className="space-y-1">
+          {e.opcoes.map((o) => (
+            <li key={o.id} className="text-xs text-zinc-400">
+              {o.ordem}. {o.rotulo}
+            </li>
+          ))}
+        </ol>
+        <p className="text-[11px] text-zinc-600">
+          Diga qual — eu não escolho por você.
+        </p>
+      </div>
+    );
+  }
+
+  const linhasDaGrade = escreverGrade(c.variantes);
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+          Cadastro em andamento
+        </p>
+        <p className="text-sm font-medium text-zinc-100">{e.titulo}</p>
+      </div>
+
+      {c.jaSei.length > 0 && (
+        <dl className="space-y-0.5 text-xs">
+          {c.jaSei.map((f) => (
+            <div key={f.campo} className="flex gap-2">
+              <dt className="w-32 shrink-0 text-zinc-500">{f.campo}</dt>
+              <dd className="text-zinc-200">
+                {f.valor}
+                {/* A PROCEDÊNCIA aparece quando não foi o lojista que disse. O
+                    que ele informou não precisa de selo; o que veio de outro
+                    lugar precisa, e esconder isso transformaria a confirmação
+                    em carimbo. */}
+                {f.procedencia !== "informado" && (
+                  <span className="text-amber-400/70"> ·{f.procedencia}</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {c.variantes.total > 0 && (
+        <div className="text-xs">
+          <p className="text-zinc-500">
+            Variantes: <span className="text-zinc-200">{c.variantes.total}</span>
+            {c.variantes.semSku > 0 && (
+              <span className="text-amber-300"> · {c.variantes.semSku} sem SKU</span>
+            )}
+          </p>
+          <ul className="mt-0.5 space-y-0.5">
+            {linhasDaGrade.map((linha) => (
+              <li key={linha} className="text-zinc-400">
+                {linha}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {c.conflitos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          {c.conflitos.map((k) => (
+            <p key={k.campo} className="flex items-start gap-1.5 text-xs text-amber-300">
+              <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+              Você me disse dois valores de {k.campo}: {k.valorAtual} e {k.valorNovo}. Qual vale?
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* POSSÍVEL duplicidade — nunca identidade. Casamento exato não fecha
+          nada nesta base: 117 SKUs e 112 EANs se repetem. O cartão mostra e
+          pergunta; ele não funde e não bloqueia. */}
+      {c.candidatos && c.candidatos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          <p className="flex items-start gap-1.5 text-xs text-amber-300">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            {c.candidatosMensagem ??
+              "Encontrei produtos que podem corresponder a este cadastro."}
+          </p>
+          <ul className="space-y-0.5">
+            {c.candidatos.map((k, indice) => (
+              <li key={k.produtoId} className="text-[11px] text-zinc-400">
+                {indice + 1}.{" "}
+                <Link
+                  href={`/cliente/anunciar?produto=${encodeURIComponent(k.produtoId)}`}
+                  className="text-violet-400 hover:text-violet-300"
+                >
+                  {[k.marca, k.nome].filter(Boolean).join(" ")}
+                </Link>
+                {k.referencia && <span className="text-zinc-600"> · ref {k.referencia}</span>}
+                {k.sku && <span className="text-zinc-600"> · SKU {k.sku}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {e.estado === "coletando" && e.falta.length > 0 && (
+        <div className="text-xs">
+          <p className="text-zinc-500">Ainda preciso de:</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {e.falta.map((f) => (
+              <li key={f.o_que} className="flex items-start gap-1.5">
+                <span className={f.bloqueia ? "text-amber-400" : "text-zinc-600"}>·</span>
+                <span>
+                  <span className={f.bloqueia ? "text-zinc-200" : "text-zinc-400"}>{f.o_que}</span>
+                  <span className="text-zinc-600"> — {f.porque}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(e.estado === "pronto" || e.estado === "proposta") && e.resumo && (
+        <p className="rounded-lg border border-white/5 bg-black/20 p-2 text-sm text-zinc-200">
+          {e.resumo}
+        </p>
+      )}
+
+      {/* O BOTÃO SÓ EXISTE NO ESTADO `proposta` — quer dizer: com uma Proposal
+          persistida, do tenant certo, sobre um cadastro que `validarRascunho`
+          aprovou. Nos outros estados não há o que confirmar, e um botão ali
+          seria oferecer uma ação que o servidor vai recusar. */}
+      {e.estado === "proposta" && (
+        <div className="flex gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={aoConfirmar}
+            disabled={ocupado}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+          >
+            {ocupado ? "Criando…" : e.rotuloBotao}
+          </button>
+          <button
+            type="button"
+            onClick={aoDescartar}
+            disabled={ocupado}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+          >
+            Agora não
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -558,6 +1506,160 @@ function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
  * aparece em destaque. É o único ponto onde o sistema completou o que o cliente
  * não disse, e esconder isso transformaria a confirmação em carimbo.
  */
+/**
+ * O cartão de um LOTE — o que a pessoa lê antes de mexer em dezenas de linhas.
+ *
+ * Todas as contagens vêm do SERVIDOR. O cartão não pergunta ao modelo quantos
+ * serão alterados: é justamente a quantidade que está sendo aprovada, e um
+ * número escrito pelo modelo é um número que ele pode ter errado.
+ *
+ * A unidade é KG porque é o que o domínio guarda (`peso: number // kg`, usado
+ * no frete). A conversa aceita "420 g" e a Proposal carrega gramas, mas o que
+ * aparece aqui é o que vai para o banco — e não existe "peso embalado" nem
+ * "peso líquido" no modelo, então o rótulo é só "Peso".
+ *
+ * Três estados, e nenhum deles deixa o botão ativo por engano:
+ *   pendente  → mostra o escopo e oferece aplicar
+ *   concluído → vira registro, sem botão
+ *   obsoleto  → diz que nada foi alterado, sem botão
+ */
+/**
+ * O que a operação comprovadamente causou.
+ *
+ * ESTE COMPONENTE NÃO CALCULA NADA. Ele recebe um `Consequencia` pronto do
+ * servidor e escolhe palavras. Não consulta produto, não soma, não estima, e não
+ * transforma `null` em zero — as decisões de o que vale mostrar são de
+ * `ofertasQueValem` e `rotuloDoDesbloqueio`, no domínio, com teste.
+ *
+ * Quando o servidor contou e deu ZERO, não há oferta: `ofertasQueValem` filtra o
+ * zero. O fato continua registrado na resposta; a tela só não promete uma tela
+ * que estaria vazia.
+ */
+function Consequencias({ c }: { c: Consequencia }) {
+  const ofertas = ofertasQueValem(c);
+  if (ofertas.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Isso desbloqueou</p>
+      <ul className="mt-1.5 space-y-1">
+        {ofertas.map((d) => (
+          <li key={d.modo} className="text-sm text-zinc-300">
+            {rotuloDoDesbloqueio(d)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CartaoDoLote({
+  e,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  e: EscopoNaTela;
+  desfecho?: {
+    ok: boolean;
+    mensagem: string;
+    cegoParaAIL?: boolean;
+    consequencia?: Consequencia | null;
+  };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  // Já decidido: o cartão vira registro. Sem botão, não há como gravar duas
+  // vezes — e "já foi feito" chega aqui como SUCESSO, porque foi.
+  if (desfecho) {
+    return (
+      <div className="space-y-2">
+        <p
+          className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}
+        >
+          {desfecho.ok ? (
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          )}
+          {desfecho.mensagem}
+        </p>
+        {desfecho.ok && desfecho.consequencia ? (
+          <Consequencias c={desfecho.consequencia} />
+        ) : null}
+      </div>
+    );
+  }
+
+  // As decisões vêm do domínio provado (`cartaoDoLote`), não daqui: tela e
+  // teste calculando o mesmo em dois lugares divergem no primeiro ajuste.
+  const c = estadoDoCartao(e);
+  if (c.estado !== "pendente") return null;
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Alterar {e.campo}
+      </p>
+
+      <dl className="space-y-1 text-sm">
+        <div className="flex gap-2">
+          <dt className="w-32 shrink-0 text-zinc-500">Novo valor</dt>
+          <dd className="font-medium text-zinc-100">
+            {c.valorEscrito}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-32 shrink-0 text-zinc-500">Afeta</dt>
+          <dd className="text-zinc-200">
+            {c.alvo}
+            {e.campo === "peso" && e.produtosAfetados > 1 && (
+              <span className="text-zinc-500"> · {e.produtosAfetados} produtos</span>
+            )}
+          </dd>
+        </div>
+        {e.naoAlterados > 0 && (
+          <div className="flex gap-2">
+            <dt className="w-32 shrink-0 text-zinc-500">Já têm {e.campo}</dt>
+            <dd className="text-amber-300">
+              {e.naoAlterados} — não {e.naoAlterados > 1 ? "serão alterados" : "será alterado"}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {e.amostra.length > 0 && (
+        // AMOSTRA, não a lista: com centenas de alvos isto viraria uma parede.
+        // Os ids vivem na Proposal, no servidor.
+        <p className="text-xs text-zinc-500">
+          {e.amostra.slice(0, 3).join(" · ")}
+          {e.produtosAfetados > 3 && ` e mais ${e.produtosAfetados - 3}`}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Aplicando…" : c.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CartaoDaProposta({
   p,
   desfecho,

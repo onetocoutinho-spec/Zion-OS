@@ -1,0 +1,278 @@
+# INC-002 — O lote de peso sobrescreve variantes que já tinham peso
+
+```
+Status:      PARCIALMENTE CORRIGIDO — o dano foi eliminado; a identidade não
+Detectado:   2026-07-30, durante o slice de consequência (CONSEQ-001)
+Severidade:  era CORRUPÇÃO SILENCIOSA de dado, sem trilha de recuperação
+Correção:    mínima aplicada em 2026-07-30 (sem migration, sem RPC)
+```
+
+> **NÃO diga "INC-002 resolvido".** Uma invariante foi fechada; cinco continuam
+> abertas. A qualificação está em [§Estado da correção](#estado-da-correção).
+
+---
+
+## Estado da correção
+
+### CORRIGIDO — o preenchimento nunca substitui peso existente
+
+Os **dois** caminhos de escrita passaram a levar `.lte("peso", 0)` **dentro do
+UPDATE**, aplicado pelo banco:
+
+| caminho | antes | depois |
+|---|---|---|
+| lote (`route.ts`) | `.in("produto_id", p.alvos)` | `+ .lte("peso", 0)` |
+| individual (`route.ts`) | `.eq("produto_id", produtoId)` | `+ .lte("peso", 0)` |
+
+**Predicado, não filtro em JavaScript.** Filtrar `antesLote` em memória e mandar
+só os ids pareceria equivalente e deixaria aberta a janela entre a leitura e a
+escrita.
+
+`peso <= 0` e não `IS NULL`: a coluna é `numeric NOT NULL DEFAULT 0`, então
+`IS NULL` é inalcançável. É a **mesma** definição que `lerEstadoAtual` já usava —
+nenhuma semântica nova entrou.
+
+**Evidência contra o Postgres real, em transação revertida:**
+
+| sentinela | variantes | elegíveis | afetados | preenchidas alteradas | MAX antes → depois |
+|---|---:|---:|---:|---:|---|
+| **Vizzano** | 39 | 3 | **3** | **0** | **410 g → 410 g** |
+| **peso maior** (A vazia, B=500 g, aplica 200 g) | 2 | 1 | **1** | **0** | **→ 500 g** |
+| **drift** (A ganha peso antes do UPDATE) | 3 | 3 | **2** | **0** | A preservada em 777 g |
+
+`afetados` passou a contar **linhas realmente escritas**. A mensagem ganhou uma
+ressalva quando `afetados < elegiveis`, para não afirmar mais do que aconteceu.
+
+#### O caso extremo, e o que a tela passou a dizer
+
+A corrida não tem só a forma parcial. No limite:
+
+```
+N elegíveis no retrato anterior
+N preenchidas concorrentemente
+0 escritas
+proposta marcada `falhou` — e NADA foi sobrescrito
+```
+
+Isso tornou alcançável um ramo que, para peso, antes praticamente não era:
+`afetados === 0`. A mensagem dizia *"o produto não foi encontrado"* — verdadeira
+quando o alvo sumia, **falsa** nesta corrida, em que o produto está inteiro.
+
+Passou a ser: *"Não gravei nada — os dados podem ter mudado desde a confirmação."*
+Ela **não diagnostica**, e isso é deliberado: daqui não dá para separar "o alvo
+sumiu" de "nada restou elegível". `elegiveis` não serve de prova — é o retrato
+**anterior** ao UPDATE e continua > 0 justamente na corrida. Distinguir exigiria
+uma consulta nova depois da escrita, e a resposta seria um palpite com cara de
+causa. O rastro técnico (`nenhuma linha afetada`), o 409 e o estado `falhou` da
+proposta continuam como estavam.
+
+### NÃO CORRIGIDO
+
+1. **A identidade das variantes não é congelada na proposta.** `alvos` são
+   produtos; nenhum `varianteId` é persistido.
+2. **A revalidação compara cardinalidade, não identidade**
+   (`propostaPersistida.ts:217`). A troca {A,B,C} → {B,C,D} com a mesma contagem
+   passa.
+3. **Drift pode mudar o conjunto entre a proposta e a execução.**
+4. **A operação NÃO é all-or-nothing** sobre o conjunto aprovado. A sentinela de
+   drift mostra 2 escritas de 3 — e isso é a limitação **conscientemente
+   aceita**, não um defeito residual escondido.
+5. **O caminho 2 materializa a apresentação a partir de contexto do cliente**
+   (`conversa/route.ts:262`). O cartão pode mostrar números que o servidor nunca
+   conferiu — a execução, essa sim, é revalidada contra o banco.
+6. **R5 não foi demonstrável neste ambiente.** Sem duas conexões controláveis
+   (sem `psql`, sem string de conexão, sem `pg`, sessão do MCP não persiste), a
+   atomicidade all-or-nothing continua provada só por análise de locking.
+
+O fechamento forte exige autoridade de identidade + revalidação por conjunto +
+primitiva transacional demonstrada. O desenho está em
+[INC-002-D](./INC-002-D-desenho-da-primitiva-transacional.md).
+
+> Relacionado a [INC-001](./INC-001-peso-parcial-invisivel.md): os dois nascem do
+> mesmo `MAX` sobre as variantes. O INC-001 é perda de informação na **leitura**;
+> este é perda de dado na **escrita**.
+
+---
+
+## O defeito
+
+### INTENÇÃO ≠ ALVO DA ESCRITA
+
+A superfície promete preencher o que está **ausente**. A mutação escreve em
+**tudo**.
+
+**A. O que a superfície comunica** — `modules/assistant/domain/escopoDoLote.ts:87`
+
+```ts
+const alvo = `${unidades} variaç${unidades > 1 ? "ões" : "ão"} de ${quantos} produto...`;
+const ressalva = deFora > 0
+  ? ` ${deFora} produto já tem ${campo} e não será alterado.`
+  : "";
+return `Aplicar ${comoEscrever(valor)} de ${campo} a ${alvo}.${ressalva}`;
+```
+
+O operador lê, por exemplo:
+
+> *"Aplicar 200 g de peso a 159 variações de 14 produtos. 3 produtos já têm peso
+> e não serão alterados."*
+
+Duas afirmações, e as duas induzem ao mesmo entendimento: **só o que falta será
+tocado**. `unidades` vem de `unidadesSemDado` — a contagem é explicitamente das
+variações **sem** o dado.
+
+**B. O conjunto que a proposta apresenta** — `escopoDoLote.ts:69`
+
+```ts
+const precisa = (c) => campo === "custo" ? !c.valorAtual : c.unidadesSemDado > 0;
+const incluidos = candidatos.filter(precisa);
+```
+
+Um produto entra se tiver **pelo menos uma** variante sem peso. A ressalva "já tem
+peso e não será alterado" fala dos produtos **inteiramente** preenchidos, que
+ficam de fora — não das variantes preenchidas **dentro** de um produto incluído.
+
+**C. O conjunto que a mutação atualiza** — `app/api/assistente/proposta/route.ts`
+
+```ts
+const { data, error } = await admin
+  .from("produto_variantes")
+  .update({ peso: emKgLote })
+  .in("produto_id", p.alvos)      // ← TODAS as variantes do produto
+  .eq("cliente_id", p.clienteId)
+  .select("id, produto_id");
+```
+
+Não há filtro por peso ausente. **Toda** variante dos produtos-alvo é
+reescrita — inclusive as que já tinham peso, e inclusive com um valor menor.
+
+**D. Uma variante preenchida pode ser sobrescrita?** **Sim.** É o caminho normal,
+não uma borda.
+
+---
+
+## Exemplo mínimo, na base real (medido em 2026-07-30, somente leitura)
+
+Produto **"Rasteira Feminina Vizzano 6371.1005"**:
+
+| | |
+|---|---:|
+| variantes | **39** |
+| sem peso | **3** |
+| **com peso** | **36** |
+| maior peso atual | **0,410 kg (410 g)** |
+
+O operador pede *"200 g nos produtos sem peso"*. O cartão diz que vai mexer em
+**3 variações** deste produto. A mutação reescreve **as 39** — e as 36 que tinham
+peso passam a valer 200 g.
+
+**Agregado da base**, entre os 14 produtos que entrariam num lote de peso:
+
+| medida | valor |
+|---|---:|
+| produtos mistos (com e sem peso) | **1** |
+| **variantes com peso que seriam sobrescritas** | **36** |
+| variações que o operador aprova | **159** |
+| **variantes que a mutação atinge** | **195** |
+
+O operador aprova 159 e recebe 195. A diferença — 36 — é dado existente sendo
+substituído sem que nada na tela diga isso.
+
+---
+
+## E. O MAX pode diminuir — e o frete vai junto
+
+`modules/pricing/domain/embalagemDoProduto.ts` toma o **maior** peso entre as
+variantes, e é ele que alimenta `pesoCobravelGramas` → `custoDeEnvio`.
+
+No exemplo: `MAX` cai de **410 g para 200 g**. O produto passa a ser precificado
+como se a caixa fosse mais leve — **frete subestimado, margem superestimada**.
+
+É a mesma família de defeito que a limpeza de 030/031 atacou: um número derivado
+de uma entrada que mudou sem ninguém perceber.
+
+`afetados` na resposta também mente por consequência: devolve `data.length` (195),
+não as 159 aprovadas. O operador lê "195 variantes atualizadas" depois de aprovar
+159.
+
+---
+
+## F. Recuperação: NÃO EXISTE
+
+Três trilhas, nenhuma serve:
+
+| trilha | o que guarda | serve? |
+|---|---|---|
+| `copilot_acoes.antes` | `{ variacoesLidas, semPesoAntes }` | ❌ **agregado** sobre todos os alvos; nenhum valor por variante |
+| `procedencia_de_campo` | uma linha **por produto**, campo `peso`, com o valor NOVO | ❌ `rastroDaEscrita` **não** preenche `valorAnterior` no ramo de peso |
+| `decisoes` (AIL) | `categoriaMarketplace`, `precoVenda`, `tabelaMedidas`, `custo` | ❌ **peso não está na lista** (`lib/services/produtos.ts:49-60`) |
+
+**Os pesos anteriores por variante não são recuperáveis por nenhum caminho.** Um
+lote aplicado por engano não tem desfazer, e nem sequer tem como saber o que havia.
+
+Isso eleva a severidade: não é só escrever demais — é escrever demais de forma
+irreversível e silenciosa.
+
+---
+
+## Comportamento esperado
+
+Uma das duas, e é decisão de produto — não técnica:
+
+1. **A mutação passa a respeitar a intenção:** escrever só onde o peso está
+   ausente. Mantém a frase como está e alinha a escrita a ela.
+2. **A frase passa a dizer a verdade:** *"substituir o peso de todas as variações
+   destes produtos, inclusive as 36 que já têm"*, com o escopo e a contagem
+   refletindo isso.
+
+A opção 1 preserva o que o operador entendeu e é a que o nome do fluxo sugere
+("preencher o que falta"). A opção 2 é honesta mas provavelmente não é o que
+alguém quer de um comando de preenchimento em lote.
+
+**Há um terceiro requisito, independente da escolha:** `afetados` tem que contar
+o que foi aprovado, ou a frase de desfecho precisa distinguir aprovado de tocado.
+
+---
+
+## Risco
+
+| dimensão | avaliação |
+|---|---|
+| Corrupção de dado | **alta** — dado existente substituído sem aviso |
+| Reversibilidade | **nenhuma** — sem trilha por variante |
+| Alcance hoje | **1 produto, 36 variantes** nesta base |
+| Alcance ao crescer | proporcional a produtos com grade parcialmente medida — o padrão em catálogo importado |
+| Efeito derivado | frete subestimado → **margem superestimada** no pricing |
+| Visibilidade | **nula** — nada na tela indica que algo foi substituído |
+
+---
+
+## Escopo provável da correção
+
+Pequeno em código, e é justamente por isso que **não** deve entrar de carona:
+
+- o filtro da mutação (`.or("peso.is.null,peso.lte.0")` ou equivalente);
+- `afetados` e o desfecho, para contarem o conjunto certo;
+- os testes de `escopoDoLote` e do lote de peso, que hoje congelam o
+  comportamento atual;
+- **uma decisão sobre os 36 pesos já existentes**, caso algum lote já tenha sido
+  aplicado — hoje `copilot_propostas` tem 0 linhas, então **nada foi sobrescrito
+  ainda** por este caminho.
+
+E precisa de uma medição antes/depois na base, porque muda o que o comando faz.
+
+---
+
+## NÃO CORRIGIDO NESTA PR
+
+Deliberado, e por três razões:
+
+1. **Corrigir mudaria a operação cuja consequência o slice CONSEQ-001 está
+   medindo.** O slice mede a operação que existe; consertá-la no mesmo commit
+   misturaria duas decisões e invalidaria a evidência.
+2. **A escolha entre "respeitar a intenção" e "dizer a verdade" é de produto.**
+3. **O defeito é anterior a esta PR e não foi ampliado por ela.** O diff do
+   CONSEQ-001 não toca nenhuma linha de `update`/`insert`/`delete` — só acrescenta
+   `altura, largura, comprimento` ao `select` que já existia antes do UPDATE.
+
+**Nada foi executado para provar este defeito.** Toda a evidência acima vem de
+leitura de código e de consultas somente-leitura ao banco.
