@@ -15,6 +15,8 @@ import type { ContextoDasFerramentas } from "../../modules/assistant/domain/exec
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaDeAnuncio";
 import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
+import type { PendenciasNaTela } from "../../modules/assistant/domain/cartaoDePendencias";
+import type { HistoricoDeCampo } from "../../modules/catalog/domain/procedenciaDeCampo";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -63,6 +65,15 @@ export interface RespostaDaConversa {
    * modelo seria um botão oferecido por quem não leu o banco.
    */
   cadastro?: CadastroNaTela;
+  /**
+   * O painel de pendências — o plano inteiro, com os grupos.
+   *
+   * O modelo recebeu o RESUMO; a tela recebe os grupos. São os mesmos números:
+   * os dois saem do mesmo plano, calculado no domínio. A tela não soma nada.
+   */
+  pendencias?: PendenciasNaTela;
+  /** O histórico de um campo — a resposta de "de onde veio isso?". */
+  procedencia?: HistoricoDeCampo;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -141,6 +152,8 @@ export async function conversar(
             ? { propostaDeAnuncio: e.propostaDeAnuncio as PropostaDeAnuncio }
             : {}),
           ...(e.cadastro ? { cadastro: e.cadastro as CadastroNaTela } : {}),
+          ...(e.pendencias ? { pendencias: e.pendencias as PendenciasNaTela } : {}),
+          ...(e.procedencia ? { procedencia: e.procedencia as HistoricoDeCampo } : {}),
         };
       }
     }

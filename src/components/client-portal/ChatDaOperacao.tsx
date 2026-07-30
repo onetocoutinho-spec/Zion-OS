@@ -44,6 +44,16 @@ import {
   type CadastroNaTela,
   type DesfechoDoCadastro,
 } from "@/modules/assistant/domain/cartaoDoCadastro";
+import {
+  comoPedir,
+  estadoDoPainel,
+  selosDaProcedencia,
+  type PendenciasNaTela,
+} from "@/modules/assistant/domain/cartaoDePendencias";
+import {
+  escreverProcedencia,
+  type HistoricoDeCampo,
+} from "@/modules/catalog/domain/procedenciaDeCampo";
 
 type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
@@ -117,6 +127,16 @@ interface Turno {
    * um cadastro que já saiu de vista.
    */
   cadastro?: CadastroNaTela;
+  /**
+   * O painel de pendências — o plano inteiro, vindo do domínio.
+   *
+   * Fica no turno como os outros cartões: se a pessoa perguntar outra coisa, o
+   * painel continua no lugar dele em vez de flutuar apontando para uma análise
+   * que já saiu de vista.
+   */
+  pendencias?: PendenciasNaTela;
+  /** A resposta de "de onde veio isso?" — com origem desconhecida quando é. */
+  procedencia?: HistoricoDeCampo;
   /**
    * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
    *
@@ -305,6 +325,8 @@ export function ChatDaOperacao({
                     // os dois cartões oferecem verbos diferentes, e um id só
                     // faria o botão errado aparecer.
                     ...(r.cadastro ? { cadastro: r.cadastro } : {}),
+                    ...(r.pendencias ? { pendencias: r.pendencias } : {}),
+                    ...(r.procedencia ? { procedencia: r.procedencia } : {}),
                   }
                 : turno
             )
@@ -463,9 +485,11 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
-              ) : t.texto !== undefined || t.proposta || t.cadastro ? (
+              ) : t.texto !== undefined || t.proposta || t.cadastro || t.pendencias ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
+                  {t.pendencias && <PainelDePendencias p={t.pendencias} />}
+                  {t.procedencia && <CartaoDeProcedencia h={t.procedencia} />}
                   {t.cadastro && (
                     <CartaoDoCadastro
                       c={t.cadastro}
@@ -552,6 +576,164 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * O painel de pendências — centenas de linhas técnicas viram poucas decisões.
+ *
+ * TODO NÚMERO AQUI VEM DO PLANO, que é domínio puro e provado. A tela não soma
+ * nada e o modelo não escreveu nenhum deles: é por esse número que o lojista
+ * decide o dia dele.
+ *
+ * A ORDEM da leitura é deliberada: primeiro o tamanho do problema, depois o
+ * quanto dele NÃO é problema dele, e só então o que sobra. Começar pelo que ele
+ * precisa fazer transformaria um alívio em cobrança.
+ */
+function PainelDePendencias({ p }: { p: PendenciasNaTela }) {
+  const e = estadoDoPainel(p);
+
+  if (e.estado === "nada_a_fazer") {
+    return (
+      <p className="flex items-center gap-2 text-sm text-emerald-300">
+        <CheckCircle2 size={14} className="shrink-0" />
+        {e.frase}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <p className="text-sm text-zinc-200">{e.frase}</p>
+      {e.aviso && <p className="text-[11px] text-amber-300">{e.aviso}</p>}
+
+      {e.decisoes.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+            Preciso de {e.decisoes.length}{" "}
+            {e.decisoes.length > 1 ? "decisões suas" : "decisão sua"}
+          </p>
+          <ol className="mt-1 space-y-1.5">
+            {e.decisoes.map((d) => (
+              <li key={d.id} className="flex items-start gap-2">
+                <span className="mt-0.5 text-xs text-violet-400">{d.ordem}.</span>
+                <div className="min-w-0">
+                  <p className="text-sm text-zinc-200">{d.pergunta}</p>
+                  <p className="text-[11px] text-zinc-500">
+                    {/* A diferença que muda a pergunta: um valor para todos, ou
+                        um por alvo. Confundir os dois é como um EAN acabaria
+                        gravado em trinta variantes. */}
+                    {comoPedir(d)}
+                    {d.bloqueia.length > 0 && (
+                      <span className="text-amber-400/70"> · trava {d.bloqueia.join(", ")}</span>
+                    )}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {p.plano.preparaveis.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+            Consigo preparar sem te perguntar
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {p.plano.preparaveis.slice(0, 4).map((x) => (
+              <li key={x.produtoId} className="text-xs text-zinc-400">
+                · {x.resumo}
+              </li>
+            ))}
+            {p.plano.preparaveis.length > 4 && (
+              <li className="text-xs text-zinc-600">
+                e mais {p.plano.preparaveis.length - 4}
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* CONFLITO tem destaque próprio: não é "faltando", é "em dúvida". Um
+          custo de trinta milhões não pode sumir numa contagem de pendências. */}
+      {p.plano.conflitos.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-2">
+          <p className="flex items-start gap-1.5 text-xs font-medium text-amber-300">
+            <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+            {p.plano.conflitos.length} em conflito — preciso da sua revisão
+          </p>
+          <ul className="space-y-0.5">
+            {p.plano.conflitos.slice(0, 4).map((c) => (
+              <li key={`${c.alvo.id}-${c.campo}`} className="text-[11px] text-zinc-400">
+                · {c.explicacao}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {p.plano.bloqueadas.length > 0 && (
+        <ul className="space-y-0.5">
+          {p.plano.bloqueadas.map((b) => (
+            <li key={b.tipo} className="text-[11px] text-zinc-500">
+              {b.quantos} de {b.tipo}: {b.motivo}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * De onde veio um valor — e o que dizer quando ninguém registrou.
+ *
+ * "Origem não registrada" aparece como FRASE, nunca como célula vazia. Uma
+ * célula vazia se lê como "ninguém preencheu ainda"; a verdade é outra — o valor
+ * existe, e a origem dele nunca foi registrada.
+ */
+function CartaoDeProcedencia({ h }: { h: HistoricoDeCampo }) {
+  const selo = selosDaProcedencia(h.procedencia.origem);
+  return (
+    <div className="space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <dl className="space-y-1 text-sm">
+        <div className="flex gap-2">
+          <dt className="w-28 shrink-0 text-zinc-500">{h.campo}</dt>
+          <dd className="font-medium text-zinc-100">{h.valorAtual ?? "não informado"}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-28 shrink-0 text-zinc-500">Origem</dt>
+          <dd className={selo.alerta ? "text-amber-300" : "text-zinc-200"}>
+            {escreverProcedencia(h.procedencia)}
+            {h.procedencia.momento && (
+              <span className="text-zinc-500"> · {h.procedencia.momento.slice(0, 10)}</span>
+            )}
+          </dd>
+        </div>
+      </dl>
+
+      {h.anteriores.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">Valor anterior</p>
+          <ul className="mt-0.5 space-y-0.5">
+            {h.anteriores.map((a) => (
+              <li key={a.valor} className="text-xs text-zinc-400">
+                {a.valor}{" "}
+                <span className="text-zinc-600">· {escreverProcedencia(a.procedencia)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {h.anteriorAoRegistro && (
+        <p className="text-[11px] text-zinc-600">
+          Este valor é anterior ao registro de procedência. Daqui para frente, toda alteração fica
+          rastreável.
+        </p>
+      )}
     </div>
   );
 }

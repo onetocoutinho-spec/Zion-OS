@@ -60,6 +60,14 @@ import {
   type ConjuntoApresentado,
 } from "@/modules/assistant/domain/referenciasDaConversa";
 import type { CadastroNaTela } from "@/modules/assistant/domain/cartaoDoCadastro";
+import {
+  catalogoParaAnalise,
+  fontesConectadas,
+  produtoParaAnalise,
+} from "@/lib/services/pendenciasDoCatalogo";
+import { historicoDoCampo } from "@/lib/services/procedencia";
+import { anomaliasDoCatalogo } from "@/modules/catalog/domain/anomaliasDoCatalogo";
+import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connectors/shared/capacidades";
 
 export const maxDuration = 60;
 
@@ -94,6 +102,18 @@ Regras do cadastro, e elas não têm exceção:
 - Quando ela devolver uma lista para escolher, pergunte qual e depois use a operação "escolher" com o que ele responder ("o segundo").
 - Nada é criado até ele clicar. Depois de propor_criacao, diga o que vai ser criado e que falta ele confirmar. Nunca diga que o produto já existe.
 
+O QUE PRECISA DELE. Quando ele perguntar o que falta, o que está com problema, o que você consegue resolver, ou pedir "resolva o que conseguir", use a ferramenta pendencias. Ela já ANALISOU: devolve quantas pendências existem, quantas você prepara sem pedir dado novo, as decisões dele já AGRUPADAS e em ordem de impacto, os conflitos e o que não se resolve por aqui. Você comunica; você não soma. Nunca escreva um número que ela não devolveu.
+
+Apresente o panorama assim: quantas pendências, quantas você trata sem pedir nada, e QUANTAS DECISÕES dele destravam o resto. Depois ofereça a primeira — a lista já vem na ordem certa. Não despeje as centenas de pendências.
+
+Quando uma decisão vier marcada como "umaRespostaServeParaTodos", uma resposta dele resolve o grupo inteiro — diga isso e diga quantos. Quando NÃO vier, é uma pergunta com várias respostas (EAN e SKU identificam uma unidade cada): peça os valores, não um valor.
+
+Para o que você consegue preparar sozinho, chame preparar_resolucao com o alvo que pendencias devolveu. Isso monta um cartão. NÃO grava: preparar sem perguntar o valor é diferente de aplicar sem confirmar, e o lojista continua clicando.
+
+DE ONDE VEIO. Para "de onde veio esse custo?", "quem colocou esse peso?", "esse SKU veio da planilha?", use procedencia. Ela devolve a frase pronta — repasse. Quando a origem não foi registrada, DIGA ISSO. A maior parte desta base é anterior ao registro de procedência, e sugerir de onde o valor "provavelmente" veio é inventar.
+
+Você NÃO tem fonte externa de custo, preço ou estoque. Nenhum ERP conectado declara saber esses dados. Nunca ofereça buscá-los lá.
+
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
 
@@ -122,6 +142,41 @@ async function estadoDoProdutoNoBanco(
     custo: custoBruto === null || custoBruto === undefined ? null : Number(custoBruto),
     variacoesSemPeso: linhas.filter((v) => !v.peso || v.peso <= 0).length,
   };
+}
+
+/**
+ * O valor de agora, lido do CATÁLOGO — não da trilha.
+ *
+ * A trilha diz de onde o valor veio; quem manda sobre quanto ele é hoje é a
+ * coluna. Uma trilha desatualizada afirmando um valor que o banco já não tem
+ * seria pior que silêncio: a pessoa conferiria o número errado.
+ */
+async function valorDoCampo(
+  clienteId: string,
+  alvo: { tipo: "produto" | "variante"; id: string },
+  campo: string
+): Promise<string | null> {
+  const admin = getSupabaseAdmin();
+  const colunas: Record<string, string> = {
+    custo: "custo",
+    preco: "preco_venda",
+    peso: "peso",
+    sku: "sku",
+    ean: "ean",
+    estoque: "estoque",
+  };
+  const coluna = colunas[campo];
+  if (!coluna) return null;
+  const tabela = alvo.tipo === "variante" ? "produto_variantes" : "produtos";
+  const { data } = await admin
+    .from(tabela)
+    .select(coluna)
+    .eq("id", alvo.id)
+    .eq("cliente_id", clienteId)
+    .maybeSingle();
+  const bruto = (data as Record<string, unknown> | null)?.[coluna];
+  if (bruto === null || bruto === undefined || bruto === "") return null;
+  return String(bruto);
 }
 
 export async function POST(request: Request) {
@@ -175,6 +230,35 @@ export async function POST(request: Request) {
     // O PORTO de busca forte. O tenant vem da SESSAO — nunca do corpo — e por
     // isso um EAN que so existe em outro cliente devolve zero linhas.
     buscar: (t) => rodarTentativa(t, clienteDaSessao),
+    // ---- A ANÁLISE DO CATÁLOGO, em PORTOS e não em dados ----
+    //
+    // Carregar 500 produtos e as variantes deles a cada turno pagaria o preço da
+    // análise em toda pergunta, inclusive nas que não a usam. Assim quem paga é
+    // quem chama — e o tenant fica preso aqui, na sessão, em todos eles.
+    analise: {
+      catalogo: async () => {
+        const c = await catalogoParaAnalise(clienteDaSessao);
+        return { produtos: c.produtos, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
+      },
+      produto: (id) => produtoParaAnalise(clienteDaSessao, id),
+      fontes: async () => {
+        // As capacidades vêm DECLARADAS pelo conector, não de um `if` de ERP.
+        // Hoje nenhum conector ligado declara `ler_custo` — e por isso o Copilot
+        // não promete buscar custo em ERP nenhum.
+        const fontes = await fontesConectadas(clienteDaSessao);
+        return fontes.map((f) => ({
+          nome: f.nome,
+          capacidades: f.capacidades as ReadonlySet<CapacidadeDeFonte>,
+        }));
+      },
+      // Anomalia é CONFLITO, não origem duvidosa: um custo de trinta milhões
+      // precisa de decisão humana, e a validação que o detecta já existe.
+      conflitos: async (produtos) => anomaliasDoCatalogo(produtos),
+      procedencia: async (alvo, campo) => {
+        const valorAtual = await valorDoCampo(clienteDaSessao, alvo, campo);
+        return historicoDoCampo(clienteDaSessao, alvo, campo, valorAtual);
+      },
+    },
   };
 
   // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
@@ -255,6 +339,19 @@ export async function POST(request: Request) {
        */
       let efeitoNoCadastro:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["cadastro"]>
+        | undefined;
+      /**
+       * O plano de resolucao — para a TELA desenhar o painel estruturado.
+       *
+       * O modelo recebeu o resumo; a tela recebe os grupos inteiros. Sao os
+       * MESMOS numeros: os dois saem do mesmo `plano`, calculado no dominio.
+       */
+      let planoDePendencias:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["pendencias"]>
+        | undefined;
+      /** O historico de um campo — a resposta de "de onde veio isso?". */
+      let procedenciaConsultada:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["procedencia"]>
         | undefined;
       const usadas: string[] = [];
 
@@ -442,6 +539,10 @@ export async function POST(request: Request) {
               // O cartão do cadastro. As contagens e o status vêm DAQUI, do
               // servidor — nunca do texto que o modelo escreveu.
               ...(cadastroNaTela ? { cadastro: cadastroNaTela } : {}),
+              // O painel de pendencias e a procedencia. Numeros do DOMINIO, os
+              // mesmos que o modelo recebeu — a tela nao recalcula nada.
+              ...(planoDePendencias ? { pendencias: planoDePendencias } : {}),
+              ...(procedenciaConsultada ? { procedencia: procedenciaConsultada } : {}),
             });
             controlador.close();
             return;
@@ -466,6 +567,8 @@ export async function POST(request: Request) {
             if (r.proposta) proposta = r.proposta;
             if (r.propostaDeAnuncio) propostaDeAnuncio = r.propostaDeAnuncio;
             if (r.escopo) escopoDoLote = r.escopo;
+            if (r.pendencias) planoDePendencias = r.pendencias;
+            if (r.procedencia) procedenciaConsultada = r.procedencia;
             if (r.cadastro) {
               efeitoNoCadastro = {
                 ...r.cadastro,

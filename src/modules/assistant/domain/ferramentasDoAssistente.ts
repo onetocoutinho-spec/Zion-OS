@@ -142,6 +142,40 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
       required: ["produtoId"],
     },
   },
+  {
+    nome: "pendencias",
+    efeito: "le",
+    descricao:
+      "O panorama do que está travado no catálogo, já ANALISADO: quantas pendências existem, quantas eu consigo tratar sem pedir dado novo, quantas dependem de decisão do lojista, e quantas estão em conflito. Use para \"o que precisa de mim?\", \"quais produtos estão com problema?\" e \"o que eu resolvo primeiro?\". Com produtoId, explica por que AQUELE produto está travado, descendo até a variante. Os números vêm daqui — nunca escreva um que esta ferramenta não devolveu.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        produtoId: {
+          type: "STRING",
+          description:
+            "Vazio para o panorama da loja. Preenchido para explicar um produto — id vindo de achar_produto.",
+        },
+      },
+    },
+  },
+  {
+    nome: "procedencia",
+    efeito: "le",
+    descricao:
+      "De onde veio o valor de um campo: quem informou, por qual caminho, quando, e se existe valor anterior registrado. Use para \"de onde veio esse custo?\", \"quem colocou esse peso?\", \"esse SKU veio da planilha?\". IMPORTANTE: quando a origem não foi registrada, diga exatamente isso — a maior parte desta base é anterior ao registro de procedência, e inventar uma origem provável é pior que admitir que não se sabe.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        produtoId: { type: "STRING" },
+        campo: { type: "STRING", enum: ["custo", "preco", "peso", "sku", "ean", "estoque"] },
+        varianteId: {
+          type: "STRING",
+          description: "Quando a pergunta é sobre uma variante específica. Vazio para o produto.",
+        },
+      },
+      required: ["produtoId", "campo"],
+    },
+  },
 ];
 
 /**
@@ -177,6 +211,22 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
         },
       },
       required: ["campo", "valor", "unidade"],
+    },
+  },
+  {
+    nome: "preparar_resolucao",
+    efeito: "propoe",
+    descricao:
+      "Monta a correção de UMA pendência que eu consigo preparar sem te perguntar o valor — hoje: variantes sem peso num produto cujas outras variantes já foram pesadas com o MESMO valor. NÃO grava: monta o cartão que o lojista confirma clicando. Use o `alvo` que veio de `pendencias` (o produtoId da preparação). \"Preparar sem perguntar\" NÃO é \"aplicar sem confirmar\": o lojista continua clicando.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        alvo: {
+          type: "STRING",
+          description: "O produtoId da preparação, exatamente como `pendencias` devolveu.",
+        },
+      },
+      required: ["alvo"],
     },
   },
   {

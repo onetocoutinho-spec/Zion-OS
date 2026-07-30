@@ -45,8 +45,67 @@ import {
   tentativasDoCadastro,
 } from "@/modules/assistant/domain/candidatosDoCadastro";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
+import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/procedencia";
 
 export const maxDuration = 30;
+
+/**
+ * O rastro de PROCEDÊNCIA de uma escrita que acabou de acontecer.
+ *
+ * A partir daqui, "de onde veio esse custo?" tem resposta para tudo que o
+ * Copilot gravar. O que veio antes continua sem origem — e a resposta honesta
+ * para esses é "não foi registrado", nunca um palpite.
+ *
+ * Origem `cliente` em todos: o valor foi DITO pelo lojista na conversa. O
+ * método é `copilot` porque é por onde ele entrou. Separar os dois é o ponto:
+ * quem afirmou o valor não é o mesmo que o caminho que o trouxe.
+ */
+function rastroDaEscrita(
+  p: PropostaPersistida,
+  usuario: string | null,
+  depois: unknown
+): RegistroDeProcedencia[] {
+  const comum = {
+    clienteId: p.clienteId,
+    origem: "cliente" as const,
+    metodo: "copilot" as const,
+    ator: usuario,
+    evidencia: { registro: "copilot_propostas", id: p.id },
+  };
+
+  if (p.tipo === "custo") {
+    return [
+      {
+        ...comum,
+        entidade: { tipo: "produto", id: p.alvos[0] },
+        campo: "custo",
+        valor: String(p.valor),
+      },
+    ];
+  }
+  if (p.tipo === "peso") {
+    // Uma linha POR ALVO. O peso desce para todas as variantes do produto — é a
+    // semântica de `pesoDeProduto` — então o alvo do rastro é o produto.
+    // Em KG, a unidade da coluna; a Proposal carrega gramas.
+    return p.alvos.map((id) => ({
+      ...comum,
+      entidade: { tipo: "produto" as const, id },
+      campo: "peso",
+      valor: String(p.valor / 1000),
+    }));
+  }
+  // CADASTRO: o produto inteiro nasceu na conversa. Registramos os campos que a
+  // criação afirmou — não os que ela deixou vazios, porque campo vazio não tem
+  // procedência.
+  const criado = depois as { produtoId?: string; nome?: string; sku?: string } | null;
+  if (!criado?.produtoId) return [];
+  const alvo = { tipo: "produto" as const, id: criado.produtoId };
+  const registros: RegistroDeProcedencia[] = [];
+  if (criado.nome) registros.push({ ...comum, entidade: alvo, campo: "nome", valor: criado.nome });
+  if (criado.sku) registros.push({ ...comum, entidade: alvo, campo: "sku", valor: criado.sku });
+  registros.push({ ...comum, entidade: alvo, campo: "preco", valor: String(p.valor) });
+  return registros;
+}
 
 /**
  * Lê AGORA os campos que a proposta observou quando nasceu.
@@ -389,6 +448,11 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
+    // O RASTRO, depois da gravação e depois da auditoria. Nunca antes: registrar
+    // a origem de um valor que não chegou a existir criaria uma trilha que
+    // aponta para nada.
+    await registrarVarias(rastroDaEscrita(p, usuario, depois));
+
     const criado = depois as { produtoId?: string; nome?: string } | null;
     return Response.json({
       ok: true,

@@ -74,6 +74,25 @@ import {
 } from "./referenciasDaConversa";
 import { centavosParaReais } from "./fatosDoCadastro";
 import type { Precondicao } from "./propostaPersistida";
+import {
+  pendenciasDoCatalogo as calcularPendencias,
+  pendenciasDoProduto,
+  pesoConhecidoDoProduto,
+  variantesSemPeso,
+  type ProdutoParaAnalise,
+} from "../../catalog/domain/pendenciasDoCatalogo";
+import {
+  explicarBloqueio,
+  panorama,
+  planejarResolucao,
+  type FonteConectada,
+  type PlanoDeResolucao,
+} from "./resolucaoDePendencias";
+import {
+  explicarHistorico,
+  type ConflitoDeProcedencia,
+  type HistoricoDeCampo,
+} from "../../catalog/domain/procedenciaDeCampo";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
@@ -109,6 +128,36 @@ export interface ContextoDasFerramentas {
    * corpo — que é a definição do problema que a Proposal existe para resolver.
    */
   cadastro?: ContextoDoCadastro;
+  /**
+   * A ANÁLISE do catálogo — pendências, conflitos, procedência.
+   *
+   * Portos e não dados: carregar 500 produtos e as variantes deles a cada turno
+   * pagaria o preço da análise em toda pergunta, inclusive nas que não a usam.
+   * Assim quem paga é quem chama.
+   *
+   * Montado pela ROTA, como o do cadastro, e pelo mesmo motivo: um catálogo que
+   * o navegador mandasse seria um catálogo que ele escolheu.
+   */
+  analise?: ContextoDaAnalise;
+}
+
+/** Os portos da análise de pendências. Tudo com o tenant já preso pela rota. */
+export interface ContextoDaAnalise {
+  catalogo: () => Promise<{
+    produtos: readonly ProdutoParaAnalise[];
+    totalNoCatalogo: number;
+    truncado: boolean;
+  }>;
+  produto: (produtoId: string) => Promise<ProdutoParaAnalise | null>;
+  fontes: () => Promise<readonly FonteConectada[]>;
+  /** Os conflitos conhecidos para estes produtos. Vazio é resposta legítima. */
+  conflitos: (
+    produtos: readonly ProdutoParaAnalise[]
+  ) => Promise<readonly ConflitoDeProcedencia[]>;
+  procedencia: (
+    alvo: { tipo: "produto" | "variante"; id: string },
+    campo: string
+  ) => Promise<HistoricoDeCampo>;
 }
 
 /** Tudo que a ferramenta de cadastro precisa e não pode inventar sozinha. */
@@ -187,6 +236,20 @@ export interface ResultadoDaFerramenta {
    * em `copilot_cadastros` mais, quando for o caso, uma Proposal.
    */
   cadastro?: EfeitoNoCadastro;
+  /**
+   * O plano de resolução — para a TELA desenhar o painel estruturado.
+   *
+   * Separado do `saida` porque o modelo recebe o resumo e a tela recebe os
+   * grupos inteiros. Mandar as centenas de alvos ao modelo estouraria o
+   * contexto sem ajudar ninguém a decidir.
+   */
+  pendencias?: {
+    plano: PlanoDeResolucao;
+    totalNoCatalogo: number;
+    truncado: boolean;
+  };
+  /** O histórico de um campo — a resposta de "de onde veio isso?". */
+  procedencia?: HistoricoDeCampo;
 }
 
 /** Um pedido do modelo, ainda não validado. */
@@ -508,9 +571,253 @@ export async function executarFerramenta(
     case "gerenciar_cadastro":
       return gerenciarCadastro(args, ctx);
 
+    case "pendencias":
+      return analisarPendencias(args, ctx);
+
+    case "procedencia":
+      return consultarProcedencia(args, ctx);
+
+    case "preparar_resolucao":
+      return prepararResolucao(args, ctx);
+
     default:
       return { saida: { erro: `Ferramenta desconhecida: ${nome}` } };
   }
+}
+
+/**
+ * "O que precisa de mim?" e "por que este produto está travado?".
+ *
+ * Sem `produtoId` devolve o PANORAMA já analisado — quantas pendências, quantas
+ * eu preparo sozinho, quantas viram decisão sua. Com `produtoId`, desce até a
+ * variante.
+ *
+ * O modelo recebe NÚMEROS PRONTOS e as decisões já agrupadas. Ele não soma nada:
+ * é por esse número que o lojista decide o dia dele.
+ */
+async function analisarPendencias(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.analise;
+  if (!a) return { saida: { erro: "A análise do catálogo não está disponível nesta tela." } };
+
+  const produtoId = texto(args, "produtoId");
+
+  // ---- DRILL-DOWN: um produto ----
+  if (produtoId) {
+    const produto = await a.produto(produtoId);
+    if (!produto) {
+      return { saida: { erro: "Não achei esse produto no seu catálogo. Use achar_produto antes." } };
+    }
+    const pendencias = pendenciasDoProduto(produto);
+    const explicacao = explicarBloqueio(produto, pendencias);
+    if (!explicacao) {
+      return {
+        saida: {
+          produtoId: produto.id,
+          nome: produto.nome,
+          variantes: produto.variantes.length,
+          travado: false,
+          frase: `${produto.nome} não tem pendência conhecida.`,
+        },
+      };
+    }
+    return {
+      saida: {
+        produtoId: explicacao.produtoId,
+        nome: explicacao.nome,
+        variantes: explicacao.variantes,
+        travado: true,
+        // O que trava, POR TIPO e com a contagem de alvos — é o que permite
+        // dizer "4 das 6 variantes não têm peso" em vez de "falta peso".
+        motivos: explicacao.motivos.map((m) => ({
+          o_que: m.tipo,
+          alvos: m.quantos,
+          impede: m.impede,
+          bloqueia: m.bloqueia,
+        })),
+        capacidadesTravadas: explicacao.travadas,
+      },
+    };
+  }
+
+  // ---- PANORAMA: a loja ----
+  const { produtos, totalNoCatalogo, truncado } = await a.catalogo();
+  const pendencias = calcularPendencias(produtos);
+  const [fontes, conflitos] = await Promise.all([a.fontes(), a.conflitos(produtos)]);
+  const plano = planejarResolucao(pendencias, { produtos, fontes, conflitos });
+  const p = panorama(plano);
+
+  return {
+    // O plano inteiro vai para a TELA (cartão estruturado); o modelo recebe o
+    // resumo. Mandar as centenas de alvos ao modelo estouraria contexto e não
+    // ajudaria ninguém a decidir.
+    pendencias: { plano, totalNoCatalogo, truncado },
+    saida: {
+      analisadas: p.analisadas,
+      semNovoDado: p.semNovoDado,
+      decisoes: p.decisoes,
+      alvosDasDecisoes: p.alvosDasDecisoes,
+      conflitos: p.conflitos,
+      bloqueadas: p.bloqueadas,
+      nadaAFazer: p.nadaAFazer,
+      produtosAnalisados: produtos.length,
+      ...(truncado
+        ? {
+            aviso: `Analisei ${produtos.length} de ${totalNoCatalogo} produtos. Diga isso ao lojista — não afirme que olhou o catálogo inteiro.`,
+          }
+        : {}),
+      // As decisões JÁ AGRUPADAS e na ordem de impacto. É esta lista que vira
+      // "preciso de 3 decisões suas".
+      decisoesAgrupadas: plano.decisoes.slice(0, 6).map((d) => ({
+        id: d.id,
+        pergunta: d.pergunta,
+        alvos: d.quantos,
+        destrava: d.destrava,
+        bloqueia: d.bloqueia,
+        // Compartilhável = UMA resposta serve para todos. Não compartilhável =
+        // uma pergunta, N respostas. A diferença muda o que se pede.
+        umaRespostaServeParaTodos: d.escopo === "valor_compartilhado",
+      })),
+      preparaveis: plano.preparaveis.slice(0, 6).map((x) => ({
+        alvo: x.produtoId,
+        resumo: x.resumo,
+        variantes: x.alvos.length,
+      })),
+      conflitosDetalhados: plano.conflitos.slice(0, 6).map((c) => ({
+        campo: c.campo,
+        alvo: c.alvo.rotulo,
+        explicacao: c.explicacao,
+      })),
+      bloqueadasDetalhe: plano.bloqueadas,
+      ...(plano.consultaveis.length === 0
+        ? {
+            fontes:
+              "Nenhuma fonte conectada declara saber custo ou estoque. NÃO prometa buscar esses dados em ERP.",
+          }
+        : { fontes: plano.consultaveis }),
+    },
+  };
+}
+
+/**
+ * "De onde veio esse custo?"
+ *
+ * Devolve o TEXTO montado pelo domínio. A diferença entre "origem não
+ * registrada" e "veio da planilha" é a diferença entre honestidade e invenção,
+ * e ela não pode depender de como o modelo resolveu escrever a frase.
+ */
+async function consultarProcedencia(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.analise;
+  if (!a) return { saida: { erro: "A consulta de procedência não está disponível nesta tela." } };
+
+  const produtoId = texto(args, "produtoId");
+  const varianteId = texto(args, "varianteId");
+  const campo = texto(args, "campo");
+  if (!produtoId || !campo) {
+    return { saida: { erro: "Preciso do produto e do campo." } };
+  }
+
+  const produto = await a.produto(produtoId);
+  if (!produto) {
+    return { saida: { erro: "Não achei esse produto no seu catálogo." } };
+  }
+  const alvo = varianteId
+    ? ({ tipo: "variante", id: varianteId } as const)
+    : ({ tipo: "produto", id: produtoId } as const);
+
+  const historico = await a.procedencia(alvo, campo);
+  const rotulo = varianteId
+    ? `${produto.nome} (variante)`
+    : produto.nome;
+
+  return {
+    procedencia: historico,
+    saida: {
+      // A FRASE vem pronta. O modelo repassa; ele não decide se pode chutar.
+      frase: explicarHistorico(historico, rotulo),
+      campo: historico.campo,
+      valorAtual: historico.valorAtual,
+      origemRegistrada: !historico.anteriorAoRegistro,
+      anteriores: historico.anteriores.length,
+      ...(historico.anteriorAoRegistro
+        ? {
+            aviso:
+              "A origem NÃO foi registrada. Diga exatamente isso. Não sugira de onde o valor 'provavelmente' veio.",
+          }
+        : {}),
+    },
+  };
+}
+
+/**
+ * Monta a correção que não precisa perguntar valor a ninguém.
+ *
+ * REUSA O LOTE DE PESO inteiro: o mesmo `montarEscopo`, o mesmo cartão, a mesma
+ * Proposal com escopo congelado, a mesma revalidação e a mesma reserva atômica.
+ * Não existe segundo caminho de escrita — existe um alvo novo para o caminho
+ * que já estava provado.
+ */
+async function prepararResolucao(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.analise;
+  if (!a) return { saida: { erro: "A análise do catálogo não está disponível nesta tela." } };
+
+  const produtoId = texto(args, "alvo");
+  const produto = produtoId ? await a.produto(produtoId) : null;
+  if (!produto) {
+    return { saida: { montada: false, motivo: "Não achei esse produto no seu catálogo." } };
+  }
+
+  const valor = pesoConhecidoDoProduto(produto);
+  if (valor === null) {
+    // Ou não há peso nenhum, ou as irmãs discordam. Nos dois casos, perguntar.
+    return {
+      saida: {
+        montada: false,
+        motivo:
+          "Não consigo preparar sozinho: as variantes deste produto ou não têm peso, ou têm pesos diferentes entre si. Pergunte o peso ao lojista.",
+      },
+    };
+  }
+  const faltando = variantesSemPeso(produto);
+  if (faltando.length === 0) {
+    return { saida: { montada: false, motivo: "Todas as variantes deste produto já têm peso." } };
+  }
+
+  const escopo = montarEscopo(
+    "peso",
+    [
+      {
+        id: produto.id,
+        nome: produto.nome,
+        unidades: produto.variantes.length,
+        unidadesSemDado: faltando.length,
+        valorAtual: null,
+      },
+    ],
+    valor,
+    (v) => `${v} g`
+  );
+
+  return {
+    escopo: { ...escopo, campo: "peso", valor },
+    saida: {
+      montada: true,
+      resumo: escopo.resumo,
+      variantesAfetadas: faltando.length,
+      valorGramas: valor,
+      deOnde: "das outras variantes deste mesmo produto, que já estão com esse peso",
+      aviso:
+        "Preparei sem te perguntar o valor — mas NADA foi gravado. O lojista confirma clicando.",
+    },
+  };
 }
 
 /**
