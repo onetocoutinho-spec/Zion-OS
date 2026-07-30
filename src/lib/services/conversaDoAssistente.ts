@@ -17,6 +17,7 @@ import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaD
 import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
 import type { PendenciasNaTela } from "../../modules/assistant/domain/cartaoDePendencias";
 import type { HistoricoDeCampo } from "../../modules/catalog/domain/procedenciaDeCampo";
+import type { Consequencia } from "../../modules/workspace/domain/consequencia";
 import type {
   Preparacao,
   selecionarParaPreparar,
@@ -236,6 +237,14 @@ export interface ResultadoDaConfirmacao {
   afetados?: number;
   /** O produto que nasceu, quando a proposta era de cadastro. */
   produtoId?: string;
+  /**
+   * O que esta operação comprovadamente causou — calculado pelo DOMÍNIO, no
+   * servidor, sobre os registros que a proposta ofereceu.
+   *
+   * `null` quando não é demonstrável, e `null` é resultado válido. A tela NÃO
+   * recalcula, não estima e não transforma `null` em zero: ela só apresenta.
+   */
+  consequencia?: Consequencia | null;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -254,5 +263,8 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     ...(dados.motivo ? { motivo: dados.motivo } : {}),
     ...(typeof dados.afetados === "number" ? { afetados: dados.afetados } : {}),
     ...(typeof dados.produtoId === "string" ? { produtoId: dados.produtoId } : {}),
+    // Atravessa como veio. Este arquivo só transporta — não deriva contagem,
+    // não completa campo faltante e não troca `null` por zero.
+    ...(dados.consequencia !== undefined ? { consequencia: dados.consequencia } : {}),
   };
 }

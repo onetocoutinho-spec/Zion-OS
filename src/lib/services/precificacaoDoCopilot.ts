@@ -42,6 +42,7 @@ import type {
   ProdutoParaTriagem,
 } from "../../modules/pricing/domain/conversaDePreco";
 import { anomaliaDeCusto } from "../../modules/catalog/domain/anomaliasDoCatalogo";
+import { embalagemDe } from "../../modules/pricing/domain/embalagemDoProduto";
 
 /**
  * Quantos produtos a triagem varre por vez.
@@ -122,26 +123,11 @@ export async function configuracaoDoLojista(clienteId: string): Promise<Configur
   }
 }
 
-/**
- * A embalagem do produto — a MAIOR entre as variantes.
- *
- * O frete cobra pela caixa que sai, e é a maior que decide. `null` quando
- * nenhuma variante tem medida: aí o envio é pendência, nunca estimativa.
- */
-function embalagemDe(variantes: readonly LinhaDeVariante[]): ModeloTaxas["embalagem"] {
-  const maior = (campo: "peso" | "altura" | "largura" | "comprimento") =>
-    variantes.reduce((m, v) => Math.max(m, Number(v[campo] ?? 0)), 0);
-  const e = {
-    // A coluna guarda KG; o domínio de envio fala GRAMAS.
-    pesoGramas: Math.round(maior("peso") * 1000),
-    alturaCm: maior("altura"),
-    larguraCm: maior("largura"),
-    comprimentoCm: maior("comprimento"),
-  };
-  const temAlgo =
-    e.pesoGramas > 0 || e.alturaCm > 0 || e.larguraCm > 0 || e.comprimentoCm > 0;
-  return temAlgo ? e : null;
-}
+// `embalagemDe` MUDOU-SE para `modules/pricing/domain/embalagemDoProduto` —
+// mesmo corpo, nada reescrito. A consequência de um lote de peso precisa
+// aplicá-la sobre o estado ANTES e sobre o de DEPOIS da escrita, e uma segunda
+// implementação divergiria em silêncio, produzindo um número errado num cartão
+// que o lojista lê como fato.
 
 function montarTaxas(
   p: LinhaDeProduto,

@@ -28,6 +28,11 @@ import {
   registrarAcao,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
+import { avaliacaoDeAlvos, type MedidasAnteriores } from "@/lib/services/avaliacaoDeAlvos";
+import { consequenciaDoLote } from "@/modules/workspace/domain/consequenciaDoLote";
+import type { Consequencia } from "@/modules/workspace/domain/consequencia";
+import type { MedidasDaVariante } from "@/modules/pricing/domain/embalagemDoProduto";
+import { ressalvaDoPreenchimento } from "@/modules/assistant/domain/desfechoDoPreenchimento";
 import {
   explicarImpedimento,
   podeExecutar,
@@ -319,10 +324,44 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   return estado;
 }
 
+/**
+ * Agrupa as medidas lidas ANTES do UPDATE, por produto.
+ *
+ * É o retrato mínimo que prova o estado anterior de `embalagemDe` — e nada além
+ * dele. Não é histórico: nasce e morre nesta requisição.
+ */
+function agruparPorProduto(linhas: unknown): MedidasAnteriores {
+  const mapa = new Map<string, MedidasDaVariante[]>();
+  for (const l of (linhas ?? []) as ({ produto_id: string } & MedidasDaVariante)[]) {
+    const lista = mapa.get(l.produto_id) ?? [];
+    lista.push({
+      peso: l.peso,
+      altura: l.altura,
+      largura: l.largura,
+      comprimento: l.comprimento,
+    });
+    mapa.set(l.produto_id, lista);
+  }
+  return mapa;
+}
+
 /** Executa a escrita pelo mesmo caminho que a tela usa. Nunca um segundo. */
-async function gravar(
-  p: PropostaPersistida
-): Promise<{ afetados: number; antes: unknown; depois: unknown }> {
+async function gravar(p: PropostaPersistida): Promise<{
+  afetados: number;
+  antes: unknown;
+  depois: unknown;
+  /**
+   * Quantas variações estavam SEM PESO na leitura que precedeu o UPDATE.
+   *
+   * Só os caminhos de peso produzem. Serve para a mensagem não afirmar mais do
+   * que aconteceu: se `afetados < elegiveis`, alguém preencheu alguma delas
+   * entre a leitura e a escrita, e o operador precisa saber disso — é a
+   * parcialidade que esta correção conscientemente NÃO elimina (ver INC-002).
+   */
+  elegiveis?: number;
+  /** Só o lote de peso produz. Efêmero — ver `agruparPorProduto`. */
+  medidasAntes?: MedidasAnteriores;
+}> {
   const admin = getSupabaseAdmin();
   const produtoId = p.alvos[0];
 
@@ -418,19 +457,42 @@ async function gravar(
   // por isso nao e tocada.
   if (p.alvos.length > 1) {
     const emKgLote = p.valor / 1000;
+    // As DIMENSÕES entram neste select — e só por isto: `embalagemDe` considera
+    // embalagem existente se QUALQUER um entre peso, altura, largura e
+    // comprimento for > 0. Sem as três, o retrato do estado anterior estaria
+    // incompleto e a comparação causal seria um palpite.
+    //
+    // A escrita não toca dimensão nenhuma; elas entram no retrato, não na
+    // mutação. O payload de auditoria abaixo continua exatamente o mesmo.
     const { data: antesLote } = await admin
       .from("produto_variantes")
-      .select("id, produto_id, peso")
+      .select("id, produto_id, peso, altura, largura, comprimento")
       .in("produto_id", p.alvos);
+    const elegiveisLote = ((antesLote ?? []) as { peso: number | null }[]).filter(
+      (v) => !v.peso || v.peso <= 0
+    ).length;
     const { data, error } = await admin
       .from("produto_variantes")
       .update({ peso: emKgLote })
       .in("produto_id", p.alvos)
       .eq("cliente_id", p.clienteId)
+      // PREENCHER, não SUBSTITUIR — ver INC-002.
+      //
+      // O predicado é aplicado pelo BANCO, dentro do UPDATE. Filtrar em
+      // JavaScript sobre `antesLote` pareceria equivalente e deixaria a janela
+      // entre a leitura e a escrita: uma variante preenchida nesse intervalo
+      // seria sobrescrita mesmo assim.
+      //
+      // `.lte("peso", 0)` e não `.or("peso.is.null,...")`: a coluna é
+      // `numeric NOT NULL DEFAULT 0`, então `IS NULL` é inalcançável. É a MESMA
+      // definição de "sem peso" que `lerEstadoAtual` usa na revalidação — nenhuma
+      // semântica nova entra aqui.
+      .lte("peso", 0)
       .select("id, produto_id");
     if (error) throw new Error(error.message);
     return {
       afetados: data?.length ?? 0,
+      elegiveis: elegiveisLote,
       // RESUMO, nao a lista inteira: com milhares de alvos o payload de
       // auditoria viraria um problema proprio. O que precisa ser reconstruivel
       // sao os IDS (ja em `alvos`) e o ESTADO — a contagem por alvo basta.
@@ -441,6 +503,10 @@ async function gravar(
         ).length,
       },
       depois: { variacoesAtualizadas: data?.length ?? 0, pesoKg: emKgLote },
+      // EFÊMERO. Fora do `antes` de propósito: `antes` é o payload de auditoria e
+      // não muda de forma. Isto vive só nesta execução, serve só à consequência,
+      // não é persistido, não vai ao modelo e não chega à tela.
+      medidasAntes: agruparPorProduto(antesLote),
     };
   }
 
@@ -450,14 +516,20 @@ async function gravar(
     .from("produto_variantes")
     .select("id, peso")
     .eq("produto_id", produtoId);
+  const elegiveis = ((antes ?? []) as { peso: number | null }[]).filter(
+    (v) => !v.peso || v.peso <= 0
+  ).length;
   const { data, error } = await admin
     .from("produto_variantes")
     .update({ peso: emKg })
     .eq("produto_id", produtoId)
     .eq("cliente_id", p.clienteId)
+    // PREENCHER, não SUBSTITUIR — o mesmo predicado do ramo de lote, pelo mesmo
+    // motivo. Este caminho é o do caso Vizzano: 39 variantes, 3 sem peso.
+    .lte("peso", 0)
     .select("id, peso");
   if (error) throw new Error(error.message);
-  return { afetados: data?.length ?? 0, antes, depois: data ?? null };
+  return { afetados: data?.length ?? 0, elegiveis, antes, depois: data ?? null };
 }
 
 /**
@@ -482,6 +554,56 @@ function desfechoDaGravacao(
     return "parcial";
   }
   return "sucesso";
+}
+
+/**
+ * A consequência comprovável desta operação — ou `null`.
+ *
+ * ESCOPO DESTE SLICE: só o lote de peso, e só o desbloqueio de pricing. Os
+ * outros tipos devolvem `null` porque não têm consequência comprovável hoje, e
+ * `null` é resultado válido — não é lacuna a preencher com estimativa.
+ *
+ * R1 vive em duas camadas que não se substituem:
+ *   - `avaliacaoDeAlvos` recebe IDS. Não existe caminho em que ela leia outra
+ *     coisa: não há parâmetro para isso.
+ *   - `consequenciaDoLote` particiona pelo escopo e conta `foraDoEscopo`.
+ *
+ * A segunda existe para PROVAR a primeira. Se alguém trocar o porto por uma
+ * leitura ampla, `foraDoEscopo` deixa de ser zero e o teste da fiação real acusa.
+ */
+async function calcularConsequencia(
+  p: PropostaPersistida,
+  afetados: number,
+  medidasAntes: MedidasAnteriores | undefined
+): Promise<Consequencia | null> {
+  // Sem retrato anterior não há comparação. É o caso de todo tipo que não seja
+  // lote de peso — e de um lote cuja leitura prévia falhou.
+  if (p.tipo !== "peso" || p.alvos.length <= 1 || !medidasAntes) return null;
+
+  try {
+    const avaliacoes = await avaliacaoDeAlvos(p.clienteId, p.alvos, medidasAntes);
+    const r = consequenciaDoLote({
+      resumo: p.resumo,
+      afetados,
+      alvos: p.alvos,
+      avaliacoes,
+    });
+
+    // O sensor de R1 em produção. Zero é o esperado; qualquer outra coisa
+    // significa que a leitura trouxe algo que ninguém ofereceu ao lojista, e
+    // isso precisa aparecer no log antes de aparecer num cartão.
+    if (r.foraDoEscopo > 0) {
+      console.error(
+        `[copilot/consequencia] R1 VIOLADA: ${r.foraDoEscopo} avaliação(ões) fora de p.alvos na proposta ${p.id}`
+      );
+    }
+    return r.consequencia;
+  } catch (e) {
+    // Ver a chamada: a escrita já está consumada e auditada. Aqui só se perde o
+    // número.
+    console.error("[copilot/consequencia] falha ao calcular (a escrita NÃO foi afetada):", e);
+    return null;
+  }
 }
 
 export async function POST(request: Request) {
@@ -579,7 +701,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { afetados, antes, depois } = await gravar(p);
+    const { afetados, antes, depois, medidasAntes, elegiveis } = await gravar(p);
     const resultado = desfechoDaGravacao(afetados, depois);
     await registrarAcao({
       clienteId: clienteDaSessao,
@@ -596,9 +718,27 @@ export async function POST(request: Request) {
       afetados,
     });
     if (afetados === 0) {
+      // A FRASE NÃO DIAGNOSTICA, porque não dá para diagnosticar daqui.
+      //
+      // Zero linhas passou a ter mais de uma causa desde o INC-002. Para peso,
+      // o UPDATE leva `peso <= 0`: se alguém preencher as últimas variações
+      // entre a revalidação e a escrita, nada é escrito — e o produto está lá,
+      // inteiro. Antes disso, zero só acontecia quando o alvo sumia, e a frase
+      // "não foi encontrado" era verdadeira.
+      //
+      // `elegiveis` NÃO serve para separar os casos: ele é o retrato ANTERIOR
+      // ao UPDATE, e na corrida continua > 0 justamente quando nada foi escrito.
+      // Distinguir exigiria uma consulta nova depois da escrita — e uma resposta
+      // dessas seria um palpite com cara de causa.
+      //
+      // `nenhuma linha afetada` continua no rastro técnico, que é onde a
+      // investigação acontece.
       await marcarProposta(p.id, "falhou", "nenhuma linha afetada");
       return Response.json(
-        { ok: false, mensagem: "Não consegui gravar — o produto não foi encontrado." },
+        {
+          ok: false,
+          mensagem: "Não gravei nada — os dados podem ter mudado desde a confirmação.",
+        },
         { status: 409 }
       );
     }
@@ -607,10 +747,19 @@ export async function POST(request: Request) {
     // aponta para nada.
     await registrarVarias(rastroDaEscrita(p, usuario, depois, antes));
 
+    // ---- A CONSEQUÊNCIA. Por último, e best-effort.
+    //
+    // A escrita já aconteceu, já foi auditada e já deixou rastro. Nada aqui pode
+    // desfazer nem reclassificar isso: o `catch` devolve `null` e o sucesso
+    // continua sucesso. Uma operação que deu certo nunca vira erro por causa de
+    // um número que não pôde ser calculado.
+    const consequencia = await calcularConsequencia(p, afetados, medidasAntes);
+
     const criado = depois as { produtoId?: string; nome?: string } | null;
     return Response.json({
       ok: true,
       afetados,
+      consequencia,
       mensagem:
         p.tipo === "cadastro"
           ? `Produto criado: ${criado?.nome ?? p.resumo}`
@@ -618,7 +767,7 @@ export async function POST(request: Request) {
             ? `Título trocado. ${p.resumo}`
             : p.tipo === "preco"
               ? `Preço aplicado no seu catálogo. ${p.resumo}`
-              : `Pronto. ${p.resumo}`,
+              : `Pronto. ${p.resumo}${ressalvaDoPreenchimento(afetados, elegiveis)}`,
       ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
     });
   } catch (e) {

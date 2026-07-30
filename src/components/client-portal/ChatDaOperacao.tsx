@@ -33,6 +33,8 @@ import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
 import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
+import type { Consequencia } from "@/modules/workspace/domain/consequencia";
+import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -131,6 +133,14 @@ interface Turno {
     stale?: boolean;
     /** O produto que nasceu, quando a proposta era de cadastro. */
     produtoId?: string;
+    /**
+     * O que a operação comprovadamente causou. Vem PRONTO do servidor.
+     *
+     * A tela não recalcula, não consulta produto, não deriva contagem e não
+     * transforma `null` em zero. Se vier `null`, não há cartão de consequência —
+     * e isso é um resultado, não uma lacuna a preencher.
+     */
+    consequencia?: Consequencia | null;
   };
   /**
    * O cadastro em conversa — estado do Draft PERSISTIDO, vindo do servidor.
@@ -438,7 +448,11 @@ export function ChatDaOperacao({
             i === indice
               ? {
                   ...turno,
-                  desfecho: ehCadastro ? desfechoDaCriacao(r) : desfechoDaConfirmacao(r),
+                  desfecho: {
+                    ...(ehCadastro ? desfechoDaCriacao(r) : desfechoDaConfirmacao(r)),
+                    // Atravessa como veio do servidor. Nada é derivado aqui.
+                    ...(r.consequencia !== undefined ? { consequencia: r.consequencia } : {}),
+                  },
                 }
               : turno
           )
@@ -1509,6 +1523,35 @@ function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
  *   concluído → vira registro, sem botão
  *   obsoleto  → diz que nada foi alterado, sem botão
  */
+/**
+ * O que a operação comprovadamente causou.
+ *
+ * ESTE COMPONENTE NÃO CALCULA NADA. Ele recebe um `Consequencia` pronto do
+ * servidor e escolhe palavras. Não consulta produto, não soma, não estima, e não
+ * transforma `null` em zero — as decisões de o que vale mostrar são de
+ * `ofertasQueValem` e `rotuloDoDesbloqueio`, no domínio, com teste.
+ *
+ * Quando o servidor contou e deu ZERO, não há oferta: `ofertasQueValem` filtra o
+ * zero. O fato continua registrado na resposta; a tela só não promete uma tela
+ * que estaria vazia.
+ */
+function Consequencias({ c }: { c: Consequencia }) {
+  const ofertas = ofertasQueValem(c);
+  if (ofertas.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Isso desbloqueou</p>
+      <ul className="mt-1.5 space-y-1">
+        {ofertas.map((d) => (
+          <li key={d.modo} className="text-sm text-zinc-300">
+            {rotuloDoDesbloqueio(d)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CartaoDoLote({
   e,
   desfecho,
@@ -1517,7 +1560,12 @@ function CartaoDoLote({
   aoDescartar,
 }: {
   e: EscopoNaTela;
-  desfecho?: { ok: boolean; mensagem: string; cegoParaAIL?: boolean };
+  desfecho?: {
+    ok: boolean;
+    mensagem: string;
+    cegoParaAIL?: boolean;
+    consequencia?: Consequencia | null;
+  };
   ocupado: boolean;
   aoConfirmar: () => void;
   aoDescartar: () => void;
@@ -1526,16 +1574,21 @@ function CartaoDoLote({
   // vezes — e "já foi feito" chega aqui como SUCESSO, porque foi.
   if (desfecho) {
     return (
-      <p
-        className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}
-      >
-        {desfecho.ok ? (
-          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
-        ) : (
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        )}
-        {desfecho.mensagem}
-      </p>
+      <div className="space-y-2">
+        <p
+          className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}
+        >
+          {desfecho.ok ? (
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          )}
+          {desfecho.mensagem}
+        </p>
+        {desfecho.ok && desfecho.consequencia ? (
+          <Consequencias c={desfecho.consequencia} />
+        ) : null}
+      </div>
     );
   }
 

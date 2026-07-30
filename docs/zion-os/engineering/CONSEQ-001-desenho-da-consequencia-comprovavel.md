@@ -1,7 +1,23 @@
 # CONSEQ-001 — Desenho: consequência comprovável, do domínio à superfície
 
 **Data:** 2026-07-30 · **Branch:** `feat/copilot-lote-com-escopo-congelado` @ `ebdf2e1`
-**Estado:** DESENHO. Nada implementado. Aguarda autorização.
+**Estado quando escrito:** DESENHO. Nada implementado. Aguardava autorização.
+**Estado atual:** **IMPLEMENTADO** — o slice §F (peso em lote → pricing) foi
+autorizado e entregue. O desenho abaixo permanece **como foi aprovado**, sem
+reescrita retrospectiva: as perguntas, as invariantes, a matriz dos cinco modos e
+o teto das conclusões valem exatamente como estão.
+
+> **Uma divergência entre o desenho e o implementado, registrada e não escondida.**
+> A §F previa comparar `avaliar(antes)` com `avaliar(depois)` sem dizer de onde
+> viria o `antes`. Ao implementar descobriu-se que a escrita destrói esse estado e
+> que `embalagemDe` usa o MÁXIMO entre as variantes — então pertencer a `alvos`
+> **não** prova "estava bloqueado por peso". A solução foi capturar um retrato
+> efêmero na leitura que a própria gravação já fazia. Está em
+> [INC-002](../../engineering/incidents/INC-002-lote-de-peso-sobrescreve-variantes-preenchidas.md)
+> e nos controles de `causalidadeDoPeso.test.ts`.
+>
+> Nada mais do desenho mudou. As três dimensões não comprováveis continuam não
+> comprováveis, e o teto continua o mesmo.
 
 Direção que este desenho serve: **a IA interpreta → o domínio prova → a superfície
 mostra a diferença.** O que estamos provando não é que o Copilot está pronto — é
