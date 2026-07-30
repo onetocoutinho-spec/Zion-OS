@@ -9,6 +9,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
+import { EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
 import type { Pendencia } from "@/lib/types";
 
@@ -20,14 +21,19 @@ function statusDe(p: Pendencia) {
 
 export default function ClientePendencias() {
   const { clienteId } = useClientPortal();
-  const { data: pendencias } = useLiveQuery(
-    () => listarPendenciasDoCliente(clienteId),
-    [clienteId]
-  );
+  // `estado` e não `data ?? []`: esta tela mostrava "Nenhuma pendência 🎉 — Você
+  // está em dia!" em TRÊS situações diferentes — sem pendências, carregando, e
+  // quando a consulta falhava. As duas últimas são mentiras, e a última é uma
+  // mentira animada sobre o estado da operação de alguém.
+  const consulta = useLiveQuery(() => listarPendenciasDoCliente(clienteId), [clienteId]);
+  const { data: pendencias, estado, erro, reload, revalidando } = consulta;
 
   const [fStatus, setFStatus] = useState("Todos");
 
-  const lista = pendencias ?? [];
+  // `useMemo` e não `pendencias ?? []` solto: sem ele o fallback cria um array
+  // novo a cada render e o `useMemo` de `filtradas` abaixo nunca memoiza. Era um
+  // aviso do lint anterior a esta vertical, e cabia numa linha.
+  const lista = useMemo(() => pendencias ?? [], [pendencias]);
   const abertas = lista.filter((p) => !p.resolvida).length;
   const resolvidas = lista.filter((p) => p.resolvida).length;
 
@@ -43,7 +49,31 @@ export default function ClientePendencias() {
         subtitulo="O que ainda falta para seus anúncios avançarem."
       />
 
-      {lista.length === 0 ? (
+      {estado === "carregando" ? (
+        // Esqueleto de tabela e não "está em dia": a geometria do que vem, sem
+        // afirmar nada sobre o conteúdo.
+        <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-4">
+          <EsqueletoDeTabela colunas={4} />
+        </div>
+      ) : estado === "erro" ? (
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-5 text-sm text-amber-200">
+          <p className="font-medium">Não consegui carregar suas pendências.</p>
+          {/* Dizer "você está em dia" aqui seria afirmar sobre a operação dele o
+              oposto do que sabemos: não sabemos nada. */}
+          <p className="mt-1 text-amber-200/70">
+            Isto é uma falha nossa ao buscar os dados — não significa que não há
+            pendências.
+          </p>
+          <p className="mt-2 text-xs text-amber-200/50">{erro?.message}</p>
+          <button
+            type="button"
+            onClick={reload}
+            className="mt-3 rounded-md border border-amber-400/30 px-2.5 py-1 text-xs transition hover:bg-amber-400/10"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      ) : estado === "vazio" ? (
         <VazioAmigavel
           icon={CheckCircle2}
           titulo="Nenhuma pendência 🎉"
@@ -55,7 +85,10 @@ export default function ClientePendencias() {
           }
         />
       ) : (
-        <>
+        // `revalidando`: o store mudou e uma nova busca está em voo. O conteúdo
+        // atual continua legível e visivelmente não-final — trocar por esqueleto
+        // apagaria a tela a cada escrita em qualquer lugar do portal.
+        <div className={revalidando ? "space-y-6 opacity-60 transition-opacity" : "space-y-6"}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Abertas" value={abertas} icon={Clock} tone={abertas ? "yellow" : "gray"} />
             <StatCard label="Resolvidas" value={resolvidas} icon={CheckCircle2} tone="green" />
@@ -91,7 +124,7 @@ export default function ClientePendencias() {
               ))
             )}
           </Table>
-        </>
+        </div>
       )}
     </>
   );
