@@ -58,7 +58,7 @@ export type NivelDeRisco = "leitura" | "baixo" | "medio" | "alto" | "critico";
  * Nele, `alvos` carrega o ID DO DRAFT — o que está sendo autorizado é a
  * materialização daquele cadastro, e não uma escrita num produto que já existe.
  */
-export type TipoDeProposta = "peso" | "custo" | "cadastro";
+export type TipoDeProposta = "peso" | "custo" | "cadastro" | "titulo";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -96,6 +96,8 @@ export interface PropostaPersistida {
   expiraEm: string;
   /** O cadastro em conversa que esta proposta materializa. Só em `cadastro`. */
   draftId?: string | null;
+  /** O conteúdo proposto quando ele é texto. Só em `titulo`. */
+  texto?: string | null;
 }
 
 /**
@@ -119,6 +121,10 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // duplicado não dispara alarme nenhum: ele fica lá, recebe anúncio, recebe
   // estoque, e só aparece quando alguém tenta conciliar.
   cadastro: "alto",
+  // Trocar título é reversível e não move dinheiro — mas é o texto que o
+  // comprador lê primeiro, e um título pior derruba a busca sem avisar. Médio:
+  // exige confirmação, não exige o cuidado de uma escrita irreversível.
+  titulo: "medio",
 };
 
 /** O que impede uma proposta de ser executada agora. */

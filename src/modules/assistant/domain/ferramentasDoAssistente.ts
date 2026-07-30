@@ -159,6 +159,21 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "preparacao_de_anuncio",
+    efeito: "le",
+    descricao:
+      "O estado REAL da preparação de anúncio. Sem produtoId: quantos produtos já podem virar anúncio, quantos estão travados e por quê — use para \"quais produtos já podem virar anúncio?\" e antes de \"prepare todos que estiverem prontos\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        produtoId: {
+          type: "STRING",
+          description: "Vazio para o panorama da loja. Preenchido para um produto — id de achar_produto.",
+        },
+      },
+    },
+  },
+  {
     nome: "procedencia",
     efeito: "le",
     descricao:
@@ -227,6 +242,17 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
         },
       },
       required: ["alvo"],
+    },
+  },
+  {
+    nome: "propor_titulo",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio.",
+    parametros: {
+      type: "OBJECT",
+      properties: { produtoId: { type: "STRING" } },
+      required: ["produtoId"],
     },
   },
   {

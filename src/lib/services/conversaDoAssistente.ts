@@ -17,6 +17,10 @@ import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaD
 import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
 import type { PendenciasNaTela } from "../../modules/assistant/domain/cartaoDePendencias";
 import type { HistoricoDeCampo } from "../../modules/catalog/domain/procedenciaDeCampo";
+import type {
+  Preparacao,
+  selecionarParaPreparar,
+} from "../../modules/publication/domain/preparacaoDoAnuncio";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -74,6 +78,27 @@ export interface RespostaDaConversa {
   pendencias?: PendenciasNaTela;
   /** O histórico de um campo — a resposta de "de onde veio isso?". */
   procedencia?: HistoricoDeCampo;
+  /**
+   * O estado da preparação de anúncio — de um produto ou do catálogo.
+   *
+   * Do SERVIDOR. `estado`, `etapas` e a seleção do lote em especial: eles
+   * decidem o que a tela oferece, e um estado escrito pelo modelo seria uma
+   * oferta feita por quem não leu o banco.
+   */
+  preparacao?: {
+    produto?: Preparacao;
+    selecao?: ReturnType<typeof selecionarParaPreparar>;
+  };
+  /** Título atual e proposto, lado a lado. Sem `propostaDeTituloId`, sem botão. */
+  propostaDeTitulo?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    tituloAtual: string;
+    tituloProposto: string;
+    justificativa: string;
+  };
+  propostaDeTituloId?: string;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -154,6 +179,15 @@ export async function conversar(
           ...(e.cadastro ? { cadastro: e.cadastro as CadastroNaTela } : {}),
           ...(e.pendencias ? { pendencias: e.pendencias as PendenciasNaTela } : {}),
           ...(e.procedencia ? { procedencia: e.procedencia as HistoricoDeCampo } : {}),
+          ...(e.preparacao
+            ? { preparacao: e.preparacao as RespostaDaConversa["preparacao"] }
+            : {}),
+          ...(e.propostaDeTitulo
+            ? { propostaDeTitulo: e.propostaDeTitulo as RespostaDaConversa["propostaDeTitulo"] }
+            : {}),
+          ...(typeof e.propostaDeTituloId === "string"
+            ? { propostaDeTituloId: e.propostaDeTituloId }
+            : {}),
         };
       }
     }

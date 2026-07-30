@@ -54,6 +54,13 @@ import {
   escreverProcedencia,
   type HistoricoDeCampo,
 } from "@/modules/catalog/domain/procedenciaDeCampo";
+import {
+  estadoDoCartaoDeTitulo,
+  estadoDoPainelDePreparacao,
+  tomDaEtapa,
+  type PreparacaoNaTela,
+  type TituloNaTela,
+} from "@/modules/assistant/domain/cartaoDaPreparacao";
 
 type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
@@ -137,6 +144,12 @@ interface Turno {
   pendencias?: PendenciasNaTela;
   /** A resposta de "de onde veio isso?" — com origem desconhecida quando é. */
   procedencia?: HistoricoDeCampo;
+  /** O estado da preparação de anúncio — de um produto ou do catálogo. */
+  preparacao?: PreparacaoNaTela;
+  /** Título atual e proposto, lado a lado. */
+  propostaDeTitulo?: TituloNaTela;
+  /** O id que AUTORIZA a troca do título. Sem ele, não há botão. */
+  propostaDeTituloId?: string;
   /**
    * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
    *
@@ -327,6 +340,13 @@ export function ChatDaOperacao({
                     ...(r.cadastro ? { cadastro: r.cadastro } : {}),
                     ...(r.pendencias ? { pendencias: r.pendencias } : {}),
                     ...(r.procedencia ? { procedencia: r.procedencia } : {}),
+                    ...(r.preparacao ? { preparacao: r.preparacao } : {}),
+                    ...(r.propostaDeTitulo
+                      ? {
+                          propostaDeTitulo: r.propostaDeTitulo,
+                          propostaDeTituloId: r.propostaDeTituloId,
+                        }
+                      : {}),
                   }
                 : turno
             )
@@ -378,7 +398,7 @@ export function ChatDaOperacao({
       const alvo = turnos[indice];
       // O cadastro carrega o próprio id: os dois cartões podem coexistir num
       // turno, e confundir os dois confirmaria a proposta errada.
-      const id = alvo?.cadastro?.propostaId ?? alvo?.propostaId;
+      const id = alvo?.cadastro?.propostaId ?? alvo?.propostaDeTituloId ?? alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
       // render de propósito: um clique que escapou (teclado, corrida de
@@ -485,10 +505,25 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
-              ) : t.texto !== undefined || t.proposta || t.cadastro || t.pendencias ? (
+              ) : t.texto !== undefined ||
+                t.proposta ||
+                t.cadastro ||
+                t.pendencias ||
+                t.preparacao ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
+                  {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
+                  {t.propostaDeTitulo && (
+                    <CartaoDeTitulo
+                      t={t.propostaDeTitulo}
+                      propostaId={t.propostaDeTituloId}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.procedencia && <CartaoDeProcedencia h={t.procedencia} />}
                   {t.cadastro && (
                     <CartaoDoCadastro
@@ -576,6 +611,171 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * O painel da preparação de anúncio — as etapas e o que trava cada uma.
+ *
+ * PREPARAR NÃO É PUBLICAR, e o painel diz isso: a etapa `publicacao` aparece
+ * como estado, nunca como botão. Publicar é outro passo, com outra confirmação.
+ *
+ * As situações vêm do orquestrador (`preparacaoDoAnuncio`), que é domínio puro.
+ * A tela não decide se uma etapa está pronta — ela desenha o que já foi
+ * decidido, e é por isso que "por que esse não foi?" tem a mesma resposta toda
+ * vez que alguém perguntar.
+ */
+function PainelDaPreparacao({ p }: { p: PreparacaoNaTela }) {
+  const e = estadoDoPainelDePreparacao(p);
+  if (e.estado === "vazio") return null;
+
+  if (e.estado === "lote") {
+    return (
+      <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">{e.frase}</p>
+        {e.aviso && <p className="text-[11px] text-amber-300">{e.aviso}</p>}
+        {e.travados.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+              O que está travando
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {e.travados.map((t) => (
+                <li key={t.motivo} className="text-xs text-zinc-400">
+                  <span className="text-zinc-200">{t.quantos}</span> por {t.motivo}
+                  <span className="text-zinc-600"> — {t.exemplos.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">Preparação do anúncio</p>
+        <p className="text-sm font-medium text-zinc-100">{e.frase}</p>
+      </div>
+
+      <ul className="space-y-1">
+        {e.etapas.map((etapa) => {
+          const tom = tomDaEtapa(etapa.situacao);
+          return (
+            <li key={etapa.etapa} className="flex items-start gap-2 text-xs">
+              <span
+                className={
+                  tom === "boa"
+                    ? "text-emerald-400"
+                    : tom === "atencao"
+                      ? "text-amber-400"
+                      : "text-zinc-600"
+                }
+              >
+                {tom === "boa" ? "✓" : tom === "atencao" ? "!" : "·"}
+              </span>
+              <div className="min-w-0">
+                <span className="text-zinc-200">{etapa.rotulo}</span>
+                {etapa.faltando.length > 0 && (
+                  <span className="text-zinc-500"> — falta {etapa.faltando.join(", ")}</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* NÃO há botão de preparar aqui. Quem monta o cartão com o custo em
+          minutos e cota é `propor_anuncio`, e é ele que traz o botão — este
+          painel responde "em que pé está", não "faça agora". */}
+      {e.jaTemAnuncio && (
+        <p className="text-[11px] text-zinc-600">
+          Já existe um anúncio gerado para este produto.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O título atual e o proposto, lado a lado.
+ *
+ * OS DOIS, sempre. Mostrar só o novo esconderia o que se está perdendo, e
+ * trocar título é a coisa mais fácil de piorar sem ver. As contagens aparecem
+ * porque o limite de 60 caracteres do Mercado Livre é a razão de o agente de
+ * título existir.
+ */
+function CartaoDeTitulo({
+  t,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  t: TituloNaTela;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDeTitulo(t, propostaId, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <p
+        className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-zinc-400"}`}
+      >
+        {e.ok ? (
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        )}
+        {e.mensagem}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Trocar o título</p>
+      <dl className="space-y-1.5 text-sm">
+        <div>
+          <dt className="text-[11px] text-zinc-500">Hoje ({e.caracteresAtual} caracteres)</dt>
+          <dd className="text-zinc-400 line-through decoration-zinc-700">
+            {t.tituloAtual || "(sem título)"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[11px] text-zinc-500">
+            Proposto ({e.caracteresProposto} caracteres)
+          </dt>
+          <dd className="font-medium text-zinc-100">{t.tituloProposto}</dd>
+        </div>
+      </dl>
+      {t.justificativa && <p className="text-xs text-zinc-500">{t.justificativa}</p>}
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Trocando…" : e.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Ficar com o atual
+        </button>
+      </div>
     </div>
   );
 }

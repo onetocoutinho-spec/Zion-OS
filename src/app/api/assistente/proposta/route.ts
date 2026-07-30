@@ -45,6 +45,11 @@ import {
   tentativasDoCadastro,
 } from "@/modules/assistant/domain/candidatosDoCadastro";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
+import { aplicarTitulo } from "@/lib/services/preparacaoDeAnuncio";
+import {
+  CAMPO_TITULO_ATUAL,
+  impressaoDoTitulo,
+} from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/procedencia";
 
 export const maxDuration = 30;
@@ -82,6 +87,24 @@ function rastroDaEscrita(
         valor: String(p.valor),
       },
     ];
+  }
+  if (p.tipo === "titulo") {
+    // O TÍTULO é a única coisa que o Copilot grava e que o lojista NÃO afirmou:
+    // quem escreveu foi o agente da Zion. Origem `zion`, e o método diz que
+    // entrou pela conversa. Chamar isso de `cliente` seria atribuir a ele uma
+    // frase que ele apenas aprovou.
+    const d = depois as { titulo?: string } | null;
+    return d?.titulo
+      ? [
+          {
+            ...comum,
+            origem: "zion" as const,
+            entidade: { tipo: "produto", id: p.alvos[0] },
+            campo: "tituloAnuncio",
+            valor: d.titulo,
+          },
+        ]
+      : [];
   }
   if (p.tipo === "peso") {
     // Uma linha POR ALVO. O peso desce para todas as variantes do produto — é a
@@ -129,6 +152,26 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   // O cenário obrigatório: T0 sem 7178.102, T2 a importação cria um, T3 o
   // cliente confirma. `candidatosDoCadastro` passa de 0 para 1, o domínio vê a
   // precondição quebrada, e NADA é criado.
+  // ---- TÍTULO: o título de agora ainda é o que eu vi quando propus?
+  //
+  // A precondição guarda a IMPRESSÃO do título atual. Se alguém trocou entre a
+  // proposta e o clique — outra aba, a esteira rodando de novo — a impressão
+  // muda e a proposta fica obsoleta. Sobrescrever seria apagar o trabalho de
+  // quem chegou primeiro.
+  if (campos.has(CAMPO_TITULO_ATUAL)) {
+    const { data } = await admin
+      .from("anuncios_gerados")
+      .select("anuncio")
+      .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
+      .maybeSingle();
+    const titulo = (data as { anuncio?: { tituloOtimizado?: string } } | null)?.anuncio
+      ?.tituloOtimizado;
+    // Anúncio sumiu: `null`, que o domínio trata como mudança. Supor "continua
+    // o mesmo" gravaria sobre o desconhecido.
+    return { [CAMPO_TITULO_ATUAL]: impressaoDoTitulo(titulo ?? "") };
+  }
+
   const camposDeCandidato = [...campos].filter(ehCampoDeCandidato);
   if (camposDeCandidato.length > 0) {
     const draft = await buscarDraft(p.draftId ?? p.alvos[0]);
@@ -204,6 +247,23 @@ async function gravar(
 ): Promise<{ afetados: number; antes: unknown; depois: unknown }> {
   const admin = getSupabaseAdmin();
   const produtoId = p.alvos[0];
+
+  // ---- TÍTULO: troca UM campo do anúncio, e só ele.
+  //
+  // Reescrever o payload inteiro a partir do que o modelo devolveu apagaria
+  // descrição, ficha e grade, que não estavam em discussão. `aplicarTitulo` lê,
+  // troca um campo e grava de volta.
+  //
+  // PREPARAR NÃO É PUBLICAR: isto altera o rascunho no Zion. O anúncio no ar
+  // não é tocado — publicar tem rota própria e outra confirmação.
+  if (p.tipo === "titulo") {
+    const novo = (p.texto ?? "").trim();
+    if (!novo) throw new Error("proposta de título sem texto");
+    const r = await aplicarTitulo(produtoId, p.clienteId, novo);
+    // Anúncio de outro tenant ou inexistente produzem o MESMO `null`.
+    if (!r) return { afetados: 0, antes: null, depois: null };
+    return { afetados: 1, antes: { titulo: r.antes }, depois: { titulo: r.depois } };
+  }
 
   // ---- CADASTRO: o produto nasce aqui, e por um caminho só.
   //
@@ -460,7 +520,9 @@ export async function POST(request: Request) {
       mensagem:
         p.tipo === "cadastro"
           ? `Produto criado: ${criado?.nome ?? p.resumo}`
-          : `Pronto. ${p.resumo}`,
+          : p.tipo === "titulo"
+            ? `Título trocado. ${p.resumo}`
+            : `Pronto. ${p.resumo}`,
       ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
     });
   } catch (e) {

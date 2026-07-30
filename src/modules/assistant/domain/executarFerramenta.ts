@@ -93,6 +93,17 @@ import {
   type ConflitoDeProcedencia,
   type HistoricoDeCampo,
 } from "../../catalog/domain/procedenciaDeCampo";
+import {
+  avaliarPreparacao,
+  avaliarTituloProposto,
+  dadosDoProduto,
+  escreverEstado,
+  oQueFalta as oQueFaltaNaPreparacao,
+  selecionarParaPreparar,
+  type AnuncioJaGerado,
+  type Preparacao,
+  type ProdutoParaPreparar,
+} from "../../publication/domain/preparacaoDoAnuncio";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
@@ -139,6 +150,47 @@ export interface ContextoDasFerramentas {
    * o navegador mandasse seria um catálogo que ele escolheu.
    */
   analise?: ContextoDaAnalise;
+  /**
+   * A PREPARAÇÃO DE ANÚNCIO — portos, montados pela rota.
+   *
+   * O que antes vinha em `paraAnunciar` (do navegador, no corpo) agora vem
+   * daqui, do banco, com o tenant da sessão. `paraAnunciar` continua existindo
+   * como fallback para as telas que ainda o mandam.
+   */
+  anuncio?: ContextoDoAnuncio;
+}
+
+export interface ContextoDoAnuncio {
+  /** Um produto, com o anúncio que já existir para ele. */
+  doProduto: (
+    produtoId: string
+  ) => Promise<{ produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null } | null>;
+  /** O catálogo, para o lote. Quem seleciona é o backend, nunca o modelo. */
+  catalogo: () => Promise<{
+    itens: readonly { produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null }[];
+    totalNoCatalogo: number;
+    truncado: boolean;
+  }>;
+  /** A margem do lojista, para o pricing saber contra o que calcular. */
+  margem: () => Promise<number>;
+  /**
+   * Roda o agente de TÍTULO — o mesmo A3 do catálogo de agentes.
+   *
+   * Porto e não implementação: a chamada de IA vive na borda, e o domínio
+   * continua puro. Ausente = a ferramenta recusa em vez de fingir.
+   */
+  gerarTitulo?: (entrada: {
+    nome: string;
+    marca: string;
+    modelo: string;
+    tituloAtual: string;
+  }) => Promise<{ titulo: string; justificativa: string } | null>;
+  /** O anúncio cujo título se quer melhorar. `null` = não existe anúncio. */
+  anuncioParaTitulo?: (produtoId: string) => Promise<{
+    anuncioId: string;
+    nome: string;
+    tituloAtual: string;
+  } | null>;
 }
 
 /** Os portos da análise de pendências. Tudo com o tenant já preso pela rota. */
@@ -250,6 +302,27 @@ export interface ResultadoDaFerramenta {
   };
   /** O histórico de um campo — a resposta de "de onde veio isso?". */
   procedencia?: HistoricoDeCampo;
+  /** O estado da preparação — de um produto ou da loja. Vai para a tela. */
+  preparacao?: {
+    /** Preenchido no drill-down de um produto. */
+    produto?: Preparacao;
+    /** Preenchido no panorama/lote. */
+    selecao?: ReturnType<typeof selecionarParaPreparar>;
+  };
+  /**
+   * A proposta de melhorar o título — atual e proposto, lado a lado.
+   *
+   * A rota persiste como Proposal; sem id não há botão. O objeto aqui só
+   * desenha o cartão.
+   */
+  propostaDeTitulo?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    tituloAtual: string;
+    tituloProposto: string;
+    justificativa: string;
+  };
 }
 
 /** Um pedido do modelo, ainda não validado. */
@@ -533,11 +606,15 @@ export async function executarFerramenta(
 
     case "propor_anuncio": {
       const id = texto(args, "produtoId");
-      // A checagem de prontidão precisa de marca, modelo, cores e tamanhos —
-      // que não cabem em `ProdutoAlvo`. Quem tem isso é a tela, e ela manda
-      // separado. Sem os dados, dizemos que não sabemos em vez de propor uma
-      // geração que vai voltar com pendência.
-      const p = ctx.paraAnunciar?.find((x) => x.id === id);
+      // O SERVIDOR primeiro. `paraAnunciar` vinha do corpo da requisição — a
+      // tela montava e mandava —, e quem manda o corpo escolhia o que a
+      // proposta acreditava. Com o porto de anúncio, os dados vêm do banco com
+      // o tenant da sessão; o caminho antigo fica como fallback para as telas
+      // que ainda não passam o contexto novo.
+      const doServidor = ctx.anuncio ? await ctx.anuncio.doProduto(id) : null;
+      const p =
+        (doServidor && paraAnunciarDoServidor(doServidor)) ??
+        ctx.paraAnunciar?.find((x) => x.id === id);
       if (!p) {
         return {
           saida: {
@@ -580,9 +657,171 @@ export async function executarFerramenta(
     case "preparar_resolucao":
       return prepararResolucao(args, ctx);
 
+    case "preparacao_de_anuncio":
+      return avaliarAnuncio(args, ctx);
+
+    case "propor_titulo":
+      return proporTitulo(args, ctx);
+
     default:
       return { saida: { erro: `Ferramenta desconhecida: ${nome}` } };
   }
+}
+
+/**
+ * "Quais produtos já podem virar anúncio?" e "o que falta nesse aqui?".
+ *
+ * Sem `produtoId`, o BACKEND seleciona: devolve contagens e os motivos
+ * agrupados. Mandar 300 objetos de produto ao modelo estouraria o contexto e
+ * ainda deixaria a escolha com quem não mede nada.
+ *
+ * PREPARAR NÃO É PUBLICAR. Nada nesta função coloca anúncio no ar; a etapa
+ * `publicacao` é só um estado que ela informa.
+ */
+async function avaliarAnuncio(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.anuncio;
+  if (!a) return { saida: { erro: "A preparação de anúncio não está disponível nesta tela." } };
+  const margemMinima = await a.margem();
+  const produtoId = texto(args, "produtoId");
+
+  // ---- UM PRODUTO ----
+  if (produtoId) {
+    const item = await a.doProduto(produtoId);
+    if (!item) {
+      return { saida: { erro: "Não achei esse produto no seu catálogo. Use achar_produto antes." } };
+    }
+    const p = avaliarPreparacao(item.produto, item.anuncio, { margemMinima });
+    return {
+      preparacao: { produto: p },
+      saida: {
+        produtoId: p.produtoId,
+        nome: p.nome,
+        estado: p.estado,
+        frase: escreverEstado(p.estado),
+        // As ETAPAS com o que trava cada uma — é isto que permite dizer "o
+        // texto eu consigo, o preço não" em vez de tudo ou nada.
+        etapas: p.etapas.map((e) => ({
+          etapa: e.etapa,
+          situacao: e.situacao,
+          faltando: e.faltando,
+          porque: e.porque,
+        })),
+        falta: oQueFaltaNaPreparacao(p),
+        // A identidade com a ORIGEM de cada atributo: o que veio do cadastro e
+        // o que foi LIDO do nome. Apresentar leitura como cadastro seria o
+        // começo do mesmo problema que a esteira já teve.
+        identidade: p.identidade.map((x) => ({ nome: x.nome, valor: x.valor, origem: x.origem })),
+        jaTemAnuncio: p.jaTemAnuncio,
+        proximaEtapa: p.proximaEtapa,
+        aviso:
+          "Preparar não é publicar. Nada vai ao ar por aqui — publicar é outro passo, com outra confirmação.",
+      },
+    };
+  }
+
+  // ---- O CATÁLOGO ----
+  const { itens, totalNoCatalogo, truncado } = await a.catalogo();
+  const preparacoes = itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, { margemMinima }));
+  const selecao = selecionarParaPreparar(preparacoes, totalNoCatalogo);
+
+  return {
+    preparacao: { selecao },
+    saida: {
+      analisados: selecao.analisados,
+      podemVirarAnuncio: selecao.elegiveis.length,
+      jaPreparados: selecao.jaPreparados,
+      // Os motivos AGRUPADOS, do mais comum para o menos. Uma lista de 200 ids
+      // não ajuda ninguém a decidir o que resolver primeiro.
+      travados: selecao.naoElegiveis.map((n) => ({
+        motivo: n.motivo,
+        quantos: n.quantos,
+        exemplos: n.exemplos,
+      })),
+      amostraDeElegiveis: selecao.elegiveis.slice(0, 8).map((p) => ({
+        produtoId: p.produtoId,
+        nome: p.nome,
+      })),
+      ...(truncado
+        ? {
+            aviso: `Analisei ${selecao.analisados} de ${totalNoCatalogo} produtos. Diga isso — não afirme que olhou o catálogo inteiro.`,
+          }
+        : {}),
+      comoPreparar:
+        "Para cada elegível, chame propor_anuncio com o produtoId. Isso monta o cartão; quem dispara a geração é o lojista, clicando.",
+    },
+  };
+}
+
+/**
+ * "Melhore o título."
+ *
+ * Roda o agente de TÍTULO que já existe (A3 do catálogo de agentes) e devolve
+ * ATUAL e PROPOSTO lado a lado. O modelo não escreve o título: ele chama o
+ * agente e repassa. E nada é gravado — trocar o título de um anúncio é
+ * alteração operacional, então passa por Proposal e clique.
+ */
+async function proporTitulo(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.anuncio;
+  if (!a?.anuncioParaTitulo || !a.gerarTitulo) {
+    return { saida: { erro: "Não consigo mexer em título nesta tela." } };
+  }
+  const produtoId = texto(args, "produtoId");
+  if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+
+  const alvo = await a.anuncioParaTitulo(produtoId);
+  if (!alvo) {
+    // Gerar o anúncio inteiro para melhorar um título seria outra intenção,
+    // com outro custo. Dizer isso é melhor que fazer sem perguntar.
+    return {
+      saida: {
+        montada: false,
+        motivo:
+          "Esse produto ainda não tem anúncio gerado — não há título para melhorar. Posso preparar o anúncio primeiro.",
+      },
+    };
+  }
+
+  const item = await a.doProduto(produtoId);
+  const gerado = await a.gerarTitulo({
+    nome: item?.produto.nome ?? alvo.nome,
+    marca: item?.produto.marca ?? "",
+    modelo: item?.produto.modelo ?? "",
+    tituloAtual: alvo.tituloAtual,
+  });
+  // O DOMÍNIO decide se o título proposto pode virar proposta — vazio, igual ao
+  // atual ou acima dos 60 caracteres do ML são recusas, não opinião do modelo.
+  const veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  if (!veredicto.ok) {
+    return { saida: { montada: false, motivo: veredicto.motivo } };
+  }
+
+  return {
+    propostaDeTitulo: {
+      anuncioId: alvo.anuncioId,
+      produtoId,
+      nome: alvo.nome,
+      tituloAtual: alvo.tituloAtual,
+      tituloProposto: veredicto.titulo,
+      justificativa: gerado?.justificativa ?? "",
+    },
+    saida: {
+      montada: true,
+      tituloAtual: alvo.tituloAtual,
+      tituloProposto: veredicto.titulo,
+      caracteres: veredicto.titulo.length,
+      justificativa: gerado?.justificativa ?? "",
+      // Os DOIS lado a lado, sempre. Mostrar só o novo esconderia o que se
+      // está perdendo, e trocar título é a coisa mais fácil de piorar sem ver.
+      aviso:
+        "Mostre o título ATUAL e o PROPOSTO. Nada foi gravado — o lojista confirma clicando.",
+    },
+  };
 }
 
 /**
@@ -1162,6 +1401,33 @@ function lista(args: Record<string, unknown>, chave: string): string[] {
   const v = args[chave];
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+}
+
+/**
+ * O produto do servidor, na forma que `montarPropostaDeAnuncio` espera.
+ *
+ * A conversão vive aqui e não no orquestrador porque é uma ponte entre dois
+ * tipos que existem por razões diferentes — e `dadosDoProduto` já sabe extrair
+ * cores e tamanhos da grade real.
+ */
+function paraAnunciarDoServidor(item: {
+  produto: ProdutoParaPreparar;
+  anuncio: AnuncioJaGerado | null;
+}): ProdutoParaAnunciar {
+  const { produto, anuncio } = item;
+  return {
+    id: produto.id,
+    nome: produto.nome,
+    estado: {
+      custo: produto.custo,
+      precoVenda: produto.precoVenda,
+      pesoGramas: produto.pesoGramas,
+      temFoto: produto.quantidadeImagens > 0,
+      ...(produto.vendedorPagaFrete === false ? { vendedorPagaFrete: false } : {}),
+    },
+    dados: dadosDoProduto(produto),
+    jaTemAnuncio: Boolean(anuncio),
+  };
 }
 
 function alvoPeloId(

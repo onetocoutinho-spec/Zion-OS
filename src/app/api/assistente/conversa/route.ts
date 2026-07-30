@@ -68,6 +68,18 @@ import {
 import { historicoDoCampo } from "@/lib/services/procedencia";
 import { anomaliasDoCatalogo } from "@/modules/catalog/domain/anomaliasDoCatalogo";
 import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connectors/shared/capacidades";
+import {
+  anuncioParaTitulo,
+  catalogoParaPreparar,
+  margemDoCliente,
+  produtoParaPreparar,
+} from "@/lib/services/preparacaoDeAnuncio";
+import {
+  CAMPO_TITULO_ATUAL,
+  impressaoDoTitulo,
+} from "@/modules/publication/domain/preparacaoDoAnuncio";
+import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
+import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
 
 export const maxDuration = 60;
 
@@ -113,6 +125,18 @@ Para o que você consegue preparar sozinho, chame preparar_resolucao com o alvo 
 DE ONDE VEIO. Para "de onde veio esse custo?", "quem colocou esse peso?", "esse SKU veio da planilha?", use procedencia. Ela devolve a frase pronta — repasse. Quando a origem não foi registrada, DIGA ISSO. A maior parte desta base é anterior ao registro de procedência, e sugerir de onde o valor "provavelmente" veio é inventar.
 
 Você NÃO tem fonte externa de custo, preço ou estoque. Nenhum ERP conectado declara saber esses dados. Nunca ofereça buscá-los lá.
+
+PREPARAR ANÚNCIO. Para "quais produtos já podem virar anúncio?", "prepare todos que estiverem prontos", "o que falta para esse anúncio?" e "por que esse não foi?", use preparacao_de_anuncio. Ela devolve o estado REAL: as etapas (identidade, conteúdo, imagens, pricing, publicação), o que trava cada uma, e no lote quantos são elegíveis e por que os outros não são. Os números vêm dela.
+
+PREPARAR NÃO É PUBLICAR. Em nenhum momento "preparar" coloca anúncio no ar. Publicar é outro passo, com outra confirmação, e não é seu. Nunca diga que o anúncio foi publicado.
+
+As etapas são INDEPENDENTES onde o domínio diz que são: o texto do anúncio não depende de custo nem de peso. Se o pricing estiver travado e o conteúdo apto, diga isso — "o texto eu consigo agora, o preço depende do peso" é mais útil que "está bloqueado".
+
+Para preparar de fato, chame propor_anuncio com o produtoId. Ela monta o cartão; quem dispara a geração é o lojista, clicando, e leva alguns minutos.
+
+MELHORAR O TÍTULO. Use propor_titulo. Ela roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO. MOSTRE OS DOIS — trocar título é fácil de piorar sem ver. Nada é gravado até ele confirmar, e você não escreve o título: quem escreve é o agente.
+
+Você não inventa característica de produto. Material, garantia, tecnologia e origem não se deduzem do nome — se não estão no cadastro, não existem para você.
 
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
@@ -259,6 +283,26 @@ export async function POST(request: Request) {
         return historicoDoCampo(clienteDaSessao, alvo, campo, valorAtual);
       },
     },
+    // ---- A PREPARAÇÃO DE ANÚNCIO ----
+    //
+    // Também em portos: avaliar 300 produtos a cada turno pagaria o preço da
+    // varredura em toda pergunta. E tudo com o tenant da SESSÃO — o que antes
+    // vinha em `paraAnunciar`, montado pela tela, agora vem do banco.
+    anuncio: {
+      doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
+      catalogo: async () => {
+        const c = await catalogoParaPreparar(clienteDaSessao);
+        return { itens: c.itens, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
+      },
+      margem: () => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO),
+      anuncioParaTitulo: async (produtoId) => {
+        const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
+        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual } : null;
+      },
+      // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
+      // segundo motor de título — existe um segundo chamador do mesmo prompt.
+      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
+    },
   };
 
   // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
@@ -352,6 +396,14 @@ export async function POST(request: Request) {
       /** O historico de um campo — a resposta de "de onde veio isso?". */
       let procedenciaConsultada:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["procedencia"]>
+        | undefined;
+      /** O estado da preparação de anúncio — para o painel da tela. */
+      let preparacaoDeAnuncio:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["preparacao"]>
+        | undefined;
+      /** A proposta de trocar o título: atual e proposto, lado a lado. */
+      let propostaDeTitulo:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTitulo"]>
         | undefined;
       const usadas: string[] = [];
 
@@ -499,6 +551,40 @@ export async function POST(request: Request) {
               };
             }
 
+            // ---- A PROPOSTA DE TÍTULO vira registro ----
+            //
+            // A precondição é a IMPRESSÃO do título atual: se alguém trocar
+            // entre a proposta e o clique, a impressão muda e nada é
+            // sobrescrito. `alvos` carrega o ID DO ANÚNCIO — é ele que muda,
+            // não o produto.
+            let propostaDeTituloId: string | null = null;
+            if (propostaDeTitulo && conversaId) {
+              try {
+                const t = propostaDeTitulo;
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "titulo",
+                  alvos: [t.anuncioId],
+                  // O número que importa num título é o tamanho: o limite de 60
+                  // caracteres do ML é a razão de o agente existir.
+                  valor: t.tituloProposto.length,
+                  texto: t.tituloProposto,
+                  resumo: `Trocar o título de "${t.nome}" para "${t.tituloProposto}".`,
+                  precondicoes: [
+                    { campo: CAMPO_TITULO_ATUAL, valorNaCriacao: impressaoDoTitulo(t.tituloAtual) },
+                  ],
+                });
+                propostaDeTituloId = gravada.id;
+              } catch (e) {
+                // Sem Proposal persistida NÃO há confirmação possível — melhor
+                // a tela não mostrar botão do que mostrar um que grava sem
+                // registro.
+                console.error("[copilot] falha ao persistir proposta de título:", e);
+              }
+            }
+
             if (conversaId) {
               void gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
@@ -543,6 +629,14 @@ export async function POST(request: Request) {
               // mesmos que o modelo recebeu — a tela nao recalcula nada.
               ...(planoDePendencias ? { pendencias: planoDePendencias } : {}),
               ...(procedenciaConsultada ? { procedencia: procedenciaConsultada } : {}),
+              // O painel da preparação e o cartão do título. Estados do
+              // DOMÍNIO — a tela não recalcula nada, e o modelo não os escreveu.
+              ...(preparacaoDeAnuncio ? { preparacao: preparacaoDeAnuncio } : {}),
+              // A proposta de título só vai com ID. Sem ID, a tela mostra os
+              // dois títulos e nenhum botão.
+              ...(propostaDeTitulo && propostaDeTituloId
+                ? { propostaDeTitulo, propostaDeTituloId }
+                : {}),
             });
             controlador.close();
             return;
@@ -569,6 +663,8 @@ export async function POST(request: Request) {
             if (r.escopo) escopoDoLote = r.escopo;
             if (r.pendencias) planoDePendencias = r.pendencias;
             if (r.procedencia) procedenciaConsultada = r.procedencia;
+            if (r.preparacao) preparacaoDeAnuncio = r.preparacao;
+            if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
             if (r.cadastro) {
               efeitoNoCadastro = {
                 ...r.cadastro,

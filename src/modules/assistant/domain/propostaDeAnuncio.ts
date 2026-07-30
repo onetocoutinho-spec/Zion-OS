@@ -19,12 +19,13 @@
 // Medido no PR #84: dos 73 produtos desta base, 47 já satisfaziam os seis
 // atributos obrigatórios do ML. A conta não é hipotética.
 
-import { lacunasDoProduto, type EstadoDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import type { EstadoDoProduto } from "../../catalog/domain/lacunasDoProduto";
 import {
   resolverObrigatorios,
   type AtributoResolvido,
   type DadosDoProduto,
 } from "../../publication/domain/atributosDoMarketplace";
+import { calcularBloqueiosParaGerar } from "../../publication/domain/preparacaoDoAnuncio";
 
 export interface ProdutoParaAnunciar {
   id: string;
@@ -68,18 +69,17 @@ export type PropostaDeAnuncio =
  * "antiderrapante", "vegano" e "reciclado", que o ML não pede em lugar nenhum.
  */
 export function oQueFaltaParaAnunciar(p: ProdutoParaAnunciar): string[] {
-  const faltando: string[] = [];
-
-  for (const l of lacunasDoProduto(p.estado, p.id)) {
-    // O PREÇO é consequência de custo e peso, não uma lacuna própria — listá-lo
-    // junto faria a pessoa procurar um campo de preço que não precisa preencher.
-    if (l.tipo !== "preco") faltando.push(l.rotulo);
-  }
-
-  const ausentes = resolverObrigatorios(p.dados).filter((a) => a.origem === "ausente");
-  for (const a of ausentes) faltando.push(a.nome);
-
-  return faltando;
+  // A REGRA MORA NO ORQUESTRADOR, uma vez só.
+  //
+  // Este módulo era o dono dela; virou uma PROJEÇÃO de
+  // `preparacaoDoAnuncio.calcularBloqueiosParaGerar`. Não é reescrita: é a mesma
+  // lista, com o mesmo corte (cadastro sem o preço, mais os obrigatórios do ML
+  // ausentes), agora compartilhada com quem avalia as etapas.
+  //
+  // Duas cópias dela existiriam para divergir no dia em que uma mudasse — e a
+  // divergência apareceria como o Copilot propondo geração para um produto que
+  // o painel de preparação diz estar travado.
+  return calcularBloqueiosParaGerar(p.estado, p.id, resolverObrigatorios(p.dados));
 }
 
 /**

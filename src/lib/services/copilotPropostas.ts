@@ -36,6 +36,7 @@ interface LinhaProposta {
   criada_em: string;
   expira_em: string;
   draft_id?: string | null;
+  texto?: string | null;
 }
 
 function paraDominio(l: LinhaProposta): PropostaPersistida {
@@ -54,6 +55,7 @@ function paraDominio(l: LinhaProposta): PropostaPersistida {
     criadaEm: l.criada_em,
     expiraEm: l.expira_em,
     ...(l.draft_id ? { draftId: l.draft_id } : {}),
+    ...(l.texto ? { texto: l.texto } : {}),
   };
 }
 
@@ -76,6 +78,8 @@ export interface NovaProposta {
    * array de uuids: com ela, "que cadastro virou esse produto?" é um join.
    */
   draftId?: string | null;
+  /** O conteúdo proposto quando ele é texto (título). Só neste tipo. */
+  texto?: string | null;
 }
 
 /**
@@ -104,6 +108,7 @@ export async function criarProposta(nova: NovaProposta): Promise<PropostaPersist
       expira_em: expiraEm(agora),
       chave_idempotencia: nova.chaveIdempotencia ?? null,
       draft_id: nova.draftId ?? null,
+      texto: nova.texto ?? null,
     })
     .select("*")
     .single();
