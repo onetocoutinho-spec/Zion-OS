@@ -3,7 +3,14 @@
 **Data:** 2026-07-29
 **Projeto Supabase:** `ouynursknlgtmewcdjzr` (sa-east-1, ACTIVE_HEALTHY, Postgres 17.6)
 **Branch:** `feat/copilot-lote-com-escopo-congelado` @ `ae6e329`
-**Nada foi aplicado.** Toda alteração aqui é proposta; a aplicação é manual e do lojista.
+
+> **APLICADO EM 2026-07-29, com autorização explícita do lojista.**
+> As cinco pendentes rodaram na ordem obrigatória — **037 → 039 → 040 → 038 → 036** —
+> com a conferência da §9 entre cada uma. O ledger foi alinhado e vai até 040.
+> O corpo deste documento preserva o diagnóstico **como estava antes**; o que
+> mudou está registrado na §12, no fim.
+>
+> **DB-FIX-001 (RLS) NÃO foi aplicada** e continua aberta.
 
 > Existe um segundo projeto, `fivlziuvxvhpuibrjwlq` (`zion-os-staging`, INACTIVE).
 > O `.env.local` aponta para `ouynursknlgtmewcdjzr` — é este que foi auditado.
@@ -735,7 +742,9 @@ select
      and tablename like 'copilot%' and cmd <> 'SELECT')                     as politicas_de_escrita,
   (select pg_get_constraintdef(oid) from pg_constraint
      where conname='copilot_propostas_tipo_check')                          as tipos_aceitos;
--- Esperado: 6 | 0 | lista com os cinco tipos
+-- Esperado: 5 | 0 | lista com os cinco tipos
+-- São 5 e não 6: `procedencia_de_campo` não casa com o `like 'copilot%'`.
+-- A política dela se confere no bloco da 038.
 -- politicas_de_escrita DEVE ser 0. Se não for, alguém abriu escrita pelo navegador.
 ```
 
@@ -783,3 +792,70 @@ Nenhum foi corrigido. Documentados, nesta ordem de gravidade:
    bucket público listável, proteção de senha vazada desligada.
 
 Nenhum destes é criado por 036–040, e nenhum bloqueia a aplicação delas.
+
+---
+
+## 12. Aplicação — 2026-07-29
+
+Autorizada pelo lojista depois de ler o diagnóstico acima. Rodadas via
+`apply_migration`, uma por vez, com a conferência da §9 entre cada uma.
+
+| Ordem | Migração | Resultado da conferência |
+|---|---|---|
+| 1ª | **037** | tabela criada; `draft_id` 1; `metadata` 1; CHECK `('peso','custo','cadastro')`; 1 política |
+| 2ª | **039** | CHECK `('peso','custo','cadastro','titulo')`; `texto` 1 |
+| 3ª | **040** | CHECK `('peso','custo','cadastro','titulo','preco')` — os cinco, na ordem certa |
+| 4ª | **038** | tabela criada; **0 linhas**; 3 índices; 1 política; `origem` sem `'desconhecida'` |
+| 5ª | **036** | os dois índices criados e **usados** (ver abaixo) |
+
+**Estado final agregado:** 5 políticas nas tabelas `copilot%` + 1 em
+`procedencia_de_campo`; **0 políticas de escrita** em qualquer uma delas; 3 colunas
+novas; 2 índices; as 2 tabelas novas presentes.
+
+### O índice, e uma leitura errada que quase virou conclusão
+
+O primeiro `explain analyze` de 036 deu **Seq Scan**, e não é o que parece. A
+consulta que escrevi passava os valores por subconsulta, e um índice **parcial** só
+entra quando o planner consegue **provar** que o predicado (`ean is not null and
+ean <> ''`) vale — com valor vindo de `InitPlan`, ele não consegue. Refeito com
+literais, que é a forma real que o app usa (`.eq("cliente_id", …).eq("ean", …)`):
+
+```
+Index Scan using idx_variantes_cliente_ean on produto_variantes
+  Index Cond: ((cliente_id = '5074ae56-…'::uuid) AND (ean = '7900466214047'::text))
+
+Index Scan using idx_produtos_cliente_modelo on produtos
+  Index Cond: ((cliente_id = '5074ae56-…'::uuid) AND (modelo = '1816'::text))
+```
+
+Fica registrado porque a consulta de conferência da §9 tem o mesmo defeito e
+mostraria Seq Scan num banco saudável.
+
+### Validação de ponta a ponta, sem deixar linha
+
+A forma exata da escrita do código foi exercida num bloco `DO` terminado em
+`raise exception` — tudo roda, nada persiste:
+
+- uma conversa;
+- uma mensagem **com `metadata`** (o jsonb de candidatos que resolve "o segundo");
+- um `copilot_cadastros` com `fatos` e `variantes` (SKU `'0123'`, com o zero à esquerda);
+- **cinco propostas, uma de cada tipo** — `cadastro` (com `draft_id`), `titulo`
+  (com `texto`), `preco`, `peso` e `custo`.
+
+Todas aceitas. Contagens depois do rollback: `copilot_*` e `procedencia_de_campo`
+em **0**, `produtos` em **73**, `produto_variantes` em **684** — catálogo intocado.
+
+### Ledger
+
+Alinhado com seis linhas: `035` (que estava aplicada e fora do registro — drift nº 1
+desta auditoria) e `036`–`040`. `migracoes_aplicadas` agora vai até 040 e volta a
+descrever o banco.
+
+### O que continua aberto
+
+**DB-FIX-001 até DB-FIX-005 não foram tocadas.** A mais grave segue valendo
+palavra por palavra: **29 tabelas com `using (true)` para `authenticated`**, com
+`cliente_escopo` neutralizada por OR e GRANTs abertos — o cliente do portal escreve
+em `decisoes` (a AIL) e em `migracoes_aplicadas` (o ledger que acabou de ser
+corrigido). Aplicar 036–040 **não melhorou e não piorou** isso: as tabelas novas
+nasceram com o desenho certo, e a fundação embaixo delas continua aberta.
