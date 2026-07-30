@@ -1022,3 +1022,62 @@ Simulando o cliente real depois da 042: `cliente_do_usuario()` devolve o tenant,
 `portal_margem_minima()` devolve 10.00, `portal_custos_do_lojista()` devolve os sete
 custos, `quota_esteira()` devolve `{limite: 5000, usado: 582}` e ele lê os 73
 produtos. O portal está de pé.
+
+---
+
+## 15. DB-FIX-004 fechada — 017–021 arquivadas
+
+Decisão do lojista, registrada em
+[ADR-011](../../decisions/ADR-011-arquivar-a-fundacao-canonica-017-021.md).
+
+Os cinco arquivos foram para `database/migrations/arquivadas/`, íntegros e não
+reescritos. **Nenhuma foi aplicada.**
+
+O que a investigação achou antes da decisão, e que mudou a pergunta: elas **não são
+código órfão**. São a fundação canônica do PR-006 (`010-database-compliance` §7,
+`001-product-master`, `006-capability-000-zion-intake`), e existe uma stack
+hexagonal inteira esperando por elas — `src/domain/produto-mestre/`,
+`src/application/use-cases/` (criar/atualizar mestre, adicionar variante, atualizar
+preço), `src/application/intake/` e um repositório Supabase que aponta
+explicitamente para `produto_mestre` e `produto_mestre_versao`.
+
+Esse código **passa no portão porque é testado contra um Supabase falso em
+memória**, e **nenhuma rota o instancia** — conferido: não há importação de
+`src/app/` para os use-cases nem para o repositório. Foi essa combinação que
+resolveu a dúvida: a fundação não bloqueia nada, e nada caminha na direção dela.
+As seis verticais de julho e as migrações 035–043 foram todas construídas sobre
+`produtos`/`produto_variantes` legados.
+
+Por que arquivar em vez de aplicar: aplicar criaria cinco tabelas dormentes com RLS
+a conferir em toda auditoria futura — e esta auditoria acabou de gastar duas
+migrações (041 e 042) consertando exatamente superfície acumulada. A 005 §3 provou
+que política que ninguém exercita é política que ninguém percebe estar errada.
+
+**A numeração fica com vão 016 → 022, deliberadamente.** Os números 017–021 estão
+gastos nos cabeçalhos dos arquivos e nos documentos; reciclá-los faria duas
+migrações responderem pelo mesmo número — o problema que a 043 fechou.
+
+---
+
+## 16. Estado final da auditoria
+
+| Item | Estado |
+|---|---|
+| 036–040 | **aplicadas** (§12) |
+| DB-FIX-001 — RLS de 29 tabelas | **fechada** pela 041 (§13) |
+| DB-FIX-002 — 032 sem arquivo | **fechada** — recuperada de `069f87f` (§14) |
+| DB-FIX-003 — duas fontes de verdade | **fechada** pela 043 (§14) |
+| DB-FIX-004 — 017–021 sem destino | **fechada** — arquivadas, ADR-011 (§15) |
+| DB-FIX-005 — folgas de superfície | **fechada** pela 042, com duas exceções declaradas (§14) |
+
+**As duas exceções, para não sumirem da lista:**
+
+1. Os 7 avisos `authenticated_security_definer_function_executable` continuam, **por
+   desenho** — o portal precisa chamar as funções `portal_*` logado.
+2. A **proteção contra senha vazada do Auth continua desligada**, e não há SQL que a
+   ligue. É no painel: *Authentication → Policies → Password protection*. **Único
+   item desta auditoria que depende de uma ação fora do repositório.**
+
+Ledger em **043**. Dívida conhecida e ainda não aberta: o repositório **não
+reproduz o banco a partir do zero** — a 032 é destrutiva de dados, e rodar as
+migrações em ordem numa base nova não recria o estado atual.
