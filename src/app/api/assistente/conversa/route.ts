@@ -26,7 +26,7 @@ import {
   MAXIMO_DE_PASSOS,
   type Fala,
 } from "@/lib/agentes/conversaComFerramentas";
-import { FERRAMENTAS } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { FERRAMENTAS, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -439,13 +439,49 @@ export async function POST(request: Request) {
 
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
+          // ---- A FRONTEIRA DO INC-003.
+          //
+          // No PRIMEIRO passo o modelo não pode responder: ele é obrigado a
+          // consultar, e só entre as ferramentas que LEEM. Foi por não existir
+          // esta fronteira que o agente afirmou "2 variações" e "300 g" sobre a
+          // Rasteira Vizzano — sem chamar nada — e prometeu um cartão que não
+          // existia. O prompt já proibia; proibir não impede.
+          //
+          // Do passo 1 em diante nada muda: AUTO, com as 16. A leitura já
+          // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
             system(corpo.produtoAberto ?? ""),
             historico,
             FERRAMENTAS,
-            (pedaco) => mandar({ tipo: "texto", delta: pedaco })
+            (pedaco) => mandar({ tipo: "texto", delta: pedaco }),
+            passo === 0
+              ? { modo: "obrigado", permitidas: PRIMEIRA_ACAO }
+              : { modo: "livre" }
           );
           tokens += turno.tokens;
+
+          // ---- DEFESA DE PROTOCOLO, não classificação semântica.
+          //
+          // A API documenta que `ANY` obriga uma functionCall. Se mesmo assim o
+          // passo 0 voltar sem chamada — resposta inválida, erro do provedor,
+          // mudança de contrato —, o texto que veio é exatamente o que o
+          // INC-003 produziu: afirmação sobre a loja sem ter consultado nada.
+          //
+          // Ele NÃO é entregue. A frase abaixo é fixa: sem número, sem estado
+          // da loja, sem promessa de cartão e sem diagnóstico inventado sobre
+          // por que a consulta não aconteceu.
+          if (passo === 0 && turno.chamadas.length === 0) {
+            mandar({
+              tipo: "fim",
+              texto:
+                "Preciso consultar os dados da loja antes de responder isso. Não consegui fazer essa consulta neste turno.",
+              falas: historico,
+              ferramentas: usadas,
+              tokens,
+            });
+            controlador.close();
+            return;
+          }
 
           if (turno.chamadas.length === 0) {
             historico.push({ role: "model", parts: [{ text: turno.texto }] });

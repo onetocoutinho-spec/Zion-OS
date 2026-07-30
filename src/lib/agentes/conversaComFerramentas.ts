@@ -70,11 +70,37 @@ export const FALAS_MANTIDAS = 24;
  * leitor, e recomeçar duplicaria o que ele já leu. Quem retenta é a chamada não
  * transmitida, que ainda não escreveu nada na tela.
  */
+/**
+ * Como o modelo escolhe entre falar e chamar ferramenta, NESTE passo.
+ *
+ * `livre` é o comportamento de sempre (AUTO): ele decide.
+ *
+ * `obrigado` é a fronteira do INC-003 (ANY + `allowedFunctionNames`): ele NÃO
+ * pode responder com texto, e só pode escolher entre as funções listadas. O
+ * laço usa isso apenas no primeiro passo — ver `route.ts`.
+ */
+export type EscolhaDeFerramenta =
+  | { modo: "livre" }
+  | { modo: "obrigado"; permitidas: readonly string[] };
+
+/** O contrato da API: `ANY` obriga functionCall; `allowedFunctionNames` restringe quais. */
+function toolConfig(escolha: EscolhaDeFerramenta) {
+  return escolha.modo === "obrigado"
+    ? {
+        functionCallingConfig: {
+          mode: "ANY",
+          allowedFunctionNames: [...escolha.permitidas],
+        },
+      }
+    : { functionCallingConfig: { mode: "AUTO" } };
+}
+
 export async function pedirTurnoEmFluxo(
   system: string,
   historico: readonly Fala[],
   ferramentas: readonly Ferramenta[],
-  aoTexto: (pedaco: string) => void
+  aoTexto: (pedaco: string) => void,
+  escolha: EscolhaDeFerramenta = { modo: "livre" }
 ): Promise<TurnoDoModelo> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY ausente.");
@@ -87,7 +113,11 @@ export async function pedirTurnoEmFluxo(
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: historico.slice(-FALAS_MANTIDAS),
+      // As DECLARAÇÕES continuam sendo as 16 em todo passo. O que muda por passo
+      // é a ESCOLHA — quais delas o modelo pode selecionar agora, e se ele tem
+      // permissão de responder sem selecionar nenhuma.
       tools: [{ functionDeclarations: paraDeclaracoesGemini(ferramentas) }],
+      toolConfig: toolConfig(escolha),
       generationConfig: { temperature: 0 },
     }),
   });
