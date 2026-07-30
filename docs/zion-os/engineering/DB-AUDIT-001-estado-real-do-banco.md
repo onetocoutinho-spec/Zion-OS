@@ -934,3 +934,91 @@ decisões). Ledger em **041**.
 - **GRANTs de `anon` não foram revogados.** Sem política, `anon` já não lê nada;
   mexer em GRANT tem outro raio de impacto e é decisão própria.
 - **Tabelas do Copilot não foram tocadas.** Já estavam certas.
+
+---
+
+## 14. DB-FIX-002, 003 e 005 fechadas — 2026-07-29
+
+### DB-FIX-002 — a 032 não precisava ser reconstruída
+
+Ela **existe**: commit `069f87f`, no ramo `chore/limpar-base-manter-ml`, de
+27/07/2026 — escrita, commitada e nunca mesclada. A migração foi aplicada em
+produção a partir daquele ramo e o arquivo ficou lá.
+
+Recuperada com `git checkout 069f87f -- <caminho>`, byte a byte. **Reescrever de
+memória teria sido a pior saída possível**: produziria um arquivo plausível,
+diferente do que realmente rodou, e o repositório passaria a mentir com mais
+confiança do que quando estava vazio.
+
+As pós-condições que ela declara conferem com a base de hoje: 73 produtos, 684
+variantes, 595 imagens. O discriminador era `observacoes` (`'Importado da base%'`),
+porque `marketplace` marcava os 1.806 como Mercado Livre.
+
+### DB-FIX-003 — a causa não era falta de disciplina
+
+Registrar no ledger era um **passo separado** de aplicar. Passo separado se
+esquece, e esquecer não quebra nada — ledger desatualizado não derruba tela. Foi
+assim que a 035 se perdeu. Escrever "lembre-se de atualizar o ledger" seria
+repetir o erro com mais palavras.
+
+A migração **043** troca a regra: *toda migração insere a própria linha no ledger,
+como última instrução do próprio arquivo*. Não é convenção de processo, é conteúdo
+do arquivo — se rodou, a linha existe. Some a janela entre aplicar e registrar.
+
+`public.migracoes_aplicadas` fica sendo a fonte de verdade (cobre 001–043).
+`supabase_migrations.schema_migrations` volta a ser o que sempre foi: o log da
+ferramenta, que só conhece o que passou por `apply_migration`. **Não** foi
+sincronizada — escrever nela para "alinhar" criaria uma terceira versão da
+história.
+
+Para o passado, a view `public.migracoes_divergencia` transforma arqueologia em
+uma consulta. Sem grant para `anon`/`authenticated`: é ferramenta de operador.
+
+**A verificação pegou o próprio autor, no primeiro uso.** A 043 abortou porque a
+042 tinha sido aplicada minutos antes e eu não havia registrado. Estado final: 0
+linhas `SO NA FERRAMENTA`, 10 `nas duas`, 28 `só no ledger` (as aplicadas à mão,
+antes de o MCP entrar no fluxo) e 2 sem número no nome — as duas partes da 035,
+anteriores à convenção `_NNN`.
+
+### DB-FIX-005 — três folgas fechadas, uma aceita, uma fora do SQL
+
+Migração **042**:
+
+| Folga | O que foi feito |
+|---|---|
+| `set_updated_at` com `search_path` mutável | `set search_path = public, pg_temp` |
+| 7 funções `SECURITY DEFINER` alcançáveis por `anon` | `revoke execute … from public, anon` |
+| bucket `produtos-imagens` listável por qualquer um | política ampla de SELECT removida |
+
+Sobre a revogação: cinco das sete tinham EXECUTE herdado de `PUBLIC` (`=X/postgres`
+na ACL) **além** do explícito de `anon`. Revogar só de `anon` deixaria a porta
+aberta pela herança — e a migração pareceria ter funcionado. O `grant` para
+`authenticated`/`service_role` foi reafirmado explicitamente em vez de deixado por
+herança.
+
+Conferido antes: o código anterior ao login toca apenas `auth.signUp`,
+`auth.signInWithPassword`, `auth.updateUser` e `auth.getSession`. Nenhum `.rpc()`
+sem sessão.
+
+Sobre o bucket: ele é público, e leitura por URL (`/object/public/...`) **não passa
+por RLS**. Todo o uso de storage no código é `upload` e `getPublicUrl` — não existe
+`.list()` nem `.download()`. O SELECT autenticado que sobra vem de
+`produtos_imagens_escrita`, que é `for ALL` escopada à pasta do tenant.
+
+**Aceito, não corrigido:** os 7 avisos `authenticated_security_definer_function_executable`
+continuam — e devem continuar. O portal **precisa** chamar `portal_margem_minima()`
+e as demais como usuário logado; é a arquitetura, não uma folga. O advisor pede que
+seja intencional, e é.
+
+**Fora do alcance do SQL:** a proteção contra senha vazada (HaveIBeenPwned) do
+Supabase Auth está desligada e **não há SQL que a ligue** — é configuração de Auth,
+no painel: *Authentication → Policies → Password protection*. Fica aberta e
+declarada, porque item que some da lista sem ter sido resolvido é pior que item
+aberto.
+
+### Verificação de que nada quebrou
+
+Simulando o cliente real depois da 042: `cliente_do_usuario()` devolve o tenant,
+`portal_margem_minima()` devolve 10.00, `portal_custos_do_lojista()` devolve os sete
+custos, `quota_esteira()` devolve `{limite: 5000, usado: 582}` e ele lê os 73
+produtos. O portal está de pé.
