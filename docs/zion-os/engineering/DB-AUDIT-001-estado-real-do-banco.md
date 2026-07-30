@@ -10,7 +10,13 @@
 > O corpo deste documento preserva o diagnóstico **como estava antes**; o que
 > mudou está registrado na §12, no fim.
 >
-> **DB-FIX-001 (RLS) NÃO foi aplicada** e continua aberta.
+> **DB-FIX-001 (RLS) foi fechada em seguida** pela migração 041 — §13.
+>
+> **Correção a uma afirmação deste documento:** eu escrevi, na §5 e na §11, que o
+> cliente escrevia em `migracoes_aplicadas`. **Está errado.** O ledger tem só a
+> política `equipe_le` (SELECT para equipe) e nunca esteve entre as 29 tabelas
+> abertas. Medido depois: o cliente lia 0 linhas dele. O resto do achado se
+> confirmou inteiro — inclusive a escrita na AIL, que era o ponto.
 
 > Existe um segundo projeto, `fivlziuvxvhpuibrjwlq` (`zion-os-staging`, INACTIVE).
 > O `.env.local` aponta para `ouynursknlgtmewcdjzr` — é este que foi auditado.
@@ -275,8 +281,12 @@ Conferi os GRANTs antes de afirmar impacto — `anon` e `authenticated` têm
 **O que isso significa hoje, concretamente:** o usuário `cliente` do portal, com a
 chave anon e a sessão dele, pode ler e escrever qualquer linha de `produtos`,
 `clientes`, `padroes`, `ofertas`, `conhecimentos`, `delegacoes`, `financeiro` — e
-de **`decisoes`, a AIL, que o Copilot trata como somente-leitura**, e de
-**`migracoes_aplicadas`, o próprio ledger**.
+de **`decisoes`, a AIL, que o Copilot trata como somente-leitura**.
+
+> **Correção:** a primeira versão desta seção incluía `migracoes_aplicadas` na
+> lista. Errado — o ledger tem só `equipe_le` (SELECT para equipe) e nunca esteve
+> entre as 29. Verificado depois com o usuário cliente real: 0 linhas visíveis,
+> escrita recusada.
 
 Com 1 tenant, vazamento entre clientes é hipotético. **Escrita indevida no próprio
 tenant não é.** E no pivot self-service, o segundo cliente cadastrado torna o
@@ -780,7 +790,8 @@ Nenhum foi corrigido. Documentados, nesta ordem de gravidade:
 
 1. **DB-FIX-001 — 005 §3 nunca aplicada.** 29 tabelas com `using (true)` para
    `authenticated`; `cliente_escopo` neutralizada por OR; GRANTs abertos. Inclui
-   escrita do cliente em `decisoes` (AIL) e `migracoes_aplicadas` (o ledger).
+   escrita do cliente em `decisoes` (AIL). **FECHADA pela 041 — ver §13.**
+   (`migracoes_aplicadas` aparecia aqui por engano meu; nunca esteve exposta.)
 2. **DB-FIX-002 — 032 no ledger sem arquivo.** O estado atual do catálogo não é
    reproduzível a partir do repositório.
 3. **DB-FIX-003 — duas fontes de verdade sobre migrações**, com conteúdos
@@ -853,9 +864,73 @@ descrever o banco.
 
 ### O que continua aberto
 
-**DB-FIX-001 até DB-FIX-005 não foram tocadas.** A mais grave segue valendo
-palavra por palavra: **29 tabelas com `using (true)` para `authenticated`**, com
-`cliente_escopo` neutralizada por OR e GRANTs abertos — o cliente do portal escreve
-em `decisoes` (a AIL) e em `migracoes_aplicadas` (o ledger que acabou de ser
-corrigido). Aplicar 036–040 **não melhorou e não piorou** isso: as tabelas novas
-nasceram com o desenho certo, e a fundação embaixo delas continua aberta.
+**DB-FIX-001 até DB-FIX-005 não foram tocadas** por esta aplicação. Aplicar
+036–040 **não melhorou e não piorou** o RLS: as tabelas novas nasceram com o
+desenho certo, e a fundação embaixo delas continuava aberta.
+
+*(DB-FIX-001 foi fechada logo em seguida — §13. DB-FIX-002 a 005 seguem abertas.)*
+
+---
+
+## 13. DB-FIX-001 fechada — migração 041, 2026-07-29
+
+`database/migrations/041-fecha-o-rls-que-a-005-nao-fechou.sql`. Executa o que a
+005 §3 alegou fazer: em 29 tabelas, `equipe_autenticada (using true)` sai e
+`equipe_total (using eh_equipe())` entra. `cliente_escopo` e `cliente_leitura`
+não foram tocadas — elas já estavam certas, só estavam sendo ignoradas pelo OR.
+
+### O que foi medido antes de aplicar
+
+Simulando os usuários reais (`set_config('request.jwt.claims', …)` + `set local
+role authenticated`), com um **segundo lojista** inserido na mesma transação e
+`rollback` ao final. O contraste é o argumento inteiro:
+
+| Cliente da loja A | Antes | Depois |
+|---|---:|---:|
+| produtos que enxerga | **74** | 73 |
+| produtos do vizinho que enxerga | **1** | **0** |
+| lojas que enxerga | **2** | **0** |
+| produtos do vizinho que **escreve** | **1** | **0** |
+| linhas da AIL (`decisoes`) que **escreve** | **3** | **0** |
+| `agentes` que **escreve** | **21** | **0** |
+| linha de `clientes` que **escreve** | **1** | **0** |
+| produtos do **próprio** tenant que escreve | 73 | **73** |
+| variantes / anúncios / imagens / pendências que lê | tudo | **tudo** |
+
+A equipe (`eh_equipe() = true`) manteve leitura e escrita em tudo: produtos 73,
+AIL 3, agentes 21, clientes 1.
+
+Duas armadilhas de método que apareceram no caminho e ficam registradas:
+
+1. **Sob RLS, um `UPDATE` bloqueado não dá erro — afeta 0 linhas.** O primeiro
+   teste usava `exception when others` e disse "escrita permitida" para tudo. Só
+   contando linhas com `returning` a resposta ficou honesta.
+2. **Um `INSERT` que falha por coluna obrigatória parece RLS.** O teste de
+   `decisoes` deu "bloqueado" por `NOT NULL`, não por política — teria produzido a
+   conclusão certa pelo motivo errado.
+
+### A autoverificação, que é o que faltava na 005
+
+A 005 alegou trocar 24 políticas, não trocou, e **nada percebeu por meses** —
+porque uma política permissiva a mais não quebra tela nenhuma, só abre. A 041
+termina contando `equipe_autenticada` restantes e `equipe_total` ausentes, e
+**aborta** se qualquer um dos dois não bater. Migração que alega sem provar foi a
+causa raiz deste bug.
+
+### Depois de aplicar
+
+`equipe_autenticada`: **0 tabelas**. `equipe_total`: **30** (as 29 + `canais_marketplace`).
+Os **29 avisos `rls_policy_always_true` do advisor de segurança desapareceram**.
+Repetido o teste com os usuários reais no banco já corrigido: os números da coluna
+"Depois" confirmados, e a base intacta (1 loja, 73 produtos, 684 variantes, 3
+decisões). Ledger em **041**.
+
+### O que deliberadamente NÃO foi feito
+
+- **`perfis` não ganhou política de escrita.** A 005 §4 previa `perfil_equipe_admin`
+  e ele também não existe — mas a gestão de usuários passa por `/api/usuarios` com
+  service_role. Criar a política seria **afrouxar** para resolver problema que
+  ninguém tem.
+- **GRANTs de `anon` não foram revogados.** Sem política, `anon` já não lê nada;
+  mexer em GRANT tem outro raio de impacto e é decisão própria.
+- **Tabelas do Copilot não foram tocadas.** Já estavam certas.
