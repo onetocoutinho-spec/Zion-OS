@@ -58,7 +58,7 @@ export type NivelDeRisco = "leitura" | "baixo" | "medio" | "alto" | "critico";
  * Nele, `alvos` carrega o ID DO DRAFT — o que está sendo autorizado é a
  * materialização daquele cadastro, e não uma escrita num produto que já existe.
  */
-export type TipoDeProposta = "peso" | "custo" | "cadastro" | "titulo";
+export type TipoDeProposta = "peso" | "custo" | "cadastro" | "titulo" | "preco";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -125,6 +125,9 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // comprador lê primeiro, e um título pior derruba a busca sem avisar. Médio:
   // exige confirmação, não exige o cuidado de uma escrita irreversível.
   titulo: "medio",
+  // Preço é o número de onde sai o faturamento. Um preço abaixo do piso vende
+  // no prejuízo em silêncio, e o estrago só aparece no fechamento do mês.
+  preco: "alto",
 };
 
 /** O que impede uma proposta de ser executada agora. */

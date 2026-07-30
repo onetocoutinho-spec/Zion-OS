@@ -80,6 +80,8 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
+import { catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
+import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 
 export const maxDuration = 60;
 
@@ -137,6 +139,18 @@ Para preparar de fato, chame propor_anuncio com o produtoId. Ela monta o cartão
 MELHORAR O TÍTULO. Use propor_titulo. Ela roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO. MOSTRE OS DOIS — trocar título é fácil de piorar sem ver. Nada é gravado até ele confirmar, e você não escreve o título: quem escreve é o agente.
 
 Você não inventa característica de produto. Material, garantia, tecnologia e origem não se deduzem do nome — se não estão no cadastro, não existem para você.
+
+PREÇO E MARGEM. VOCÊ NÃO FAZ CONTA DE DINHEIRO. Nunca subtraia, divida ou multiplique valores para responder sobre preço, lucro, margem, comissão ou frete — chame a ferramenta pricing e repasse os números dela. Uma conta sua estaria errada no dia em que a comissão mudasse, e ninguém perceberia.
+
+Use pricing para: "por quanto posso vender?", "se eu vender por R$ 89,90 quanto sobra?", "quero ganhar 10%", "qual o menor preço sem prejuízo?", "por que ficou tão alto?", "está dando prejuízo?", "quais produtos estão abaixo da margem?". Para simular cenários, passe os preços em "precos" como ele escreveu. Para uma margem alvo, passe "margemAlvo".
+
+MARGEM, no Zion, é sempre MARGEM LÍQUIDA sobre o preço de venda — o que sobra depois de custo, comissão do ML, frete, taxa fixa, imposto e os custos do lojista. NÃO é markup (lucro sobre o custo) e NÃO é margem bruta. Nunca converta entre eles, e nunca chame markup de margem: os dois pedem preços diferentes, e confundir vende no prejuízo com cara de lucro.
+
+Se ele disser "quero ganhar 10%" e não estiver claro se é margem líquida, assuma margem líquida (é o padrão do Zion) e DIGA que assumiu.
+
+Quando pricing devolver estado diferente de "calculavel", não invente número: diga o que falta. E quando a comissão vier como estimativa da tabela, diga isso — não é a comissão exata da conta dele.
+
+Para aplicar um preço, use propor_preco. Ela monta o cartão; o lojista confirma clicando. APLICAR PREÇO MUDA O CATÁLOGO DO ZION, não o anúncio que está no ar — publicar é outra coisa e não é sua. Nunca diga que o preço foi para o Mercado Livre.
 
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
 }
@@ -303,6 +317,14 @@ export async function POST(request: Request) {
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
       gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
     },
+    // ---- O PRICING ----
+    //
+    // A conta e do dominio; estes portos so trazem o que ela precisa do banco.
+    // O modelo nunca ve custo nem taxas — ele ve o resultado.
+    preco: {
+      doProduto: (id) => precoDoProduto(clienteDaSessao, id),
+      catalogo: () => catalogoParaTriagem(clienteDaSessao),
+    },
   };
 
   // A conversa vive no BANCO. O `localStorage` da tela continua existindo, mas
@@ -404,6 +426,14 @@ export async function POST(request: Request) {
       /** A proposta de trocar o título: atual e proposto, lado a lado. */
       let propostaDeTitulo:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTitulo"]>
+        | undefined;
+      /** O pricing — situacao de um produto, ou a triagem do catalogo. */
+      let pricing:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["pricing"]>
+        | undefined;
+      /** A proposta de trocar o preco, com a decomposicao que a justifica. */
+      let propostaDePreco:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePreco"]>
         | undefined;
       const usadas: string[] = [];
 
@@ -585,6 +615,40 @@ export async function POST(request: Request) {
               }
             }
 
+            // ---- A PROPOSTA DE PRECO vira registro ----
+            //
+            // `valor` carrega o preco em REAIS — a unidade canonica da coluna
+            // para dinheiro. As precondicoes congelam as QUATRO entradas da
+            // conta: custo, preco atual, peso cobravel e a configuracao fiscal.
+            let propostaDePrecoId: string | null = null;
+            if (propostaDePreco && conversaId) {
+              try {
+                const alvo = await precoDoProduto(clienteDaSessao, propostaDePreco.produtoId);
+                if (alvo) {
+                  const gravada = await criarProposta({
+                    clienteId: clienteDaSessao,
+                    conversaId,
+                    criadaPor: usuarioId,
+                    tipo: "preco",
+                    alvos: [propostaDePreco.produtoId],
+                    valor: propostaDePreco.preco,
+                    resumo: propostaDePreco.resumo,
+                    precondicoes: precondicoesDePreco({
+                      custo: alvo.entradas.custo,
+                      precoAtual: alvo.entradas.precoAtual,
+                      taxas: alvo.entradas.taxas,
+                    }),
+                  });
+                  propostaDePrecoId = gravada.id;
+                }
+              } catch (e) {
+                // Sem Proposal persistida NAO ha confirmacao possivel — melhor
+                // a tela nao mostrar botao do que mostrar um que grava sem
+                // registro.
+                console.error("[copilot] falha ao persistir proposta de preco:", e);
+              }
+            }
+
             if (conversaId) {
               void gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
@@ -637,6 +701,12 @@ export async function POST(request: Request) {
               ...(propostaDeTitulo && propostaDeTituloId
                 ? { propostaDeTitulo, propostaDeTituloId }
                 : {}),
+              // O painel de preco e o cartao da proposta. Numeros do DOMINIO —
+              // a tela nao recalcula, e o modelo nao os escreveu.
+              ...(pricing ? { pricing } : {}),
+              ...(propostaDePreco && propostaDePrecoId
+                ? { propostaDePreco, propostaDePrecoId }
+                : {}),
             });
             controlador.close();
             return;
@@ -665,6 +735,8 @@ export async function POST(request: Request) {
             if (r.procedencia) procedenciaConsultada = r.procedencia;
             if (r.preparacao) preparacaoDeAnuncio = r.preparacao;
             if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
+            if (r.pricing) pricing = r.pricing;
+            if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {
               efeitoNoCadastro = {
                 ...r.cadastro,

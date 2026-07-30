@@ -72,7 +72,6 @@ import {
   resolverEscolha,
   type ConjuntoApresentado,
 } from "./referenciasDaConversa";
-import { centavosParaReais } from "./fatosDoCadastro";
 import type { Precondicao } from "./propostaPersistida";
 import {
   pendenciasDoCatalogo as calcularPendencias,
@@ -93,6 +92,21 @@ import {
   type ConflitoDeProcedencia,
   type HistoricoDeCampo,
 } from "../../catalog/domain/procedenciaDeCampo";
+import {
+  avaliar as avaliarPreco,
+  decompor,
+  escreverComissao,
+  precoParaMargem,
+  precoSemPrejuizo,
+  resumoDaProposta,
+  simular,
+  situacaoDoPreco,
+  triarCatalogo,
+  type EntradasDoPreco,
+  type ProdutoParaTriagem,
+  type ProcedenciaDoCalculo,
+} from "../../pricing/domain/conversaDePreco";
+import { lerDinheiroEmCentavos, centavosParaReais } from "./fatosDoCadastro";
 import {
   avaliarPreparacao,
   avaliarTituloProposto,
@@ -158,6 +172,28 @@ export interface ContextoDasFerramentas {
    * como fallback para as telas que ainda o mandam.
    */
   anuncio?: ContextoDoAnuncio;
+  /**
+   * O PRICING — portos, montados pela rota.
+   *
+   * A conta é do domínio (`conversaDePreco` + `modeloPreco`); estes portos só
+   * trazem o que ela precisa do banco, com o tenant da sessão. O modelo não vê
+   * custo nem taxas: ele vê o resultado.
+   */
+  preco?: ContextoDoPreco;
+}
+
+export interface ContextoDoPreco {
+  /** As entradas do cálculo de um produto. `null` = de outro tenant ou inexistente. */
+  doProduto: (
+    produtoId: string
+  ) => Promise<{ produtoId: string; nome: string; entradas: EntradasDoPreco } | null>;
+  /** O catálogo para a triagem de margem. Roda com a TABELA — ver o serviço. */
+  catalogo: () => Promise<{
+    produtos: readonly ProdutoParaTriagem[];
+    margemMinima: number;
+    procedencia: ProcedenciaDoCalculo;
+    totalNoCatalogo: number;
+  }>;
 }
 
 export interface ContextoDoAnuncio {
@@ -322,6 +358,32 @@ export interface ResultadoDaFerramenta {
     tituloAtual: string;
     tituloProposto: string;
     justificativa: string;
+  };
+  /** O pricing — situação de um produto com cenários, ou a triagem do catálogo. */
+  pricing?: {
+    produto?: {
+      produtoId: string;
+      nome: string;
+      situacao: ReturnType<typeof situacaoDoPreco>;
+      cenarios: ReturnType<typeof simular>;
+    };
+    triagem?: ReturnType<typeof triarCatalogo>;
+  };
+  /**
+   * A proposta de trocar o preço — com a decomposição que a justifica.
+   *
+   * A rota persiste como Proposal; sem id não há botão. O objeto aqui só
+   * desenha o cartão.
+   */
+  propostaDePreco?: {
+    produtoId: string;
+    nome: string;
+    preco: number;
+    decomposicao: NonNullable<ReturnType<typeof decompor>>;
+    resumo: string;
+    precoAtual: number;
+    comoVeio: string;
+    margemMinima: number;
   };
 }
 
@@ -663,9 +725,266 @@ export async function executarFerramenta(
     case "propor_titulo":
       return proporTitulo(args, ctx);
 
+    case "pricing":
+      return consultarPricing(args, ctx);
+
+    case "propor_preco":
+      return proporPreco(args, ctx);
+
     default:
       return { saida: { erro: `Ferramenta desconhecida: ${nome}` } };
   }
+}
+
+/**
+ * Lê um preço que o lojista escreveu — em pt-BR, sem adivinhar.
+ *
+ * Reusa `lerDinheiroEmCentavos`, o parser que já cobre as três armadilhas:
+ * "47,80" não é 4780, "1.249,90" não é 1,24990, e "1.2" é AMBÍGUO e devolve
+ * null. Dinheiro ambíguo não se adivinha — dez vezes de diferença.
+ */
+function lerPreco(bruto: string): number | null {
+  const centavos = lerDinheiroEmCentavos(bruto);
+  return centavos === null ? null : centavosParaReais(centavos);
+}
+
+/** Lê uma margem em % — "10", "12,5". Fora de 0..100 é recusa, não clamp. */
+function lerMargem(bruto: string): number | null {
+  const t = String(bruto ?? "").trim().replace("%", "").replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n >= 100) return null;
+  return n;
+}
+
+/** A decomposição, na forma que o modelo lê — reais escritos, não centavos. */
+function decomposicaoParaOModelo(d: NonNullable<ReturnType<typeof decompor>>) {
+  return {
+    preco: d.preco,
+    custoDoProduto: d.custoProduto,
+    comissaoML: d.comissaoML,
+    taxaFixaML: d.taxaFixaML,
+    frete: d.envio,
+    impostosEComissoesInternas: d.percentuaisDoLojista,
+    embalagemEEtiqueta: d.fixosDoLojista,
+    lucro: d.lucro,
+    margemPercentual: d.margem,
+    saude: d.saude,
+  };
+}
+
+/**
+ * "Por quanto posso vender?", "está dando prejuízo?", "simula R$ 79,90".
+ *
+ * TODA CONTA VEM DO DOMÍNIO. Esta função não soma, não divide e não arredonda
+ * dinheiro — ela traduz a intenção em chamadas ao motor e devolve estrutura.
+ */
+async function consultarPricing(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const c = ctx.preco;
+  if (!c) return { saida: { erro: "O cálculo de preço não está disponível nesta tela." } };
+
+  const produtoId = texto(args, "produtoId");
+
+  // ---- TRIAGEM DO CATÁLOGO ----
+  if (!produtoId) {
+    const { produtos, margemMinima, procedencia, totalNoCatalogo } = await c.catalogo();
+    const t = triarCatalogo(produtos, margemMinima, procedencia, totalNoCatalogo);
+    return {
+      pricing: { triagem: t },
+      saida: {
+        analisados: t.analisados,
+        prejuizo: t.prejuizo,
+        abaixoDaMargem: t.abaixoDaMargem,
+        saudaveis: t.saudaveis,
+        semPreco: t.semPreco,
+        bloqueados: t.bloqueados,
+        conflitos: t.conflitos,
+        margemMinima,
+        // AMOSTRA, nunca o catálogo. Com 300 produtos a lista estouraria o
+        // contexto e não ajudaria ninguém a decidir por onde começar.
+        piores: t.itens
+          .filter((i) => i.classe === "prejuizo" || i.classe === "abaixo_da_margem")
+          .slice(0, 8)
+          .map((i) => ({ produtoId: i.produtoId, nome: i.nome, margem: i.margem })),
+        comissaoUsada: t.comissaoUsada,
+        aviso:
+          "A triagem usa a tabela de comissão, não a tarifa exata da conta. Diga isso: ela acha quem está em risco; o número exato sai produto a produto.",
+        ...(t.truncado
+          ? { truncado: `Analisei ${t.analisados} de ${t.totalNoCatalogo} produtos.` }
+          : {}),
+      },
+    };
+  }
+
+  // ---- UM PRODUTO ----
+  const alvo = await c.doProduto(produtoId);
+  if (!alvo) {
+    return { saida: { erro: "Não achei esse produto no seu catálogo. Use achar_produto antes." } };
+  }
+  const e = alvo.entradas;
+  const situacao = situacaoDoPreco(e);
+
+  // Cenários pedidos, quando houver.
+  const brutos = lista(args, "precos");
+  const cenarios = brutos.length > 0 ? simular(brutos.map(lerPreco).filter((n): n is number => n !== null), e) : [];
+  const ilegiveis = brutos.filter((b) => lerPreco(b) === null);
+
+  const margemAlvo = lerMargem(texto(args, "margemAlvo"));
+  const alvoDeMargem = margemAlvo !== null ? precoParaMargem(margemAlvo, e) : null;
+
+  return {
+    pricing: { produto: { produtoId: alvo.produtoId, nome: alvo.nome, situacao, cenarios } },
+    saida: {
+      produtoId: alvo.produtoId,
+      nome: alvo.nome,
+      estado: situacao.estado,
+      ...(situacao.estado !== "calculavel" ? { falta: situacao.bloqueios } : {}),
+      precoDeHoje: situacao.hoje ? decomposicaoParaOModelo(situacao.hoje) : null,
+      menorPrecoSemPrejuizo: situacao.minimoSemPrejuizo,
+      menorPrecoNaMargem: situacao.minimoNaMargem,
+      margemMinimaDoLojista: e.margemMinima,
+      comissao: escreverComissao(e),
+      // A PROCEDÊNCIA dos inputs. Não é confiança: é o que permite responder
+      // "qual custo você usou?" sem inventar de onde ele veio.
+      inputs: {
+        custo: e.custo > 0 ? e.custo : null,
+        comissao: e.procedencia.comissao,
+        frete: e.procedencia.envio,
+        custosDoLojista: e.procedencia.custosDoLojista,
+        reputacao: e.procedencia.reputacao,
+      },
+      ...(cenarios.length > 0
+        ? {
+            simulacoes: cenarios.map((s) =>
+              s.ok
+                ? decomposicaoParaOModelo(s.decomposicao)
+                : { preco: s.preco, erro: s.motivo }
+            ),
+          }
+        : {}),
+      ...(ilegiveis.length > 0
+        ? {
+            naoLidos: ilegiveis,
+            avisoDeLeitura:
+              "Não consegui ler esses valores como dinheiro sem adivinhar. Peça de novo com a vírgula: 89,90.",
+          }
+        : {}),
+      ...(alvoDeMargem
+        ? alvoDeMargem.ok
+          ? {
+              precoParaAMargemPedida: {
+                margem: margemAlvo,
+                ...decomposicaoParaOModelo(alvoDeMargem.decomposicao),
+              },
+            }
+          : { margemPedidaImpossivel: alvoDeMargem.motivo }
+        : {}),
+      ...(margemAlvo === null && texto(args, "margemAlvo")
+        ? { avisoDeMargem: "Não entendi a margem. Diga em % — por exemplo, 10." }
+        : {}),
+      aviso:
+        "MARGEM aqui é margem LÍQUIDA sobre o preço de venda, depois de custo, comissão, frete, imposto e custos do lojista. Não é markup. Nunca refaça esta conta: repasse os números.",
+    },
+  };
+}
+
+/**
+ * "Prepare R$ 89,90" ou "use 12% de margem".
+ *
+ * O preço vem do lojista OU do domínio (pela margem alvo) — nunca do modelo. E
+ * a Proposal congela os inputs: custo, preço atual, peso cobrável e a
+ * configuração de imposto/cupom. Se qualquer um mudar antes do clique, o preço
+ * aprovado deixou de entregar a margem lida.
+ */
+async function proporPreco(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const c = ctx.preco;
+  if (!c) return { saida: { erro: "O cálculo de preço não está disponível nesta tela." } };
+
+  const alvo = await c.doProduto(texto(args, "produtoId"));
+  if (!alvo) {
+    return { saida: { montada: false, motivo: "Não achei esse produto no seu catálogo." } };
+  }
+  const e = alvo.entradas;
+  const a = avaliarPreco(e);
+  if (a.estado !== "calculavel") {
+    // Sem os inputs, uma proposta de preço seria um número bonito sobre nada.
+    return {
+      saida: {
+        montada: false,
+        estado: a.estado,
+        motivo:
+          a.estado === "conflito"
+            ? a.bloqueios[0]
+            : `Não consigo calcular o preço: falta ${a.bloqueios.join(" e ")}.`,
+      },
+    };
+  }
+
+  const brutoPreco = texto(args, "preco");
+  const margemAlvo = lerMargem(texto(args, "margemAlvo"));
+
+  let preco: number | null = null;
+  let comoVeio = "";
+  if (brutoPreco) {
+    preco = lerPreco(brutoPreco);
+    if (preco === null) {
+      return {
+        saida: {
+          montada: false,
+          motivo: `Não consigo ler "${brutoPreco}" como preço sem adivinhar. Escreva assim: 89,90.`,
+        },
+      };
+    }
+    comoVeio = "o preço que você disse";
+  } else if (margemAlvo !== null) {
+    const r = precoParaMargem(margemAlvo, e);
+    if (!r.ok) return { saida: { montada: false, motivo: r.motivo } };
+    preco = r.preco;
+    comoVeio = `o menor preço que entrega ${margemAlvo}% de margem líquida`;
+  } else {
+    return {
+      saida: { montada: false, motivo: "Preciso do preço ou da margem que você quer." },
+    };
+  }
+
+  const d = decompor(preco, e);
+  if (!d) return { saida: { montada: false, motivo: "Não consigo fechar a conta nesse preço." } };
+
+  return {
+    propostaDePreco: {
+      produtoId: alvo.produtoId,
+      nome: alvo.nome,
+      preco,
+      decomposicao: d,
+      resumo: resumoDaProposta(alvo.nome, d),
+      precoAtual: e.precoAtual,
+      comoVeio,
+      // A margem ESCOLHIDA pelo lojista viaja junto: é contra ela que o cartão
+      // decide se avisa. Sem ela, a tela usaria zero e nunca avisaria nada.
+      margemMinima: e.margemMinima,
+    },
+    saida: {
+      montada: true,
+      comoVeio,
+      ...decomposicaoParaOModelo(d),
+      precoDeHoje: e.precoAtual > 0 ? e.precoAtual : null,
+      // O AVISO importa: um preço abaixo do piso do lojista é decisão legítima
+      // (queima de estoque, isca), mas ninguém decide o que não vê.
+      ...(d.margem < e.margemMinima
+        ? {
+            abaixoDaMargemEscolhida: `Esse preço dá ${d.margem}% e você definiu ${e.margemMinima}% como mínimo.`,
+          }
+        : {}),
+      aviso:
+        "Nada foi gravado e NADA foi publicado no Mercado Livre. O lojista confirma clicando, e a troca acontece no catálogo do Zion.",
+    },
+  };
 }
 
 /**

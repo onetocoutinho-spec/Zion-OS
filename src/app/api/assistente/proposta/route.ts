@@ -46,6 +46,16 @@ import {
 } from "@/modules/assistant/domain/candidatosDoCadastro";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
 import { aplicarTitulo } from "@/lib/services/preparacaoDeAnuncio";
+import { aplicarPreco, estadoParaRevalidar } from "@/lib/services/precificacaoDoCopilot";
+import {
+  CAMPO_CONFIGURACAO,
+  CAMPO_CUSTO,
+  CAMPO_PESO_COBRAVEL,
+  CAMPO_PRECO_ATUAL,
+  impressaoDaConfiguracao,
+} from "@/modules/pricing/domain/conversaDePreco";
+import { SEM_CUSTOS_DO_LOJISTA } from "@/modules/pricing/domain/custosDoLojista";
+import { pesoCobravelGramas } from "@/modules/pricing/domain/custosML";
 import {
   CAMPO_TITULO_ATUAL,
   impressaoDoTitulo,
@@ -65,10 +75,20 @@ export const maxDuration = 30;
  * método é `copilot` porque é por onde ele entrou. Separar os dois é o ponto:
  * quem afirmou o valor não é o mesmo que o caminho que o trouxe.
  */
+/** O preço e a margem que havia antes, quando a gravação os devolveu. */
+function antesDoPreco(antes: unknown): { preco: string | null; margem: string | null } {
+  const a = antes as { preco?: number; margem?: number | null } | null;
+  return {
+    preco: typeof a?.preco === "number" && a.preco > 0 ? String(a.preco) : null,
+    margem: typeof a?.margem === "number" ? String(a.margem) : null,
+  };
+}
+
 function rastroDaEscrita(
   p: PropostaPersistida,
   usuario: string | null,
-  depois: unknown
+  depois: unknown,
+  antes: unknown = null
 ): RegistroDeProcedencia[] {
   const comum = {
     clienteId: p.clienteId,
@@ -105,6 +125,35 @@ function rastroDaEscrita(
           },
         ]
       : [];
+  }
+  if (p.tipo === "preco") {
+    // O PREÇO foi decidido pelo lojista (ele disse o número ou aprovou a margem
+    // alvo); o Zion calculou a MARGEM. Duas linhas, duas origens — é a
+    // distinção que a vertical de proveniência existe para manter.
+    const d = depois as { preco?: number; margem?: number | null } | null;
+    const a = antesDoPreco(antes);
+    if (!d?.preco) return [];
+    const linhas: RegistroDeProcedencia[] = [
+      {
+        ...comum,
+        entidade: { tipo: "produto", id: p.alvos[0] },
+        campo: "preco",
+        valor: String(d.preco),
+        valorAnterior: a.preco,
+      },
+    ];
+    if (typeof d.margem === "number") {
+      linhas.push({
+        ...comum,
+        origem: "zion" as const,
+        metodo: "calculo" as const,
+        entidade: { tipo: "produto", id: p.alvos[0] },
+        campo: "margem",
+        valor: String(d.margem),
+        valorAnterior: a.margem,
+      });
+    }
+    return linhas;
   }
   if (p.tipo === "peso") {
     // Uma linha POR ALVO. O peso desce para todas as variantes do produto — é a
@@ -152,6 +201,35 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   // O cenário obrigatório: T0 sem 7178.102, T2 a importação cria um, T3 o
   // cliente confirma. `candidatosDoCadastro` passa de 0 para 1, o domínio vê a
   // precondição quebrada, e NADA é criado.
+  // ---- PREÇO: as quatro entradas da conta ainda são as mesmas?
+  //
+  // Um preço não é um número solto — é o resultado de uma conta. O que ele
+  // promete ("12% de margem") depende de custo, peso cobrável, preço atual e a
+  // configuração fiscal do lojista. Se qualquer uma mudou entre a proposta e o
+  // clique, o preço aprovado deixou de entregar o que ele leu.
+  if (campos.has(CAMPO_CUSTO)) {
+    const atual = await estadoParaRevalidar(p.clienteId, p.alvos[0]);
+    // Produto sumiu ou é de outro tenant: tudo `null`, que o domínio trata como
+    // mudança. Supor "continua o mesmo" gravaria sobre o desconhecido.
+    if (!atual) {
+      return {
+        [CAMPO_CUSTO]: null,
+        [CAMPO_PRECO_ATUAL]: null,
+        [CAMPO_PESO_COBRAVEL]: null,
+        [CAMPO_CONFIGURACAO]: null,
+      };
+    }
+    const c = atual.taxas.custosDoLojista ?? SEM_CUSTOS_DO_LOJISTA;
+    return {
+      [CAMPO_CUSTO]: atual.custo > 0 ? Math.round(atual.custo * 100) : null,
+      [CAMPO_PRECO_ATUAL]: atual.precoAtual > 0 ? Math.round(atual.precoAtual * 100) : null,
+      [CAMPO_PESO_COBRAVEL]: atual.taxas.embalagem
+        ? Math.round(pesoCobravelGramas(atual.taxas.embalagem))
+        : null,
+      [CAMPO_CONFIGURACAO]: impressaoDaConfiguracao(c),
+    };
+  }
+
   // ---- TÍTULO: o título de agora ainda é o que eu vi quando propus?
   //
   // A precondição guarda a IMPRESSÃO do título atual. Se alguém trocou entre a
@@ -263,6 +341,22 @@ async function gravar(
     // Anúncio de outro tenant ou inexistente produzem o MESMO `null`.
     if (!r) return { afetados: 0, antes: null, depois: null };
     return { afetados: 1, antes: { titulo: r.antes }, depois: { titulo: r.depois } };
+  }
+
+  // ---- PREÇO: grava no CATÁLOGO DO ZION, e só nele.
+  //
+  // "Aplicar preço" significa `produtos.preco_venda`. NÃO significa publicar no
+  // Mercado Livre — o anúncio no ar não é tocado. Publicar tem rota própria,
+  // outra confirmação e outro risco.
+  //
+  // As taxas são RELIDAS aqui, não vêm da proposta: a margem gravada tem que
+  // ser a do mundo de agora, e a revalidação já garantiu que ele não mudou.
+  if (p.tipo === "preco") {
+    const atual = await estadoParaRevalidar(p.clienteId, produtoId);
+    if (!atual) return { afetados: 0, antes: null, depois: null };
+    const r = await aplicarPreco(produtoId, p.clienteId, p.valor, atual.taxas, atual.custo);
+    if (!r) return { afetados: 0, antes: null, depois: null };
+    return { afetados: 1, antes: r.antes, depois: r.depois };
   }
 
   // ---- CADASTRO: o produto nasce aqui, e por um caminho só.
@@ -511,7 +605,7 @@ export async function POST(request: Request) {
     // O RASTRO, depois da gravação e depois da auditoria. Nunca antes: registrar
     // a origem de um valor que não chegou a existir criaria uma trilha que
     // aponta para nada.
-    await registrarVarias(rastroDaEscrita(p, usuario, depois));
+    await registrarVarias(rastroDaEscrita(p, usuario, depois, antes));
 
     const criado = depois as { produtoId?: string; nome?: string } | null;
     return Response.json({
@@ -522,7 +616,9 @@ export async function POST(request: Request) {
           ? `Produto criado: ${criado?.nome ?? p.resumo}`
           : p.tipo === "titulo"
             ? `Título trocado. ${p.resumo}`
-            : `Pronto. ${p.resumo}`,
+            : p.tipo === "preco"
+              ? `Preço aplicado no seu catálogo. ${p.resumo}`
+              : `Pronto. ${p.resumo}`,
       ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
     });
   } catch (e) {

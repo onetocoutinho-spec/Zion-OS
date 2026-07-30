@@ -174,6 +174,32 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "pricing",
+    efeito: "le",
+    descricao:
+      "Preço, margem e lucro de um produto, calculados pelo motor financeiro do Zion. VOCÊ NÃO FAZ CONTA DE DINHEIRO — pergunte a esta ferramenta e leia o resultado. Sem produtoId: a triagem do catálogo (quantos em prejuízo, quantos abaixo da margem, quantos bloqueados). Com produtoId: a situação do preço de hoje, o menor preço sem prejuízo, o menor preço na margem do lojista, e a decomposição (custo, comissão, frete, imposto, lucro). Com \"precos\": simula os cenários que ele pediu. Com \"margemAlvo\": o preço que entrega aquela margem. MARGEM aqui é sempre MARGEM LÍQUIDA sobre o preço de venda — nunca markup.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        produtoId: {
+          type: "STRING",
+          description: "Vazio para a triagem do catálogo. Preenchido para um produto — id de achar_produto.",
+        },
+        precos: {
+          type: "ARRAY",
+          items: { type: "STRING" },
+          description:
+            "Cenários a simular, como o lojista escreveu: \"79,90\", \"R$ 84,90\". Copie a vírgula decimal.",
+        },
+        margemAlvo: {
+          type: "STRING",
+          description:
+            "A margem líquida que ele quer, em % — \"10\", \"12,5\". Só quando ele disser um número.",
+        },
+      },
+    },
+  },
+  {
     nome: "procedencia",
     efeito: "le",
     descricao:
@@ -242,6 +268,27 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
         },
       },
       required: ["alvo"],
+    },
+  },
+  {
+    nome: "propor_preco",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de TROCAR O PREÇO de um produto no catálogo do Zion. Passe \"preco\" (o valor que o lojista disse) OU \"margemAlvo\" (a margem líquida que ele quer, e eu calculo o preço). NÃO grava e NÃO publica no Mercado Livre: monta o cartão que ele confirma clicando, e a troca acontece no catálogo do Zion. Se o custo, o peso ou a configuração de imposto mudarem entre a proposta e o clique, a proposta fica obsoleta e nada é gravado.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        produtoId: { type: "STRING" },
+        preco: {
+          type: "STRING",
+          description: "O preço EXATAMENTE como ele disse, com a vírgula: \"89,90\".",
+        },
+        margemAlvo: {
+          type: "STRING",
+          description: "A margem líquida desejada em %, quando ele pediu por margem em vez de preço.",
+        },
+      },
+      required: ["produtoId"],
     },
   },
   {

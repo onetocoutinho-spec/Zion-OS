@@ -21,6 +21,7 @@ import type {
   Preparacao,
   selecionarParaPreparar,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
+import type { PrecoNaTela, PropostaDePrecoNaTela } from "../../modules/assistant/domain/cartaoDePreco";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -99,6 +100,16 @@ export interface RespostaDaConversa {
     justificativa: string;
   };
   propostaDeTituloId?: string;
+  /**
+   * O preço — situação de um produto com cenários, ou a triagem do catálogo.
+   *
+   * Do SERVIDOR, calculado pelo motor financeiro. A tela ESCREVE os números;
+   * ela não os produz, e o modelo também não.
+   */
+  pricing?: PrecoNaTela;
+  /** A proposta de trocar o preço, com a decomposição que a justifica. */
+  propostaDePreco?: PropostaDePrecoNaTela & { produtoId: string };
+  propostaDePrecoId?: string;
 }
 
 /** O que a tela recebe enquanto a resposta acontece. */
@@ -187,6 +198,13 @@ export async function conversar(
             : {}),
           ...(typeof e.propostaDeTituloId === "string"
             ? { propostaDeTituloId: e.propostaDeTituloId }
+            : {}),
+          ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
+          ...(e.propostaDePreco
+            ? { propostaDePreco: e.propostaDePreco as RespostaDaConversa["propostaDePreco"] }
+            : {}),
+          ...(typeof e.propostaDePrecoId === "string"
+            ? { propostaDePrecoId: e.propostaDePrecoId }
             : {}),
         };
       }

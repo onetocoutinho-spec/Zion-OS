@@ -61,6 +61,12 @@ import {
   type PreparacaoNaTela,
   type TituloNaTela,
 } from "@/modules/assistant/domain/cartaoDaPreparacao";
+import {
+  estadoDoCartaoDePreco,
+  estadoDoPainelDePreco,
+  type PrecoNaTela,
+  type PropostaDePrecoNaTela,
+} from "@/modules/assistant/domain/cartaoDePreco";
 
 type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
@@ -150,6 +156,12 @@ interface Turno {
   propostaDeTitulo?: TituloNaTela;
   /** O id que AUTORIZA a troca do título. Sem ele, não há botão. */
   propostaDeTituloId?: string;
+  /** Preço, margem e lucro — do motor financeiro, nunca do modelo. */
+  pricing?: PrecoNaTela;
+  /** A proposta de trocar o preço, com o detalhamento que a justifica. */
+  propostaDePreco?: PropostaDePrecoNaTela;
+  /** O id que AUTORIZA a troca do preço. Sem ele, não há botão. */
+  propostaDePrecoId?: string;
   /**
    * Uma proposta de GERAR ANÚNCIO, ainda não disparada.
    *
@@ -347,6 +359,13 @@ export function ChatDaOperacao({
                           propostaDeTituloId: r.propostaDeTituloId,
                         }
                       : {}),
+                    ...(r.pricing ? { pricing: r.pricing } : {}),
+                    ...(r.propostaDePreco
+                      ? {
+                          propostaDePreco: r.propostaDePreco,
+                          propostaDePrecoId: r.propostaDePrecoId,
+                        }
+                      : {}),
                   }
                 : turno
             )
@@ -398,7 +417,11 @@ export function ChatDaOperacao({
       const alvo = turnos[indice];
       // O cadastro carrega o próprio id: os dois cartões podem coexistir num
       // turno, e confundir os dois confirmaria a proposta errada.
-      const id = alvo?.cadastro?.propostaId ?? alvo?.propostaDeTituloId ?? alvo?.propostaId;
+      const id =
+        alvo?.cadastro?.propostaId ??
+        alvo?.propostaDeTituloId ??
+        alvo?.propostaDePrecoId ??
+        alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
       // render de propósito: um clique que escapou (teclado, corrida de
@@ -509,11 +532,24 @@ export function ChatDaOperacao({
                 t.proposta ||
                 t.cadastro ||
                 t.pendencias ||
-                t.preparacao ? (
+                t.preparacao ||
+                t.pricing ||
+                t.propostaDePreco ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
                   {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
+                  {t.pricing && <PainelDePreco p={t.pricing} />}
+                  {t.propostaDePreco && (
+                    <CartaoDePreco
+                      p={t.propostaDePreco}
+                      propostaId={t.propostaDePrecoId}
+                      desfecho={t.desfecho}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.propostaDeTitulo && (
                     <CartaoDeTitulo
                       t={t.propostaDeTitulo}
@@ -611,6 +647,240 @@ export function ChatDaOperacao({
           <span className="hidden sm:inline">Perguntar</span>
         </button>
       </form>
+    </div>
+  );
+}
+
+/**
+ * O painel de preço — o detalhamento, os pisos e os cenários.
+ *
+ * NENHUM NÚMERO AQUI É CALCULADO. Todos vêm de `conversaDePreco`, que vem de
+ * `modeloPreco`. A tela escreve; ela não faz conta. É a mesma regra que impede
+ * o modelo de fazer — e ela vale para os dois pela mesma razão: no dia em que a
+ * comissão mudar, só um lugar precisa mudar junto.
+ */
+function PainelDePreco({ p }: { p: PrecoNaTela }) {
+  const e = estadoDoPainelDePreco(p);
+  if (e.estado === "vazio") return null;
+
+  if (e.estado === "conflito") {
+    return (
+      <p className="flex items-start gap-2 rounded-lg border border-amber-400/25 bg-amber-500/[0.04] p-3 text-sm text-amber-300">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        {e.motivo}
+      </p>
+    );
+  }
+
+  if (e.estado === "bloqueado") {
+    return (
+      <div className="space-y-1 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">
+          Não consigo calcular o preço de {e.nome} ainda.
+        </p>
+        <p className="text-xs text-zinc-500">Falta {e.falta.join(" e ")}.</p>
+      </div>
+    );
+  }
+
+  if (e.estado === "triagem") {
+    return (
+      <div className="space-y-2 rounded-lg border border-white/10 bg-black/20 p-3">
+        <p className="text-sm text-zinc-200">{e.frase}</p>
+        {e.piores.length > 0 && (
+          <ul className="space-y-0.5">
+            {e.piores.map((i) => (
+              <li key={i.produtoId} className="text-xs text-zinc-400">
+                <span className="text-amber-300">{i.margem}</span> · {i.nome}
+              </li>
+            ))}
+          </ul>
+        )}
+        {e.aviso && <p className="text-[11px] text-zinc-600">{e.aviso}</p>}
+        {/* A triagem roda com a TABELA de comissão. Dizer isso é o serviço: um
+            percentual de tabela apresentado como o da conta do lojista é a
+            diferença entre uma conversa e uma promessa. */}
+        {e.comissaoEstimada && (
+          <p className="text-[11px] text-zinc-600">
+            Comissão estimada pela tabela — o número exato sai produto a produto.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-medium text-zinc-100">{e.nome}</p>
+        <span className="text-[11px] text-zinc-500">{e.saude}</span>
+      </div>
+
+      {e.hoje && <Breakdown linhas={e.hoje} />}
+
+      <dl className="space-y-0.5 text-xs">
+        {e.minimoSemPrejuizo && (
+          <div className="flex gap-2">
+            <dt className="w-40 shrink-0 text-zinc-500">Menor preço sem prejuízo</dt>
+            <dd className="text-zinc-200">{e.minimoSemPrejuizo}</dd>
+          </div>
+        )}
+        {e.minimoNaMargem && (
+          <div className="flex gap-2">
+            <dt className="w-40 shrink-0 text-zinc-500">Menor preço na sua margem</dt>
+            <dd className="text-zinc-200">{e.minimoNaMargem}</dd>
+          </div>
+        )}
+      </dl>
+
+      {/* Os CENÁRIOS numa tabela: é assim que se compara. Três parágrafos com
+          três preços obrigam a pessoa a montar a tabela de cabeça. */}
+      {e.cenarios.length > 0 && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-zinc-500">
+              <th className="text-left font-normal">Preço</th>
+              <th className="text-right font-normal">Sobra</th>
+              <th className="text-right font-normal">Margem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {e.cenarios.map((c) => (
+              <tr key={c.preco} className={c.ok ? "text-zinc-300" : "text-zinc-600"}>
+                <td>{c.preco}</td>
+                <td className="text-right">{c.lucro}</td>
+                <td className="text-right">{c.margem}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {e.comissaoEstimada && (
+        <p className="text-[11px] text-zinc-600">
+          Comissão estimada pela tabela de Moda, não a da sua conta.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** O detalhamento em linhas. A soma tem que fechar de cima para baixo. */
+function Breakdown({ linhas }: { linhas: readonly { rotulo: string; valor: string; negativa: boolean; resultado?: boolean }[] }) {
+  return (
+    <dl className="space-y-0.5 text-xs">
+      {linhas.map((l) => (
+        <div
+          key={l.rotulo}
+          className={`flex gap-2 ${l.resultado ? "border-t border-white/5 pt-1" : ""}`}
+        >
+          <dt className={`w-40 shrink-0 ${l.resultado ? "text-zinc-300" : "text-zinc-500"}`}>
+            {l.rotulo}
+          </dt>
+          <dd
+            className={
+              l.resultado
+                ? "font-medium text-emerald-300"
+                : l.negativa
+                  ? "text-zinc-400"
+                  : "text-zinc-200"
+            }
+          >
+            {l.negativa ? "− " : ""}
+            {l.valor}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * A proposta de trocar o preço — DE → PARA, com o detalhamento.
+ *
+ * Os dois preços, sempre: um preço novo sozinho não deixa julgar o tamanho da
+ * mudança, e é o tamanho que assusta ou tranquiliza.
+ *
+ * Preço abaixo do piso NÃO bloqueia — vender no prejuízo pode ser estratégia.
+ * É aviso, pela mesma regra do `avisoDePreco` no cadastro manual: quem decide é
+ * quem vende, mas ninguém decide o que não vê.
+ */
+function CartaoDePreco({
+  p,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: PropostaDePrecoNaTela;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDePreco(p, propostaId, desfecho);
+
+  if (e.estado === "concluido") {
+    return (
+      <p
+        className={`flex items-start gap-2 text-sm ${e.ok ? "text-emerald-300" : "text-zinc-400"}`}
+      >
+        {e.ok ? (
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        ) : (
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        )}
+        {e.mensagem}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <div>
+        <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+          Trocar o preço · {p.comoVeio}
+        </p>
+        <p className="text-sm text-zinc-100">
+          <span className="text-zinc-500 line-through">{e.de}</span>{" "}
+          <ArrowRight size={12} className="inline text-zinc-600" />{" "}
+          <span className="font-medium">{e.para}</span>
+        </p>
+      </div>
+
+      <Breakdown linhas={e.linhas} />
+
+      {e.alerta && (
+        <p className="flex items-start gap-1.5 text-xs text-amber-300">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          {e.alerta} Você pode aplicar assim mesmo se for proposital.
+        </p>
+      )}
+
+      <p className="text-[11px] text-zinc-600">
+        Muda o preço no seu catálogo do Zion. Não publica no Mercado Livre.
+      </p>
+
+      <div className="flex gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
+        >
+          {ocupado ? "Aplicando…" : e.rotuloBotao}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200 disabled:opacity-40"
+        >
+          Agora não
+        </button>
+      </div>
     </div>
   );
 }
