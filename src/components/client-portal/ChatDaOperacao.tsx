@@ -73,6 +73,7 @@ import {
 type EscopoNaTela = NonNullable<RespostaDaConversa["escopo"]>;
 import {
   chaveDaConversa,
+  chaveDoFio,
   lerGuardada,
   paraGuardar,
 } from "@/modules/assistant/domain/conversaGuardada";
@@ -261,7 +262,43 @@ export function ChatDaOperacao({
   const [conversando, setConversando] = useState(false);
   /** O fio. Vive aqui, não no servidor: fechar a aba encerra a conversa. */
   const [falas, setFalas] = useState<readonly Fala[]>([]);
+  /**
+   * A CONVERSA ATIVA no banco — a identidade que agrupa os turnos (INC-005).
+   *
+   * Não é o histórico: `turnos` e `falas` vivem no `localStorage` e sobrevivem
+   * ao fechar a aba; este id vive no `sessionStorage` e morre com ela. Reabrir
+   * restaura a conversa na tela e começa uma conversa nova no banco — é o
+   * contrato, não um defeito.
+   *
+   * Antes disto o id era devolvido pelo servidor a cada turno e descartado
+   * aqui, e cada requisição virava uma linha em `copilot_conversas`.
+   */
+  const [conversaId, setConversaId] = useState<string | null>(null);
   const fimDaLista = useRef<HTMLDivElement>(null);
+
+  /** O servidor é a autoridade sobre o id: o que ele devolve é o que vale. */
+  const guardarFio = useCallback(
+    (id: string) => {
+      setConversaId(id);
+      try {
+        sessionStorage.setItem(chaveDoFio(clienteId), id);
+      } catch {
+        // sem sessionStorage o id continua em memória: sobrevive ao turno
+        // seguinte, não ao reload. Degradar assim é melhor que não conversar.
+      }
+    },
+    [clienteId]
+  );
+
+  /** Encerra a conversa ativa. O histórico na tela não é afetado. */
+  const esquecerFio = useCallback(() => {
+    setConversaId(null);
+    try {
+      sessionStorage.removeItem(chaveDoFio(clienteId));
+    } catch {
+      // idem
+    }
+  }, [clienteId]);
 
   useEffect(() => {
     fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -278,6 +315,16 @@ export function ChatDaOperacao({
   useEffect(() => {
     if (retomou) return;
     setRetomou(true);
+    // A identidade da aba é lida ANTES e SEPARADO do histórico: ela existe
+    // mesmo sem turnos guardados (aba recarregada no meio da primeira
+    // pergunta), e o histórico existe sem ela (aba nova, cache antigo).
+    try {
+      const id = sessionStorage.getItem(chaveDoFio(clienteId));
+      if (id) setConversaId(id);
+    } catch {
+      // storage indisponível: a aba começa sem identidade e o primeiro turno
+      // cria uma conversa nova.
+    }
     try {
       const g = lerGuardada(localStorage.getItem(chaveDaConversa(clienteId)));
       if (!g || g.turnos.length === 0) return;
@@ -336,8 +383,13 @@ export function ChatDaOperacao({
             falas,
             { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
             contexto.produto?.nome,
-            aoVivo
+            aoVivo,
+            conversaId ?? undefined
           );
+          // O id do SERVIDOR é a autoridade. Se o que mandamos não existia, era
+          // malformado ou de outro cliente, `garantirConversa` criou outro — e é
+          // esse que vale daqui em diante.
+          if (r.conversaId) guardarFio(r.conversaId);
           setFalas(r.falas);
           setTurnos((t) =>
             t.map((turno, i) =>
@@ -413,7 +465,7 @@ export function ChatDaOperacao({
         setOcupado(false);
       }
     },
-    [contexto, ocupado, produtos, conversando, falas]
+    [contexto, ocupado, produtos, conversando, falas, conversaId, guardarFio]
   );
 
   /**
@@ -511,6 +563,10 @@ export function ChatDaOperacao({
         onClick={() => {
           setConversando((v) => !v);
           setFalas([]);
+          // Trocar de modo encerra o fio dos DOIS lados: o histórico do modelo
+          // e a conversa ativa no banco. Religar não cria nada — quem cria é o
+          // primeiro turno seguinte, e aí o servidor devolve o id novo.
+          esquecerFio();
         }}
         disabled={ocupado}
         className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-500 transition hover:text-violet-300 disabled:opacity-50"
