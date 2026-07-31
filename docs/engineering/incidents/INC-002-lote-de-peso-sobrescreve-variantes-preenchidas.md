@@ -349,7 +349,7 @@ mesmo nome, e confundi-las é como o INC-002 seria declarado fechado sem estar.
 | 2 | referência de peso obsoleta entre criação e clique | **CORRIGIDA** — precondição `pesoConhecido:<id>` (CICLO A) |
 | 3 | identidade do conjunto aprovado | **CORRIGIDA — CICLO G.1**, abaixo |
 | 4 | TOCTOU entre revalidação e escrita | **ABERTA** |
-| 5 | atomicidade além da mutação do catálogo | **ABERTA e separada** |
+| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO** — aberta para os demais tipos |
 
 ## 3 — a identidade do conjunto (fechada no CICLO G.1)
 
@@ -445,3 +445,98 @@ identidade **já não é problema dele**.
 ## O que este incidente ainda NÃO permite dizer
 
 **INC-002 não está resolvido.** As camadas 1, 2 e 3 estão; a 4 e a 5 não.
+
+
+---
+
+# Camada 5 — fechada para PESO (CICLO H / H.2)
+
+## O defeito: T1
+
+`reservarParaExecucao` fazia o CAS `pendente → executada` e carimbava
+`executada_em` **antes** da mutação, em transação separada — três idas ao
+PostgREST antes da escrita. Morte no intervalo:
+
+```
+Proposal       = executada, executada_em preenchido
+catálogo       = INTACTO
+copilot_acoes  = nenhuma linha
+nova tentativa = HTTP 200 "Isso já foi feito"
+```
+
+A autorização era consumida, nada era gravado, e o sistema **afirmava ao lojista
+que havia gravado**. A única evidência era a ausência de linha de auditoria — que
+ninguém consulta.
+
+Descoberto ao mapear T0–T6 no CICLO H, junto de dois fatos: `marcarProposta` não
+tem guarda de status (pode mover `executada → falhou`), e o estado `aprovada`
+existe no CHECK e **não é usado em lugar nenhum**.
+
+## A correção: migração 045
+
+`copilot_executar_peso(p_proposta, p_cliente)`. Numa transação: trava a proposta
+com `FOR UPDATE`, valida, grava, e **só então** marca `executada`. A transição de
+status é a **última escrita da mesma transação** que faz a mutação.
+
+> **`executada` passa a implicar mutação commitada.** Não existe COMMIT em que
+> uma exista sem a outra; qualquer falha antes do commit reverte as duas, e a
+> Proposal volta **intacta** a `pendente` — reutilizável, em vez de queimada.
+
+**Dois parâmetros, e só.** `valor`, `alvos` e `idsAprovados` são lidos da linha
+persistida **sob lock**. Mandá-los como argumento permitiria combinar "esta
+proposta com outro peso", e a autorização passaria a ser o argumento em vez do
+objeto aprovado. `p_cliente` é a exceção obrigatória: vem da sessão e é
+**conferido** contra a proposta — não autoriza, recusa.
+
+**SECURITY INVOKER**, com execute revogado de `public`/`anon`/`authenticated` e
+concedido só a `service_role`, conferido pela própria migração. Diverge do padrão
+`portal_*` (DEFINER) porque aquelas são chamadas pelo navegador e precisam
+atravessar a RLS; esta é chamada pelo servidor, que já tem `bypassrls`.
+
+**Zero linhas não queima a proposta.** O status não é tocado, ela continua
+`pendente`, e o lojista tenta de novo com a mesma autorização — mudança frente ao
+caminho antigo, que marcava `falhou`.
+
+Todas as barreiras anteriores seguem dentro do UPDATE: tenant, produtos da
+Proposal, `peso <= 0` e `idsAprovados`. **Ausência de `idsAprovados` é predicado
+neutro** — contrato legacy, nunca conjunto vazio.
+
+## Provado em transações revertidas
+
+| cenário | resultado |
+|---|---|
+| sucesso | `ok`, afetados=3, status `executada`, catálogo mudou |
+| duplo clique | `ja_executada`, afetados=0 |
+| tenant errado | `outro_tenant`, afetados=0 |
+| **nada gravado** | **status permanece `pendente`, `executada_em` NULL** |
+| legacy sem `idsAprovados` | `ok`, afetados=3 |
+
+Resíduo zero. A `903c1830…` não foi usada como fixture e segue `pendente`.
+
+## O que continua aberto
+
+**Só peso foi coberto.** Custo, preço e título não receberam desenho equivalente;
+**cadastro** é multi-statement, não idempotente e valida em TypeScript — forçá-lo
+exigiria reescrever `validarRascunho` em SQL, com risco de semântica divergente.
+Ele tem CAS próprio no draft (`aguardando_confirmacao`), que é desenho separado.
+**T1 continua aberto para esses quatro tipos.**
+
+**Camada 4 continua aberta** — o TOCTOU de `pesoConhecido` entre a revalidação e
+a escrita é risco conhecido e aceito. A 045 não o toca de propósito.
+
+**Auditoria, procedência e consequência seguem fora da transação** e continuam
+eventuais. Isto **não** é atomicidade operacional completa: é a garantia de que
+`executada` não mente sobre o catálogo. Se o processo morrer depois do commit e
+antes de `registrarAcao`, o estado é "executada, auditoria pendente" — e não mais
+"executada falsamente".
+
+**Concorrência real não observada.** A exclusividade é provada por construção
+(`FOR UPDATE` na linha da Proposal); o harness de duas sessões continua
+indisponível.
+
+**H4 segue NÃO DEMONSTRADO:** `marcarProposta` sem guarda de status torna
+`executada → falhou` estruturalmente alcançável após uma escrita bem-sucedida,
+mas nenhum caminho concreto de exceção foi encontrado entre a escrita e a
+resposta.
+
+**INC-002 não está encerrado.**
