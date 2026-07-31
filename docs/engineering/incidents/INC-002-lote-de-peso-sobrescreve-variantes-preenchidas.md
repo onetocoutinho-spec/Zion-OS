@@ -335,3 +335,113 @@ Deliberado, e por três razões:
 
 **Nada foi executado para provar este defeito.** Toda a evidência acima vem de
 leitura de código e de consultas somente-leitura ao banco.
+
+---
+
+# As cinco camadas, separadas — estado em 2026-07-31 (CICLO G / G.1)
+
+Este incidente virou um guarda-chuva. Cinco propriedades distintas moram sob o
+mesmo nome, e confundi-las é como o INC-002 seria declarado fechado sem estar.
+
+| # | propriedade | estado |
+|---|---|---|
+| 1 | sobrescrita de variante já preenchida | **CORRIGIDA** — `.lte("peso", 0)`, aplicado pelo banco dentro do UPDATE |
+| 2 | referência de peso obsoleta entre criação e clique | **CORRIGIDA** — precondição `pesoConhecido:<id>` (CICLO A) |
+| 3 | identidade do conjunto aprovado | **CORRIGIDA — CICLO G.1**, abaixo |
+| 4 | TOCTOU entre revalidação e escrita | **ABERTA** |
+| 5 | atomicidade além da mutação do catálogo | **ABERTA e separada** |
+
+## 3 — a identidade do conjunto (fechada no CICLO G.1)
+
+### O que estava errado
+
+`alvos` guarda **produtos**, não variantes. A escrita **redescobria** as
+variantes elegíveis no instante do UPDATE, e a revalidação só conferia
+**quantas** estavam vazias. Contagem é cega à troca:
+
+```
+aprovado {A,B,C}  →  alguém preenche C e zera D  →  {A,B,D}
+contagem 3 = 3  →  a precondição APROVA  →  D recebia 410 g
+```
+
+Demonstrado em transação revertida sobre o catálogo real (Vizzano, 39 variantes,
+3 sem peso), comparando os dois predicados no mesmo cenário:
+
+| | |
+|---|---|
+| `\|S0\|` = 3, `\|S1\|` = 3 | contagem idêntica, precondição aprova |
+| predicado **antigo** | atingiria 3 variantes — **1 não aprovada** |
+| predicado **novo** | atingiria 2 variantes — **0 não aprovadas** |
+
+### A correção
+
+`Precondicao.idsAprovados` carrega a identidade do conjunto na entrada
+`variacoesSemPeso:<produtoId>`. Os ids são lidos **no servidor**, na fronteira
+que cria a Proposal, com o tenant da sessão e com o **mesmo** predicado
+`peso <= 0` que a escrita usa. Sem hash — a execução precisa dos ids reais
+porque ela **escreve** no conjunto, não apenas detecta que ele mudou.
+
+É **restrição de escrita**, não precondição: `podeExecutar` não a enxerga. O
+banco aplica `id IN (...)` junto de `peso <= 0` e do tenant **no mesmo
+statement**, então a escrita é por construção um **subconjunto** do aprovado e
+não há janela entre conferir e escrever.
+
+**Semântica: reduzir, não invalidar.** Não foi decisão nova — é o contrato já
+registrado em `desfechoDoPreenchimento`, que declara a parcialidade por corrida
+em vez de escondê-la. `elegiveis` passou a contar dentro do conjunto aprovado.
+
+**Legacy:** ausência de `idsAprovados` é o contrato antigo, **nunca** conjunto
+vazio. Nada foi derivado retrospectivamente. A `903c1830…` continua legacy,
+`pendente`, intocada.
+
+## 4 — o TOCTOU que CONTINUA ABERTO
+
+`lerEstadoAtual` faz `SELECT`, a decisão volta à aplicação, e só então o `UPDATE`
+acontece. Não há `FOR UPDATE`, advisory lock nem isolation explícito — grep
+confirmou zero ocorrências.
+
+Consequência precisa, e ela **limita o alcance do CICLO A**:
+
+> O CICLO A fechou o stale entre a **criação** e o **clique**. Não fechou entre a
+> **revalidação** e a **escrita**.
+
+O UPDATE grava `p.valor` congelado, nunca o valor recomputado. Se outra conexão
+mudar uma irmã de 410 para 500 depois da revalidação, o UPDATE grava 410 assim
+mesmo. `pesoConhecido:` é um portão lido no SELECT, não uma trava.
+
+**A identidade do conjunto (3) NÃO sofre desse problema** — ela é aplicada dentro
+do statement, e por isso sobrevive à concorrência. As duas coisas têm garantias
+diferentes e não devem ser confundidas.
+
+**NÃO DEMONSTRADO:** a exploração real por concorrência. Exigiria duas conexões
+Postgres independentes com barreira entre o SELECT e o UPDATE; o harness
+disponível é stateless por chamada e **não** consegue interleavá-las. Simular
+sequencialmente e chamar de concorrência seria falsificar a prova.
+
+## 5 — atomicidade, e o que ela é de fato
+
+O lote é **um único UPDATE** cobrindo todos os produtos. O cenário "P1 grava, P2
+falha" **não existe**: um statement é atômico no Postgres.
+
+O que não é atômico é a sequência `reservarParaExecucao` → `gravar` →
+`registrarAcao` → `registrarVarias` → consequência. Morte entre a reserva e a
+escrita deixa a Proposal `executada` com o catálogo intocado.
+
+Isso é problema **separado** e não deve ser resolvido junto: a unidade que
+precisa ser atômica para evitar dado incorreto é a **mutação do catálogo** — e
+essa já é. Auditoria, procedência e consequência têm requisitos próprios, e a
+consequência é deliberadamente best-effort.
+
+## O INC-002-D, revisitado
+
+O desenho da primitiva transacional **continua válido para as camadas 4 e 5** e
+ficou **obsoleto para a 3**: ele propunha resolver identidade dentro de uma RPC,
+e a identidade acabou fechada sem RPC, sem migration e sem transação nova —
+porque o predicado do banco já era o lugar certo para aplicá-la.
+
+Se as camadas 4/5 forem endereçadas, o desenho precisa ser relido sabendo que a
+identidade **já não é problema dele**.
+
+## O que este incidente ainda NÃO permite dizer
+
+**INC-002 não está resolvido.** As camadas 1, 2 e 3 estão; a 4 e a 5 não.

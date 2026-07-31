@@ -376,3 +376,48 @@ Nenhuma migration, nenhuma função SQL, nenhum TypeScript, nenhum commit,
 nenhuma escrita real. Os dois testes de atomicidade rodaram em transação
 revertida; base em 684 variantes / 159 sem peso / 0 resíduo. O diff congelado da
 CONSEQ-001 está intacto.
+
+---
+
+## S. Revisão de 2026-07-31 — o que deste desenho ficou obsoleto
+
+O CICLO G mediu as cinco invariantes contra o código integrado e o CICLO G.1
+fechou duas delas **sem** a primitiva desenhada aqui. Registro sem apagar nada
+do que está acima.
+
+### Ficou obsoleto: identidade e conjunto dentro de RPC
+
+Este desenho supunha que congelar a identidade das variantes e revalidar por
+conjunto exigiria uma função transacional. **Não exigiu.**
+
+`Precondicao.idsAprovados` carrega os ids, e a escrita aplica
+`id IN (...)` **junto** de `peso <= 0` e do tenant **no mesmo statement**. O
+predicado do banco já era o lugar certo: a garantia nasce dentro da unidade
+atômica que sempre existiu — o próprio UPDATE — em vez de precisar de uma nova.
+
+Code-only, sem migration, sem RPC, sem grants. Ver a seção nova do INC-002.
+
+### Continua válido: TOCTOU e atomicidade da operação
+
+Segue verdadeiro, e agora medido:
+
+- `lerEstadoAtual` faz `SELECT`, volta à aplicação, e só então o `UPDATE`
+  acontece. Sem `FOR UPDATE`, sem advisory lock, sem isolation explícito.
+- Por isso o **CICLO A fechou o stale entre criação e clique, não entre
+  revalidação e escrita**: o UPDATE grava o `p.valor` congelado mesmo que uma
+  irmã mude depois do SELECT.
+- A sequência reserva → escrita → auditoria → procedência não é atômica.
+
+### Uma correção de premissa
+
+O desenho tratava "all-or-nothing do lote" como problema aberto. **Não é**: o
+lote é um único UPDATE cobrindo todos os produtos, e um statement é atômico. O
+cenário "P1 grava, P2 falha" não existe. O que falta é atomicidade **entre** os
+passos, não dentro da mutação do catálogo — e §17 do CICLO G registra que nem
+tudo deve entrar na mesma transação.
+
+### Se as camadas 4/5 forem retomadas
+
+Releia este desenho sabendo que **a identidade já não é problema dele**, e que a
+unidade que precisa ser atômica para evitar dado incorreto é a mutação do
+catálogo — que já é. Nenhuma autorização de migration/RPC existe hoje.
