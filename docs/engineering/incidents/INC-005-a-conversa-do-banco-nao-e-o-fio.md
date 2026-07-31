@@ -304,16 +304,62 @@ sobreviveu, os turnos voltaram à tela, e o terceiro caiu na mesma conversa.
 Mutação operacional **zero**: 159 variantes sem peso, Vizzano `0.000 | 0.410`,
 propostas 1, ações 0, cadastros 0, procedência 0. Só ferramentas `le` rodaram.
 
+## O ciclo de vida, observado (Fase 7G)
+
+**Toggle do modo.** Com `47dd11cd…` ativa: desligar limpou a chave do
+`sessionStorage`; religar **não criou linha nenhuma**; o turno seguinte criou
+`6c878f1c…` — id diferente. Os turnos visuais permaneceram, como o contrato
+prevê.
+
+**Aba nova independente (M1).** Aberta do zero — não duplicada. O
+`sessionStorage` veio **vazio**, sem herdar `6c878f1c…`, enquanto o histórico
+local (4 turnos) carregou normalmente. O primeiro turno criou `7f9832de…`,
+conversa própria.
+
+> Histórico compartilhado, identidade independente. **M1 observado em
+> produção.**
+
+**Logout (REGRA H).** Antes: histórico presente, id ativo `7f9832de…`, sessão
+viva. Depois do "Sair" normal do produto: `localStorage` e `sessionStorage`
+**vazios**, sessão encerrada. As duas chaves do cliente foram removidas.
+
+*Login posterior* não foi observado — exigiria credenciais, e obtê-las ou
+contornar a autenticação é proibido.
+
+## Por que `ultimaApresentacao` não foi validada
+
+Tentei e **parei por impossibilidade estrutural, não por falta de tempo.**
+
+`metadata` — a apresentação persistida que faz "o segundo" resolver — só é
+escrita a partir de `efeitoNoCadastro?.apresentou`, e isso nasce em **um único
+lugar**: `gerenciar_cadastro`, ferramenta de efeito `rascunha`. Há dois
+caminhos, e nenhum serve:
+
+- **`retomar`** com vários rascunhos abertos → há **zero** cadastros na base;
+- **detecção de duplicidade** → exige um cadastro **em andamento**.
+
+Os dois obrigam a iniciar um cadastro de produto na área de trabalho da
+lojista, com uma intenção inventada. Isso é fabricar dado e deixar resíduo
+operacional visível para ela.
+
+**`ultimaApresentacao` e `draftAbertoDaConversa` seguem NÃO DEMONSTRADOS.** O
+que se sabe é que voltaram a ser *alcançáveis* — a conversa agora persiste
+entre turnos —, não que funcionem.
+
+Registro a consequência: **não existe caminho de leitura que exercite a
+referência estruturada.** Validá-la exige ou um produto de teste autorizado, ou
+um cenário de cadastro real conduzido pela própria lojista.
+
 ## Ainda NÃO validado
 
-- **`ultimaApresentacao` e `draftAbertoDaConversa`** — não exercitados. Exigem
-  um turno que apresente lista e outro que diga "o segundo", o que entra em
-  `gerenciar_cadastro` (`rascunha`);
-- **M2** — aba duplicada ou restaurada, não testada;
-- **fechar e reabrir a aba** encerrando a conversa ativa — comportamento
-  esperado do contrato, não observado;
+- **`ultimaApresentacao` e `draftAbertoDaConversa`** — pelo motivo acima;
+- **M2** — aba duplicada ou restaurada, não testada e fora do escopo;
+- **fechar e reabrir a aba** encerrando a conversa ativa — contrato, não
+  observação;
+- **login posterior ao logout**;
 - se `draftsAbertos` compensa o draft por conversa;
 - retomada entre dispositivos;
 - as sete conversas órfãs — **nenhuma limpeza retroativa**.
 
-O que está validado é a propriedade nomeada no cabeçalho, e só ela.
+O que está validado é a propriedade nomeada no cabeçalho, mais o ciclo de vida
+acima. E só.
