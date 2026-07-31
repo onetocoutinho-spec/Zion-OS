@@ -1,14 +1,28 @@
 # INC-002 — O lote de peso sobrescreve variantes que já tinham peso
 
 ```
-Status:      PARCIALMENTE CORRIGIDO — o dano foi eliminado; a identidade não
+Status:      PARCIALMENTE CORRIGIDO — duas causas fechadas; a identidade não
 Detectado:   2026-07-30, durante o slice de consequência (CONSEQ-001)
 Severidade:  era CORRUPÇÃO SILENCIOSA de dado, sem trilha de recuperação
-Correção:    mínima aplicada em 2026-07-30 (sem migration, sem RPC)
+Correção 1:  sobrescrita — mínima aplicada em 2026-07-30 (sem migration)
+Correção 2:  referência derivada envelhecida — af0217b, mesclada por bed2a64
+             (PR #97), 2026-07-31
 ```
 
-> **NÃO diga "INC-002 resolvido".** Uma invariante foi fechada; cinco continuam
-> abertas. A qualificação está em [§Estado da correção](#estado-da-correção).
+> **NÃO diga "INC-002 resolvido".** Duas causas foram fechadas; as invariantes
+> maiores continuam abertas. A qualificação está em
+> [§Estado da correção](#estado-da-correção).
+
+---
+
+## As duas causas, separadas
+
+| | causa | estado |
+|---|---|---|
+| **1 · histórica** | a mutação escrevia em **todas** as variantes do produto, inclusive as já pesadas — o MAX caía e o frete ia junto | **fechada** por `.lte("peso", 0)` dentro do UPDATE |
+| **2 · referência derivada** | o valor derivado de `pesoConhecidoDoProduto` continuava elegível depois que a referência que o justificou mudou ou deixou de existir | **fechada** por uma segunda precondição, `pesoConhecido:<id>` |
+
+A segunda **não estava documentada aqui nem no [INC-002-D](./INC-002-D-desenho-da-primitiva-transacional.md)** — foi encontrada em 2026-07-31, ao reconstituir a cadeia `proposta → precondições → revalidação → escrita`.
 
 ---
 
@@ -65,6 +79,51 @@ sumiu" de "nada restou elegível". `elegiveis` não serve de prova — é o retr
 uma consulta nova depois da escrita, e a resposta seria um palpite com cara de
 causa. O rastro técnico (`nenhuma linha afetada`), o 409 e o estado `falhou` da
 proposta continuam como estavam.
+
+### CORRIGIDO — a referência derivada não sobrevive a si mesma
+
+*(causa 2, encontrada e fechada em 2026-07-31)*
+
+A única precondição do lote era `variacoesSemPeso:<id>` — a **contagem** de
+vazias. Ela é cega ao que **justifica** o número.
+
+Demonstrado contra o Postgres real, em transação revertida, na Vizzano:
+
+```
+T0     3 vazias, 36 pesadas todas em 410 g   →  proposta de 410 g
+drift  UMA pesada vai de 410 para 500, nenhuma esvazia
+T1     3 vazias (a precondição PASSA), pesos distintos 1 → 2
+escrita  3 variantes receberam 410 g
+```
+
+Em T1, `pesoConhecidoDoProduto` devolveria **`null`**: com irmãs discordando não
+existe *"o peso do produto"*, e o domínio teria **recusado propor**. A proposta
+executou assim mesmo, com a referência de T0.
+
+**Os testes do INC-002-D não pegam isto.** R4 cobre troca de **alvos** — aqui os
+alvos não mudam. R10 exige que o MAX permaneça — aqui ele até sobe. A RPC do §E
+valida os alvos, nunca a **origem do valor**.
+
+A correção usa o mecanismo que já existia: uma segunda precondição por alvo,
+`pesoConhecido:<id>`, congelando a referência.
+
+| | |
+|---|---|
+| `podeExecutar` | **não mudou** — compara valor a valor como sempre |
+| `lerEstadoAtual` | recomputa **do banco**: um peso distinto entre as pesadas, ou `null` |
+| unidade | **gramas**, como a proposta congela — nunca o MAX de conjunto heterogêneo (seria o INC-001) |
+| escopo | condicional: só `preparar_resolucao` **deriva**; em `propor_gravacao` o lojista **dita** o número |
+
+Prova final, mesma transação revertida: contagem `3 → 3` **passa**, referência
+`410 → null` **quebra**, veredito **recusa**, zero escrita, zero resíduo.
+
+16 testes; os de fiação falham no código anterior. Cobrem unidade (não kg, não
+string), o não-MAX, chave ausente que **não** vale como satisfeita, e a ordem
+`expirada` antes de `obsoleta`. Sem schema, migration, RLS ou RPC.
+
+**Teto:** *uma proposta de peso derivada de outras variantes não pode continuar
+elegível quando a referência factual que justificou aquele valor mudou ou deixou
+de ser única.* Nada além disso. **Não observada em produção.**
 
 ### NÃO CORRIGIDO
 
