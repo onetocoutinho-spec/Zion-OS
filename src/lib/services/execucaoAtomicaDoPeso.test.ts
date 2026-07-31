@@ -136,23 +136,26 @@ test("zero linhas NÃO queima a proposta de peso", () => {
   assert.match(ROTA, /if \(!atomico\) await marcarProposta\(p\.id, "falhou"/);
 });
 
-test("os outros tipos continuam fora da primitiva", () => {
-  for (const tipo of ["custo", "preco", "titulo", "cadastro"]) {
+test("preço, título e cadastro continuam fora da primitiva", () => {
+  // CUSTO saiu desta lista na migração 046 — ganhou primitiva própria. Os três
+  // que restam não receberam desenho equivalente, e `cadastro` é
+  // multi-statement, não idempotente e valida em TypeScript.
+  for (const tipo of ["preco", "titulo", "cadastro"]) {
     assert.ok(
-      !new RegExp(`executarPesoAtomico[\\s\\S]{0,120}${tipo}`).test(ROTA),
-      `${tipo} encostou na primitiva de peso`
+      !new RegExp(`p\\.tipo === "${tipo}"[\\s\\S]{0,80}executar\\w+Atomico`).test(ROTA),
+      `${tipo} encostou numa primitiva atômica`
     );
   }
-  // A primitiva é chamada de UM lugar só. (`p.tipo === "peso"` também aparece
-  // em `rastroDaEscrita`, que é anterior a este ciclo e não decide execução.)
+  // Cada primitiva é chamada de UM lugar só.
   assert.equal((ROTA.match(/executarPesoAtomico\(/g) ?? []).length, 1);
+  assert.equal((ROTA.match(/executarCustoAtomico\(/g) ?? []).length, 1);
 });
 
 test("o retrato de ANTES fica FORA da transação", () => {
   // Ele alimenta auditoria e consequência, não a invariante. Movê-lo para
   // dentro aumentaria a seção crítica sem fechar nada.
-  assert.match(ROTA, /async function retratoAntesDoPeso/);
-  assert.match(ROTA, /atomico \? await retratoAntesDoPeso\(p\) : null/);
+  assert.match(ROTA, /async function retratoAntesDaEscrita/);
+  assert.match(ROTA, /atomico \? await retratoAntesDaEscrita\(p\) : null/);
 });
 
 // ---------------------------------------------------------------------------
