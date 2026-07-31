@@ -61,7 +61,7 @@ export interface RegistroDeProcedencia {
  */
 export async function registrarProcedencia(r: RegistroDeProcedencia): Promise<void> {
   try {
-    await getSupabaseAdmin()
+    const { error } = await getSupabaseAdmin()
       .from("procedencia_de_campo")
       .insert({
         cliente_id: r.clienteId,
@@ -76,6 +76,11 @@ export async function registrarProcedencia(r: RegistroDeProcedencia): Promise<vo
         evidencia_registro: r.evidencia?.registro ?? null,
         evidencia_id: r.evidencia?.id ?? null,
       });
+    // O `catch` abaixo NÃO vê erro de banco: `supabase-js` devolve `{ error }`
+    // em vez de lançar. Sem esta linha, a promessa do comentário acima — "vai
+    // para o log do servidor" — era falsa, e um rastro perdido era perdido em
+    // silêncio. Ver INC-004, que é esta mesma classe em `copilot_mensagens`.
+    if (error) console.error("[procedencia] falha ao registrar (a escrita em si NÃO foi revertida):", error);
   } catch (e) {
     console.error("[procedencia] falha ao registrar (a escrita em si NÃO foi revertida):", e);
   }
@@ -87,7 +92,7 @@ export async function registrarVarias(
 ): Promise<void> {
   if (registros.length === 0) return;
   try {
-    await getSupabaseAdmin()
+    const { error } = await getSupabaseAdmin()
       .from("procedencia_de_campo")
       .insert(
         registros.map((r) => ({
@@ -104,6 +109,7 @@ export async function registrarVarias(
           evidencia_id: r.evidencia?.id ?? null,
         }))
       );
+    if (error) console.error("[procedencia] falha ao registrar lote:", error);
   } catch (e) {
     console.error("[procedencia] falha ao registrar lote:", e);
   }

@@ -169,7 +169,7 @@ export async function marcarProposta(
   status: Extract<StatusProposta, "falhou" | "obsoleta" | "rejeitada" | "expirada">,
   erro?: string
 ): Promise<void> {
-  await getSupabaseAdmin()
+  const { error } = await getSupabaseAdmin()
     .from("copilot_propostas")
     .update({
       status,
@@ -177,6 +177,11 @@ export async function marcarProposta(
       ...(erro ? { erro: erro.slice(0, 500) } : {}),
     })
     .eq("id", id);
+  // NÃO LANÇA, de propósito: quem chama isto já recusou ou já falhou, e uma
+  // exceção aqui trocaria uma recusa correta por um 500. Mas o desfecho precisa
+  // aparecer: sem esta linha, uma proposta que deveria ficar `expirada` seguia
+  // `pendente` para sempre, e nada em lugar nenhum dizia por quê.
+  if (error) console.error(`[copilot] falha ao marcar proposta ${id} como ${status}:`, error);
 }
 
 // ---------- auditoria ----------
@@ -209,7 +214,7 @@ export interface AcaoDoCopilot {
  */
 export async function registrarAcao(a: AcaoDoCopilot): Promise<void> {
   try {
-    await getSupabaseAdmin()
+    const { error } = await getSupabaseAdmin()
       .from("copilot_acoes")
       .insert({
         cliente_id: a.clienteId,
@@ -224,6 +229,11 @@ export async function registrarAcao(a: AcaoDoCopilot): Promise<void> {
         afetados: a.afetados,
         erro: a.erro?.slice(0, 500) ?? null,
       });
+    // O comentário acima prometia o log e o `catch` não podia cumprir: erro de
+    // banco vem em `{ error }`, não como exceção. Uma escrita consumada podia
+    // ficar SEM linha de auditoria sem que nada registrasse a ausência — numa
+    // tabela cuja razão de existir é ser a prova de que algo aconteceu.
+    if (error) console.error("[copilot] falha ao auditar (a ação em si NÃO foi revertida):", error);
   } catch (e) {
     console.error("[copilot] falha ao auditar (a ação em si NÃO foi revertida):", e);
   }
