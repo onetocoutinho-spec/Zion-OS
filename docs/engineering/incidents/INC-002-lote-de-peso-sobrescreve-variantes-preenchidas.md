@@ -349,7 +349,7 @@ mesmo nome, e confundi-las é como o INC-002 seria declarado fechado sem estar.
 | 2 | referência de peso obsoleta entre criação e clique | **CORRIGIDA** — precondição `pesoConhecido:<id>` (CICLO A) |
 | 3 | identidade do conjunto aprovado | **CORRIGIDA — CICLO G.1**, abaixo |
 | 4 | TOCTOU entre revalidação e escrita | **ABERTA** |
-| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO** — aberta para os demais tipos |
+| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO E CUSTO** — aberta para preço, título e cadastro |
 
 ## 3 — a identidade do conjunto (fechada no CICLO G.1)
 
@@ -513,13 +513,35 @@ neutro** — contrato legacy, nunca conjunto vazio.
 
 Resíduo zero. A `903c1830…` não foi usada como fixture e segue `pendente`.
 
+## Custo, pela migração 046 (CICLO H.3)
+
+O mesmo modelo, com as diferenças que o tipo impõe:
+
+| | |
+|---|---|
+| **um produto** | `alvos[1]`, não uma lista de variantes — não há conjunto congelado |
+| **custo SUBSTITUI** | trocar um custo é o objetivo, não preencher um vazio. **Não existe** predicado equivalente ao `peso <= 0`, e inventar um mudaria a semântica do domínio. Há teste guardando que ele não apareça |
+| **sem `elegiveis`** | a rota manda `undefined`, `ressalvaDoPreenchimento` devolve string vazia, e a mensagem continua a de antes. Um número faria a frase falar de uma parcialidade que este tipo não tem |
+
+O que **não** difere: proposta lida sob lock, `valor` e `alvos` vindos dela e não
+de argumento, tenant da sessão conferido, e a transição de status como **última
+escrita da mesma transação**.
+
+Provado em transação revertida antes de aplicar: sucesso (`0.00 → 77.77`), duplo
+clique (`ja_executada`), **alvo inexistente (`nada_gravado`, status permanece
+`pendente`)**, tenant errado (`outro_tenant`) e proposta de peso recusada com
+`tipo_invalido`. Resíduo zero.
+
+`retratoAntesDoPeso` virou `retratoAntesDaEscrita` e ganhou o ramo de custo —
+uma leitura do valor anterior, e continua **fora** da transação.
+
 ## O que continua aberto
 
-**Só peso foi coberto.** Custo, preço e título não receberam desenho equivalente;
-**cadastro** é multi-statement, não idempotente e valida em TypeScript — forçá-lo
-exigiria reescrever `validarRascunho` em SQL, com risco de semântica divergente.
-Ele tem CAS próprio no draft (`aguardando_confirmacao`), que é desenho separado.
-**T1 continua aberto para esses quatro tipos.**
+**Peso e custo foram cobertos.** Preço e título não receberam desenho
+equivalente; **cadastro** é multi-statement, não idempotente e valida em
+TypeScript — forçá-lo exigiria reescrever `validarRascunho` em SQL, com risco de
+semântica divergente. Ele tem CAS próprio no draft (`aguardando_confirmacao`),
+que é desenho separado. **T1 continua aberto para esses três tipos.**
 
 **Camada 4 continua aberta** — o TOCTOU de `pesoConhecido` entre a revalidação e
 a escrita é risco conhecido e aceito. A 045 não o toca de propósito.
