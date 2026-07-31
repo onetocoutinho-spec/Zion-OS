@@ -288,6 +288,54 @@ export async function executarCustoAtomico(
   return { motivo: linha.motivo as DesfechoDoCustoAtomico, afetados: Number(linha.afetados ?? 0) };
 }
 
+/**
+ * O desfecho da execução atômica de PREÇO — migração 047.
+ *
+ * Mesmas classes de custo. `elegiveis` não se aplica: um produto, uma linha.
+ */
+export type DesfechoDoPrecoAtomico = DesfechoDoCustoAtomico;
+
+/**
+ * Executa uma Proposal de PREÇO em UMA transação.
+ *
+ * ===========================================================================
+ * O TERCEIRO PARÂMETRO, E POR QUE ELE NÃO ABRE A BRECHA QUE A 045 FECHOU
+ * ===========================================================================
+ *
+ * A escrita toca DUAS colunas — `preco_venda` e `margem` — e a margem NÃO está
+ * na Proposal. Ela é `margemLiquida(custo, preco, taxas)`, calculada em
+ * TypeScript sobre o modelo de tarifas do ML. Portar isso para SQL criaria duas
+ * implementações da mesma conta.
+ *
+ * `valor` e `alvos` continuam vindo da Proposal, sob lock. A distinção é:
+ *
+ *   `valor`  é o FATO AUTORIZADO — o lojista aprovou aquele preço. Passá-lo por
+ *            parâmetro permitiria "esta proposta com outro preço".
+ *   `margem` NÃO é autorizada por ninguém. É subproduto do cálculo, não é
+ *            precondição, não é revalidada, e não decide nada — nem aqui nem na
+ *            função SQL, onde aparece uma única vez, no SET do UPDATE.
+ *
+ * `null` é legítimo: a margem nem sempre é calculável, e a coluna aceita.
+ */
+export async function executarPrecoAtomico(
+  propostaId: string,
+  clienteId: string,
+  margem: number | null
+): Promise<{ motivo: DesfechoDoPrecoAtomico; afetados: number }> {
+  const { data, error } = await getSupabaseAdmin().rpc("copilot_executar_preco", {
+    p_proposta: propostaId,
+    p_cliente: clienteId,
+    p_margem: margem,
+  });
+  if (error) throw new Error(`Não consegui executar a proposta de preço: ${error.message}`);
+  const linha = (Array.isArray(data) ? data[0] : data) as
+    | { motivo: string; afetados: number }
+    | null
+    | undefined;
+  if (!linha) throw new Error("A execução de preço não devolveu desfecho.");
+  return { motivo: linha.motivo as DesfechoDoPrecoAtomico, afetados: Number(linha.afetados ?? 0) };
+}
+
 /** Marca o desfecho quando a execução reservada não deu certo. */
 export async function marcarProposta(
   id: string,
