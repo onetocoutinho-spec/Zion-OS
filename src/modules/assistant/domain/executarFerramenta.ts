@@ -16,6 +16,7 @@
 // distância que impede o número inventado.
 
 import { responder, type ContextoDaPergunta } from "./perguntaDaOperacao";
+import type { AutoridadeDoValor } from "./propostaPersistida";
 import {
   candidatos,
   lerNumero,
@@ -287,6 +288,15 @@ export interface EfeitoNoCadastro {
     /** Em REAIS — a unidade canônica da coluna `valor` para dinheiro. */
     valor: number;
     precondicoes: readonly Precondicao[];
+    /**
+     * Sempre `nao_se_aplica`. Uma proposta de cadastro autoriza materializar um
+     * DRAFT INTEIRO — nome, SKU, preço e grade —, e o `valor` da Proposal é só o
+     * preço. A autoridade relevante aqui é IDENTIDADE: cria linha nova a partir
+     * da descrição da pessoa, sem fonte anterior de onde derivar, e um SKU
+     * errado é visível e reversível em vez de sobrescrever em silêncio um fato
+     * de produto existente. Ver INC-008 §G.6.
+     */
+    autoridade: AutoridadeDoValor;
   };
   /** O cadastro foi cancelado nesta chamada. */
   cancelou?: boolean;
@@ -325,6 +335,11 @@ export interface ResultadoDaFerramenta {
      * que o valor nunca dependeu delas. Ver INC-002.
      */
     derivadoDoPesoConhecido?: true;
+    /**
+     * De onde o Zion sabe que veio `valor`. OBRIGATÓRIA de propósito: um site
+     * novo que monte escopo não compila sem responder. Ver INC-008.
+     */
+    autoridade: AutoridadeDoValor;
   };
   /**
    * Uma proposta de GERAR ANÚNCIO — separada da de gravação porque a tela faz
@@ -374,6 +389,13 @@ export interface ResultadoDaFerramenta {
     tituloAtual: string;
     tituloProposto: string;
     justificativa: string;
+    /**
+     * Sempre `nao_se_aplica`. A autoridade relevante de um título é CONTEÚDO,
+     * não proveniência de valor: um título é para ser composto, e "quem disse
+     * este título?" não descreve nada. O `valor` da Proposal de título é só o
+     * tamanho em caracteres. Ver INC-008 §G.5.
+     */
+    autoridade: AutoridadeDoValor;
   };
   /** O pricing — situação de um produto com cenários, ou a triagem do catálogo. */
   pricing?: {
@@ -400,6 +422,13 @@ export interface ResultadoDaFerramenta {
     precoAtual: number;
     comoVeio: string;
     margemMinima: number;
+    /**
+     * `calculado` quando o domínio computou o preço a partir da margem pedida,
+     * sobre custo e taxas do banco. `sem_autoridade` quando o número chegou em
+     * `texto(args, "preco")`. Os dois ramos já se distinguem no código — o que
+     * faltava era isso SOBREVIVER até a Proposal. Ver INC-008.
+     */
+    autoridade: AutoridadeDoValor;
   };
 }
 
@@ -687,7 +716,11 @@ export async function executarFerramenta(
           return { saida: { montada: false, motivo: escopo.resumo } };
         }
         return {
-          escopo: { ...escopo, campo: "peso", valor: emGramas.gramas },
+          // `emGramas.gramas` saiu de `texto(args, "valor")`. O lojista
+          // provavelmente ditou e o modelo repassou — mas nada nesta cadeia
+          // prova isso, e `sem_autoridade` é o registro honesto disso. NÃO
+          // impede a proposta nem a execução.
+          escopo: { ...escopo, campo: "peso", valor: emGramas.gramas, autoridade: "sem_autoridade" },
           // O modelo recebe CONTAGEM e AMOSTRA — nunca a lista inteira. Com
           // 2.000 alvos, mandar os nomes estouraria o contexto e nao ajudaria
           // ninguem a decidir. Os ids ficam no servidor, na Proposal.
@@ -1045,6 +1078,9 @@ async function proporPreco(
       resumo: resumoDaProposta(alvo.nome, d),
       precoAtual: e.precoAtual,
       comoVeio,
+      // Do RAMO, não do `comoVeio`. Ler a frase para descobrir a origem seria
+      // reconstruir por aparência a informação que o código já tem na mão.
+      autoridade: brutoPreco ? "sem_autoridade" : "calculado",
       // A margem ESCOLHIDA pelo lojista viaja junto: é contra ela que o cartão
       // decide se avisa. Sem ela, a tela usaria zero e nunca avisaria nada.
       margemMinima: e.margemMinima,
@@ -1208,6 +1244,7 @@ async function proporTitulo(
       tituloAtual: alvo.tituloAtual,
       tituloProposto: veredicto.titulo,
       justificativa: gerado?.justificativa ?? "",
+      autoridade: "nao_se_aplica",
     },
     saida: {
       montada: true,
@@ -1449,7 +1486,7 @@ async function prepararResolucao(
     // `pesoConhecidoDoProduto`: ele SÓ existe enquanto as irmãs concordarem. Se
     // uma delas mudar entre a proposta e o clique, o número perde a origem que
     // o justificou — e a rota precisa saber disso para congelá-la. Ver INC-002.
-    escopo: { ...escopo, campo: "peso", valor, derivadoDoPesoConhecido: true },
+    escopo: { ...escopo, campo: "peso", valor, derivadoDoPesoConhecido: true, autoridade: "derivado" },
     saida: {
       montada: true,
       resumo: escopo.resumo,
@@ -1697,6 +1734,7 @@ async function gerenciarCadastro(
             resumo,
             valor: centavosParaReais(preco),
             precondicoes: precondicoesDeCadastro(ids),
+            autoridade: "nao_se_aplica",
           },
           ...(achados.length > 0
             ? {

@@ -15,6 +15,7 @@
 // O alvo NUNCA é adivinhado. Dois candidatos viram pergunta, não sorteio.
 
 import type { EstadoDePeso } from "./../../catalog/domain/familiaDeProduto";
+import type { AutoridadeDoValor } from "./propostaPersistida";
 
 /** O que o modelo devolve. `string` porque entrada de modelo é não confiável. */
 export interface CriterioDeCorrecao {
@@ -56,6 +57,20 @@ export type Proposta =
       resumo: string;
       /** Verdadeiro quando a unidade foi DEDUZIDA e não dita. */
       unidadeDeduzida: boolean;
+      /**
+       * De onde o Zion sabe que veio `valor`. Ver INC-008.
+       *
+       * ESTA FUNÇÃO SÓ CONSEGUE PRODUZIR `sem_autoridade`, e isso é uma
+       * propriedade dela, não um descuido: ela monta a proposta a partir de um
+       * `CriterioDeCorrecao`, cujo `valor` chega como argumento do modelo. Não há
+       * nada aqui que ligue o número a uma fala do lojista nem a uma fonte do
+       * domínio.
+       *
+       * Um caminho que DERIVE ou CALCULE o valor não deve passar por aqui — deve
+       * declarar a própria autoridade na fronteira que conhece o fato, como
+       * `preparar_resolucao` faz. Congelado em `autoridadeDaProposta.test.ts`.
+       */
+      autoridade: AutoridadeDoValor;
     }
   | { tipo: "ambigua"; candidatos: readonly { id: string; nome: string }[]; mensagem: string }
   | { tipo: "sem_alvo"; mensagem: string }
@@ -215,6 +230,7 @@ export function montarProposta(
       valorEscrito: `R$ ${reais.toFixed(2).replace(".", ",")}`,
       variacoes: 0,
       unidadeDeduzida: false,
+      autoridade: "sem_autoridade",
       resumo:
         alvo.custo > 0
           ? `Trocar o custo de ${alvo.nome} de R$ ${alvo.custo.toFixed(2).replace(".", ",")} para R$ ${reais.toFixed(2).replace(".", ",")}.`
@@ -238,6 +254,7 @@ export function montarProposta(
     valorEscrito: `${emGramas.gramas} g`,
     variacoes,
     unidadeDeduzida: emGramas.deduzida,
+    autoridade: "sem_autoridade",
     resumo:
       `Gravar ${emGramas.gramas} g de peso em ${alvo.nome}` +
       (variacoes > 1 ? ` — todas as ${variacoes} variações.` : "."),

@@ -534,6 +534,9 @@ export async function POST(request: Request) {
                   valor: escopoDoLote.valor,
                   resumo: escopoDoLote.resumo,
                   precondicoes,
+                  // REPASSE, nunca dedução. A ferramenta que montou o escopo é
+                  // quem sabe de onde saiu o número; aqui a rota só carrega.
+                  autoridade: lote.autoridade,
                 });
                 propostaId = gravada.id;
               } catch (e) {
@@ -549,6 +552,7 @@ export async function POST(request: Request) {
                   alvos: [proposta.alvo.id],
                   valor: proposta.valor,
                   resumo: proposta.resumo,
+                  autoridade: proposta.autoridade,
                   precondicoes: precondicoesDaProposta(
                     proposta.campo,
                     await estadoDoProdutoNoBanco(proposta.alvo.id, clienteDaSessao)
@@ -592,6 +596,7 @@ export async function POST(request: Request) {
                     valor: p.valor,
                     resumo: p.resumo,
                     precondicoes: p.precondicoes,
+                    autoridade: p.autoridade,
                     draftId: draftFinal.id,
                   });
                   const transicao = aguardarConfirmacao(draftFinal, gravada.id, agoraISO);
@@ -657,6 +662,7 @@ export async function POST(request: Request) {
                   // caracteres do ML é a razão de o agente existir.
                   valor: t.tituloProposto.length,
                   texto: t.tituloProposto,
+                  autoridade: t.autoridade,
                   resumo: `Trocar o título de "${t.nome}" para "${t.tituloProposto}".`,
                   precondicoes: [
                     { campo: CAMPO_TITULO_ATUAL, valorNaCriacao: impressaoDoTitulo(t.tituloAtual) },
@@ -689,6 +695,7 @@ export async function POST(request: Request) {
                     alvos: [propostaDePreco.produtoId],
                     valor: propostaDePreco.preco,
                     resumo: propostaDePreco.resumo,
+                    autoridade: propostaDePreco.autoridade,
                     precondicoes: precondicoesDePreco({
                       custo: alvo.entradas.custo,
                       precoAtual: alvo.entradas.precoAtual,
