@@ -26,6 +26,7 @@ import {
   buscarProposta,
   marcarProposta,
   registrarAcao,
+  executarCustoAtomico,
   executarPesoAtomico,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
@@ -372,7 +373,7 @@ function agruparPorProduto(linhas: unknown): MedidasAnteriores {
 }
 
 /**
- * O retrato de ANTES de uma escrita de PESO — lido FORA da transação, de
+ * O retrato de ANTES de uma escrita atômica — lido FORA da transação, de
  * propósito.
  *
  * Ele alimenta a AUDITORIA e a CONSEQUÊNCIA, não a invariante. A propriedade
@@ -385,11 +386,23 @@ function agruparPorProduto(linhas: unknown): MedidasAnteriores {
  * altura, largura e comprimento for > 0, e sem as três o retrato causal da
  * consequência seria um palpite. Ver CONSEQ-001.
  */
-async function retratoAntesDoPeso(p: PropostaPersistida): Promise<{
+async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
   antes: unknown;
   medidasAntes?: MedidasAnteriores;
 }> {
   const admin = getSupabaseAdmin();
+
+  // CUSTO: o valor anterior do produto. Uma leitura, e é tudo o que a auditoria
+  // precisa — custo não tem grade nem retrato de embalagem.
+  if (p.tipo === "custo") {
+    const { data } = await admin
+      .from("produtos")
+      .select("custo")
+      .eq("id", p.alvos[0])
+      .maybeSingle();
+    return { antes: data };
+  }
+
   if (p.alvos.length > 1) {
     const { data } = await admin
       .from("produto_variantes")
@@ -783,13 +796,22 @@ export async function POST(request: Request) {
   // informar ao lojista que havia gravado. Para peso isso deixa de existir: a
   // transição de status é a última escrita da MESMA transação que grava.
   //
-  // OS OUTROS TIPOS SEGUEM EXATAMENTE O CAMINHO DE ANTES. Custo, preço e título
-  // não receberam desenho equivalente, e `cadastro` é multi-statement, não
-  // idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
-  // `validarRascunho` em SQL. T1 continua aberto para eles, e isso está dito.
-  const atomico = p.tipo === "peso";
-  const retrato = atomico ? await retratoAntesDoPeso(p) : null;
-  const rpc = atomico ? await executarPesoAtomico(p.id, clienteDaSessao) : null;
+  // CUSTO entrou pela 046, com a mesma forma: custo SUBSTITUI e atinge um
+  // produto, então não há conjunto congelado, não há predicado de vazio e não
+  // há `elegiveis` — devolver um faria a mensagem falar de uma parcialidade que
+  // este tipo não tem.
+  //
+  // PREÇO, TÍTULO e CADASTRO SEGUEM EXATAMENTE O CAMINHO DE ANTES. Preço e
+  // título não receberam desenho equivalente, e `cadastro` é multi-statement,
+  // não idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
+  // `validarRascunho` em SQL. T1 continua aberto para os três, e isso está dito.
+  const atomico = p.tipo === "peso" || p.tipo === "custo";
+  const retrato = atomico ? await retratoAntesDaEscrita(p) : null;
+  const rpc = !atomico
+    ? null
+    : p.tipo === "peso"
+      ? await executarPesoAtomico(p.id, clienteDaSessao)
+      : { ...(await executarCustoAtomico(p.id, clienteDaSessao)), elegiveis: undefined };
 
   // `nada_gravado` NÃO é corrida perdida: a transação reverteu a transição e a
   // proposta continua `pendente`. Ela segue o fluxo abaixo para ser auditada
@@ -825,8 +847,15 @@ export async function POST(request: Request) {
       ? {
           afetados: rpc!.afetados,
           antes: retrato!.antes,
-          depois: { variacoesAtualizadas: rpc!.afetados, pesoKg: p.valor / 1000 },
+          // A MESMA forma que cada tipo já gravava em `copilot_acoes`: resumo
+          // para peso, `{id, custo}` para custo.
+          depois:
+            p.tipo === "peso"
+              ? { variacoesAtualizadas: rpc!.afetados, pesoKg: p.valor / 1000 }
+              : { id: p.alvos[0], custo: p.valor },
           medidasAntes: retrato!.medidasAntes,
+          // `undefined` em custo: `ressalvaDoPreenchimento` devolve string vazia
+          // e a mensagem continua a de antes.
           elegiveis: rpc!.elegiveis,
         }
       : await gravar(p);

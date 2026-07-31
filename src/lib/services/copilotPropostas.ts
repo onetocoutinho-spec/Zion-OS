@@ -248,6 +248,46 @@ export async function executarPesoAtomico(
   };
 }
 
+/**
+ * O desfecho da execução atômica de CUSTO — migração 046.
+ *
+ * Mesmas classes da 045, sem `elegiveis`: custo atinge um produto e SUBSTITUI.
+ * Não há predicado de "só se estiver vazio", logo não há parcialidade a relatar.
+ */
+export type DesfechoDoCustoAtomico =
+  | "ok"
+  | "nada_gravado"
+  | "ja_executada"
+  | "status_invalido"
+  | "outro_tenant"
+  | "nao_encontrada"
+  | "tipo_invalido"
+  | "sem_alvos";
+
+/**
+ * Executa uma Proposal de CUSTO em UMA transação: trava a proposta, grava e só
+ * então marca `executada`. Mesma forma da 045 — ver `executarPesoAtomico`.
+ *
+ * `valor` e `alvos` são lidos da linha persistida sob lock; `clienteId` vem da
+ * SESSÃO e é conferido contra a proposta.
+ */
+export async function executarCustoAtomico(
+  propostaId: string,
+  clienteId: string
+): Promise<{ motivo: DesfechoDoCustoAtomico; afetados: number }> {
+  const { data, error } = await getSupabaseAdmin().rpc("copilot_executar_custo", {
+    p_proposta: propostaId,
+    p_cliente: clienteId,
+  });
+  if (error) throw new Error(`Não consegui executar a proposta de custo: ${error.message}`);
+  const linha = (Array.isArray(data) ? data[0] : data) as
+    | { motivo: string; afetados: number }
+    | null
+    | undefined;
+  if (!linha) throw new Error("A execução de custo não devolveu desfecho.");
+  return { motivo: linha.motivo as DesfechoDoCustoAtomico, afetados: Number(linha.afetados ?? 0) };
+}
+
 /** Marca o desfecho quando a execução reservada não deu certo. */
 export async function marcarProposta(
   id: string,
