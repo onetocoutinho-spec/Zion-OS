@@ -59,10 +59,15 @@ export async function garantirConversa(
       // Conversa de OUTRO cliente: não reusa e não conta por quê. Continuar
       // nela deixaria as mensagens deste lojista no histórico do outro.
       if (linha && linha.cliente_id === clienteId) {
-        await admin
+        const { error } = await admin
           .from("copilot_conversas")
           .update({ atualizada_em: new Date().toISOString() })
           .eq("id", linha.id);
+        // Falhar aqui NÃO invalida o reuso: o fio é a linha, não o carimbo. Mas
+        // `atualizada_em` é o sinal que provou o INC-005 (8 conversas com
+        // `atualizada_em = criada_em`), e um sinal que pode parar de avançar em
+        // silêncio deixa de servir como evidência.
+        if (error) console.error(`[copilot] falha ao tocar atualizada_em da conversa ${linha.id}:`, error);
         return linha.id;
       }
     }

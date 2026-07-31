@@ -97,11 +97,31 @@ export async function avaliacaoDeAlvos(
     configuracaoDoLojista(clienteId),
   ]);
 
-  const linhas = (produtos.data ?? []) as LinhaDeProduto[];
+  // LEITURA QUE FALHOU NÃO É LEITURA QUE DEU VAZIO.
+  //
+  // `supabase-js` não lança: devolve `{ data: null, error }`. Sem esta guarda,
+  // `?? []` transformava as duas falhas em respostas plausíveis e diferentes —
+  // e nenhuma delas aparecia em lugar nenhum:
+  //
+  //   - `produtos` falhando  -> `linhas` vazio -> nenhuma avaliação -> todos os
+  //     alvos em `naoAvaliados` -> `quantos: null` -> a oferta "Pricing" APARECE
+  //     na tela, produzida por uma leitura que não aconteceu;
+  //   - `variantes` falhando -> `depois` sem medida nenhuma -> ninguém transita
+  //     -> `quantos: 0`, que este módulo define como FATO CONHECIDO ("nenhum
+  //     destes passou a ser calculável") — afirmado sem ter lido nada.
+  //
+  // Lançar é o que restitui a distinção: `calcularConsequencia` já tem o
+  // `try/catch` desenhado para isto, devolve `consequencia: null` e registra o
+  // erro. A escrita permanece consumada, auditada e com rastro — só o número se
+  // perde, que é exatamente o que se quer perder quando não se sabe.
+  if (produtos.error) throw new Error(`consequencia: leitura de produtos falhou — ${produtos.error.message}`);
+  if (variantes.error) throw new Error(`consequencia: leitura de variantes falhou — ${variantes.error.message}`);
+
+  const linhas = produtos.data as LinhaDeProduto[];
   if (linhas.length === 0) return [];
 
   const depoisPorProduto = new Map<string, LinhaDeVariante[]>();
-  for (const v of (variantes.data ?? []) as LinhaDeVariante[]) {
+  for (const v of variantes.data as LinhaDeVariante[]) {
     const lista = depoisPorProduto.get(v.produto_id) ?? [];
     lista.push(v);
     depoisPorProduto.set(v.produto_id, lista);

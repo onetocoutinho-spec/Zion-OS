@@ -231,12 +231,16 @@ export async function marcarDraftCriado(
   agoraISO: string
 ): Promise<void> {
   try {
-    await getSupabaseAdmin()
+    const { error } = await getSupabaseAdmin()
       .from("copilot_cadastros")
       .update({ status: "criado", produto_id: produtoId, atualizado_em: agoraISO })
       .eq("id", id)
       .eq("cliente_id", clienteId)
       .eq("status", "aguardando_confirmacao");
+    // O produto já existe; o rótulo é que pode não ter mudado. Um draft preso em
+    // `aguardando_confirmacao` com o produto criado é justamente o estado que a
+    // pessoa vai reencontrar e não entender — e que ninguém saberia explicar.
+    if (error) console.error("[copilot] falha ao marcar cadastro como criado:", error);
   } catch (e) {
     // O produto JÁ existe neste ponto. Não reverter nada por causa do rótulo.
     console.error("[copilot] falha ao marcar cadastro como criado:", e);
