@@ -1,12 +1,14 @@
 # INC-005 — A conversa do banco não é o fio
 
 ```
-Status:      CORREÇÃO IMPLEMENTADA — VALIDAÇÃO EM EXECUÇÃO PENDENTE
+Status:      CORRIGIDO E VALIDADO EM PRODUÇÃO — para a propriedade demonstrada
 Detectado:   2026-07-30, durante a Fase 5B do INC-003
 Reproduzido: 2026-07-31, produção, SHA 2e535fa
+Correção:    3ee7d85, mesclada em master por 54bd865 (PR #95)
+Validado:    2026-07-31, produção, SHA 54bd865
 Severidade:  histórico fragmentado; duas capacidades silenciosamente inertes
-Corrige:     turnos consecutivos de uma mesma conversa ativa passam a ser
-             associados à mesma conversa persistida
+Corrige:     turnos consecutivos de uma mesma conversa ativa são associados à
+             mesma conversa persistida
 Não corrige: M2 (aba duplicada/restaurada) — limitação conhecida
 ```
 
@@ -263,11 +265,55 @@ O que **não** foi testado por execução: hidratação, toggle e logout vivem e
 construção, com guardas de fonte — inclusive a invariante que sustenta M1: o id
 usa `sessionStorage` e **nunca** `localStorage`.
 
+## A validação em produção (Fase 7F)
+
+Produção rodando `54bd865`, sessão real, fio limpo. Três turnos na **mesma aba**,
+todos de leitura:
+
+```
+sessionStorage  zion:conversa-id:<cliente>  →  ausente
+
+turno 1  "obrigado"                          → proximo_passo  →  id NASCE: 47dd11cd…
+turno 2  "quantos produtos estão sem custo?" → contar         →  id INALTERADO
+   ── reload da aba ──                                            id SOBREVIVE
+turno 3  "quantos produtos estão sem peso?"  → contar         →  id INALTERADO
+```
+
+No banco:
+
+```
+conversa 47dd11cd-bca2-41c4-8796-e0022c86b87d
+  criada_em     03:05:14
+  atualizada_em 03:05:51        ← reusada
+  6 mensagens, em ordem, os três turnos
+```
+
+**Uma conversa. Três turnos.** E `atualizada_em > criada_em`: o ramo de reúso de
+`garantirConversa` — que não havia executado em nenhuma das oito conversas
+anteriores — **executou**.
+
+| | antes | depois |
+|---|---:|---:|
+| conversas | 8 | **9** (uma, não três) |
+| reusadas | 0 | **1** |
+| com mais de um turno | 0 | **1** |
+
+O reload confirmou a REGRA C por observação, e não mais por construção: o id
+sobreviveu, os turnos voltaram à tela, e o terceiro caiu na mesma conversa.
+
+Mutação operacional **zero**: 159 variantes sem peso, Vizzano `0.000 | 0.410`,
+propostas 1, ações 0, cadastros 0, procedência 0. Só ferramentas `le` rodaram.
+
 ## Ainda NÃO validado
 
-- que `ultimaApresentacao` e `draftAbertoDaConversa` voltem a funcionar —
-  exige observação real;
-- que turnos consecutivos de fato caiam na mesma conversa em produção;
+- **`ultimaApresentacao` e `draftAbertoDaConversa`** — não exercitados. Exigem
+  um turno que apresente lista e outro que diga "o segundo", o que entra em
+  `gerenciar_cadastro` (`rascunha`);
+- **M2** — aba duplicada ou restaurada, não testada;
+- **fechar e reabrir a aba** encerrando a conversa ativa — comportamento
+  esperado do contrato, não observado;
 - se `draftsAbertos` compensa o draft por conversa;
 - retomada entre dispositivos;
 - as sete conversas órfãs — **nenhuma limpeza retroativa**.
+
+O que está validado é a propriedade nomeada no cabeçalho, e só ela.

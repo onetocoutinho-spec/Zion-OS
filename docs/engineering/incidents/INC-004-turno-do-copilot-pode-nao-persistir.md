@@ -1,9 +1,11 @@
 # INC-004 — Nenhum turno do Copilot chegava a `copilot_mensagens`
 
 ```
-Status:      CORREÇÃO IMPLEMENTADA — VALIDAÇÃO EM EXECUÇÃO PENDENTE
+Status:      CORRIGIDO E VALIDADO EM PRODUÇÃO — para a causa demonstrada
 Detectado:   2026-07-30, durante a investigação do INC-003
 Causa:       demonstrada 2026-07-31 (logs de produção + reprodução em transação)
+Correção:    9f42713, mesclada em master por 2e535fa (PR #94)
+Validado:    2026-07-31, produção, SHA 2e535fa
 Severidade:  perda silenciosa e TOTAL do histórico; sem corrupção de dado
 ```
 
@@ -127,7 +129,31 @@ cabeçalho segue de pé. O que mudou é que ela deixou de ser invisível.
   candidato a **INC-005** — omissão no cliente, defeito independente deste.
 - Retry, idempotência, ownership da Promise.
 
-## O que ainda não está provado
+## A validação em produção
 
-Que a correção funciona **em execução real**. Está provada por contrato, por
-teste e contra o Postgres real — não por observação em produção.
+Produção rodando `2e535fa`, sessão real, fio limpo. Um turno: `"obrigado"`.
+
+```
+conversa 2c2801e4-a284-4fde-91a8-fc86c414b6d7
+
+lojista     | texto "obrigado"        | ferramentas {}              | tokens null  | metadata null
+assistente  | "De nada! Temos 13…"    | ferramentas {proximo_passo} | tokens 10692 | metadata null
+```
+
+`copilot_mensagens` **0 → 2**. A linha do lojista tem `ferramentas = {}` e
+**não** NULL — era exatamente esse valor que derrubava o insert. A do assistente
+preservou a ferramenta real do turno.
+
+Mutação operacional zero: 684 variantes · 159 sem peso · Vizzano `0.000 | 0.410`
+· preço 152,90 · ações 0 · cadastros 0 · procedência 0. A proposta pendente da
+Fase 5B continua `pendente`, não decidida e não executada.
+
+## O que isto NÃO prova
+
+**Não prova que todo turno sempre persiste.** A evidência é observacional sobre
+o caminho exercitado — um turno, de leitura, com uma ferramenta.
+
+O `void gravarTurno` continua sem dono: nada aqui provou que a Promise sobrevive
+em qualquer runtime, só que neste turno ela chegou. E o **fio único** continua
+aberto — este turno criou a oitava conversa (7 → 8), como o candidato a INC-005
+descreve.
