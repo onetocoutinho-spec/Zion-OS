@@ -27,6 +27,7 @@ import { meuPerfil } from "@/lib/services/perfil";
 import { listarProdutos } from "@/lib/services/produtos";
 import { ClientPortalProvider } from "./context";
 import { AREAS, areaDaRota, telaAtiva, type ContextoPortal } from "@/modules/portal/domain/navegacao";
+import { chaveDaConversa, chaveDoFio } from "@/modules/assistant/domain/conversaGuardada";
 
 /** Um ícone por ÁREA. As telas de dentro não têm ícone: são texto, e texto lê-se mais rápido. */
 const ICONE_DA_AREA: Record<ContextoPortal, typeof Home> = {
@@ -156,6 +157,21 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
     "Hoje";
 
   async function sair() {
+    // O fio do Copilot é daquele lojista naquele navegador: sair encerra os
+    // DOIS lados dele — o histórico local e a identidade da conversa ativa
+    // (INC-005). Sem isto, o próximo login no mesmo dispositivo retomaria a
+    // conversa de quem saiu.
+    //
+    // Só estas duas chaves, e só as deste cliente: limpar o storage inteiro
+    // levaria junto a sessão do Supabase e o que mais morar ali.
+    if (clienteId) {
+      try {
+        localStorage.removeItem(chaveDaConversa(clienteId));
+        sessionStorage.removeItem(chaveDoFio(clienteId));
+      } catch {
+        // storage indisponível: o logout continua, que é o que importa
+      }
+    }
     if (supabaseConfigurado) await getSupabase().auth.signOut();
   }
 

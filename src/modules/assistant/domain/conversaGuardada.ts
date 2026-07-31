@@ -55,6 +55,27 @@ export function chaveDaConversa(clienteId: string): string {
 }
 
 /**
+ * A chave da CONVERSA ATIVA — a identidade que agrupa os turnos no banco.
+ *
+ * Duas chaves porque são dois conceitos com tempos de vida diferentes (INC-005):
+ *
+ *   histórico local   turnos + falas    localStorage    morre no logout
+ *   conversa ativa    conversaId        sessionStorage  morre ao fechar a aba
+ *
+ * O `conversaId` NÃO entra em `ConversaGuardada`. Aquele objeto vive em
+ * `localStorage`, que é compartilhado por todas as abas — guardar a identidade
+ * ali faria duas abas independentes emitirem turnos para a MESMA conversa do
+ * banco. `sessionStorage` é por aba, e é isso que se quer aqui.
+ *
+ * A consequência aceita: fechar a aba encerra a conversa ativa. O histórico
+ * local sobrevive e continua alimentando o modelo — "mesmo contexto do modelo"
+ * não implica "mesma linha de conversa no banco".
+ */
+export function chaveDoFio(clienteId: string): string {
+  return `zion:conversa-id:${clienteId}`;
+}
+
+/**
  * O que gravar. Já cortado, e sem a proposta pendente.
  *
  * A PROPOSTA NÃO ATRAVESSA de propósito. Ela é um convite a gravar no banco, e

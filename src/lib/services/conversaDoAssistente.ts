@@ -133,12 +133,29 @@ export async function conversar(
   falas: readonly Fala[],
   contexto: ContextoDasFerramentas,
   produtoAberto?: string,
-  aoVivo?: AoVivo
+  aoVivo?: AoVivo,
+  /**
+   * A conversa ATIVA desta aba, quando já existe (INC-005).
+   *
+   * Ausente no primeiro turno: o servidor cria e devolve o id em `fim`. Dali em
+   * diante ele volta aqui, e os turnos param de virar uma conversa cada.
+   *
+   * Quem manda é o servidor: se este id for inexistente, malformado ou de outro
+   * cliente, `garantirConversa` ignora e cria — e o `conversaId` da resposta é o
+   * que vale.
+   */
+  conversaId?: string
 ): Promise<RespostaDaConversa> {
   const resposta = await fetch("/api/assistente/conversa", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
-    body: JSON.stringify({ mensagem, falas, contexto, produtoAberto: produtoAberto ?? "" }),
+    body: JSON.stringify({
+      mensagem,
+      falas,
+      contexto,
+      produtoAberto: produtoAberto ?? "",
+      ...(conversaId ? { conversaId } : {}),
+    }),
   });
   if (!resposta.ok || !resposta.body) {
     const erro = await resposta.json().catch(() => ({}));
