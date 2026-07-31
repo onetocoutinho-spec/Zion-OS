@@ -182,6 +182,72 @@ export async function reservarParaExecucao(id: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
+/**
+ * O DESFECHO DA EXECUÇÃO ATÔMICA DE PESO — migração 045.
+ *
+ * `ok`             gravou, e a proposta já está `executada` (mesma transação)
+ * `nada_gravado`   nenhuma linha elegível; a proposta CONTINUA `pendente`
+ * qualquer outro   recusa; nada foi gravado e o status não mudou
+ */
+export type DesfechoDoPesoAtomico =
+  | "ok"
+  | "nada_gravado"
+  | "ja_executada"
+  | "status_invalido"
+  | "outro_tenant"
+  | "nao_encontrada"
+  | "tipo_invalido"
+  | "sem_alvos";
+
+/**
+ * Executa uma Proposal de PESO em UMA transação: trava a proposta, grava e só
+ * então marca `executada`.
+ *
+ * ===========================================================================
+ * POR QUE ISTO NÃO É `reservarParaExecucao` + `gravar`
+ * ===========================================================================
+ *
+ * Aquele par marcava `executada` ANTES de gravar, em transação separada. Uma
+ * morte no intervalo deixava a proposta consumida, o catálogo intacto e o
+ * lojista sendo informado de que a gravação ocorreu — ver INC-002, camada 5.
+ *
+ * Aqui a transição de status é a ÚLTIMA escrita da MESMA transação que faz a
+ * mutação. `executada` passa a implicar mutação commitada, por construção.
+ *
+ * ===========================================================================
+ * DOIS PARÂMETROS, E SÓ
+ * ===========================================================================
+ *
+ * `valor`, `alvos` e `idsAprovados` NÃO viajam daqui: a função os lê da linha
+ * persistida, sob lock. Mandá-los permitiria combinar "esta proposta com outro
+ * peso" — a autorização passaria a ser o argumento em vez do objeto aprovado.
+ *
+ * `clienteId` é a exceção obrigatória: vem da SESSÃO e é CONFERIDO contra a
+ * proposta. Ele não autoriza; ele recusa.
+ */
+export async function executarPesoAtomico(
+  propostaId: string,
+  clienteId: string
+): Promise<{ motivo: DesfechoDoPesoAtomico; afetados: number; elegiveis: number }> {
+  const { data, error } = await getSupabaseAdmin().rpc("copilot_executar_peso", {
+    p_proposta: propostaId,
+    p_cliente: clienteId,
+  });
+  // Erro de RPC NÃO vira desfecho de negócio. Lançar é o certo: quem chama tem
+  // `catch` e a transação do banco já reverteu tudo — inclusive o status.
+  if (error) throw new Error(`Não consegui executar a proposta de peso: ${error.message}`);
+  const linha = (Array.isArray(data) ? data[0] : data) as
+    | { motivo: string; afetados: number; elegiveis: number }
+    | null
+    | undefined;
+  if (!linha) throw new Error("A execução de peso não devolveu desfecho.");
+  return {
+    motivo: linha.motivo as DesfechoDoPesoAtomico,
+    afetados: Number(linha.afetados ?? 0),
+    elegiveis: Number(linha.elegiveis ?? 0),
+  };
+}
+
 /** Marca o desfecho quando a execução reservada não deu certo. */
 export async function marcarProposta(
   id: string,
