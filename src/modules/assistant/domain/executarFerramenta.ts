@@ -310,7 +310,22 @@ export interface ResultadoDaFerramenta {
    * tela desenha sao diferentes: aqui os `alvos` sao muitos, e o cartao precisa
    * mostrar quem fica de fora e por que.
    */
-  escopo?: EscopoDoLote & { campo: CampoDoLote; valor: number };
+  escopo?: EscopoDoLote & {
+    campo: CampoDoLote;
+    valor: number;
+    /**
+     * O `valor` foi DERIVADO do próprio produto, não ditado pelo lojista.
+     *
+     * Só `preparar_resolucao` marca isto: lá o número sai de
+     * `pesoConhecidoDoProduto` — o peso único entre as variantes já pesadas. Em
+     * `propor_gravacao` o lojista diz o número, e não há derivação a envelhecer.
+     *
+     * A rota usa isto para congelar TAMBÉM a referência como precondição. Sem
+     * essa distinção, invalidar por mudança nas irmãs recusaria propostas em
+     * que o valor nunca dependeu delas. Ver INC-002.
+     */
+    derivadoDoPesoConhecido?: true;
+  };
   /**
    * Uma proposta de GERAR ANÚNCIO — separada da de gravação porque a tela faz
    * coisas diferentes com cada uma: uma grava um campo, a outra dispara a
@@ -1417,7 +1432,11 @@ async function prepararResolucao(
   );
 
   return {
-    escopo: { ...escopo, campo: "peso", valor },
+    // `derivadoDoPesoConhecido` porque `valor` acabou de sair de
+    // `pesoConhecidoDoProduto`: ele SÓ existe enquanto as irmãs concordarem. Se
+    // uma delas mudar entre a proposta e o clique, o número perde a origem que
+    // o justificou — e a rota precisa saber disso para congelá-la. Ver INC-002.
+    escopo: { ...escopo, campo: "peso", valor, derivadoDoPesoConhecido: true },
     saida: {
       montada: true,
       resumo: escopo.resumo,

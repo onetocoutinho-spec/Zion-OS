@@ -291,11 +291,35 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
       .select("produto_id, peso")
       .in("produto_id", idsDaProposta);
     const semPeso = new Map<string, number>();
+    // As pesadas, por produto — para reconstituir a REFERENCIA de agora.
+    const pesadas = new Map<string, Set<number>>();
     for (const v of (vars ?? []) as { produto_id: string; peso: number | null }[]) {
-      if (!v.peso || v.peso <= 0) semPeso.set(v.produto_id, (semPeso.get(v.produto_id) ?? 0) + 1);
+      if (!v.peso || v.peso <= 0) {
+        semPeso.set(v.produto_id, (semPeso.get(v.produto_id) ?? 0) + 1);
+        continue;
+      }
+      const g = pesadas.get(v.produto_id) ?? new Set<number>();
+      g.add(Math.round(v.peso * 1000));
+      pesadas.set(v.produto_id, g);
     }
     for (const id of idsDaProposta) {
       estado[`variacoesSemPeso:${id}`] = permitidos.has(id) ? (semPeso.get(id) ?? 0) : null;
+    }
+
+    // ---- A ORIGEM DO VALOR, relida AGORA. Ver INC-002.
+    //
+    // Presente so quando o valor foi DERIVADO do produto (`preparar_resolucao`).
+    // A regra e a mesma de `pesoConhecidoDoProduto`: existe UM peso conhecido
+    // enquanto as pesadas concordarem; discordando, nao existe — e `null` invalida.
+    //
+    // A contagem de vazias nao cobre isto: mudar uma variante JA PREENCHIDA de
+    // 410 para 500 mantem a contagem e destroi a referencia. Sem esta linha, o
+    // UPDATE gravaria um numero que o dominio ja se recusaria a derivar.
+    for (const campo of campos) {
+      if (!campo.startsWith("pesoConhecido:")) continue;
+      const id = campo.slice("pesoConhecido:".length);
+      const distintos = permitidos.has(id) ? pesadas.get(id) : undefined;
+      estado[campo] = distintos && distintos.size === 1 ? [...distintos][0] : null;
     }
     return estado;
   }
