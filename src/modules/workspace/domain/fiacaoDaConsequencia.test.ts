@@ -74,6 +74,31 @@ test("o porto também filtra por tenant — escopo não substitui isolamento", (
   assert.equal(porTenant.length, 2);
 });
 
+test("leitura que FALHOU não vira leitura VAZIA — as duas queries são conferidas", () => {
+  // `supabase-js` não lança: devolve `{ data: null, error }`. Sem a conferência,
+  // cada falha virava uma resposta plausível, diferente, e invisível:
+  //
+  //   `produtos`  falhando -> nada avaliado -> `quantos: null` -> a oferta
+  //                           "Pricing" APARECE, vinda de uma leitura que não
+  //                           aconteceu;
+  //   `variantes` falhando -> ninguém transita -> `quantos: 0`, que este domínio
+  //                           define como fato conhecido — afirmado sem leitura.
+  //
+  // O caminho honesto é lançar: o `catch` de `calcularConsequencia` devolve
+  // `null` e registra. Perde-se o número, não a escrita.
+  for (const q of ["produtos", "variantes"]) {
+    assert.match(
+      PORTO_CODIGO,
+      new RegExp(`if\\s*\\(${q}\\.error\\)\\s*throw`),
+      `${q}.error não é conferido: uma falha de leitura vira número plausível`
+    );
+  }
+  assert.ok(
+    !/\.data\s*\?\?\s*\[\]/.test(PORTO_CODIGO),
+    "`.data ?? []` voltou ao porto: ele apaga a diferença entre falhar e vir vazio"
+  );
+});
+
 // ---------------------------------------------------------------------------
 // A rota: chama o porto com p.alvos, e só depois dos três passos
 // ---------------------------------------------------------------------------
