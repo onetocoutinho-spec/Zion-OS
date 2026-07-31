@@ -1008,7 +1008,20 @@ async function proporPreco(
         },
       };
     }
-    comoVeio = "o preço que você disse";
+    // NÃO diz "o preço que você disse". Dizia — e era uma atribuição que este
+    // código não tem como sustentar.
+    //
+    // `brutoPreco` é `texto(args, "preco")`: um argumento do MODELO. O lojista
+    // provavelmente ditou o número e o modelo o repassou — mas "provavelmente"
+    // não é o que a frase afirmava. Não existe, em lugar nenhum desta cadeia,
+    // estrutura que ligue este número a uma fala da pessoa; havendo divergência,
+    // o cartão atribuía a ela um número que ela não escolheu, na tela em que ela
+    // decide. Ver INC-008.
+    //
+    // O que o sistema SABE, e é só isto: o número chegou pronto e não saiu de
+    // uma conta dele. A outra frase, abaixo, pode ser afirmativa porque descreve
+    // uma computação que realmente aconteceu.
+    comoVeio = "um preço informado na conversa — o Zion não calculou este número";
   } else if (margemAlvo !== null) {
     const r = precoParaMargem(margemAlvo, e);
     if (!r.ok) return { saida: { montada: false, motivo: r.motivo } };
