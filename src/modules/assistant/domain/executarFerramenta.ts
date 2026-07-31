@@ -25,6 +25,7 @@ import {
   type Proposta,
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import { situacaoDePeso } from "../../catalog/domain/familiaDeProduto";
 import {
   classificar,
   paraOModelo,
@@ -557,21 +558,72 @@ export async function executarFerramenta(
     case "o_que_falta_no_produto": {
       const p = ctx.produtos.find((x) => x.id === texto(args, "produtoId"));
       if (!p) return { saida: { erro: "produtoId desconhecido. Use achar_produto antes." } };
+
+      // ---- POR QUE ESTA FERRAMENTA DEVOLVE `campos`, e não só `falta`.
+      //
+      // Ela devolvia UMA lista de lacunas. Um campo saudável simplesmente não
+      // aparecia — e ausência da lista era a única representação de "está ok".
+      //
+      // Em produção isso virou uma frase falsa: perguntada sobre a Rasteira
+      // Vizzano (36 de 39 variantes a 410 g), ela devolveu `falta: [custo,
+      // preço]` e o agente escreveu "Não encontrei informações de peso para as
+      // variações". Ele não contradisse a ferramenta: a ferramenta não disse
+      // nada sobre peso, e silêncio foi lido como inexistência.
+      //
+      // `campos` diz o estado de CADA campo que esta cadeia consegue avaliar.
+      // Ausência deixa de ser sinal.
+      const peso = situacaoDePeso(p);
+
+      // ---- PREÇO E FOTO NÃO CHEGAM AQUI.
+      //
+      // `ctx.produtos` é `ProdutoAlvo`: id, nome, marca, custo e o par
+      // (quantidadeVariantes, variacoesSemPeso). Preço e foto não estão nele, e
+      // buscá-los seria uma consulta nova.
+      //
+      // Antes se passava `precoVenda: 0` e `temFoto: true` — inventando
+      // "sem preço" e "com foto" para todo produto. O primeiro fez esta
+      // ferramenta afirmar "falta preço" para um produto de R$ 152,90 (e, de
+      // quebra, manteve `completo` em `false` para SEMPRE); o segundo escondia
+      // foto faltando. Agora eles não geram lacuna e são declarados
+      // `nao_avaliado`: desconhecido não vira nem ausente nem presente.
+      const NAO_AVALIADOS = ["preco", "foto"] as const;
       const falta = lacunasDoProduto(
         {
           custo: p.custo,
-          precoVenda: 0,
-          // Aqui a pergunta é "dá para calcular frete?", e para isso uma
-          // variante pesada basta. Ver INC-001.
-          pesoGramas: p.variacoesSemPeso < p.quantidadeVariantes ? 1 : 0,
+          // A pergunta do frete é "dá para calcular?", e para isso uma variante
+          // pesada basta — por isso PARCIAL não gera lacuna aqui. Ver INC-001.
+          // A completude fina está em `campos.peso.situacao`.
+          pesoGramas: peso === "ausencia_total" ? 0 : 1,
+          // Os dois valores que suprimem a lacuna do que não foi avaliado.
+          precoVenda: 1,
           temFoto: true,
         },
         p.id
       );
+
       return {
         saida: {
           nome: p.nome,
+          // Só fala dos campos AVALIADOS — e é por isso que `naoAvaliados`
+          // viaja junto. Sem essa ressalva, `completo: true` seria lido como
+          // "o produto está pronto", que é outra coisa.
           completo: falta.length === 0,
+          campos: {
+            // Os quatro nomes são os do domínio (`situacaoDePeso`), não uma
+            // segunda taxonomia: completo · ausencia_parcial · ausencia_total ·
+            // sem_grade. As contagens são as que o próprio ProdutoAlvo carrega.
+            peso: {
+              situacao: peso,
+              variantes: p.quantidadeVariantes,
+              variantesSemPeso: p.variacoesSemPeso,
+            },
+            custo: { situacao: p.custo > 0 ? "ok" : "ausente" },
+            preco: { situacao: "nao_avaliado" },
+            foto: { situacao: "nao_avaliado" },
+          },
+          naoAvaliados: NAO_AVALIADOS,
+          aviso:
+            "`campos` diz o estado de cada campo. `nao_avaliado` quer dizer que ESTA consulta não olhou o campo — não que ele esteja vazio: não afirme que falta. `falta` cobre apenas os campos avaliados, e `peso` com situação `ausencia_parcial` NÃO aparece nela porque o frete já sai.",
           falta: falta.map((l) => ({ o_que: l.rotulo, impede: l.impede, onde: l.href ?? null })),
         },
       };
