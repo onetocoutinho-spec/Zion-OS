@@ -501,10 +501,30 @@ export async function POST(request: Request) {
                 // forma — e um alvo preenchido por outro caminho invalida a
                 // proposta inteira, que e o comportamento pedido: nao alterar
                 // 39 quando o lojista aprovou 47.
-                const precondicoes = escopoDoLote.incluidos.map((c) => ({
-                  campo: `variacoesSemPeso:${c.id}`,
-                  valorNaCriacao: c.unidadesSemDado,
-                }));
+                //
+                // E quando o valor foi DERIVADO do produto — `preparar_resolucao`
+                // tirando o peso das irmas ja pesadas —, a REFERENCIA entra como
+                // precondicao tambem.
+                //
+                // A contagem sozinha e cega ao que importa aqui: se UMA variante
+                // ja preenchida trocar de 410 para 500 entre a proposta e o
+                // clique, o numero de vazias continua 3, a revalidacao passa, e o
+                // UPDATE grava 410 — um valor que o dominio ja nao derivaria,
+                // porque `pesoConhecidoDoProduto` devolve `null` quando as irmas
+                // discordam. Demonstrado em transacao revertida. Ver INC-002.
+                //
+                // Em `propor_gravacao` o lojista dita o numero, e ai nao ha
+                // referencia a envelhecer — por isso a precondicao e condicional.
+                const lote = escopoDoLote;
+                const precondicoes = lote.incluidos.flatMap((c) => [
+                  {
+                    campo: `variacoesSemPeso:${c.id}`,
+                    valorNaCriacao: c.unidadesSemDado,
+                  },
+                  ...(lote.derivadoDoPesoConhecido
+                    ? [{ campo: `pesoConhecido:${c.id}`, valorNaCriacao: lote.valor }]
+                    : []),
+                ]);
                 const gravada = await criarProposta({
                   clienteId: clienteDaSessao,
                   conversaId,
