@@ -2,10 +2,15 @@
 
 **Data:** 2026-07-30 · **Branch:** `feat/copilot-lote-com-escopo-congelado` @ `ebdf2e1`
 **Estado quando escrito:** DESENHO. Nada implementado. Aguardava autorização.
-**Estado atual:** **IMPLEMENTADO** — o slice §F (peso em lote → pricing) foi
-autorizado e entregue. O desenho abaixo permanece **como foi aprovado**, sem
-reescrita retrospectiva: as perguntas, as invariantes, a matriz dos cinco modos e
-o teto das conclusões valem exatamente como estão.
+**Estado atual:** **IMPLEMENTADO e INTEGRADO** — o slice §F (peso em lote →
+pricing) foi autorizado e entregue. O desenho abaixo permanece **como foi
+aprovado**, sem reescrita retrospectiva: as perguntas, as invariantes, a matriz
+dos cinco modos e o teto das conclusões valem exatamente como estão.
+
+**Revisado em 2026-07-31 (CICLO C).** As premissas foram reconferidas contra o
+código e o banco de então, a medição que a §J exigia foi finalmente feita, e um
+defeito de leitura silenciosa foi encontrado e corrigido. **Ver a §K, no fim** —
+ela não altera nada do que está acima, acrescenta o que passou a ser sabido.
 
 > **Uma divergência entre o desenho e o implementado, registrada e não escondida.**
 > A §F previa comparar `avaliar(antes)` com `avaliar(depois)` sem dizer de onde
@@ -573,3 +578,108 @@ Se preferir, há uma versão ainda menor: entregar o cálculo e o contrato **sem
 bloco na tela, e ver o campo chegando no `network` antes de desenhar qualquer coisa.
 Perde a prova de ponta a ponta que o pedido descreve — mas é a menor coisa que
 prova que o número é um fato.
+
+---
+
+## K. Revisão de 2026-07-31 — CICLO C
+
+> Escrita **depois** da entrega, e propositalmente separada: nada acima foi
+> reescrito. Esta seção registra o que foi conferido, o que passou a ser medido e
+> o que continua sem demonstração.
+
+### K.1 Premissas reconferidas — todas sustentadas
+
+Conferidas contra o código e o banco de 2026-07-31, **depois** do CICLO A e dos
+INC-003 / INC-004 / INC-005, que mexeram na mesma cadeia:
+
+| premissa | veredito |
+|---|---|
+| `p.alvos` é literalmente o conjunto oferecido | **sustentada** — `conversa/route.ts:498` segue `escopoDoLote.incluidos.map(c => c.id)` |
+| ordem gravação → auditoria → procedência → consequência | **sustentada** — e com teste de posição na fiação |
+| a consequência é *best-effort* e nunca derruba a escrita | **sustentada** — `try/catch` próprio devolvendo `null` |
+| o porto lê só os ids, nunca o catálogo | **sustentada** — duas queries `.in(…, ids)` + `.eq("cliente_id")` |
+| 30 de 73 produtos com custo | **sustentada** — exatamente 30/73 |
+| 525 de 684 variantes com peso | **sustentada** — 159 sem peso |
+
+A armadilha que a nota de divergência do topo anotou — `embalagemDe` usa o
+**máximo**, então pertencer a `alvos` não prova "estava bloqueado por peso" —
+**está fechada**: `medidasAntes` é o retrato completo, sem o filtro
+`.lte("peso", 0)` do UPDATE e com as três dimensões junto. O `antes` não fica
+mais vazio do que a realidade era.
+
+### K.2 A medição que a §J exigia — feita
+
+A tabela de riscos dizia: *"Vale medir na base real antes de considerar o slice
+bem-sucedido."* Nunca tinha sido medido. Medido por `SELECT`, sem mutação:
+
+| | |
+|---:|---|
+| **70** | produtos com variantes |
+| **14** | entrariam no escopo de um lote de peso |
+| **1** | já tinha embalagem → **nunca** esteve bloqueado por peso |
+| **13** | embalagem nula → bloqueados por peso |
+| **3** | destes, com custo → **contariam** como desbloqueio |
+| **10** | destes, sem custo → seguem bloqueados, agora por custo |
+
+O cartão diria **"Pricing — 3 produtos"**. Não é zero, e não é inflado.
+
+Aquele **1** é a razão de a §F ter sido corrigida no meio da implementação: é o
+INC-002 existindo de fato nesta base — um produto que o lote toca e que a
+consequência corretamente **não** conta.
+
+### K.3 Um defeito encontrado, e a razão de ele importar
+
+`avaliacaoDeAlvos` aplicava `?? []` às duas leituras. Como `supabase-js` não
+lança em erro de banco, cada falha virava uma resposta plausível, **diferente**,
+e invisível:
+
+- **`produtos` falhando** → nada avaliado → `quantos: null` → e `ofertasQueValem`
+  **deixa `null` passar**: a oferta "Pricing" **aparece na tela**, produzida por
+  uma leitura que não aconteceu;
+- **`variantes` falhando** → ninguém transita → `quantos: 0` — que
+  `consequenciaDoLote` define, em comentário próprio, como **fato conhecido**
+  ("nenhum destes passou a ser calculável"). Afirmado sem ter lido nada.
+
+É a contradição direta da regra que o módulo enuncia: *zero conhecido não é
+ausência*. Corrigido lançando — o `try/catch` de `calcularConsequencia` já estava
+desenhado para isso e devolve `consequencia: null` com log. A escrita permanece
+consumada, auditada e com rastro; perde-se só o número, que é exatamente o que se
+deve perder quando não se sabe.
+
+É a mesma classe do [INC-004](../../engineering/incidents/INC-004-turno-do-copilot-pode-nao-persistir.md),
+tratada em toda a superfície do Copilot no
+[INC-007](../../engineering/incidents/INC-007-escritas-do-copilot-que-falham-em-silencio.md).
+
+### K.4 Duas limitações — registradas, não corrigidas
+
+1. **Um lote de um produto não produz consequência.** `calcularConsequencia`
+   exige `p.alvos.length > 1` para separar lote de individual. Um lote legítimo
+   de um único produto cai fora. Conservador, mas é lacuna: a única proposta que
+   já existiu na base (`903c1830…`, um produto) cairia nela.
+
+2. **Assimetria de tenant em `antesLote`.** A leitura prévia
+   (`proposta/route.ts:491`) não filtra `cliente_id`, embora o UPDATE logo abaixo
+   filtre. **Não é vazamento:** `produto_id` é PK de `produtos` e as variantes
+   pendem dele por FK, então o id já é escopado por tenant. E o efeito de
+   qualquer divergência seria **suprimir** contagem, nunca inflá-la — o `antes`
+   teria variantes a mais, e `embalagemDe` é máximo. Classificada como
+   assimetria, não defeito.
+
+### K.5 Onde a evidência para, exatamente
+
+| classe | o que está coberto |
+|---|---|
+| **PROVADO POR CONSTRUÇÃO** | R1 estrutural (o porto recebe ids; não há parâmetro para ler outra coisa) e o sensor `foraDoEscopo` que a prova |
+| **PROVADO POR TESTE** | `consequenciaDoLote.test.ts`, `causalidadeDoPeso.test.ts`, `fiacaoDaConsequencia.test.ts` |
+| **INTEGRADO / DEPLOYADO** | commit `42dd149` → PR #99 → merge `e5e29bb` → Production `e5e29bb`, *Deployed (completed)* |
+| **NÃO OBSERVADO EM PRODUÇÃO** | **a consequência nunca foi calculada fora de teste** |
+
+O último item é o que mais importa e não deve ser suavizado. Em 2026-07-31
+`copilot_acoes` tem **0 linhas**, `copilot_propostas` tem **1** (`pendente`), e
+propostas de lote executadas: **0**. **Nenhuma proposta foi executada nunca.**
+Logo o campo `consequencia` jamais atravessou a rota com um valor real, nenhum
+`CartaoDoLote` jamais renderizou o bloco, e a §J continua com a lacuna 1
+(*"aparência nunca validada"*) intacta.
+
+Produzir essa observação exige confirmar uma proposta real — uma mutação de
+catálogo — e por isso não foi feita.
