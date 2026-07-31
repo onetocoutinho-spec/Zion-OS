@@ -1,12 +1,14 @@
 # INC-005 — A conversa do banco não é o fio
 
 ```
-Status:      CORREÇÃO IMPLEMENTADA — VALIDAÇÃO EM EXECUÇÃO PENDENTE
+Status:      CORRIGIDO E VALIDADO EM PRODUÇÃO — para a propriedade demonstrada
 Detectado:   2026-07-30, durante a Fase 5B do INC-003
 Reproduzido: 2026-07-31, produção, SHA 2e535fa
+Correção:    3ee7d85, mesclada em master por 54bd865 (PR #95)
+Validado:    2026-07-31, produção, SHA 54bd865
 Severidade:  histórico fragmentado; duas capacidades silenciosamente inertes
-Corrige:     turnos consecutivos de uma mesma conversa ativa passam a ser
-             associados à mesma conversa persistida
+Corrige:     turnos consecutivos de uma mesma conversa ativa são associados à
+             mesma conversa persistida
 Não corrige: M2 (aba duplicada/restaurada) — limitação conhecida
 ```
 
@@ -263,11 +265,101 @@ O que **não** foi testado por execução: hidratação, toggle e logout vivem e
 construção, com guardas de fonte — inclusive a invariante que sustenta M1: o id
 usa `sessionStorage` e **nunca** `localStorage`.
 
+## A validação em produção (Fase 7F)
+
+Produção rodando `54bd865`, sessão real, fio limpo. Três turnos na **mesma aba**,
+todos de leitura:
+
+```
+sessionStorage  zion:conversa-id:<cliente>  →  ausente
+
+turno 1  "obrigado"                          → proximo_passo  →  id NASCE: 47dd11cd…
+turno 2  "quantos produtos estão sem custo?" → contar         →  id INALTERADO
+   ── reload da aba ──                                            id SOBREVIVE
+turno 3  "quantos produtos estão sem peso?"  → contar         →  id INALTERADO
+```
+
+No banco:
+
+```
+conversa 47dd11cd-bca2-41c4-8796-e0022c86b87d
+  criada_em     03:05:14
+  atualizada_em 03:05:51        ← reusada
+  6 mensagens, em ordem, os três turnos
+```
+
+**Uma conversa. Três turnos.** E `atualizada_em > criada_em`: o ramo de reúso de
+`garantirConversa` — que não havia executado em nenhuma das oito conversas
+anteriores — **executou**.
+
+| | antes | depois |
+|---|---:|---:|
+| conversas | 8 | **9** (uma, não três) |
+| reusadas | 0 | **1** |
+| com mais de um turno | 0 | **1** |
+
+O reload confirmou a REGRA C por observação, e não mais por construção: o id
+sobreviveu, os turnos voltaram à tela, e o terceiro caiu na mesma conversa.
+
+Mutação operacional **zero**: 159 variantes sem peso, Vizzano `0.000 | 0.410`,
+propostas 1, ações 0, cadastros 0, procedência 0. Só ferramentas `le` rodaram.
+
+## O ciclo de vida, observado (Fase 7G)
+
+**Toggle do modo.** Com `47dd11cd…` ativa: desligar limpou a chave do
+`sessionStorage`; religar **não criou linha nenhuma**; o turno seguinte criou
+`6c878f1c…` — id diferente. Os turnos visuais permaneceram, como o contrato
+prevê.
+
+**Aba nova independente (M1).** Aberta do zero — não duplicada. O
+`sessionStorage` veio **vazio**, sem herdar `6c878f1c…`, enquanto o histórico
+local (4 turnos) carregou normalmente. O primeiro turno criou `7f9832de…`,
+conversa própria.
+
+> Histórico compartilhado, identidade independente. **M1 observado em
+> produção.**
+
+**Logout (REGRA H).** Antes: histórico presente, id ativo `7f9832de…`, sessão
+viva. Depois do "Sair" normal do produto: `localStorage` e `sessionStorage`
+**vazios**, sessão encerrada. As duas chaves do cliente foram removidas.
+
+*Login posterior* não foi observado — exigiria credenciais, e obtê-las ou
+contornar a autenticação é proibido.
+
+## Por que `ultimaApresentacao` não foi validada
+
+Tentei e **parei por impossibilidade estrutural, não por falta de tempo.**
+
+`metadata` — a apresentação persistida que faz "o segundo" resolver — só é
+escrita a partir de `efeitoNoCadastro?.apresentou`, e isso nasce em **um único
+lugar**: `gerenciar_cadastro`, ferramenta de efeito `rascunha`. Há dois
+caminhos, e nenhum serve:
+
+- **`retomar`** com vários rascunhos abertos → há **zero** cadastros na base;
+- **detecção de duplicidade** → exige um cadastro **em andamento**.
+
+Os dois obrigam a iniciar um cadastro de produto na área de trabalho da
+lojista, com uma intenção inventada. Isso é fabricar dado e deixar resíduo
+operacional visível para ela.
+
+**`ultimaApresentacao` e `draftAbertoDaConversa` seguem NÃO DEMONSTRADOS.** O
+que se sabe é que voltaram a ser *alcançáveis* — a conversa agora persiste
+entre turnos —, não que funcionem.
+
+Registro a consequência: **não existe caminho de leitura que exercite a
+referência estruturada.** Validá-la exige ou um produto de teste autorizado, ou
+um cenário de cadastro real conduzido pela própria lojista.
+
 ## Ainda NÃO validado
 
-- que `ultimaApresentacao` e `draftAbertoDaConversa` voltem a funcionar —
-  exige observação real;
-- que turnos consecutivos de fato caiam na mesma conversa em produção;
+- **`ultimaApresentacao` e `draftAbertoDaConversa`** — pelo motivo acima;
+- **M2** — aba duplicada ou restaurada, não testada e fora do escopo;
+- **fechar e reabrir a aba** encerrando a conversa ativa — contrato, não
+  observação;
+- **login posterior ao logout**;
 - se `draftsAbertos` compensa o draft por conversa;
 - retomada entre dispositivos;
 - as sete conversas órfãs — **nenhuma limpeza retroativa**.
+
+O que está validado é a propriedade nomeada no cabeçalho, mais o ciclo de vida
+acima. E só.
