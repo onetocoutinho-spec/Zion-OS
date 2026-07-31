@@ -189,6 +189,59 @@ async function estadoDoProdutoNoBanco(
  * coluna. Uma trilha desatualizada afirmando um valor que o banco já não tem
  * seria pior que silêncio: a pessoa conferiria o número errado.
  */
+/**
+ * Os ids das variantes ELEGÍVEIS agora, por produto — a identidade que a
+ * proposta congela.
+ *
+ * ===========================================================================
+ * POR QUE ESTA LEITURA EXISTE AQUI, E NÃO NA FERRAMENTA
+ * ===========================================================================
+ *
+ * O escopo do lote é montado sobre `ProdutoAlvo`, que carrega CONTAGENS
+ * (`quantidadeVariantes`, `variacoesSemPeso`) e não ids de variante. Buscá-los
+ * na ferramenta obrigaria a mudar o contrato do contexto inteiro e a mandar
+ * milhares de ids ao modelo — que é exatamente o que o escopo evita.
+ *
+ * Aqui, na fronteira que CRIA a Proposal, o servidor lê o que vai congelar:
+ * tenant da SESSÃO, e o MESMO predicado `peso <= 0` que a escrita usará. Nem o
+ * modelo nem o corpo da requisição participam.
+ *
+ * `.lte("peso", 0)` e não `IS NULL`: a coluna é `numeric NOT NULL DEFAULT 0`.
+ * Mesma definição de "sem peso" que a revalidação e o UPDATE usam — nenhuma
+ * semântica nova entra por aqui.
+ *
+ * Ordenado por `id` para que duas leituras do mesmo conjunto produzam o mesmo
+ * valor persistido. A ordem não carrega significado; a normalização existe para
+ * o dado ser comparável e diffável.
+ */
+async function idsElegiveisPorProduto(
+  clienteId: string,
+  alvos: readonly string[]
+): Promise<Map<string, string[]>> {
+  const mapa = new Map<string, string[]>();
+  if (alvos.length === 0) return mapa;
+  const { data, error } = await getSupabaseAdmin()
+    .from("produto_variantes")
+    .select("id, produto_id")
+    .in("produto_id", alvos)
+    .eq("cliente_id", clienteId)
+    .lte("peso", 0)
+    .order("id", { ascending: true });
+  // Falha de leitura NÃO vira conjunto vazio — viraria uma proposta que não
+  // escreve em lugar nenhum, com cara de normal. Sem ids, a proposta nasce sob
+  // o contrato legacy, que é o comportamento de antes deste ciclo.
+  if (error) {
+    console.error("[copilot] falha ao congelar o conjunto aprovado do lote:", error);
+    return mapa;
+  }
+  for (const v of (data ?? []) as { id: string; produto_id: string }[]) {
+    const lista = mapa.get(v.produto_id) ?? [];
+    lista.push(v.id);
+    mapa.set(v.produto_id, lista);
+  }
+  return mapa;
+}
+
 async function valorDoCampo(
   clienteId: string,
   alvo: { tipo: "produto" | "variante"; id: string },
@@ -516,10 +569,27 @@ export async function POST(request: Request) {
                 // Em `propor_gravacao` o lojista dita o numero, e ai nao ha
                 // referencia a envelhecer — por isso a precondicao e condicional.
                 const lote = escopoDoLote;
+                // A IDENTIDADE do conjunto aprovado, congelada em T0.
+                //
+                // A contagem sozinha e cega a TROCA: preencher C e zerar D
+                // mantem "3 vazias", a revalidacao aprova, e o UPDATE — que
+                // redescobria as variantes por `peso <= 0` — gravava em D, que
+                // ninguem aprovou. Demonstrado em transacao revertida no
+                // catalogo real. Ver INC-002 e o CICLO G.
+                //
+                // Lido AQUI, no servidor, com o tenant da SESSAO e com o MESMO
+                // predicado que a escrita usa. Nao vem do modelo nem do corpo.
+                const idsPorProduto = await idsElegiveisPorProduto(clienteDaSessao, alvos);
                 const precondicoes = lote.incluidos.flatMap((c) => [
                   {
                     campo: `variacoesSemPeso:${c.id}`,
                     valorNaCriacao: c.unidadesSemDado,
+                    // Ausente quando a leitura nao achou nada: melhor cair no
+                    // contrato legacy do que gravar um conjunto vazio, que a
+                    // execucao leria como "nao escreva em lugar nenhum".
+                    ...(idsPorProduto.get(c.id)?.length
+                      ? { idsAprovados: idsPorProduto.get(c.id)! }
+                      : {}),
                   },
                   ...(lote.derivadoDoPesoConhecido
                     ? [{ campo: `pesoConhecido:${c.id}`, valorNaCriacao: lote.valor }]
