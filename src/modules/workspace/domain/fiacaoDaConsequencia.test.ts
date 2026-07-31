@@ -116,7 +116,12 @@ test("a ORDEM continua: gravação → auditoria → procedência → consequên
   // `await gravar(p)` e não a desestruturação inteira: a primeira versão fixava
   // a lista de campos e quebrou quando o INC-002 acrescentou `elegiveis` — sem
   // que a ordem, que é o objeto do teste, tivesse mudado.
-  const gravacao = pos("= await gravar(p)");
+  //
+  // E sem o `=`: desde a migração 045 a escrita de PESO entra por um ternário
+  // (`atomico ? {...} : await gravar(p)`), então a atribuição não encosta mais
+  // na chamada. A âncora continua sendo a ESCRITA — que é o que a ordem trata —,
+  // e os dois caminhos desembocam na mesma desestruturação, antes da auditoria.
+  const gravacao = pos("await gravar(p)");
   const auditoria = ROTA.indexOf("await registrarAcao(", gravacao);
   const procedencia = ROTA.indexOf("await registrarVarias(", auditoria);
   const consequencia = ROTA.indexOf("await calcularConsequencia(", procedencia);

@@ -26,6 +26,7 @@ import {
   buscarProposta,
   marcarProposta,
   registrarAcao,
+  executarPesoAtomico,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
 import { avaliacaoDeAlvos, type MedidasAnteriores } from "@/lib/services/avaliacaoDeAlvos";
@@ -368,6 +369,46 @@ function agruparPorProduto(linhas: unknown): MedidasAnteriores {
     mapa.set(l.produto_id, lista);
   }
   return mapa;
+}
+
+/**
+ * O retrato de ANTES de uma escrita de PESO — lido FORA da transação, de
+ * propósito.
+ *
+ * Ele alimenta a AUDITORIA e a CONSEQUÊNCIA, não a invariante. A propriedade
+ * que a 045 estabelece é "status `executada` implica mutação commitada", e o
+ * retrato não participa dela: trazê-lo para dentro da transação aumentaria a
+ * seção crítica sem fechar nada.
+ *
+ * As DIMENSÕES entram no select do lote pelo mesmo motivo de sempre:
+ * `embalagemDe` considera embalagem existente se QUALQUER um entre peso,
+ * altura, largura e comprimento for > 0, e sem as três o retrato causal da
+ * consequência seria um palpite. Ver CONSEQ-001.
+ */
+async function retratoAntesDoPeso(p: PropostaPersistida): Promise<{
+  antes: unknown;
+  medidasAntes?: MedidasAnteriores;
+}> {
+  const admin = getSupabaseAdmin();
+  if (p.alvos.length > 1) {
+    const { data } = await admin
+      .from("produto_variantes")
+      .select("id, produto_id, peso, altura, largura, comprimento")
+      .in("produto_id", p.alvos);
+    const linhas = (data ?? []) as { peso: number | null }[];
+    return {
+      antes: {
+        variacoesLidas: linhas.length,
+        semPesoAntes: linhas.filter((v) => !v.peso || v.peso <= 0).length,
+      },
+      medidasAntes: agruparPorProduto(data),
+    };
+  }
+  const { data } = await admin
+    .from("produto_variantes")
+    .select("id, peso")
+    .eq("produto_id", p.alvos[0]);
+  return { antes: data ?? null };
 }
 
 /** Executa a escrita pelo mesmo caminho que a tela usa. Nunca um segundo. */
@@ -733,7 +774,29 @@ export async function POST(request: Request) {
   // A proposta existe, é deste cliente, está pendente, no prazo, e o mundo não
   // mudou. AGORA a corrida: quem reservar, executa.
   const p = proposta as PropostaPersistida;
-  const reservou = await reservarParaExecucao(p.id);
+
+  // ---- PESO passa pela primitiva ATÔMICA (migração 045). Ver INC-002 camada 5.
+  //
+  // O caminho antigo — `reservarParaExecucao` e depois `gravar` — marcava
+  // `executada` ANTES da mutação, em transação separada. Uma morte no intervalo
+  // consumia a autorização, deixava o catálogo intacto e fazia o sistema
+  // informar ao lojista que havia gravado. Para peso isso deixa de existir: a
+  // transição de status é a última escrita da MESMA transação que grava.
+  //
+  // OS OUTROS TIPOS SEGUEM EXATAMENTE O CAMINHO DE ANTES. Custo, preço e título
+  // não receberam desenho equivalente, e `cadastro` é multi-statement, não
+  // idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
+  // `validarRascunho` em SQL. T1 continua aberto para eles, e isso está dito.
+  const atomico = p.tipo === "peso";
+  const retrato = atomico ? await retratoAntesDoPeso(p) : null;
+  const rpc = atomico ? await executarPesoAtomico(p.id, clienteDaSessao) : null;
+
+  // `nada_gravado` NÃO é corrida perdida: a transação reverteu a transição e a
+  // proposta continua `pendente`. Ela segue o fluxo abaixo para ser auditada
+  // como zero linhas, e o ramo de `afetados === 0` cuida do resto.
+  const reservou = atomico
+    ? rpc!.motivo === "ok" || rpc!.motivo === "nada_gravado"
+    : await reservarParaExecucao(p.id);
   if (!reservou) {
     // Perdeu a corrida para outra requisição da mesma proposta. Não é erro.
     await registrarAcao({
@@ -753,7 +816,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { afetados, antes, depois, medidasAntes, elegiveis } = await gravar(p);
+    // `depois` do peso é RESUMO nos dois caminhos agora — antes o individual
+    // devolvia a lista de linhas. Nada lê essa lista: `rastroDaEscrita` usa
+    // `p.valor`, e `desfechoDaGravacao` só olha campos de cadastro. Unificar
+    // deixa o payload de auditoria com uma forma só, e `copilot_acoes` não tem
+    // histórico para reinterpretar.
+    const { afetados, antes, depois, medidasAntes, elegiveis } = atomico
+      ? {
+          afetados: rpc!.afetados,
+          antes: retrato!.antes,
+          depois: { variacoesAtualizadas: rpc!.afetados, pesoKg: p.valor / 1000 },
+          medidasAntes: retrato!.medidasAntes,
+          elegiveis: rpc!.elegiveis,
+        }
+      : await gravar(p);
     const resultado = desfechoDaGravacao(afetados, depois);
     await registrarAcao({
       clienteId: clienteDaSessao,
@@ -785,7 +861,11 @@ export async function POST(request: Request) {
       //
       // `nenhuma linha afetada` continua no rastro técnico, que é onde a
       // investigação acontece.
-      await marcarProposta(p.id, "falhou", "nenhuma linha afetada");
+      // PARA PESO NÃO SE MARCA `falhou`. A transação da 045 reverteu a
+      // transição: a proposta continua `pendente` e pode ser tentada de novo
+      // com a MESMA autorização. Queimá-la aqui desfaria o que a primitiva
+      // acabou de preservar.
+      if (!atomico) await marcarProposta(p.id, "falhou", "nenhuma linha afetada");
       return Response.json(
         {
           ok: false,
