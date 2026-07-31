@@ -320,7 +320,17 @@ test("propor por PREÇO monta o cartão com a decomposição", async () => {
   const r = await rodar("propor_preco", { produtoId: "p1", preco: "89,90" }, ctxPreco());
   const s = r.saida as { montada: boolean; comoVeio: string; aviso: string };
   assert.equal(s.montada, true);
-  assert.match(s.comoVeio, /você disse/);
+  // ERA `/você disse/`, e essa linha congelava um defeito como especificação.
+  //
+  // `preco` chega em `texto(args, "preco")` — argumento do MODELO. Afirmar que a
+  // pessoa disse o número é uma atribuição que este código não pode sustentar, e
+  // ela aparecia no cartão de confirmação. Ver INC-008 e
+  // `atribuicaoDeProveniencia.test.ts`, que guarda a propriedade nova.
+  //
+  // O teste do ramo por MARGEM, logo abaixo, continua exigindo a frase
+  // afirmativa — lá o domínio realmente calculou, e a descrição é verificável.
+  assert.doesNotMatch(s.comoVeio, /voc[êe]/i);
+  assert.match(s.comoVeio, /não calculou/i);
   assert.equal(r.propostaDePreco?.preco, 89.9);
   assert.ok(r.propostaDePreco?.decomposicao);
   assert.match(s.aviso, /NADA foi publicado no Mercado Livre/i);
