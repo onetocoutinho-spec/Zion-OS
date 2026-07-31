@@ -97,7 +97,7 @@ export async function gravarTurno(
   turno: TurnoGravado
 ): Promise<void> {
   try {
-    await getSupabaseAdmin()
+    const { error } = await getSupabaseAdmin()
       .from("copilot_mensagens")
       .insert([
         {
@@ -105,6 +105,21 @@ export async function gravarTurno(
           cliente_id: clienteId,
           papel: "lojista",
           texto: turno.pergunta,
+          // ---- AS DUAS LINHAS PRECISAM DAS MESMAS CHAVES. Ver INC-004.
+          //
+          // Vão no MESMO insert, e o PostgREST monta UMA lista de colunas com a
+          // UNIÃO das chaves das duas. A chave que falta numa delas não recebe o
+          // DEFAULT da coluna — recebe NULL EXPLÍCITO.
+          //
+          // `ferramentas` é NOT NULL DEFAULT '{}'. Sem esta linha, o NULL da
+          // fala do lojista derrubava o insert INTEIRO com 23502, e nenhum turno
+          // chegava a `copilot_mensagens` — em produção, todos.
+          ferramentas: [],
+          // Nulos por SIGNIFICADO, não por descuido: as duas colunas são
+          // nuláveis, e tokens e apresentação pertencem à geração do assistente.
+          // Zero diria "custou zero"; null diz "não se aplica a esta fala".
+          tokens: null,
+          metadata: null,
         },
         {
           conversa_id: conversaId,
@@ -116,6 +131,15 @@ export async function gravarTurno(
           metadata: turno.metadata ?? null,
         },
       ]);
+    // ---- O CLIENTE NÃO LANÇA EM ERRO DE BANCO: devolve `{ data, error }`.
+    //
+    // Sem ler o `error`, o `catch` abaixo nunca é atingido por uma recusa do
+    // Postgres — e foi assim que o 23502 acima ficou invisível em todo turno,
+    // com a tela respondendo normalmente. As funções vizinhas deste arquivo já
+    // conferem `error`; esta era a única que descartava o retorno.
+    if (error) {
+      console.error("[copilot] falha ao gravar turno em copilot_mensagens:", error);
+    }
   } catch (e) {
     // Ver o cabeçalho: perder o registro é ruim, perder a resposta é pior.
     console.error("[copilot] falha ao gravar turno:", e);

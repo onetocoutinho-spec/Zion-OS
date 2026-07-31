@@ -1,74 +1,133 @@
-# INC-004 — O turno do Copilot pode não persistir
+# INC-004 — Nenhum turno do Copilot chegava a `copilot_mensagens`
 
 ```
-Status:      INVESTIGAÇÃO PENDENTE — nada corrigido
+Status:      CORREÇÃO IMPLEMENTADA — VALIDAÇÃO EM EXECUÇÃO PENDENTE
 Detectado:   2026-07-30, durante a investigação do INC-003
-Severidade:  perda silenciosa de histórico; sem corrupção de dado
-Correção:    NÃO feita — separada de propósito do INC-003
+Causa:       demonstrada 2026-07-31 (logs de produção + reprodução em transação)
+Severidade:  perda silenciosa e TOTAL do histórico; sem corrupção de dado
 ```
+
+> **Este documento foi reescrito.** A versão anterior apresentava *teardown
+> serverless* como hipótese mais forte. **Teardown está falsificado.**
 
 ## O fato observado
 
-Em produção, sessão autenticada, um turno do modo conversa:
+Em produção, sessão autenticada real:
 
 | tabela | antes | depois |
 |---|---:|---:|
-| `copilot_conversas` | 0 | **1** |
+| `copilot_conversas` | 5 | **7** |
 | `copilot_mensagens` | 0 | **0** |
 
-A conversa nasceu. O turno não.
+Sete conversas nasceram ao longo do ciclo. **Zero mensagens.** A tela respondia
+normalmente o tempo todo.
 
-## O que o código mostra
+## A causa, demonstrada
 
-`app/api/assistente/conversa/route.ts`:
+`gravarTurno` insere as duas falas num único `.insert([...])`, e as duas
+tinham **chaves diferentes**:
 
 ```ts
-const conversaId = await garantirConversa(...)   // linha 333 — AGUARDADA
-...
-void gravarTurno(clienteDaSessao, conversaId, { ... })   // linha ~653 — NÃO aguardada
+{ conversa_id, cliente_id, papel: "lojista",    texto }                        // 4
+{ conversa_id, cliente_id, papel: "assistente", texto,
+  ferramentas, tokens, metadata }                                              // 7
 ```
 
-E `lib/services/copilotConversas.ts:94`, dentro de `gravarTurno`, um `catch` que
-apenas registra no console — por decisão declarada no próprio arquivo:
-*"perder o registro é ruim, perder a resposta é pior"*.
+O supabase-js monta a URL com a **união** das chaves — visível no log da API:
 
-A escrita **aguardada** persistiu. A **não aguardada** não.
+```
+POST | 400 | /rest/v1/copilot_mensagens
+  ?columns="conversa_id","cliente_id","papel","texto","ferramentas","tokens","metadata"
+```
 
-## O que NÃO está provado
+E o PostgREST preenche a chave ausente numa linha com **NULL EXPLÍCITO — nunca
+com o DEFAULT da coluna**. Como `ferramentas` é `NOT NULL DEFAULT '{}'`, a fala
+do lojista derrubava o insert **inteiro**:
 
-**A causa.** A hipótese mais forte é que a promessa não aguardada se perca no
-encerramento da função serverless — a assimetria entre as duas escritas é
-consistente com isso. Mas:
+```
+ERROR: null value in column "ferramentas" of relation "copilot_mensagens"
+       violates not-null constraint          -- 23502
+```
 
-- não há log do provedor examinado;
-- o `catch` engole qualquer erro, então uma falha de schema, rede ou contrato
-  produziria exatamente o mesmo sintoma;
-- não foi feito experimento que distinga as duas explicações.
+Seis ocorrências nas 24 h de log examinadas. Uma por turno. Sempre.
 
-**Escrever "teardown serverless" como causa seria promover hipótese a fato** —
-o mesmo movimento que o INC-003 documenta.
+### Por que ninguém viu
 
-## O que já foi descartado
+O cliente Supabase **não lança** em erro de banco: devolve `{ data, error }`.
+O retorno era descartado, então:
 
-- **Schema:** `copilot_mensagens` existe com `metadata` (migração 037 aplicada,
-  verificada na DB-AUDIT-001). As colunas que `gravarTurno` insere existem todas.
-- **RLS:** a escrita usa `service_role`, que ignora RLS. A migração 041 não criou
-  política de escrita nas tabelas do Copilot, e não precisaria.
+- o `error` nunca era lido;
+- o `catch` nunca era atingido;
+- nada era logado;
+- a resposta ao lojista seguia normal.
 
-## Relação com o INC-003
+`garantirConversa` e `ultimaApresentacao`, no mesmo arquivo, sempre conferiram
+`error`. `gravarTurno` era a única que não.
 
-**Nenhuma.** O INC-003 é *o modelo narra fato sem consultar*; este é *uma escrita
-disparada e não aguardada não chega*. Foram encontrados no mesmo turno e têm
-causas diferentes.
+**E o `catch` era código morto.** Descoberto ao rodar o teste de rede contra o
+código anterior: o postgrest-js converte falha de *fetch* em `{ error }`
+também. Nem recusa do Postgres nem queda de rede chegavam nele.
 
-## Por que importa
+## Falsificado
 
-O fio persistido é pré-requisito de duas coisas já mapeadas: a retomada da
-conversa entre o painel e a página própria, e o **fio único** (Fase 6A) — que
-depende de existir uma história autoritativa de onde partir.
+- **Teardown serverless** — a requisição chegou ao PostgREST e foi respondida
+  com 400. Não houve promessa perdida.
+- **RLS** — habilitada, com apenas policy de SELECT. Mas `copilot_conversas`,
+  `copilot_propostas` e `copilot_cadastros` têm configuração **idêntica** e
+  gravaram. O cliente que escreve ignora RLS.
+- **Grant / permissão** — `service_role` tem INSERT.
+- **`conversaId` inválido** — a FK aceitou; o erro é outro.
+- **Schema incompleto** — todas as colunas de 037 existem.
 
-## NÃO corrigido
+Registro de um erro meu: o primeiro teste transacional **passou** e teria
+inocentado o payload. Ele usava dois `INSERT` separados, cada um com sua lista
+de colunas — não reproduzia a união do PostgREST. Refeito com uma instrução
+única e NULL explícito, reproduziu `23502` na hora.
 
-Trocar `void` por `await` é uma linha, e é justamente por isso que não foi feito
-de carona: mudaria o custo de latência de todo turno e ainda não se sabe se
-resolve. A investigação precisa primeiro distinguir teardown de erro engolido.
+## A correção
+
+Tornar as duas linhas **estruturalmente homogêneas**:
+
+```ts
+{ …, papel: "lojista", texto: turno.pergunta,
+  ferramentas: [],      // NOT NULL — é esta a chave que faltava
+  tokens: null,         // nulável: pertence à geração do assistente
+  metadata: null }      // nulável: "não se aplica", não "vazio"
+```
+
+E **ler o retorno**:
+
+```ts
+const { error } = await getSupabaseAdmin().from("copilot_mensagens").insert([...]);
+if (error) console.error("[copilot] falha ao gravar turno em copilot_mensagens:", error);
+```
+
+Falha de persistência continua **não** derrubando a resposta — o contrato do
+cabeçalho segue de pé. O que mudou é que ela deixou de ser invisível.
+
+## Provas locais
+
+- **17 testes** sobre o payload REAL serializado, capturado por um `fetch` de
+  mentira — não por busca de string no fonte. **8 deles falham no código
+  anterior**, verificado restaurando-o e rodando.
+- A invariante que fecha a **classe**, não só a reprodução: as duas linhas têm
+  o mesmo conjunto de chaves. Enquanto valer, a união do PostgREST não inventa
+  NULL em ninguém.
+- Payload corrigido contra o Postgres real, em transação revertida: **2 linhas
+  aceitas, 0 resíduo**.
+
+## NÃO resolvido nesta fase
+
+- **`void gravarTurno`** — a Promise continua sem dono. Não causou este
+  incidente, e trocá-la mexeria em latência de todo turno.
+- **Fio único** — `garantirConversa` reusa a conversa quando recebe
+  `conversaId`; a rota devolve o id e `conversaDoAssistente` o declara *"a tela
+  devolve na próxima chamada"*. Mas **`ChatDaOperacao.tsx` nunca o menciona** e
+  `conversar()` não o envia. Cada requisição cria uma conversa nova. É o
+  candidato a **INC-005** — omissão no cliente, defeito independente deste.
+- Retry, idempotência, ownership da Promise.
+
+## O que ainda não está provado
+
+Que a correção funciona **em execução real**. Está provada por contrato, por
+teste e contra o Postgres real — não por observação em produção.
