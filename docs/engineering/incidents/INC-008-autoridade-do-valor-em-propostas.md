@@ -1,12 +1,15 @@
 # INC-008 — Autoridade factual do valor numa Proposal
 
 ```
-Status:      PARCIALMENTE CORRIGIDO — a falsa atribuição de UI foi corrigida.
-             A lacuna de autoridade está DESENHADA e BLOQUEADA aguardando
-             autorização de migration
+Status:      PARCIALMENTE RESOLVIDO — a falsa atribuição de UI foi corrigida e a
+             autoridade DEMONSTRÁVEL passou a ser persistida (migração 044).
+             A lacuna de fundo CONTINUA ABERTA: o sistema não consegue provar
+             que um número livre em `args` veio do lojista
 Detectado:   2026-07-31, CICLOs E e F, investigando a classe sistêmica do INC-003
 Severidade:  autoridade factual. NÃO é falha de integridade operacional
 Escopo:      todas as ferramentas do Copilot capazes de produzir Proposal
+Entregue:    a74c9db (rótulo) · 6f76b16 + migração 044 (autoridade persistida)
+             merge 0ffdf02 e 4011b42 · Production 4011b42
 ```
 
 ## As três coisas que não são a mesma
@@ -225,3 +228,92 @@ título, anúncio e cadastro têm semântica distinta e foram tratados à parte.
 diz que há proveniência garantida: o sistema registra autoria da escrita. E **não
 encerra o INC-003** — narrativa livre contradizer ferramenta (E1) segue verdadeiro
 e é dívida separada, deliberadamente fora deste ciclo.
+
+---
+
+## O que o CICLO F.2 entregou — e o que continua aberto
+
+O desenho acima foi autorizado e implementado. Uma migration aditiva, sem
+backfill e sem default. Segue o registro do que mudou e, sobretudo, do que **não**
+mudou.
+
+### PROVADO — o sistema persiste a autoridade que consegue demonstrar
+
+A taxonomia vive em `copilot_propostas.autoridade` e nasce **na fronteira que
+conhece o fato**:
+
+| classe | quem produz |
+|---|---|
+| `derivado` | `preparar_resolucao` — tira o peso das irmãs e **não lê `args`** |
+| `calculado` | `propor_preco` no ramo da margem — `precoParaMargem` sobre custo e taxas do banco |
+| `sem_autoridade` | `propor_gravacao` (individual e lote) e `propor_preco` no ramo do preço |
+| `nao_se_aplica` | `titulo` (conteúdo) e `cadastro` (identidade) |
+| `ditado` | **ninguém** |
+
+O campo é obrigatório no tipo do `escopo`, então um caminho novo **não compila**
+sem responder. A rota apenas repassa: nunca deduz de `resumo`, `comoVeio`, nome
+da ferramenta ou do próprio valor — deduzir depois seria reconstruir por
+aparência a informação que se perdeu, que é este incidente com outra roupa.
+
+### NÃO RESOLVIDO — e é o ponto que não pode ser suavizado
+
+**O sistema continua sem conseguir provar que um número livre em `args` foi
+fornecido pelo lojista.** O turno é texto livre; o argumento vem do modelo; não
+existe estrutura que ligue um ao outro.
+
+Por isso `ditado` **existe no tipo e no CHECK e não é produzido por fluxo
+nenhum**. Marcá-lo porque uma ferramenta `propor_*` recebeu o argumento seria
+fabricar exatamente a autoridade que este incidente existe para não fabricar.
+`autoridadeEhProduzivel` guarda a regra, e um teste varre os fontes atrás de
+qualquer caminho que passe a emiti-lo.
+
+**`sem_autoridade` é classe legítima e explicitamente registrada** — não é erro,
+não é bloqueio, e continua executável. Ela é o nome honesto de uma lacuna
+conhecida, e permanece como **dívida de produto**.
+
+### Por que `nao_se_aplica` precisou existir
+
+Sem ele, `NULL` teria dois significados: "proposta antiga" e "a taxonomia não
+descreve este objeto". Título e cadastro ficariam indistinguíveis de uma proposta
+de 2026-07-30, e a regra de legacy perderia o sentido.
+
+### `NULL` é desconhecido histórico, e nada além
+
+Sem backfill, sem default. `NULL` **não** é `sem_autoridade`. A `903c1830…`
+permanece `NULL` — verificado depois do deploy, junto de status, valor, alvos,
+precondições, `decidida_em` e `executada_em`, todos intactos. Não foi clicada,
+executada, cancelada nem expirada manualmente.
+
+### Não virou gate
+
+`podeExecutar` **sequer olha** para a coluna, e há teste de fonte para isso.
+Expiração, ownership, status, precondições, reserva atômica e confirmação humana
+seguem mandando exatamente como antes. Bloquear `sem_autoridade` exigiria antes
+um mecanismo que capture `ditado`; sem ele, o bloqueio derrubaria o caminho
+legítimo de quem dita um peso. É decisão de produto posterior.
+
+Testado explicitamente com `autoridade` nula: no prazo executa, expirada recusa,
+precondição quebrada recusa, tenant errado recusa. **`NULL` não pula proteção
+nenhuma.**
+
+### Procedência não foi reinterpretada
+
+`procedencia_de_campo.origem` continua respondendo *quem autorizou a escrita*.
+A coluna nova responde *de onde veio o fato*. São eixos diferentes e ficaram em
+lugares diferentes, de propósito — um teste garante que a rota de execução não
+encosta em `autoridade`. Um desenho próprio de procedência factual continua sendo
+trabalho futuro.
+
+### A frase máxima que este trabalho sustenta
+
+> O sistema persiste a classe de autoridade que o domínio consegue demonstrar
+> para a Proposal.
+
+Não sustenta: *"o sistema sabe de onde todo valor veio"*, *"valores do modelo
+agora têm proveniência"*, *"`sem_autoridade` é seguro"*, *"`ditado` está
+provado"*, nem *"o INC-003 foi resolvido"*.
+
+**NÃO OBSERVADO EM PRODUÇÃO:** nenhuma proposta foi criada depois da 044 —
+`copilot_acoes` segue com zero linhas e a única proposta existente é anterior à
+migração. A travessia da autoridade está provada por **teste**, não por
+observação.
