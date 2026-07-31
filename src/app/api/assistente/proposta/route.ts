@@ -39,6 +39,7 @@ import {
   type EstadoAtual,
   type PropostaPersistida,
 } from "@/modules/assistant/domain/propostaPersistida";
+import { escritaDePeso } from "@/modules/assistant/domain/conjuntoAprovado";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { buscarDraft, marcarDraftCriado } from "@/lib/services/copilotCadastros";
@@ -481,6 +482,9 @@ async function gravar(p: PropostaPersistida): Promise<{
   // por isso nao e tocada.
   if (p.alvos.length > 1) {
     const emKgLote = p.valor / 1000;
+    // A DESCRICAO vem do dominio; a rota so a traduz em filtros. Fonte unica.
+    const escritaLote = escritaDePeso(p);
+    const congeladosLote = escritaLote.ids ? new Set(escritaLote.ids) : undefined;
     // As DIMENSÕES entram neste select — e só por isto: `embalagemDe` considera
     // embalagem existente se QUALQUER um entre peso, altura, largura e
     // comprimento for > 0. Sem as três, o retrato do estado anterior estaria
@@ -492,13 +496,16 @@ async function gravar(p: PropostaPersistida): Promise<{
       .from("produto_variantes")
       .select("id, produto_id, peso, altura, largura, comprimento")
       .in("produto_id", p.alvos);
-    const elegiveisLote = ((antesLote ?? []) as { peso: number | null }[]).filter(
-      (v) => !v.peso || v.peso <= 0
+    // ELEGIVEIS conta dentro do conjunto APROVADO. Contar fora dele faria a
+    // ressalva do desfecho comparar a escrita com um universo que o lojista
+    // nunca viu — e dizer "escrevi em 2 de 5" quando ele aprovou 3.
+    const elegiveisLote = ((antesLote ?? []) as { id: string; peso: number | null }[]).filter(
+      (v) => (!congeladosLote || congeladosLote.has(v.id)) && (!v.peso || v.peso <= 0)
     ).length;
-    const { data, error } = await admin
+    const alvoDoUpdateLote = admin
       .from("produto_variantes")
       .update({ peso: emKgLote })
-      .in("produto_id", p.alvos)
+      .in("produto_id", escritaLote.produtoIds)
       .eq("cliente_id", p.clienteId)
       // PREENCHER, não SUBSTITUIR — ver INC-002.
       //
@@ -511,8 +518,22 @@ async function gravar(p: PropostaPersistida): Promise<{
       // `numeric NOT NULL DEFAULT 0`, então `IS NULL` é inalcançável. É a MESMA
       // definição de "sem peso" que `lerEstadoAtual` usa na revalidação — nenhuma
       // semântica nova entra aqui.
-      .lte("peso", 0)
-      .select("id, produto_id");
+      .lte("peso", 0);
+    // A IDENTIDADE CONGELADA, aplicada pelo BANCO dentro do mesmo UPDATE.
+    //
+    // Sem ela a escrita REDESCOBRIA as variantes elegiveis agora, e uma troca
+    // de tamanho igual — preencher C, zerar D — passava pela revalidacao por
+    // contagem e gravava em D, que ninguem aprovou. Ver INC-002 / CICLO G.
+    //
+    // Junto de `peso <= 0` e do tenant, no mesmo statement: a escrita e, por
+    // construcao, um SUBCONJUNTO do que o lojista aprovou. Nao ha janela entre
+    // conferir e escrever, entao a garantia sobrevive a concorrencia.
+    //
+    // Menos que o aprovado PODE ser escrito, e isso e contrato registrado —
+    // ver `desfechoDoPreenchimento`. Mais que o aprovado, nunca.
+    const { data, error } = await (
+      congeladosLote ? alvoDoUpdateLote.in("id", [...congeladosLote]) : alvoDoUpdateLote
+    ).select("id, produto_id");
     if (error) throw new Error(error.message);
     return {
       afetados: data?.length ?? 0,
@@ -536,22 +557,29 @@ async function gravar(p: PropostaPersistida): Promise<{
 
   // PESO individual — em quilos na base, gramas na proposta.
   const emKg = p.valor / 1000;
+  // ESTE e o caminho da 903c1830 e de todo lote de UM produto: `alvos.length`
+  // igual a 1 cai aqui. A identidade congelada vale igual — o defeito nao tem
+  // nada a ver com quantos produtos a proposta tem.
+  const escritaUm = escritaDePeso(p);
+  const congelados = escritaUm.ids ? new Set(escritaUm.ids) : undefined;
   const { data: antes } = await admin
     .from("produto_variantes")
     .select("id, peso")
     .eq("produto_id", produtoId);
-  const elegiveis = ((antes ?? []) as { peso: number | null }[]).filter(
-    (v) => !v.peso || v.peso <= 0
+  const elegiveis = ((antes ?? []) as { id: string; peso: number | null }[]).filter(
+    (v) => (!congelados || congelados.has(v.id)) && (!v.peso || v.peso <= 0)
   ).length;
-  const { data, error } = await admin
+  const alvoDoUpdate = admin
     .from("produto_variantes")
     .update({ peso: emKg })
     .eq("produto_id", produtoId)
     .eq("cliente_id", p.clienteId)
     // PREENCHER, não SUBSTITUIR — o mesmo predicado do ramo de lote, pelo mesmo
     // motivo. Este caminho é o do caso Vizzano: 39 variantes, 3 sem peso.
-    .lte("peso", 0)
-    .select("id, peso");
+    .lte("peso", 0);
+  const { data, error } = await (
+    congelados ? alvoDoUpdate.in("id", [...congelados]) : alvoDoUpdate
+  ).select("id, peso");
   if (error) throw new Error(error.message);
   return { afetados: data?.length ?? 0, elegiveis, antes, depois: data ?? null };
 }

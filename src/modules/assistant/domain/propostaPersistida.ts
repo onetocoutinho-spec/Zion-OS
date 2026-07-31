@@ -74,6 +74,46 @@ export interface Precondicao {
   campo: string;
   /** O valor lido quando a proposta foi montada. `null` = ausente. */
   valorNaCriacao: number | null;
+  /**
+   * A IDENTIDADE do conjunto aprovado — os ids das variantes elegíveis em T0.
+   *
+   * Presente só em `variacoesSemPeso:<produtoId>`, e só em propostas criadas
+   * depois do CICLO G.1. Ausência significa CONTRATO LEGACY, nunca conjunto
+   * vazio: uma proposta antiga executa exatamente como antes.
+   *
+   * ===================================================================
+   * POR QUE A CONTAGEM NÃO BASTAVA
+   * ===================================================================
+   *
+   * `alvos` guarda PRODUTOS. A escrita redescobria as variantes por
+   * `peso <= 0` no instante do UPDATE, e a revalidação só conferia QUANTAS
+   * estavam vazias. Uma troca de tamanho igual passava:
+   *
+   *     aprovado {A,B,C}  →  alguém preenche C e zera D  →  {A,B,D}
+   *     contagem 3 = 3, precondição aprova, e D — que ninguém aprovou —
+   *     recebia o peso.
+   *
+   * Demonstrado em transação revertida sobre o catálogo real. Ver INC-002.
+   *
+   * ===================================================================
+   * NÃO É HASH, E A ORDEM NÃO IMPORTA
+   * ===================================================================
+   *
+   * Os ids REAIS, porque a execução precisa escrever no conjunto — não só
+   * detectar que ele mudou. Guardados em ordem normalizada para que duas
+   * leituras do mesmo conjunto produzam o mesmo valor.
+   *
+   * ===================================================================
+   * ISTO NÃO É REVALIDADO POR `podeExecutar`
+   * ===================================================================
+   *
+   * É RESTRIÇÃO DE ESCRITA, não precondição. Quem revalida continua sendo
+   * `valorNaCriacao` (a contagem). O conjunto congelado limita QUEM pode ser
+   * tocado, e o banco aplica esse limite dentro do próprio UPDATE — junto de
+   * `peso <= 0` e do tenant. Por isso a garantia sobrevive à concorrência: não
+   * existe janela entre conferir e escrever.
+   */
+  idsAprovados?: readonly string[];
 }
 
 export interface PropostaPersistida {
