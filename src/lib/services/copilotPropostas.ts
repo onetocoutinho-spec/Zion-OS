@@ -15,6 +15,7 @@ import { getSupabaseAdmin } from "../supabase/admin";
 import {
   expiraEm,
   RISCO_POR_TIPO,
+  type AutoridadeDoValor,
   type Precondicao,
   type PropostaPersistida,
   type StatusProposta,
@@ -37,6 +38,7 @@ interface LinhaProposta {
   expira_em: string;
   draft_id?: string | null;
   texto?: string | null;
+  autoridade?: string | null;
 }
 
 function paraDominio(l: LinhaProposta): PropostaPersistida {
@@ -56,6 +58,10 @@ function paraDominio(l: LinhaProposta): PropostaPersistida {
     expiraEm: l.expira_em,
     ...(l.draft_id ? { draftId: l.draft_id } : {}),
     ...(l.texto ? { texto: l.texto } : {}),
+    // AUSENTE e NULL viram a MESMA coisa: `autoridade: null`, que significa NAO
+    // REGISTRADA. Nao se transforma em `sem_autoridade` aqui — seria inventar
+    // proveniencia para toda proposta anterior a migracao 044. Ver INC-008.
+    autoridade: (l.autoridade as PropostaPersistida["autoridade"]) ?? null,
   };
 }
 
@@ -80,6 +86,18 @@ export interface NovaProposta {
   draftId?: string | null;
   /** O conteúdo proposto quando ele é texto (título). Só neste tipo. */
   texto?: string | null;
+  /**
+   * De onde o valor veio, segundo quem o produziu.
+   *
+   * NASCE NA FRONTEIRA QUE CONHECE O FATO — a ferramenta — e chega aqui pronta.
+   * Nunca é deduzida do resumo, do `comoVeio`, do nome da ferramenta nem do
+   * próprio valor: deduzir depois seria reconstruir por aparência a informação
+   * que se perdeu, que é o defeito do INC-008 com outra roupa.
+   *
+   * Omitir grava NULL — desconhecido —, e é o que deve acontecer com qualquer
+   * caminho que ainda não saiba responder.
+   */
+  autoridade?: AutoridadeDoValor | null;
 }
 
 /**
@@ -109,6 +127,7 @@ export async function criarProposta(nova: NovaProposta): Promise<PropostaPersist
       chave_idempotencia: nova.chaveIdempotencia ?? null,
       draft_id: nova.draftId ?? null,
       texto: nova.texto ?? null,
+      autoridade: nova.autoridade ?? null,
     })
     .select("*")
     .single();

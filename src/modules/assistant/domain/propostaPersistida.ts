@@ -98,6 +98,57 @@ export interface PropostaPersistida {
   draftId?: string | null;
   /** O conteúdo proposto quando ele é texto. Só em `titulo`. */
   texto?: string | null;
+  /**
+   * De onde o Zion SABE que veio `valor`.
+   *
+   * `null` = autoridade NÃO REGISTRADA: proposta anterior à migração 044. Não é
+   * `sem_autoridade` — é desconhecido histórico, e as duas coisas não podem ser
+   * confundidas sem inventar proveniência para o passado.
+   *
+   * NÃO É GATE. Nada aqui impede execução; expiração, ownership, status,
+   * precondições, reserva e confirmação humana seguem mandando. Ver INC-008.
+   */
+  autoridade?: AutoridadeDoValor | null;
+}
+
+/**
+ * A classe de autoridade do valor congelado numa Proposal.
+ *
+ * Responde "de onde o Zion sabe que veio este número?" — nunca "quem autorizou a
+ * escrita?", que é `criadaPor` e, na procedência, `origem`/`ator`.
+ *
+ *   AUTORIZAÇÃO NÃO É AUTORIDADE. O clique prova consentimento, não proveniência.
+ *
+ * `ditado` existe no tipo e no CHECK do banco e **não é produzido por nenhum
+ * fluxo de hoje**: o turno é texto livre e o argumento vem do modelo, então não
+ * há prova determinística de que a pessoa forneceu o número. Marcá-lo porque uma
+ * ferramenta `propor_*` recebeu o argumento seria fabricar a autoridade que o
+ * INC-008 existe para não fabricar. Ele fica declarado para que o dia em que
+ * houver captura estruturada não precise de outra migração —
+ * `autoridadeEhProduzivel` guarda essa regra.
+ */
+export type AutoridadeDoValor =
+  /** Saiu de fonte autoritativa do próprio domínio (ex.: `pesoConhecidoDoProduto`). */
+  | "derivado"
+  /** O domínio computou deterministicamente a partir de fatos autorizados. */
+  | "calculado"
+  /** Chegou como argumento do modelo, sem vínculo demonstrável. Não é erro: é a lacuna, registrada. */
+  | "sem_autoridade"
+  /** A proposta não carrega valor cuja proveniência esta taxonomia descreva: `titulo` é conteúdo, `cadastro` é identidade. */
+  | "nao_se_aplica"
+  /** O lojista forneceu, com prova determinística. NUNCA produzido hoje. */
+  | "ditado";
+
+/** As classes que algum fluxo atual consegue demonstrar. `ditado` não está aqui. */
+export const AUTORIDADES_PRODUZIVEIS = [
+  "derivado",
+  "calculado",
+  "sem_autoridade",
+  "nao_se_aplica",
+] as const satisfies readonly AutoridadeDoValor[];
+
+export function autoridadeEhProduzivel(a: AutoridadeDoValor): boolean {
+  return (AUTORIDADES_PRODUZIVEIS as readonly string[]).includes(a);
 }
 
 /**
