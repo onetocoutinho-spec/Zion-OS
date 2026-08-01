@@ -74,6 +74,13 @@ do cliente. Isso elimina o caminho óbvio, e é a razão de a correção acontec
    a cópia vermelha da mesma mensagem. O botão continua liberado: dá para
    reconectar em outra aba e tentar de novo.
 
+5. **A guarda de canal inativo** parou de mandar o lojista a "Configurações do
+   canal" — tela que nunca existiu. Agora cita o rótulo real
+   (`Zion › Conexão com o Mercado Livre`), e o teste compara a mensagem contra
+   `portal/domain/navegacao` em vez de repetir a string: se a tela sair da
+   navegação, o teste cai junto. É a mesma falha do incidente um degrau acima —
+   mandar alguém procurar um lugar que não existe.
+
 Os dois pontos de entrada (`/cliente/anunciar` e `/cliente/anuncios`) passam
 pelo mesmo modal, então a correção vale para os dois.
 
@@ -91,10 +98,10 @@ isso é coluna nova em `canais_marketplace`. Fica como Fase 2, sem DDL feita.
 
 ## Evidência
 
-- `npm run gate`: **1939 testes, 0 falhas** (eram 1924); lint 0 erros / 61
-  avisos; `npm run build` completo.
+- `npm run gate`: **1940 testes, 0 falhas** (eram 1924); lint 0 erros / 61
+  avisos; `npm run build` completo, 76 páginas.
 - [reconexaoDoCanal.test.ts](../../../src/lib/services/reconexaoDoCanal.test.ts)
-  — 15 testes. Falsificação executada em quatro pontos, um por vez:
+  — 16 testes. Falsificação executada em cinco pontos, um por vez:
 
   | mutação | testes que ficaram vermelhos |
   |---|---|
@@ -102,6 +109,12 @@ isso é coluna nova em `canais_marketplace`. Fica como Fase 2, sem DDL feita.
   | o desvio por `motivo` sai de `publicacaoML` | 3 |
   | a guarda de 4xx da rota é invertida | 1 |
   | a tela escuta a classe de erro errada | 1 |
+  | a mensagem volta a citar "Configurações do canal" | 1 |
+
+  Dois testes precisaram de conserto no próprio teste, não no código: um
+  passava à toa porque o fixture morria antes da rede (faltava
+  `tituloOtimizado`), e outro acusava o comentário que explica a correção,
+  porque o comentário cita a tela inventada.
 
 - **NÃO PROVADO:** que a conta de produção volta a publicar depois de
   reconectar. Isso depende do app do ML e de uma ação do lojista, e nada aqui
