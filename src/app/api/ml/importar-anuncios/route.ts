@@ -5,7 +5,11 @@
 // devolve o conteúdo enxuto. O client mapeia para produtos/variações/anúncios
 // e grava (RLS). O refresh_token é rotacionado e persistido SÓ no servidor.
 
-import { renovarToken, buscarAnunciosDoVendedor } from "@/lib/marketplaces/mercadolivre";
+import {
+  renovarToken,
+  buscarAnunciosDoVendedor,
+  atributosForaDaFicha,
+} from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
@@ -59,7 +63,14 @@ export async function POST(request: Request) {
       return Response.json({ erro: "seller_id não encontrado." }, { status: 422 });
     }
     const anuncios = await buscarAnunciosDoVendedor(tokens.accessToken, sellerId);
-    return Response.json({ anuncios, sellerId });
+
+    // O recorte da ficha vem do ML, por categoria — não de uma lista escrita
+    // por nós. Vai junto porque é aqui que as categorias são conhecidas, e
+    // porque o endpoint é público: uma chamada a mais no servidor, nenhuma no
+    // navegador, e nenhum problema de CORS.
+    const foraDaFicha = await atributosForaDaFicha(anuncios.map((a) => a.categoria));
+
+    return Response.json({ anuncios, sellerId, foraDaFicha });
   } catch (e) {
     return Response.json(
       { erro: e instanceof Error ? e.message : "Falha ao importar anúncios do ML." },

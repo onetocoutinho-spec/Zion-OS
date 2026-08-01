@@ -24,9 +24,10 @@ import {
 import { criarImagensBulk } from "./imagensProduto";
 import { substituirAtributosDoMarketplace } from "./produtoAtributos";
 import {
-  ATRIBUTOS_COM_CASA_PROPRIA,
+  ehDeFicha,
   planejarEnriquecimento,
   type ConflitoDeAtributo,
+  type ForaDaFichaPorCategoria,
 } from "../../modules/integration/domain/enriquecimentoDaFicha";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
 import type { AnuncioGerado } from "../agentes/esteira";
@@ -97,16 +98,23 @@ export interface ResultadoImportacaoAnuncios {
  * A medição, PURA — sem rede, sem banco, sem decisão.
  *
  * Conta o que a lojista já informou ao Mercado Livre e que o Zion descartava
- * até 2026-08-01. Usa o MESMO recorte da ficha (`ATRIBUTOS_COM_CASA_PROPRIA`
- * fora), senão o número mediria uma coisa e a tela mostraria outra.
+ * até 2026-08-01. Usa o MESMO recorte do enriquecimento — `ehDeFicha` —, senão
+ * o número mediria uma coisa e a ficha guardaria outra.
  */
-export function medirFichas(anuncios: readonly AnuncioML[]): MedicaoDaFicha {
+export function medirFichas(
+  anuncios: readonly AnuncioML[],
+  fora: ForaDaFichaPorCategoria = {}
+): MedicaoDaFicha {
+  // O MESMO recorte do enriquecimento, e por construção: os dois chamam
+  // `ehDeFicha`. Antes eram duas listas iguais por disciplina; agora é uma
+  // função só, e divergir deixou de ser possível sem alguém perceber.
+  const ehFicha = ehDeFicha(fora);
   const contagem = new Map<string, { nome: string; anuncios: number }>();
   let comFichaPropria = 0;
   let totalDeLinhas = 0;
 
   for (const a of anuncios) {
-    const daFicha = a.atributos.filter((at) => !ATRIBUTOS_COM_CASA_PROPRIA.has(at.id));
+    const daFicha = a.atributos.filter((at) => ehFicha(a.categoria, at.id));
     if (daFicha.length > 0) comFichaPropria++;
     totalDeLinhas += daFicha.length;
     for (const at of daFicha) {
@@ -281,7 +289,11 @@ function varianteClassica(
  * exportar aqui não abre orquestração para o teste, só torna endereçável uma
  * função que já era determinística.
  */
-export function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
+export function anuncioGeradoDoML(
+  a: AnuncioML,
+  fora: ForaDaFichaPorCategoria = {}
+): AnuncioGerado {
+  const ehFicha = ehDeFicha(fora);
   // A ficha vem do que o MERCADO LIVRE devolveu, não de um par fixo aqui.
   //
   // Até 2026-08-01 eram duas linhas escritas no código, Marca e Modelo, e o
@@ -292,7 +304,7 @@ export function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
   // Sem `obrigatorio`: ver D5 do DES-001. Quem exige é o marketplace, e a
   // exigência varia por categoria.
   const ficha = a.atributos
-    .filter((at) => !ATRIBUTOS_COM_CASA_PROPRIA.has(at.id))
+    .filter((at) => ehFicha(a.categoria, at.id))
     .map((at) => ({ atributo: at.nome || at.id, valor: at.valor }));
   const variacoes =
     a.variacoes.length > 0
@@ -359,6 +371,8 @@ export async function importarAnunciosDoCliente(
   });
   const dados = (await resposta.json()) as {
     anuncios?: AnuncioML[];
+    /** O recorte da ficha, por categoria, vindo da API pública do ML. */
+    foraDaFicha?: ForaDaFichaPorCategoria;
     erro?: string;
   };
   if (!resposta.ok) {
@@ -382,7 +396,7 @@ export async function importarAnunciosDoCliente(
       variacoes: 0,
       imagens: 0,
       pulados: 0,
-      medicao: medirFichas(todos),
+      medicao: medirFichas(todos, dados.foraDaFicha),
     };
   }
 
@@ -403,7 +417,7 @@ export async function importarAnunciosDoCliente(
       if (r.mlItemId && r.produtoId) produtoPorMlb.set(r.mlItemId, r.produtoId);
     }
 
-    const plano = planejarEnriquecimento(todos, produtoPorMlb);
+    const plano = planejarEnriquecimento(todos, produtoPorMlb, dados.foraDaFicha);
 
     // UMA chamada, não um laço por produto.
     //
@@ -489,7 +503,7 @@ export async function importarAnunciosDoCliente(
       notaDiagnostico: 0,
       vereditoA10: "aprovado" as const,
       qtdPendencias: 0,
-      anuncio: anuncioGeradoDoML(a),
+      anuncio: anuncioGeradoDoML(a, dados.foraDaFicha),
       status: "publicado" as const,
       aprovadoPor: "Mercado Livre",
       aprovadoEm: agora,

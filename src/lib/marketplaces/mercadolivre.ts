@@ -169,6 +169,58 @@ export async function renovarToken(cred: {
   };
 }
 
+/**
+ * Quais atributos, POR CATEGORIA, o próprio ML tira da ficha do comprador.
+ *
+ * `GET /categories/{id}/attributes` é PÚBLICO — sem token, sem rotação, sem
+ * efeito colateral. E ele responde a pergunta que eu vinha respondendo por
+ * conta própria com uma lista de nomes que eu conhecia:
+ *
+ *   hidden               o ML nem mostra ao comprador (embalagem do vendor,
+ *                        condição do item, metadados de logística)
+ *   variation_attribute  varia POR VARIAÇÃO, por desenho — cada tamanho tem sua
+ *                        linha na guia. Chamar isso de discordância entre
+ *                        anúncios do mesmo produto é acusar dois sapatos de
+ *                        discordarem sobre o número.
+ *
+ * Medido em MLB273770: 65 dos 78 atributos caem numa das duas.
+ *
+ * FALHA ABERTA. Se o ML não responder para uma categoria, ela volta VAZIA — e
+ * os atributos passam. Esconder sem saber seria afirmar o que não se sabe, que
+ * é a regra do INC-009; e o preço de errar para o lado aberto é ruído na tela,
+ * não dado perdido.
+ */
+export async function atributosForaDaFicha(
+  categorias: readonly string[]
+): Promise<Record<string, string[]>> {
+  const unicas = [...new Set(categorias.filter(Boolean))];
+  const fora: Record<string, string[]> = {};
+  await Promise.all(
+    unicas.map(async (categoria) => {
+      try {
+        const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
+        if (!r.ok) {
+          fora[categoria] = [];
+          return;
+        }
+        const lista = (await r.json()) as { id?: string; tags?: Record<string, unknown> }[];
+        if (!Array.isArray(lista)) {
+          fora[categoria] = [];
+          return;
+        }
+        fora[categoria] = lista
+          .filter((a) => a.tags && ("hidden" in a.tags || "variation_attribute" in a.tags))
+          .map((a) => a.id ?? "")
+          .filter(Boolean);
+      } catch {
+        // Rede/ML fora: a categoria não esconde nada. Ver "falha aberta" acima.
+        fora[categoria] = [];
+      }
+    })
+  );
+  return fora;
+}
+
 /** Prediz a categoria (category_id) a partir do título. null se não achar. */
 export async function preverCategoria(accessToken: string, titulo: string): Promise<string | null> {
   const url = `${API}/sites/MLB/domain_discovery/search?limit=1&q=${encodeURIComponent(titulo)}`;
