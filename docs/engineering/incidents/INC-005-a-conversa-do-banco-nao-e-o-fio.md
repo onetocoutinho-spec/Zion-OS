@@ -227,6 +227,39 @@ duplicação **não produz mutação operacional incorreta**.
 O dano possível é **resolução de referência errada no fluxo de cadastro** —
 visível, do mesmo cliente, sem escrita. Não é silencioso.
 
+### Reexame em 2026-08-01 — a premissa mudou, e para melhor
+
+O argumento acima é de julho. Desde então nasceu o **cadastro conversacional,
+com Draft persistido**, e isso cria um risco que ele não cobria: a aba duplicada
+troca o Draft **ativo** da conversa, e a outra aba confirma uma criação de
+produto achando que era o rascunho dela.
+
+Fui verificar. **O risco não se materializa**, por um motivo que não estava
+escrito em lugar nenhum:
+
+```ts
+const draft = await buscarDraft(p.draftId ?? produtoId);
+```
+
+O id do rascunho vem **da Proposal**, congelado quando ela nasceu — não do
+estado da conversa. Trocar o rascunho ativo numa aba duplicada **não
+redireciona uma proposta já emitida**, e `draftVisivelPara(draft, p.clienteId)`
+ainda barra outro tenant.
+
+Ou seja: a proteção que sustenta M2 hoje é a mesma que o CICLO G.1 endureceu
+para o lote — **identidade congelada na Proposal**. M2 continua limitação
+aceita, e por um argumento mais forte do que o original.
+
+Dois testes novos em `fioDaConversa.test.ts` guardam exatamente isso:
+
+- se a execução do cadastro passar a consultar `draftAbertoDaConversa`,
+  `conjuntoVigente` ou `ultimaApresentacao`, **M2 precisa ser reaberto**;
+- se qualquer das 16 ferramentas ganhar efeito fora de `le`/`propoe`/`rascunha`,
+  o teto que sustenta o argumento inteiro cai.
+
+O que continua verdadeiro do texto original: M2 **não foi testado**, e nada
+aqui o testa. O que mudou é que a razão de aceitá-lo passou a ser verificável.
+
 ## A implementação (Fase 7D)
 
 Quatro arquivos, **só no cliente**. Backend, `garantirConversa`, schema,
