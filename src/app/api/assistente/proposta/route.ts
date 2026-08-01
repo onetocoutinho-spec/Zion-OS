@@ -1020,7 +1020,21 @@ export async function POST(request: Request) {
     }
     const msg = e instanceof Error ? e.message : "falha desconhecida";
     console.error("[copilot/proposta] falha ao executar:", e);
-    await marcarProposta(p.id, "falhou", msg);
+    // H4 — NOS TIPOS ATÔMICOS, QUEM MANDA NO STATUS É A TRANSAÇÃO.
+    //
+    // `marcarProposta` não tem guarda de status, e nenhuma guarda única
+    // serviria: em `cadastro` a proposta JÁ está `executada` quando a criação
+    // falha — `reservarParaExecucao` a marcou antes —, então ali o `falhou`
+    // precisa sobrescrever. Nos outros quatro, `executada` só existe se o banco
+    // commitou a mutação junto, e sobrescrever seria desfazer o rótulo de uma
+    // escrita que aconteceu.
+    //
+    // O dano não seria o rótulo: `falhou` leva a `status_invalido`, o lojista
+    // pede outra proposta, e APLICA A MUDANÇA DUAS VEZES.
+    //
+    // A falha da própria RPC não passa por aqui — ela acontece antes do `try`,
+    // e a transação já reverteu tudo, inclusive o status. Ver INC-002.
+    if (!atomico) await marcarProposta(p.id, "falhou", msg);
     await registrarAcao({
       clienteId: clienteDaSessao,
       conversaId: p.conversaId,
