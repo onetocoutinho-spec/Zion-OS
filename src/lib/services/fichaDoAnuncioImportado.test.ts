@@ -319,7 +319,7 @@ test("`enriquecer` escreve em UM lugar só — produto_atributos", () => {
   // escrita neste bloco, o modo deixou de ser aditivo.
   const ini = FONTE.indexOf('if (modo === "enriquecer")');
   const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
-  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, clienteId, atributos\)/);
+  assert.match(bloco, /substituirAtributosDoMarketplace\(clienteId, plano\.paraGravar\)/);
   for (const proibido of [
     "criarProdutos",
     "criarVariantesBulk",
@@ -367,19 +367,50 @@ test("`obrigatorio` nunca é gravado como true — quem exige é o marketplace",
   );
 });
 
-test("a idempotência é o ESCOPO: apaga só a origem Marketplace", () => {
-  // Sem índice único (que seria DDL), rodar duas vezes duplicaria. O apagão é
-  // do que nós mesmos escrevemos — o que a lojista digitou sobrevive.
+test("a idempotência é o ESCOPO — e ele é por CLIENTE, em duas requisições", () => {
+  // ESTE TESTE MUDOU DE LADO. Ele exigia `coluna: "produto_id"`, congelando um
+  // par apagar+inserir POR PRODUTO. Com 73 produtos eram 146 escritas, e cada
+  // escrita chama `notificarMudanca()` — que recarrega as 5 `useLiveQuery` da
+  // tela, duas delas com ~600 linhas. O navegador desistiu no nono produto:
+  // `TypeError: Failed to fetch`, com 128 atributos gravados pela metade.
+  //
+  // O escopo por cliente não é só mais rápido: é mais CORRETO. Um produto que
+  // perdeu um atributo no ML tem a linha velha removida; por produto, ela
+  // sobreviveria para sempre.
+  //
+  // Só foi possível porque a 049 deu `cliente_id` à tabela. Antes não havia
+  // por onde escopar — e é por isso que a primeira versão iterava.
   const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8");
   const fn = servico.slice(servico.indexOf("export async function substituirAtributosDoMarketplace"));
   const corpo = fn.slice(0, fn.indexOf("\n}"));
   assert.match(corpo, /excluirPorFiltro\(/);
-  assert.match(corpo, /coluna: "produto_id"/);
+  assert.match(corpo, /coluna: "cliente_id"/, "o apagão voltou a ser por produto");
+  assert.ok(!/coluna: "produto_id"/.test(corpo), "o filtro voltou ao escopo antigo");
   assert.match(corpo, /valor: "Marketplace"/);
   assert.match(corpo, /origem: "Marketplace" as const/);
   const apaga = corpo.indexOf("excluirPorFiltro");
   const insere = corpo.indexOf("criarVarios");
   assert.ok(apaga < insere, "insere antes de apagar: a segunda rodada duplicaria");
+  // Uma escrita de cada, e nada de laço aqui dentro.
+  assert.equal((corpo.match(/excluirPorFiltro\(/g) ?? []).length, 1);
+  assert.equal((corpo.match(/criarVarios\(/g) ?? []).length, 1);
+  assert.match(corpo, /\{ retornar: false \}/, "voltou a pedir ~1.000 linhas de volta à toa");
+});
+
+test("o enriquecimento NÃO itera produtos — a tempestade não volta", () => {
+  // A causa do `Failed to fetch` foi um laço de escritas numa tela com 5 live
+  // queries. Um `for` aqui dentro traz de volta o mesmo defeito.
+  const ini = FONTE.indexOf('if (modo === "enriquecer")');
+  const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
+  assert.equal(
+    (bloco.match(/substituirAtributosDoMarketplace\(/g) ?? []).length,
+    1,
+    "há mais de uma chamada de escrita no bloco"
+  );
+  assert.ok(
+    !/for \(const \[produtoId/.test(bloco),
+    "voltou a iterar produtos para escrever — foi isso que derrubou o navegador"
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -415,7 +446,7 @@ test("o tenant vem da SESSÃO, não é derivado do produto", () => {
   // primitivas do Copilot, onde o tenant nunca vem do corpo da requisição.
   const ini = FONTE.indexOf('if (modo === "enriquecer")');
   const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
-  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, clienteId, atributos\)/);
+  assert.match(bloco, /substituirAtributosDoMarketplace\(clienteId, plano\.paraGravar\)/);
   assert.ok(
     !/buscarProduto|\.clienteId\b/.test(bloco),
     "o enriquecimento passou a derivar o tenant em vez de usar o da sessão"

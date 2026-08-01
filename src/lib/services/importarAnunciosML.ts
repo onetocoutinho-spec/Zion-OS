@@ -405,17 +405,17 @@ export async function importarAnunciosDoCliente(
 
     const plano = planejarEnriquecimento(todos, produtoPorMlb);
 
-    // Agrupa por produto: `substituirAtributosDoMarketplace` apaga e reinsere o
-    // conjunto INTEIRO daquele produto, então precisa recebê-lo de uma vez.
-    const porProduto = new Map<string, { nomeAtributo: string; valorAtributo: string }[]>();
-    for (const a of plano.paraGravar) {
-      const lista = porProduto.get(a.produtoId) ?? [];
-      lista.push({ nomeAtributo: a.nomeAtributo, valorAtributo: a.valorAtributo });
-      porProduto.set(a.produtoId, lista);
-    }
-    for (const [produtoId, atributos] of porProduto) {
-      await substituirAtributosDoMarketplace(produtoId, clienteId, atributos);
-    }
+    // UMA chamada, não um laço por produto.
+    //
+    // A primeira versão iterava os produtos, e cada par apagar+inserir dispara
+    // `notificarMudanca()` — que faz as 5 `useLiveQuery` desta tela recarregarem,
+    // duas delas com ~600 linhas. Com 73 produtos isso vira uma tempestade de
+    // centenas de requisições, e o navegador desistiu no nono:
+    // `TypeError: Failed to fetch`.
+    //
+    // Agora o serviço faz DUAS requisições no total, e o plano já vem com o
+    // `produtoId` em cada linha.
+    await substituirAtributosDoMarketplace(clienteId, plano.paraGravar);
 
     return {
       produtos: 0,
