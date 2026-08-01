@@ -14,8 +14,8 @@
 
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
-import { criarProdutos, excluirProdutosImportadosML } from "./produtos";
-import { criarVariantesBulk } from "./produtoVariantes";
+import { criarProdutos, excluirProdutosImportadosML, listarProdutosDoCliente } from "./produtos";
+import { criarVariantesBulk, listarTodasVariantes } from "./produtoVariantes";
 import {
   criarAnunciosGeradosBulk,
   excluirAnunciosImportadosML,
@@ -23,6 +23,10 @@ import {
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
 import { substituirAtributosDoMarketplace } from "./produtoAtributos";
+import {
+  casarGruposComProdutos,
+  variantesInexistentes,
+} from "../../modules/integration/domain/casarComProdutoExistente";
 import {
   ehDeFicha,
   planejarEnriquecimento,
@@ -82,6 +86,13 @@ export interface ResultadoImportacaoAnuncios {
   variacoes: number;
   imagens: number;
   pulados: number;
+  /**
+   * Produtos que JÁ existiam e receberam os anúncios novos em vez de virar
+   * duplicata. Fica separado de `produtos` de propósito: somar os dois num
+   * número só faria a tela dizer "26 produtos" quando 8 foram criados.
+   * Estes NÃO recebem foto — veja o passo 4.
+   */
+  casados?: number;
   aviso?: string;
   /** Só no modo `medir`. */
   medicao?: MedicaoDaFicha;
@@ -468,23 +479,75 @@ export async function importarAnunciosDoCliente(
   // Agrupa por família/título → 1 produto por grupo.
   const grupos = agrupar(anuncios);
 
-  // 1) Produtos (ordem preservada).
-  const criados = await criarProdutos(
-    grupos.map((g) => ({ ...baseProdutoDoGrupo(g), clienteId, cliente }))
+  // 1) Produtos — CASANDO antes de criar.
+  //
+  // Em `novos`, um grupo pode pertencer a um produto que já existe. O código
+  // antigo criava produto para todo grupo, e medido contra um export do ERP em
+  // 2026-08-01 isso produziria 18 DUPLICATAS — 117 dos 170 anúncios que
+  // faltavam eram de produtos já cadastrados, inclusive o Papete Modare que
+  // acabara de ser publicado.
+  //
+  // Em `substituir` não há o que casar: os produtos importados foram apagados
+  // logo acima, e a lista vem vazia — o comportamento fica idêntico ao de antes.
+  const jaCadastrados = modo === "novos" ? await listarProdutosDoCliente(clienteId) : [];
+  const casados = casarGruposComProdutos(
+    grupos.map((g) => baseProdutoDoGrupo(g).nome),
+    jaCadastrados.map((p) => ({ id: p.id, nome: p.nome }))
   );
 
+  const indicesParaCriar = grupos.map((_, i) => i).filter((i) => !casados[i]);
+  const novosProdutos = await criarProdutos(
+    indicesParaCriar.map((i) => ({ ...baseProdutoDoGrupo(grupos[i]), clienteId, cliente }))
+  );
+
+  // `destino[gi]` é o produto daquele grupo — o que já existia ou o recém-criado.
+  const destino: { id: string; nome: string }[] = new Array(grupos.length);
+  grupos.forEach((_, i) => {
+    if (casados[i]) destino[i] = casados[i]!;
+  });
+  indicesParaCriar.forEach((gi, k) => {
+    destino[gi] = { id: novosProdutos[k].id, nome: novosProdutos[k].nome };
+  });
+  const criados = destino;
+  const temCasado = casados.some((c) => c != null);
+
   // 2) Variações (por tamanho na família; internas no clássico).
+  //
+  // Em produto CASADO a regra muda em dois pontos, e os dois têm motivo:
+  //
+  //   a) o atalho "unidades <= 1 → produto simples" NÃO vale. O produto já
+  //      existe com a forma dele; o anúncio que chega é uma unidade A MAIS.
+  //      Pular criaria o anúncio sem o tamanho — o Papete Modare que acabou de
+  //      ser publicado é exatamente esse caso: 1 anúncio, 1 unidade.
+  //   b) a variante pode já estar lá. Sem deduplicar, reimportar duplicaria o
+  //      tamanho dentro do produto certo — trocaríamos um defeito por outro.
+  const variantesJaExistentes = new Map<string, ProdutoVariante[]>();
+  if (temCasado) {
+    for (const v of await listarTodasVariantes()) {
+      const lista = variantesJaExistentes.get(v.produtoId) ?? [];
+      lista.push(v);
+      variantesJaExistentes.set(v.produtoId, lista);
+    }
+  }
+
   const variantes: Omit<ProdutoVariante, "id">[] = [];
   criados.forEach((prod, gi) => {
     const g = grupos[gi];
-    if (unidades(g) <= 1) return; // produto simples, sem variação
+    const casado = casados[gi] != null;
+    if (!casado && unidades(g) <= 1) return; // produto simples, sem variação
+    const doGrupo: Omit<ProdutoVariante, "id">[] = [];
     for (const a of g) {
       if (a.variacoes.length > 0) {
-        a.variacoes.forEach((v) => variantes.push(varianteClassica(prod.id, clienteId, v, a)));
+        a.variacoes.forEach((v) => doGrupo.push(varianteClassica(prod.id, clienteId, v, a)));
       } else {
-        variantes.push(varianteDeItem(prod.id, clienteId, a));
+        doGrupo.push(varianteDeItem(prod.id, clienteId, a));
       }
     }
+    variantes.push(
+      ...(casado
+        ? variantesInexistentes(doGrupo, variantesJaExistentes.get(prod.id) ?? [])
+        : doGrupo)
+    );
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
 
@@ -528,8 +591,21 @@ export async function importarAnunciosDoCliente(
 
   // 4) Imagens: as fotos reais do ML viram imagens do produto (prontas pro
   //    Estúdio IA). Capa = Principal; as demais Secundárias; dedup por URL.
+  //
+  //    Em produto CASADO, NÃO. E é uma decisão, não um esquecimento:
+  //
+  //      · `imagens_produto` não tem índice único em (produto_id, tipo_imagem).
+  //        Uma segunda "Principal" entraria calada, e o produto passaria a ter
+  //        duas capas sem nada reclamar.
+  //      · o produto casado já tem até MAX_FOTOS fotos. Acrescentar as do
+  //        anúncio novo agrava o defeito de cor que está aberto — foi ele que
+  //        pôs foto Nude num anúncio Marrom (DES-003).
+  //
+  //    Então o casado ganha variante e anúncio, e não ganha foto. O que ele
+  //    perde está no aviso do resultado, não em silêncio.
   const imagens: Omit<ImagemProduto, "id">[] = [];
   criados.forEach((prod, gi) => {
+    if (casados[gi]) return;
     const urls = [...new Set(grupos[gi].flatMap((a) => a.fotos))].slice(0, MAX_FOTOS);
     urls.forEach((url, i) => {
       imagens.push({
@@ -552,8 +628,10 @@ export async function importarAnunciosDoCliente(
     /* fotos são secundárias — não derruba a importação */
   }
 
+  const qtdCasados = casados.filter((c) => c != null).length;
   return {
-    produtos: criados.length,
+    produtos: novosProdutos.length,
+    casados: qtdCasados,
     anuncios: anunciosOk,
     variacoes: variantes.length,
     imagens: imagensOk,

@@ -392,10 +392,14 @@ export default function ClienteProdutos() {
         });
         return;
       }
-      if (r.produtos === 0) {
+      // `casados` conta os produtos que já existiam e receberam os anúncios.
+      // Sem ele aqui, uma importação em que TODOS casaram (produtos = 0) cairia
+      // no ramo de erro e diria "nenhum anúncio encontrado" tendo gravado tudo.
+      const casadosML = r.casados ?? 0;
+      if (r.produtos === 0 && casadosML === 0) {
         setMsgML({ tipo: r.pulados > 0 ? "ok" : "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
       } else {
-        const base = `${r.produtos} produtos · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
+        const base = `${r.produtos} produtos${casadosML > 0 ? ` · ${casadosML} já cadastrados receberam os anúncios (sem foto nova)` : ""} · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
         setMsgML({ tipo: r.aviso ? "erro" : "ok", texto: r.aviso ? `${base} ${r.aviso}` : base });
         reload();
       }
