@@ -47,6 +47,15 @@ export interface ResultadoPublicado {
   permalink?: string;
   /** Anúncios antigos que o ML recusou encerrar — o lojista precisa saber. */
   naoEncerrados: string[];
+  /**
+   * O que o cadastro tem de estranho e foi publicado assim mesmo.
+   *
+   * Hoje só um caso: o mesmo tamanho escrito de duas formas no mesmo produto
+   * (`33 - 34` e `33 BR`), que vira duas opções para a compradora. Não é
+   * corrigido sozinho — escolher a grafia certa é dela — mas o anúncio já
+   * está no ar, então ela precisa saber agora.
+   */
+  avisos?: string[];
 }
 
 export function PublicarAnuncio({
@@ -125,7 +134,7 @@ export function PublicarAnuncio({
         naoEncerrados = falharam.map((f) => f.mlItemId);
       }
       setMissao(null);
-      onPublicado({ id: r.id as string, permalink: r.permalink, naoEncerrados });
+      onPublicado({ id: r.id as string, permalink: r.permalink, naoEncerrados, avisos: r.avisos });
     } catch (e) {
       // O botão continua liberado: o lojista pode reconectar em outra aba e
       // tentar de novo sem fechar e reabrir esta tela.
@@ -305,6 +314,15 @@ export function AvisoPublicado({ resultado }: { resultado: ResultadoPublicado })
           </a>
         )}
       </p>
+      {(resultado.avisos ?? []).map((aviso) => (
+        <p
+          key={aviso}
+          className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-400"
+        >
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          {aviso}
+        </p>
+      ))}
       {resultado.naoEncerrados.length > 0 && (
         <p className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />

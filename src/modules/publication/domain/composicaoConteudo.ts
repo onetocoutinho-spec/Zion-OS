@@ -8,7 +8,7 @@ import type { AnuncioGerado } from "../../../lib/agentes/esteira";
 import type { LinhaGuiaTamanho } from "../../../lib/marketplaces/mercadolivre";
 import type { VariacaoUP } from "../../integration/domain/mlUserProducts";
 import { normalizarTamanho } from "./normalizarTamanho.ts";
-import { medidasDaMarca } from "../../catalog/domain/tabelasMedidas.ts";
+import { medidaDoTamanho, medidasDaMarca } from "../../catalog/domain/tabelasMedidas.ts";
 
 export const GENERO_ID = {
   feminino: "339665",
@@ -51,7 +51,7 @@ export interface BundleUserProducts {
 }
 
 export type ResultadoBundle =
-  | { ok: true; bundle: BundleUserProducts }
+  | { ok: true; bundle: BundleUserProducts; avisos?: string[] }
   | { ok: false; motivo: string };
 
 function semAcento(s: string): string {
@@ -138,12 +138,16 @@ export function montarBundleUserProducts(
 
   const variacoes: VariacaoUP[] = [];
   const cmPorTamanhoNaGuia = new Map<string, number>();
+  const tokensPorMedida = new Map<number, string[]>();
   const vistos = new Set<string>();
 
   for (const v of anuncio.variacoes ?? []) {
     const norm = normalizarTamanho(v.tamanho);
     if (!norm.ok) continue; // tamanho ambíguo/faixa → não publica (nada é inventado)
-    const cm = cmPorTamanho[norm.valor];
+    // DES-004: aceita o número DENTRO do par (`37` acha `37/38`), e só isso.
+    // Par contra tabela individual continua recusado, e não há aproximação —
+    // ver `medidaDoTamanho`.
+    const cm = medidaDoTamanho(cmPorTamanho, norm.valor);
     if (cm === undefined) continue; // sem medida da marca → não entra na guia
 
     const cor = (v.cor ?? "").trim();
@@ -152,6 +156,18 @@ export function montarBundleUserProducts(
     vistos.add(chave);
 
     cmPorTamanhoNaGuia.set(norm.valor, cm);
+    // Dois tokens diferentes com a MESMA medida são o mesmo tamanho escrito de
+    // duas formas — o cadastro da Zaxy Air 19419 tem `33 - 34` E `33 BR`.
+    //
+    // Antes do DES-004 isso não aparecia: `33 BR` não achava medida e era
+    // pulado em silêncio. Agora os dois acham, e os dois virariam variação —
+    // a compradora veria "33/34" e "33" como opções separadas do mesmo pé.
+    //
+    // Não deduplico: escolher qual das duas grafias sobrevive é decidir pela
+    // lojista qual está certa, e a resposta muda por marca. Reporto.
+    const mesmaMedida = tokensPorMedida.get(cm) ?? [];
+    if (!mesmaMedida.includes(norm.valor)) mesmaMedida.push(norm.valor);
+    tokensPorMedida.set(cm, mesmaMedida);
     variacoes.push({
       tamanho: norm.valor,
       cor: cor || undefined,
@@ -173,8 +189,17 @@ export function montarBundleUserProducts(
     .sort((a, b) => primeiroNumero(a[0]) - primeiroNumero(b[0]))
     .map(([tamanho, footLengthCm]) => ({ tamanho, footLengthCm }));
 
+  const avisos = [...tokensPorMedida.entries()]
+    .filter(([, tokens]) => tokens.length > 1)
+    .sort((a, b) => a[0] - b[0])
+    .map(
+      ([cm, tokens]) =>
+        `O cadastro tem ${tokens.join(" e ")} para a mesma medida (${cm} cm) — vão virar opções separadas no anúncio.`
+    );
+
   return {
     ok: true,
+    ...(avisos.length > 0 ? { avisos } : {}),
     bundle: {
       familyName,
       tipoAnuncio: opts.tipoAnuncio ?? "Premium",
