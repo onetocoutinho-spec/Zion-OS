@@ -45,6 +45,25 @@ const STALE_MIN = 10; // "processando" preso volta pra fila
 
 type Resultado = "ok" | "erro" | "rate";
 
+/**
+ * A classe do INC-004, aqui.
+ *
+ * `supabase-js` NÃO LANÇA em erro de banco: devolve `{ data, error }`. Quem
+ * escreve `await admin.from(...).update(...)` sem capturar o retorno recebe uma
+ * Promise que resolve com sucesso mesmo quando o Postgres recusou a linha — e o
+ * `try/catch` em volta nunca é atingido.
+ *
+ * Neste arquivo isso é pior do que no Copilot: o cron roda sozinho, de
+ * madrugada, sem ninguém na tela. Uma escrita de status recusada não vira erro,
+ * não vira log e não vira sintoma — vira anúncio duplicado três ciclos depois.
+ *
+ * A mensagem carrega a CONSEQUÊNCIA, não só a etapa: quem for ler isso às 3h da
+ * manhã precisa saber o que já aconteceu, não em que linha estava.
+ */
+function erroDeEscrita(etapa: string, consequencia: string, erro: unknown): void {
+  console.error(`[otimizar] ${etapa} — ${consequencia}:`, erro);
+}
+
 /** Erro de quota/limite do provedor de IA (recuperável no próximo ciclo). */
 function ehRateLimit(msg: string): boolean {
   return /429|resource_exhausted|quota|rate.?limit|exceeded/i.test(msg);
@@ -171,25 +190,46 @@ async function processarUm(
       .single();
     if (erroIns) throw new Error(erroIns.message);
 
-    await admin
+    const { error: erroConcluir } = await admin
       .from("fila_otimizacao_produto")
       .update({ status: "concluido", anuncio_id: ins?.id ?? null, erro: "" })
       .eq("id", fila.id);
+    // A pior das cinco. O anúncio JÁ foi inserido; se o carimbo de concluído não
+    // grava, o item fica em `processando`, a reciclagem de 10 min o devolve à
+    // fila e a esteira roda de novo — anúncio DUPLICADO e quota queimada, sem
+    // uma linha dizendo por quê.
+    if (erroConcluir) {
+      erroDeEscrita(
+        "marcar concluido",
+        `o anúncio ${ins?.id ?? "?"} foi criado mas o item segue \`processando\`: a reciclagem vai devolvê-lo à fila e gerar um anúncio duplicado`,
+        erroConcluir
+      );
+    }
     return "ok";
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao otimizar.";
     // Rate limit: devolve pra fila SEM gastar tentativa — o próximo ciclo do
     // cron retoma quando a quota do minuto renovar.
     if (ehRateLimit(msg)) {
-      await admin
+      const { error: erroRequeue } = await admin
         .from("fila_otimizacao_produto")
         .update({ status: "pendente", erro: msg.slice(0, 500) })
         .eq("id", fila.id);
+      // A mais branda: o item fica `processando` até a reciclagem de 10 min
+      // pegá-lo. É atraso, não perda — mas invisível, e some no meio de uma
+      // fila que parece estar andando.
+      if (erroRequeue) {
+        erroDeEscrita(
+          "devolver à fila (rate limit)",
+          "o item fica `processando` até a reciclagem de 10 min: atraso, não perda",
+          erroRequeue
+        );
+      }
       return "rate";
     }
     const novaTent = fila.tentativas + 1;
     // Retenta (volta pra "pendente") até MAX_TENTATIVAS; depois desiste ("erro").
-    await admin
+    const { error: erroTentativa } = await admin
       .from("fila_otimizacao_produto")
       .update({
         status: novaTent >= MAX_TENTATIVAS ? "erro" : "pendente",
@@ -197,6 +237,16 @@ async function processarUm(
         tentativas: novaTent,
       })
       .eq("id", fila.id);
+    // Se ESTA falha, `tentativas` não incrementa. O item volta pela reciclagem,
+    // falha de novo, e nunca alcança MAX_TENTATIVAS: retenta para sempre, com
+    // um produto que provavelmente não tem conserto.
+    if (erroTentativa) {
+      erroDeEscrita(
+        "registrar tentativa",
+        `\`tentativas\` continua em ${fila.tentativas}: o item retenta indefinidamente sem nunca chegar a MAX_TENTATIVAS`,
+        erroTentativa
+      );
+    }
     return "erro";
   }
 }
@@ -212,11 +262,21 @@ async function rodar(): Promise<Response> {
   const inicio = Date.now();
 
   // Recupera itens presos em "processando" (worker anterior caiu).
-  await admin
+  const { error: erroReciclar } = await admin
     .from("fila_otimizacao_produto")
     .update({ status: "pendente" })
     .eq("status", "processando")
     .lt("updated_at", new Date(Date.now() - STALE_MIN * 60_000).toISOString());
+  // Esta é a rede de segurança de todas as outras. Se ela falha calada, os itens
+  // travados ficam travados para sempre e a fila para de andar — sem erro,
+  // sem alarme, só um número que não sobe.
+  if (erroReciclar) {
+    erroDeEscrita(
+      "reciclar presos",
+      "itens travados em `processando` continuam travados: a fila para de andar em silêncio",
+      erroReciclar
+    );
+  }
 
   let ok = 0;
   let falhas = 0;
@@ -234,10 +294,28 @@ async function rodar(): Promise<Response> {
     if (lote.length === 0) break;
 
     // Trava o lote como "processando" (evita processamento duplo entre execuções).
-    await admin
+    //
+    // Esta trava é LOAD-BEARING, e mais do que parece: o orçamento é de 250s e o
+    // cron dispara a cada 60s — até quatro execuções se sobrepõem. Sem a trava,
+    // todas selecionam os mesmos `pendente` e rodam a esteira sobre o mesmo
+    // produto.
+    //
+    // Por isso, aqui, avisar não basta: se a trava não pegou, este ciclo PARA.
+    // Os itens continuam `pendente` e o próximo cron os retoma — nada se perde.
+    // É `break` e não `continue` de propósito: `continue` reselecionaria os
+    // mesmos itens e giraria até o orçamento acabar.
+    const { error: erroTravar } = await admin
       .from("fila_otimizacao_produto")
       .update({ status: "processando" })
       .in("id", lote.map((f) => f.id));
+    if (erroTravar) {
+      erroDeEscrita(
+        "travar o lote",
+        "sem a trava, execuções sobrepostas do cron pegariam os mesmos itens e gerariam anúncios duplicados — este ciclo para aqui",
+        erroTravar
+      );
+      break;
+    }
 
     const res = await Promise.all(lote.map((f) => processarUm(admin, f, cacheTabelas)));
     for (const r of res) {
