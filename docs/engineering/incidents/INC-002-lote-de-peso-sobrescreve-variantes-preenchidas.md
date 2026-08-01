@@ -349,7 +349,7 @@ mesmo nome, e confundi-las é como o INC-002 seria declarado fechado sem estar.
 | 2 | referência de peso obsoleta entre criação e clique | **CORRIGIDA** — precondição `pesoConhecido:<id>` (CICLO A) |
 | 3 | identidade do conjunto aprovado | **CORRIGIDA — CICLO G.1**, abaixo |
 | 4 | TOCTOU entre revalidação e escrita | **ABERTA** |
-| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO, CUSTO E PREÇO** — aberta para título e cadastro |
+| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO, CUSTO, PREÇO E TÍTULO** — aberta só para cadastro |
 
 ## 3 — a identidade do conjunto (fechada no CICLO G.1)
 
@@ -569,13 +569,38 @@ Provado em transação revertida: sucesso (`152.90 → 149.90`, margem `22.50`),
 duplo clique, **margem NULL gravada como NULL e não como 0**, **alvo inexistente
 com status permanecendo `pendente`**, tenant errado e proposta de peso recusada.
 
+## Título, pela migração 048 (CICLO H.5) — o caso mais limpo
+
+Nada extra viaja: o título proposto está na Proposal, em `texto`, e o alvo em
+`alvos[0]` — que aqui é o **ID do anúncio**, não do produto. A função recebe
+`(proposta, cliente)`, como as 045 e 046.
+
+**O merge do jsonb não é porte de domínio, e a distinção importa.** A 047
+rejeitou portar `margemLiquida` porque seriam duas implementações de uma *conta*.
+Aqui, `{ ...atual, tituloOtimizado: titulo }` é substituição de **uma chave de
+topo**, e `jsonb_set` é a mesma operação estrutural escrita onde o dado mora.
+Provado em transação revertida: **as 16 chaves do anúncio sobreviveram**.
+
+O `if (!atual) return null` do caminho antigo era, na prática, "linha inexistente
+ou de outro tenant": `anuncios_gerados.anuncio` é `jsonb NOT NULL` — 582 linhas,
+zero nulas —, então o `where id = … and cliente_id = …` reproduz aquela guarda
+sozinho, e um `anuncio is not null` seria predicado morto.
+
+`sem_texto` é desfecho próprio deste tipo: o caminho antigo **lançava** com
+título vazio; agora a proposta continua `pendente` em vez de queimar. O `btrim`
+preserva o `.trim()` de antes.
+
+Provas em transação revertida: sucesso (com trim e as 16 chaves), duplo clique,
+**texto em branco e alvo inexistente com o status permanecendo `pendente`**,
+tenant errado e proposta de peso recusada.
+
 ## O que continua aberto
 
-**Peso, custo e preço foram cobertos.** Título não recebeu desenho
-equivalente; **cadastro** é multi-statement, não idempotente e valida em
-TypeScript — forçá-lo exigiria reescrever `validarRascunho` em SQL, com risco de
-semântica divergente. Ele tem CAS próprio no draft (`aguardando_confirmacao`),
-que é desenho separado. **T1 continua aberto para esses dois tipos.**
+**Peso, custo, preço e título foram cobertos.** Só cadastro não recebeu desenho
+equivalente: é multi-statement, não idempotente e valida em TypeScript —
+forçá-lo exigiria reescrever `validarRascunho` em SQL, com risco de semântica
+divergente. Ele tem CAS próprio no draft (`aguardando_confirmacao`), que é
+desenho separado. **T1 continua aberto só para ele.**
 
 **Camada 4 continua aberta** — o TOCTOU de `pesoConhecido` entre a revalidação e
 a escrita é risco conhecido e aceito. A 045 não o toca de propósito.
