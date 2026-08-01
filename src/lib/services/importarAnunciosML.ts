@@ -78,6 +78,18 @@ export interface MedicaoDaFicha {
   mediaDaFicha: number;
   /** Cada atributo e em quantos anúncios ele veio preenchido, do mais comum. */
   porAtributo: { id: string; nome: string; anuncios: number }[];
+  /**
+   * O status REAL de cada anúncio no ML (`active`, `paused`, `closed`, …).
+   *
+   * Medido em 2026-08-01: a conta tem 781 anúncios e o export do ERP lista 561.
+   * A diferença de 220 não tem explicação enquanto ninguém souber quantos estão
+   * no ar. E importar sem saber é pior: o importador grava
+   * `status: "publicado"` FIXO, e `StatusAnuncioGerado` não tem `pausado` nem
+   * `encerrado` — um anúncio morto entraria aqui como publicado.
+   */
+  porStatus: { status: string; anuncios: number }[];
+  /** Os que o Zion ainda não tem, pelo status deles no ML. */
+  novosPorStatus: { status: string; anuncios: number }[];
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -152,9 +164,23 @@ export interface ResultadoImportacaoAnuncios {
  * até 2026-08-01. Usa o MESMO recorte do enriquecimento — `ehDeFicha` —, senão
  * o número mediria uma coisa e a ficha guardaria outra.
  */
+function contarStatus(anuncios: readonly AnuncioML[]): { status: string; anuncios: number }[] {
+  const c = new Map<string, number>();
+  for (const a of anuncios) {
+    // Status em branco NÃO vira "active". O ML não disse, e inventar aqui é o
+    // mesmo defeito que fez o Copilot preencher campo sem fonte.
+    const k = (a.status || "").trim() || "(não informado)";
+    c.set(k, (c.get(k) ?? 0) + 1);
+  }
+  return [...c.entries()]
+    .map(([status, anuncios]) => ({ status, anuncios }))
+    .sort((x, y) => y.anuncios - x.anuncios || x.status.localeCompare(y.status));
+}
+
 export function medirFichas(
   anuncios: readonly AnuncioML[],
-  fora: ForaDaFichaPorCategoria = {}
+  fora: ForaDaFichaPorCategoria = {},
+  mlbsJaConhecidos: ReadonlySet<string> = new Set()
 ): MedicaoDaFicha {
   // O MESMO recorte do enriquecimento, e por construção: os dois chamam
   // `ehDeFicha`. Antes eram duas listas iguais por disciplina; agora é uma
@@ -182,6 +208,8 @@ export function medirFichas(
     porAtributo: [...contagem.entries()]
       .map(([id, v]) => ({ id, nome: v.nome, anuncios: v.anuncios }))
       .sort((x, y) => y.anuncios - x.anuncios || x.id.localeCompare(y.id)),
+    porStatus: contarStatus(anuncios),
+    novosPorStatus: contarStatus(anuncios.filter((a) => !mlbsJaConhecidos.has(a.mlb))),
   };
 }
 
@@ -448,6 +476,11 @@ export async function importarAnunciosDoCliente(
   // trabalho: é a garantia de que perguntar "o que o ML tem?" não pode, por
   // nenhum caminho, apagar o catálogo.
   if (modo === "medir") {
+    // Uma LEITURA a mais, para o "novos por status" existir. `medir` continua
+    // não escrevendo nada — e continua saindo antes de tudo que apaga.
+    const conhecidos = new Set(
+      (await listarAnunciosGeradosDoCliente(clienteId)).map((e) => e.mlItemId).filter(Boolean) as string[]
+    );
     return {
       produtos: 0,
       anuncios: 0,
@@ -456,7 +489,7 @@ export async function importarAnunciosDoCliente(
       pulados: 0,
       leitura,
       aviso: avisoLeitura,
-      medicao: medirFichas(todos, dados.foraDaFicha),
+      medicao: medirFichas(todos, dados.foraDaFicha, conhecidos),
     };
   }
 

@@ -269,11 +269,17 @@ test("`medir` usa o MESMO recorte da ficha — senão mede uma coisa e mostra ou
 });
 
 test("lista vazia não divide por zero", () => {
+  // Continua deepEqual da forma INTEIRA: `porStatus` e `novosPorStatus` entraram
+  // em 2026-08-01 e precisam sair vazios aqui, não ausentes. Afrouxar para
+  // `assert.equal(m.anuncios, 0)` deixaria um campo novo nascer com lixo sem
+  // ninguém ver — que é o motivo deste teste existir.
   assert.deepEqual(medirFichas([]), {
     anuncios: 0,
     comFichaPropria: 0,
     mediaDaFicha: 0,
     porAtributo: [],
+    porStatus: [],
+    novosPorStatus: [],
   });
 });
 
