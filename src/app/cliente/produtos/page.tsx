@@ -413,16 +413,27 @@ export default function ClienteProdutos() {
       // Atualizar o estado de 502 anúncios É uma mudança. Sem esta frase, a
       // tela diria "nada novo" tendo corrigido meio catálogo.
       const estados = r.estadosAtualizados ?? 0;
+      const estadosFalhos = r.estadosQueFalharam ?? 0;
+      // "767 atualizados" e "767 atualizados, 14 falharam" são frases
+      // diferentes, e só a segunda é verdadeira. A falha não vira exceção, mas
+      // também não some — e a saída é dita, porque clicar de novo é seguro.
       const fraseEstados =
-        estados > 0 ? ` ${estados} anúncio(s) já cadastrados mudaram de estado no ML.` : "";
+        (estados > 0 ? ` ${estados} anúncio(s) já cadastrados mudaram de estado no ML.` : "") +
+        (estadosFalhos > 0
+          ? ` ${estadosFalhos} não gravaram (rede) — clique de novo para completar; o que já gravou não é refeito.`
+          : "");
       if (r.produtos === 0 && casadosML === 0) {
         setMsgML({
-          tipo: r.aviso || r.pulados === 0 ? "erro" : "ok",
+          tipo: r.aviso || estadosFalhos > 0 || (r.pulados === 0 && estados === 0) ? "erro" : "ok",
           texto: `${cobertura}${r.aviso ?? "Nenhum anúncio novo."}${fraseEstados}`,
         });
+        if (estados > 0) reload();
       } else {
         const base = `${r.produtos} produtos${casadosML > 0 ? ` · ${casadosML} já cadastrados receberam os anúncios (sem foto nova)` : ""} · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
-        setMsgML(juntar(`${base}${fraseEstados}`));
+        setMsgML({
+          tipo: r.aviso || estadosFalhos > 0 ? "erro" : "ok",
+          texto: `${cobertura}${base}${fraseEstados}${r.aviso ? ` ${r.aviso}` : ""}`,
+        });
         reload();
       }
     } catch (e) {

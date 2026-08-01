@@ -158,9 +158,46 @@ export async function marcarAnuncioPublicado(
  */
 export async function atualizarEstadoNoMarketplaceBulk(
   atualizacoes: { id: string; statusMarketplace: string; statusMarketplaceEm: string }[]
-): Promise<void> {
-  if (atualizacoes.length === 0) return;
-  return repo.atualizarVarios(atualizacoes);
+): Promise<{ atualizados: number; falharam: number }> {
+  if (atualizacoes.length === 0) return { atualizados: 0, falharam: 0 };
+
+  // POR QUE UMA CHAMADA POR ESTADO, E NÃO UMA SÓ
+  //
+  // Observado em 2026-08-01: `atualizarVarios` com as 767 linhas de uma vez
+  // gravou `active` (546), `under_review` (155) e `paused` (66) e morreu com
+  // `TypeError: Failed to fetch` nos DOIS últimos grupos — `closed` (12) e
+  // `inactive` (2), os menores. Não é tamanho de requisição: os lotes de 200
+  // UUIDs passaram e os de 12 e 2 não.
+  //
+  // A causa raiz NÃO está estabelecida. O que está é o custo: `atualizarVarios`
+  // lança no primeiro lote que desiste, então 14 linhas derrubaram a
+  // importação inteira e o usuário viu um erro em cima de 767 gravações que
+  // deram certo.
+  //
+  // Separar por estado limita o dano ao grupo que falhar, e devolver a
+  // contagem deixa o parcial VISÍVEL em vez de virar exceção. Reexecutar é
+  // seguro: `estadosDesatualizados` só escreve o que mudou, então o segundo
+  // clique acerta o que faltou e não toca no resto.
+  const porEstado = new Map<string, typeof atualizacoes>();
+  for (const a of atualizacoes) {
+    const lista = porEstado.get(a.statusMarketplace) ?? [];
+    lista.push(a);
+    porEstado.set(a.statusMarketplace, lista);
+  }
+
+  let atualizados = 0;
+  let falharam = 0;
+  for (const lista of porEstado.values()) {
+    try {
+      await repo.atualizarVarios(lista);
+      atualizados += lista.length;
+    } catch {
+      // Engolir aqui é deliberado e tem preço: a contagem sobe em `falharam` e
+      // a tela diz. Um `throw` custaria as gravações que já deram certo.
+      falharam += lista.length;
+    }
+  }
+  return { atualizados, falharam };
 }
 
 export async function excluirAnuncioGerado(id: string): Promise<void> {
