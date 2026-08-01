@@ -782,8 +782,27 @@ export async function POST(request: Request) {
               }
             }
 
+            // AGUARDADO, e não `void`.
+            //
+            // A promise flutuante era uma aposta: a resposta sai, o `mandar`
+            // seguinte fecha o fluxo, e numa função serverless a invocação pode
+            // congelar antes do insert terminar. Perde-se o turno E o log que
+            // avisaria — o mesmo silêncio do INC-004, por outro caminho.
+            //
+            // O custo de esperar é um insert (dezenas de ms) num turno que já
+            // gastou segundos no modelo. E a rota JÁ bloqueia em escrita de
+            // banco logo acima, ao persistir a proposta de preço: esperar aqui
+            // não inaugura categoria de risco, só fecha uma janela.
+            //
+            // `after()` do next/server seria o mecanismo "certo", mas o corpo
+            // deste handler roda dentro de um ReadableStream, e não está
+            // demonstrado que o escopo de request sobrevive ali. Não introduzo
+            // mecanismo que eu não consiga provar neste stack.
+            //
+            // Seguro por construção: `gravarTurno` captura o `error`, loga e
+            // NUNCA lança — esperar por ela não pode derrubar a resposta.
             if (conversaId) {
-              void gravarTurno(clienteDaSessao, conversaId, {
+              await gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
                 resposta: turno.texto,
                 ferramentas: usadas,

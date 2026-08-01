@@ -35,6 +35,7 @@ import type { Fala } from "@/lib/agentes/conversaComFerramentas";
 import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
 import type { Consequencia } from "@/modules/workspace/domain/consequencia";
 import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
+import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTela";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -111,6 +112,13 @@ interface Turno {
    * para ela seria oferecer uma ação que o servidor vai recusar.
    */
   propostaId?: string;
+  /**
+   * Quando a RESPOSTA chegou ao navegador. Existe só para o vencimento na tela
+   * (INC-006). Não atravessa o recarregamento — `paraGuardar` não o copia — e
+   * não precisa: a proposta também não atravessa, então um turno retomado do
+   * disco não tem botão. Presente apenas quando o turno trouxe autorização.
+   */
+  chegouEm?: number;
   /**
    * O escopo de um LOTE. Presente só quando a proposta atinge vários alvos.
    *
@@ -250,6 +258,14 @@ export function ChatDaOperacao({
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [ocupado, setOcupado] = useState(false);
   /**
+   * Relógio SÓ para o vencimento do cartão (INC-006).
+   *
+   * Ele não decide nada: o servidor continua carregando a proposta do banco e
+   * recusando com 409 se passou. Existe porque sem tique o cartão vencido só
+   * se atualizaria no próximo render — e o próximo render costuma ser o clique.
+   */
+  const [agora, setAgora] = useState(() => Date.now());
+  /**
    * Modo conversa: o laço com ferramentas, que guarda o fio e conduz.
    *
    * Fica DESLIGADO por padrão porque custa de 6 a 19 vezes mais que a rota de
@@ -303,6 +319,26 @@ export function ChatDaOperacao({
   useEffect(() => {
     fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [turnos]);
+
+  // O tique só roda enquanto existe cartão vivo — turno com autorização e sem
+  // desfecho. Sem isso seria um re-render de meio em meio minuto para sempre,
+  // numa tela que passa a maior parte do tempo sem nada a expirar.
+  /**
+   * O desfecho que o cartão deve mostrar: o REAL, se já houve; senão o de
+   * vencimento, se a validade passou.
+   *
+   * Nesta ordem, e não na inversa: um cartão já confirmado mostra o que
+   * aconteceu, não que venceu. O vencimento só fala quando nada aconteceu.
+   */
+  const desfechoNaTela = (t: Turno, quando: number): Turno["desfecho"] =>
+    t.desfecho ?? desfechoPorVencimento(t.chegouEm, quando);
+
+  const temCartaoVivo = turnos.some((t) => t.chegouEm !== undefined && !t.desfecho);
+  useEffect(() => {
+    if (!temCartaoVivo) return;
+    const id = setInterval(() => setAgora(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [temCartaoVivo]);
 
   /**
    * Retoma a conversa guardada — uma vez, na montagem.
@@ -398,6 +434,15 @@ export function ChatDaOperacao({
                     ...turno,
                     texto: r.texto,
                     ferramentas: r.ferramentas,
+                    // Carimbo de chegada — só quando veio autorização. É o que
+                    // faz o cartão parar de oferecer o botão depois da validade
+                    // (INC-006). Mesmo conjunto de ids que `confirmar` resolve.
+                    ...(r.propostaId ||
+                    r.propostaDePrecoId ||
+                    r.propostaDeTituloId ||
+                    r.cadastro?.propostaId
+                      ? { chegouEm: Date.now() }
+                      : {}),
                     ...(r.proposta && r.propostaId
                       ? { proposta: r.proposta, propostaId: r.propostaId }
                       : {}),
@@ -488,7 +533,12 @@ export function ChatDaOperacao({
       // Sem ID persistido não há o que confirmar. A checagem repete a do
       // render de propósito: um clique que escapou (teclado, corrida de
       // estado) não pode virar uma chamada sem autorização.
-      if (!id || alvo.desfecho || ocupado) return;
+      // `Date.now()` e não o `agora` do relógio: um clique disparado logo depois
+      // do último tique não pode passar por válido. E a chamada direta, em vez
+      // de `desfechoNaTela`, mantém este callback estável entre renders.
+      if (!id || alvo.desfecho || desfechoPorVencimento(alvo.chegouEm, Date.now()) || ocupado) {
+        return;
+      }
       setOcupado(true);
       try {
         // O SERVIDOR decide. Ele carrega a proposta do banco, confere o tenant
@@ -614,7 +664,7 @@ export function ChatDaOperacao({
                     <CartaoDePreco
                       p={t.propostaDePreco}
                       propostaId={t.propostaDePrecoId}
-                      desfecho={t.desfecho}
+                      desfecho={desfechoNaTela(t, agora)}
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
@@ -624,7 +674,7 @@ export function ChatDaOperacao({
                     <CartaoDeTitulo
                       t={t.propostaDeTitulo}
                       propostaId={t.propostaDeTituloId}
-                      desfecho={t.desfecho}
+                      desfecho={desfechoNaTela(t, agora)}
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
@@ -634,7 +684,7 @@ export function ChatDaOperacao({
                   {t.cadastro && (
                     <CartaoDoCadastro
                       c={t.cadastro}
-                      desfecho={t.desfecho}
+                      desfecho={desfechoNaTela(t, agora)}
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
@@ -644,7 +694,7 @@ export function ChatDaOperacao({
                   {t.escopo && t.propostaId && (
                     <CartaoDoLote
                       e={t.escopo}
-                      desfecho={t.desfecho}
+                      desfecho={desfechoNaTela(t, agora)}
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
@@ -653,7 +703,7 @@ export function ChatDaOperacao({
                   {t.proposta && t.propostaId && (
                     <CartaoDaProposta
                       p={t.proposta}
-                      desfecho={t.desfecho}
+                      desfecho={desfechoNaTela(t, agora)}
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}

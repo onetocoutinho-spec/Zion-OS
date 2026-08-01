@@ -181,6 +181,9 @@ const semComentarios = (s: string) =>
 const ROTA = semComentarios(ler("app/api/assistente/conversa/route.ts"));
 const CONVERSAS = semComentarios(ler("lib/services/copilotConversas.ts"));
 const CHAT = semComentarios(ler("components/client-portal/ChatDaOperacao.tsx"));
+// Acrescentados no reexame do M2 (2026-08-01) — ver a seção no fim do arquivo.
+const ROTA_PROPOSTA = semComentarios(ler("app/api/assistente/proposta/route.ts"));
+const FERRAMENTAS = semComentarios(ler("modules/assistant/domain/ferramentasDoAssistente.ts"));
 
 test("T16: o backend não mudou — a rota continua lendo o id do corpo e devolvendo", () => {
   assert.match(ROTA, /garantirConversa\(clienteDaSessao, usuarioId, corpo\.conversaId \?\? null/);
@@ -191,7 +194,9 @@ test("T17: o INC-004 continua de pé — payload homogêneo e erro lido", () => 
   assert.match(CONVERSAS, /ferramentas: \[\]/);
   assert.match(CONVERSAS, /const \{ error \} = await getSupabaseAdmin\(\)/);
   assert.match(CONVERSAS, /if \(error\)/);
-  assert.match(ROTA, /void gravarTurno\(/);
+  // Era `void` até 2026-08-01; virou `await`. O que este teste guarda é que a
+  // rota CHAMA gravarTurno — o dono da Promise é assunto de gravarTurno.test.
+  assert.match(ROTA, /await gravarTurno\(/);
 });
 
 test("T18: o C1R continua intacto", () => {
@@ -210,6 +215,50 @@ test("M2 fora do escopo: nenhuma sincronização entre abas foi introduzida", ()
   for (const proibido of ["BroadcastChannel", '"storage"', "navigator.locks", "tabId"]) {
     assert.ok(!CHAT.includes(proibido), `apareceu "${proibido}" — M2 entrou de carona`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// M2, REEXAMINADO EM 2026-08-01 — a premissa mudou, e para melhor
+// ---------------------------------------------------------------------------
+//
+// O INC-005 aceitou M2 (aba duplicada compartilha `conversaId`) com um
+// argumento de 2026-07: o dano possível é resolução de referência errada no
+// fluxo de cadastro, sem caminho de escrita.
+//
+// Desde então nasceu o cadastro conversacional, com Draft PERSISTIDO. Isso cria
+// um risco que o argumento original não cobria: a aba duplicada troca o Draft
+// ATIVO da conversa, e a outra aba confirma uma criação de produto achando que
+// era o rascunho dela.
+//
+// Fui verificar, e o risco não se materializa — mas por um motivo que não
+// estava escrito em lugar nenhum, e que estes dois testes passam a guardar.
+
+test("M2: a criação do produto resolve o Draft pela PROPOSTA, nunca pelo ativo", () => {
+  // `buscarDraft(p.draftId ?? produtoId)` — o id vem da Proposal, congelado na
+  // criação dela. Trocar o rascunho ativo numa aba duplicada NÃO redireciona
+  // uma proposta já emitida.
+  //
+  // Se isto passar a ler o draft ativo da conversa, M2 deixa de ser limitação
+  // aceita e vira caminho para criar o produto errado.
+  const ramo = ROTA_PROPOSTA.slice(ROTA_PROPOSTA.indexOf('if (p.tipo === "cadastro")'));
+  const ate = ramo.slice(0, ramo.indexOf("return {"));
+  assert.match(ate, /buscarDraft\(p\.draftId \?\? produtoId\)/);
+  assert.ok(
+    !/draftAbertoDaConversa|conjuntoVigente|ultimaApresentacao/.test(ate),
+    "a execução do cadastro passou a consultar estado de conversa: M2 precisa ser reaberto"
+  );
+  // E o tenant continua conferido — duplicar aba não atravessa cliente.
+  assert.match(ate, /draftVisivelPara\(draft, p\.clienteId\)/);
+});
+
+test("M2: nenhuma ferramenta escreve — o teto que sustenta o argumento inteiro", () => {
+  // O argumento do INC-005 depende de não existir efeito `escreve`. São 16
+  // ferramentas; se alguma ganhar escrita direta, uma referência resolvida
+  // contra a lista da outra aba vira mutação, e M2 deixa de ser aceitável.
+  const efeitos = FERRAMENTAS.match(/efeito: "(\w+)"/g) ?? [];
+  assert.ok(efeitos.length >= 16, `esperava ao menos 16 ferramentas, achei ${efeitos.length}`);
+  const proibido = efeitos.filter((e) => !/"(le|propoe|rascunha)"/.test(e));
+  assert.deepEqual(proibido, [], `efeito fora do teto declarado: ${proibido.join(", ")}`);
 });
 
 test("o id vive em sessionStorage, nunca em localStorage", () => {
