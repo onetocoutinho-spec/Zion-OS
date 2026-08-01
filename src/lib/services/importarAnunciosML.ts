@@ -195,9 +195,22 @@ function varianteClassica(
 }
 
 function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
+  // DOIS atributos, fixos no código — e é aqui que a ficha do lojista morre.
+  //
+  // `buscarAnunciosDoVendedor` PEDE `attributes` ao ML no multiget, mas
+  // `mapearItem` só extrai os ids que conhece (BRAND, MODEL, COLOR, SIZE, GTIN,
+  // SELLER_SKU, PACKAGE_*) e `AnuncioML` não tem campo para a lista inteira. O
+  // resto — material da sola, palmilha, tipo de salto, gênero, tipo de calçado —
+  // chega e é descartado antes de virar linha.
+  //
+  // Consequência medida em 2026-08-01: 500 dos 501 anúncios importados têm
+  // exatamente Marca e Modelo. NÃO significa que o lojista não preencheu o
+  // resto no ML — significa que nunca guardamos a resposta.
+  //
+  // Sem `obrigatorio`: ver D5 do DES-001.
   const ficha = [
-    { atributo: "Marca", valor: a.marca, obrigatorio: true },
-    { atributo: "Modelo", valor: a.modelo, obrigatorio: true },
+    { atributo: "Marca", valor: a.marca },
+    { atributo: "Modelo", valor: a.modelo },
   ].filter((f) => f.valor);
   const variacoes =
     a.variacoes.length > 0
