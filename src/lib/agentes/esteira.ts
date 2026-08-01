@@ -40,7 +40,12 @@ ${checklist}
 IDENTIDADE DO PRODUTO NÃO SE ESCREVE — SE LÊ:
 Cor, tamanho, SKU, EAN e estoque são DADOS do cadastro, e a grade de variações é montada a partir dele depois da sua resposta. Você não a produz. Use os valores da GRADE REAL do briefing (quando houver) na tabela de medidas, na descrição e na ficha técnica, e NUNCA invente ou complete um número, uma cor ou um código que não esteja lá — nem para "ficar completo". Onde o dado não veio, escreva "⚠️ informação necessária: <o que falta>". Um SKU plausível e falso vira pedido que ninguém sabe despachar.
 
-Preencha "notaDiagnostico" com a nota do A1 (0–100). Consolide TODAS as "⚠️ informação necessária" em "pendencias". Defina vereditoA10 = "aprovado" só se passar no checklist; senão "reprovado" com o motivo. Responda em português do Brasil.
+O QUE O MARKETPLACE EXIGE NÃO É COM VOCÊ:
+Você NÃO decide quais atributos são obrigatórios. Essa lista é do Mercado Livre, varia por categoria, e a categoria só é escolhida na hora de publicar — depois desta resposta. Nunca escreva que um atributo é "obrigatório", e nunca reprove por falta de atributo de marketplace.
+
+O que você observar de útil e que MELHORARIA o anúncio (uma foto que falta, uma medida ausente, um dado que enriqueceria a ficha) vai em "sugestoes". Sugestão é conselho para o lojista, não trava.
+
+Preencha "notaDiagnostico" com a nota do A1 (0–100). Defina vereditoA10 = "aprovado" só se passar no checklist de QUALIDADE acima; senão "reprovado" com o motivo. Responda em português do Brasil.
 
 ${REGRAS_MAE}`;
 }
@@ -63,9 +68,13 @@ export const ESQUEMA_ANUNCIO = {
         properties: {
           atributo: { type: "string" },
           valor: { type: "string" },
-          obrigatorio: { type: "boolean" },
+          // `obrigatorio` NÃO está aqui — D5 do DES-001, e é o mesmo defeito de
+          // `pendencias`: o modelo declarava o que o Mercado Livre exige. Ele
+          // não sabe. A lista é do ML, varia por categoria, e a categoria só é
+          // escolhida na publicação. A ficha continua listando os atributos;
+          // quem é obrigatório se decide onde dá para saber.
         },
-        required: ["atributo", "valor", "obrigatorio"],
+        required: ["atributo", "valor"],
         additionalProperties: false,
       },
     },
@@ -107,7 +116,30 @@ export const ESQUEMA_ANUNCIO = {
         additionalProperties: false,
       },
     },
-    pendencias: { type: "array", items: { type: "string" }, description: "Lista de '⚠️ informação necessária'." },
+    // `pendencias` NÃO está aqui, pelo mesmo motivo de `variacoes` — D1 do
+    // DES-001.
+    //
+    // Era `required`, e publicar exige `pendencias.length === 0`. Campo
+    // obrigatório sem fonte tem uma saída só: ele preencheu. Medido em quatro
+    // regerações reais de 2026-08-01 — 13 pendências, e conferidas contra
+    // `GET /categories/{id}/attributes` do próprio ML, ZERO eram obrigatórias.
+    // Três nem existiam como atributo da categoria ("Ano de lançamento",
+    // "solado", "tipo de bico"), e "Ano de lançamento" apareceu em 4 de 4.
+    // Enquanto isso, os 6 que o ML de fato exige — BRAND, MODEL, GENDER, COLOR,
+    // SIZE, FOOTWEAR_TYPE — não foram citados uma vez.
+    //
+    // Uma pendência inventada trava a publicação PARA SEMPRE: não há tela onde
+    // alguém resolva um dado que não existe.
+    //
+    // As pendências passam a ser compostas em `comAGradeDoCadastro`, a partir
+    // do cadastro. Pedir "não invente" a um campo obrigatório sem fonte é pedir
+    // o impossível — a única correção que funciona é não pedir.
+    sugestoes: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "O que MELHORARIA o anúncio (foto que falta, medida ausente, dado que enriqueceria a ficha). Conselho, nunca trava.",
+    },
     vereditoA10: { type: "string", enum: ["aprovado", "reprovado"] },
     motivoVeredito: { type: "string" },
   },
@@ -124,7 +156,7 @@ export const ESQUEMA_ANUNCIO = {
     "forma",
     "imagensSugeridas",
     "faq",
-    "pendencias",
+    "sugestoes",
     "vereditoA10",
     "motivoVeredito",
   ],
@@ -136,7 +168,7 @@ export const ESQUEMA_ANUNCIO = {
 export interface AtributoFicha {
   atributo: string;
   valor: string;
-  obrigatorio: boolean;
+  /** Sem `obrigatorio`: ver D5 do DES-001. Quem exige é o marketplace. */
 }
 export interface VariacaoAnuncio {
   cor: string;
@@ -157,13 +189,14 @@ export interface PerguntaFaq {
 }
 
 /**
- * O que a IA devolve — TUDO menos a grade.
+ * O que a IA devolve — TUDO menos a grade e as pendências.
  *
- * O tipo existe para que esquecer de montar a grade seja um erro de compilação,
- * e não um anúncio publicado com SKU inventado. `AnuncioGerado` (abaixo) é o
- * resultado final, depois de a grade vir do cadastro.
+ * O tipo existe para que esquecer de compor uma das duas seja erro de
+ * COMPILAÇÃO, e não um anúncio publicado com SKU inventado (grade) ou travado
+ * para sempre por uma exigência que ninguém faz (pendências). `AnuncioGerado`
+ * abaixo é o resultado final, depois de o domínio pôr as duas no lugar.
  */
-export type AnuncioDaIA = Omit<AnuncioGerado, "variacoes">;
+export type AnuncioDaIA = Omit<AnuncioGerado, "variacoes" | "pendencias">;
 
 export interface AnuncioGerado {
   notaDiagnostico: number;
@@ -179,7 +212,10 @@ export interface AnuncioGerado {
   variacoes: VariacaoAnuncio[];
   imagensSugeridas: ImagemSugerida[];
   faq: PerguntaFaq[];
+  /** O que TRAVA a publicação. Composto pelo domínio, nunca pelo modelo. */
   pendencias: string[];
+  /** O que MELHORARIA o anúncio. Do modelo, e não trava nada. */
+  sugestoes: string[];
   vereditoA10: "aprovado" | "reprovado";
   motivoVeredito: string;
 }
@@ -195,8 +231,11 @@ export interface AnuncioGerado {
  * esteja o texto. E era justamente o texto bom que fazia o problema passar —
  * descrição impecável, FAQ caprichada, SKU falso no meio.
  *
- * As pendências da grade entram na FRENTE porque são as que impedem publicar;
- * as do modelo (foto, validação de busca) vêm depois.
+ * DESDE O DES-001 as pendências vêm SÓ daqui. Antes, as do modelo eram
+ * concatenadas às da grade — e como publicar exige `pendencias.length === 0`,
+ * qualquer coisa que ele escrevesse virava trava permanente. Ele escrevia
+ * "Ano de lançamento", que não existe na categoria. Agora o que ele observa
+ * vive em `sugestoes` e não bloqueia nada.
  */
 export function comAGradeDoCadastro(
   daIA: AnuncioDaIA,
@@ -207,7 +246,7 @@ export function comAGradeDoCadastro(
   return {
     ...daIA,
     variacoes: grade,
-    pendencias: [...daGrade, ...(daIA.pendencias ?? [])],
+    pendencias: daGrade,
     vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
     motivoVeredito: publicavel
       ? daIA.motivoVeredito
@@ -229,8 +268,8 @@ export function anuncioSimulado(nomeProduto: string): AnuncioGerado {
       "[SIMULAÇÃO] Descrição completa gerada pela esteira. Configure a ANTHROPIC_API_KEY no servidor para a geração real com os prompts A1–A12.",
     descricaoCurta: "[SIMULAÇÃO] Descrição curta de exemplo.",
     fichaTecnica: [
-      { atributo: "Marca", valor: "⚠️ informação necessária", obrigatorio: true },
-      { atributo: "Cor principal", valor: "⚠️ informação necessária", obrigatorio: true },
+      { atributo: "Marca", valor: "⚠️ informação necessária" },
+      { atributo: "Cor principal", valor: "⚠️ informação necessária" },
     ],
     tabelaMedidas: "",
     comoMedir: "",
@@ -240,10 +279,13 @@ export function anuncioSimulado(nomeProduto: string): AnuncioGerado {
       { tipo: "capa", prompt: "[SIMULAÇÃO] Prompt de capa 1:1 com o produto em destaque." },
     ],
     faq: [{ pergunta: "Qual o prazo de envio?", resposta: "[SIMULAÇÃO] Exemplo de resposta." }],
+    // Pendência de GRADE — é o que o domínio produziria com a grade vazia
+    // acima. Uma simulação que devolvesse pendências de outro tipo ensinaria
+    // uma forma que não existe mais.
     pendencias: [
-      "⚠️ informação necessária: dados reais do produto (custo, material, grade)",
-      "Configure a ANTHROPIC_API_KEY para rodar a esteira de verdade",
+      "⚠️ informação necessária: grade de variações do produto (cor, tamanho, SKU, EAN e estoque de cada uma).",
     ],
+    sugestoes: ["Configure a ANTHROPIC_API_KEY para rodar a esteira de verdade."],
     vereditoA10: "reprovado",
     motivoVeredito: "Execução simulada — faltam dados reais e a chave da API. Nada foi publicado.",
   };

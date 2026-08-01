@@ -304,6 +304,19 @@ function DetalheAnuncio({ registro }: { registro: AnuncioGeradoRegistro }) {
           </ul>
         </div>
       )}
+      {/* Outra cor e outro título porque é outra coisa: isto não trava. */}
+      {a.sugestoes?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-sky-400">
+            Dá para melhorar (não impede publicar)
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-sky-300/90">
+            {a.sugestoes.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-xs text-zinc-500">
         Veredito da IA: <span className="text-zinc-300">{registro.vereditoA10}</span> · nota{" "}
         {registro.notaDiagnostico}/100

@@ -31,6 +31,32 @@ import type { ProdutoVariante, ImagemProduto } from "../types";
 const MAX_FOTOS = 10;
 
 /**
+ * Atributos que já têm casa própria — ficam FORA da ficha técnica.
+ *
+ * Não é filtro de importância: os três primeiros grupos são a IDENTIDADE, e ela
+ * mora na grade de variações, que vem do cadastro. Repeti-los na ficha seria
+ * oferecer uma segunda fonte para SKU, EAN, cor e tamanho — exatamente o que o
+ * PR #79 arrancou quando a IA passou a inventar identidade a partir de texto.
+ *
+ * As medidas de embalagem saem porque `medidasDoItem` já as converte em peso e
+ * dimensões do produto; na ficha virariam número duplicado, com unidade
+ * diferente.
+ *
+ * A lista bruta continua em `AnuncioML.atributos`, fiel. Isto aqui é escolha de
+ * EXIBIÇÃO, e é por isso que mora no importador e não no mapeador.
+ */
+const ATRIBUTOS_COM_CASA_PROPRIA = new Set([
+  "SELLER_SKU",
+  "GTIN",
+  "COLOR",
+  "SIZE",
+  "PACKAGE_WEIGHT",
+  "PACKAGE_HEIGHT",
+  "PACKAGE_WIDTH",
+  "PACKAGE_LENGTH",
+]);
+
+/**
  * "substituir" = apaga a importação anterior do ML e traz tudo de novo.
  * "novos" = mantém o que já existe e só adiciona os anúncios (MLBs) inéditos.
  */
@@ -194,11 +220,25 @@ function varianteClassica(
   };
 }
 
-function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
-  const ficha = [
-    { atributo: "Marca", valor: a.marca, obrigatorio: true },
-    { atributo: "Modelo", valor: a.modelo, obrigatorio: true },
-  ].filter((f) => f.valor);
+/**
+ * Exportada por ser PURA e por ser o que mudou: a ficha deixou de ser um par
+ * fixo no código e passou a vir dos atributos do ML. Sem rede e sem banco —
+ * exportar aqui não abre orquestração para o teste, só torna endereçável uma
+ * função que já era determinística.
+ */
+export function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
+  // A ficha vem do que o MERCADO LIVRE devolveu, não de um par fixo aqui.
+  //
+  // Até 2026-08-01 eram duas linhas escritas no código, Marca e Modelo, e o
+  // resto — material da sola, palmilha, tipo de salto, gênero, tipo de calçado —
+  // chegava do ML e era descartado. Medido: 500 dos 501 anúncios importados
+  // ficaram com exatamente dois atributos.
+  //
+  // Sem `obrigatorio`: ver D5 do DES-001. Quem exige é o marketplace, e a
+  // exigência varia por categoria.
+  const ficha = a.atributos
+    .filter((at) => !ATRIBUTOS_COM_CASA_PROPRIA.has(at.id))
+    .map((at) => ({ atributo: at.nome || at.id, valor: at.valor }));
   const variacoes =
     a.variacoes.length > 0
       ? a.variacoes.map((v) => ({
@@ -237,7 +277,10 @@ function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
     variacoes,
     imagensSugeridas: [],
     faq: [],
+    // Um anúncio IMPORTADO já está no ar: não há o que travar nem o que
+    // sugerir. As duas listas vazias são afirmações verdadeiras.
     pendencias: [],
+    sugestoes: [],
     vereditoA10: "aprovado",
     motivoVeredito: "Importado do Mercado Livre (já publicado).",
   };

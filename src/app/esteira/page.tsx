@@ -424,7 +424,8 @@ export default function EsteiraPage() {
                       <tbody className="divide-y divide-white/[0.04]">
                         {anuncio.fichaTecnica.map((a, i) => (
                           <tr key={i}>
-                            <td className="py-1.5 pr-4 text-zinc-500">{a.atributo}{a.obrigatorio ? " *" : ""}</td>
+                            {/* sem " *": ver D5 do DES-001 */}
+                            <td className="py-1.5 pr-4 text-zinc-500">{a.atributo}</td>
                             <td className="py-1.5 text-zinc-300">{a.valor}</td>
                           </tr>
                         ))}

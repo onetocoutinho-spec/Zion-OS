@@ -935,6 +935,22 @@ function AnuncioPronto({
           </ul>
         </div>
       )}
+
+      {/* Separado do bloco acima, e em outra cor, porque é outra coisa:
+          pendência TRAVA a publicação, sugestão não. Misturar as duas foi o que
+          fez "Ano de lançamento" parecer requisito (DES-001, D3). */}
+      {a.sugestoes?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-sky-400">
+            Dá para melhorar (não impede publicar)
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs text-sky-300/90">
+            {a.sugestoes.map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

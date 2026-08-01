@@ -881,10 +881,10 @@ function ConteudoFerramenta({ campo, anuncio }: { campo: Campo; anuncio: Anuncio
           <ul className="divide-y divide-white/[0.04] rounded-lg border border-white/5">
             {anuncio.fichaTecnica.map((f, i) => (
               <li key={i} className="flex items-center justify-between gap-3 px-3 py-1.5 text-sm">
-                <span className="text-zinc-500">
-                  {f.atributo}
-                  {f.obrigatorio && <span className="ml-1 text-amber-400">*</span>}
-                </span>
+                {/* Sem o asterisco de "obrigatório": ele vinha do modelo, que
+                    não sabe o que o marketplace exige — a lista é do ML e varia
+                    por categoria (D5 do DES-001). Marcar era afirmar. */}
+                <span className="text-zinc-500">{f.atributo}</span>
                 <span className="text-zinc-200">{f.valor || "—"}</span>
               </li>
             ))}
