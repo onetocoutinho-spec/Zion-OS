@@ -592,11 +592,18 @@ export async function importarAnunciosDoCliente(
     if (anuncios.length === 0) {
       // "tudo já estava importado" é uma AFIRMAÇÃO de completude. Ela só pode
       // ser dita quando a leitura viu tudo; senão, o que sai é o que faltou.
+      //
+      // E ela NÃO vai em `aviso`. `aviso` é o canal do que deu errado — a tela
+      // pinta de vermelho o que chega por ele. Observado em 2026-08-01: uma
+      // execução perfeita (781 lidos, 15 estados corrigidos, 0 falhas) apareceu
+      // com triângulo de alerta, porque a frase informativa vinha por aqui.
+      // Alarme falso em operação bem-sucedida é como se aprende a ignorar
+      // alarme.
       return {
         produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, leitura,
         estadosAtualizados,
         estadosQueFalharam,
-        aviso: avisoLeitura ?? "Nenhum anúncio novo — tudo já estava importado.",
+        aviso: avisoLeitura,
       };
     }
   }
