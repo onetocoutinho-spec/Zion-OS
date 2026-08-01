@@ -311,6 +311,52 @@ export async function encerrarItem(
   return { id: j.id, status: j.status };
 }
 
+/**
+ * Tira do ar (`paused`) ou devolve ao ar (`active`) um anúncio.
+ *
+ * ===========================================================================
+ * POR QUE ISTO PRECISOU EXISTIR
+ * ===========================================================================
+ *
+ * 2026-08-01: a lojista publicou o Papete Modare e pediu para pausá-lo — as
+ * fotos estavam com a cor errada. O Zion não sabia pausar. Só sabia
+ * `encerrarItem`, que é TERMINAL: o anúncio sai do ar e NÃO VOLTA, levando
+ * junto o histórico de relevância que ele acumulou.
+ *
+ * Sem pausar, a única saída dentro do sistema era destruir o anúncio para
+ * corrigir uma foto. Ela teve que ir ao painel do ML fazer à mão.
+ *
+ * `paused` é REVERSÍVEL, e essa é a diferença inteira. Um anúncio pausado sai
+ * da vitrine, mantém o id, mantém o histórico e volta com `active`.
+ *
+ * A função NÃO decide qual estado usar: quem chama diz. Inferir "acho que ela
+ * quer pausar" é exatamente a classe de erro que o resto deste arquivo
+ * combate.
+ */
+export async function definirEstadoDoItem(
+  accessToken: string,
+  itemId: string,
+  estado: "paused" | "active"
+): Promise<{ id: string; status: string }> {
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status: estado }),
+  });
+  if (!r.ok) {
+    const acao = estado === "paused" ? "pausar" : "reativar";
+    throw new Error(`ML recusou ${acao} o anúncio ${itemId}: ${await extrairErro(r)}`);
+  }
+  const j = (await r.json()) as { id: string; status: string };
+  // Devolvemos o status que o ML CONFIRMOU, não o que pedimos. O ML pode
+  // responder `under_review` a uma reativação, e fingir `active` aqui plantaria
+  // no banco um estado que não é o real.
+  return { id: j.id, status: j.status };
+}
+
 // ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
 
 export interface TarifaDeVenda {
