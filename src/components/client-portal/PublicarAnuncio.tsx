@@ -17,7 +17,12 @@ import { Rocket, X, AlertTriangle, CheckCircle2, ExternalLink, Link2 } from "luc
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { MissaoRepublicacao } from "@/components/esteira/MissaoRepublicacao";
-import { montarPreviewML, publicarNoML, JaPublicadoError } from "@/lib/services/publicacaoML";
+import {
+  montarPreviewML,
+  publicarNoML,
+  JaPublicadoError,
+  ReconectarCanalError,
+} from "@/lib/services/publicacaoML";
 import {
   buscarAnunciosAtivosDoProduto,
   encerrarAntigosAposPublicar,
@@ -57,6 +62,11 @@ export function PublicarAnuncio({
   const [conectado, setConectado] = useState<boolean | null>(null);
   const [publicando, setPublicando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // `conectado` responde "existe conexão?" (o flag `ativo`), que é uma coisa
+  // diferente de "a credencial ainda vale". A segunda só se descobre USANDO —
+  // e quando o ML recusa, o lojista precisa do mesmo caminho de reconexão que
+  // já existe para quem nunca conectou.
+  const [precisaReconectar, setPrecisaReconectar] = useState(false);
   const [missao, setMissao] = useState<{ missao: Missao; ativos: AnuncioAtivo[] } | null>(null);
 
   // Fotos reais do produto e estado da conexão: os dois fatos que mudam se o
@@ -83,6 +93,7 @@ export function PublicarAnuncio({
   async function iniciar() {
     if (!liberado || publicando) return;
     setErro(null);
+    setPrecisaReconectar(false);
     let ativos: AnuncioAtivo[] = [];
     try {
       ativos = await buscarAnunciosAtivosDoProduto(registro.clienteId, registro.produtoId, registro.id);
@@ -99,6 +110,7 @@ export function PublicarAnuncio({
   async function publicar(migrar: AnuncioAtivo[] | null) {
     setPublicando(true);
     setErro(null);
+    setPrecisaReconectar(false);
     try {
       const r = await publicarNoML(registro, true);
       let naoEncerrados: string[] = [];
@@ -115,6 +127,9 @@ export function PublicarAnuncio({
       setMissao(null);
       onPublicado({ id: r.id as string, permalink: r.permalink, naoEncerrados });
     } catch (e) {
+      // O botão continua liberado: o lojista pode reconectar em outra aba e
+      // tentar de novo sem fechar e reabrir esta tela.
+      if (e instanceof ReconectarCanalError) setPrecisaReconectar(true);
       setErro(
         e instanceof JaPublicadoError
           ? e.message
@@ -190,6 +205,19 @@ export function PublicarAnuncio({
                   </div>
                 )}
 
+                {precisaReconectar && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-300">
+                    <Link2 size={14} className="mt-0.5 shrink-0" />
+                    <span>
+                      {erro}{" "}
+                      <Link href="/cliente/conectar-ml" className="underline hover:text-amber-200">
+                        Reconectar agora
+                      </Link>
+                      .
+                    </span>
+                  </div>
+                )}
+
                 {impedimentos.length > 0 && (
                   <ul className="space-y-1.5">
                     {impedimentos.map((i) => (
@@ -214,7 +242,10 @@ export function PublicarAnuncio({
                   </p>
                 )}
 
-                {erro && (
+                {/* `!precisaReconectar`: a mesma mensagem já está no aviso âmbar
+                    acima, ali com o caminho de saída. Repetir em vermelho faria
+                    o lojista ler duas vezes e agir na cópia sem link. */}
+                {erro && !precisaReconectar && (
                   <p className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400">
                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                     {erro}
