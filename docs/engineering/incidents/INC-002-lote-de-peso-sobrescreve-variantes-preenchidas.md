@@ -349,7 +349,7 @@ mesmo nome, e confundi-las é como o INC-002 seria declarado fechado sem estar.
 | 2 | referência de peso obsoleta entre criação e clique | **CORRIGIDA** — precondição `pesoConhecido:<id>` (CICLO A) |
 | 3 | identidade do conjunto aprovado | **CORRIGIDA — CICLO G.1**, abaixo |
 | 4 | TOCTOU entre revalidação e escrita | **ABERTA** |
-| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO E CUSTO** — aberta para preço, título e cadastro |
+| 5 | atomicidade operacional (`executada` sem mutação) | **FECHADA PARA PESO, CUSTO E PREÇO** — aberta para título e cadastro |
 
 ## 3 — a identidade do conjunto (fechada no CICLO G.1)
 
@@ -535,13 +535,47 @@ clique (`ja_executada`), **alvo inexistente (`nada_gravado`, status permanece
 `retratoAntesDoPeso` virou `retratoAntesDaEscrita` e ganhou o ramo de custo —
 uma leitura do valor anterior, e continua **fora** da transação.
 
+## Preço, pela migração 047 (CICLO H.4) — e por que ele exigiu um desenho diferente
+
+A escrita de preço toca **duas colunas**: `preco_venda` e `margem`. E a margem
+**não está na Proposal** — é `margemLiquida(custo, preco, taxas)`, calculada em
+TypeScript sobre o modelo de tarifas do ML (~470 linhas entre `modeloPreco.ts` e
+`custosML.ts`, com a tabela de frete encodada).
+
+Portar essa conta para SQL criaria **duas implementações da mesma coisa**, e a
+divergência entre elas apareceria como um número errado numa tela — exatamente o
+defeito que `embalagemDoProduto` foi extraído para não ter. Foi rejeitado.
+
+A margem viaja como **parâmetro**, e a distinção é o que sustenta o desenho:
+
+| | |
+|---|---|
+| `valor` | é o **fato autorizado**. Recebê-lo por parâmetro permitiria "esta proposta com outro preço" — é o que a 045 fechou |
+| `margem` | **não é autorizada por ninguém**: é subproduto do cálculo |
+
+**Isso foi conferido antes de escrever a migração, não presumido:** `CAMPO_MARGEM`
+não existe no repositório; as precondições de preço são exatamente quatro (custo,
+preço atual, peso cobrável, configuração) e nenhuma é margem; `podeExecutar` não
+a menciona; e na rota ela só aparece em `antesDoPreco` e `rastroDaEscrita`, que
+**registram**. Na função ela aparece **uma vez**, no `SET` do UPDATE — há teste
+sobre o corpo da função guardando isso, e outros dois congelando a verificação.
+
+O **caminho antigo foi removido**: o ramo de preço em `gravar` agora lança. Não é
+defensividade decorativa — os ramos seguintes terminam no write de **peso
+individual**, então uma proposta de preço que chegasse ali gravaria peso num
+produto.
+
+Provado em transação revertida: sucesso (`152.90 → 149.90`, margem `22.50`),
+duplo clique, **margem NULL gravada como NULL e não como 0**, **alvo inexistente
+com status permanecendo `pendente`**, tenant errado e proposta de peso recusada.
+
 ## O que continua aberto
 
-**Peso e custo foram cobertos.** Preço e título não receberam desenho
+**Peso, custo e preço foram cobertos.** Título não recebeu desenho
 equivalente; **cadastro** é multi-statement, não idempotente e valida em
 TypeScript — forçá-lo exigiria reescrever `validarRascunho` em SQL, com risco de
 semântica divergente. Ele tem CAS próprio no draft (`aguardando_confirmacao`),
-que é desenho separado. **T1 continua aberto para esses três tipos.**
+que é desenho separado. **T1 continua aberto para esses dois tipos.**
 
 **Camada 4 continua aberta** — o TOCTOU de `pesoConhecido` entre a revalidação e
 a escrita é risco conhecido e aceito. A 045 não o toca de propósito.
