@@ -44,9 +44,11 @@ import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarContexto } from "@/lib/contexto";
 import {
+  atributosPorId,
   briefingDosAtributos,
   resolverObrigatorios,
 } from "@/modules/publication/domain/atributosDoMarketplace";
+import { listarAtributosDoProduto } from "@/lib/services/produtoAtributos";
 import {
   listarAnunciosGeradosDoCliente,
   aprovarAnuncioGerado,
@@ -354,14 +356,22 @@ function Jornada() {
       // Os 6 obrigatórios do ML, resolvidos contra o cadastro. Marca e cor vêm
       // de campo; gênero e tipo, do nome — e null quando o nome não diz, que
       // vira pergunta em vez de chute.
+      // DES-002 D6: os obrigatórios passam a ser resolvidos também contra o que
+      // a lojista já informou ao Mercado Livre. Gênero e tipo de calçado não têm
+      // campo no cadastro e antes só podiam ser adivinhados do NOME — agora há
+      // valor medido, e medido vence adivinhado.
+      const daFicha = await listarAtributosDoProduto(produto.id).catch(() => []);
       const atributos = briefingDosAtributos(
-        resolverObrigatorios({
-          nome: produto.nome,
-          marca: produto.marca,
-          modelo: produto.modelo,
-          cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
-          tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
-        })
+        resolverObrigatorios(
+          {
+            nome: produto.nome,
+            marca: produto.marca,
+            modelo: produto.modelo,
+            cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
+            tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
+          },
+          atributosPorId(daFicha)
+        )
       );
       const contexto = montarContexto({
         produto,

@@ -15,6 +15,7 @@ import {
   generoDoNome,
   resolverObrigatorios,
   tipoDeCalcadoDoNome,
+  atributosPorId,
   type DadosDoProduto,
 } from "./atributosDoMarketplace.ts";
 
@@ -113,4 +114,109 @@ test("o que falta é nomeado, e só ele pode virar pendência", () => {
   const b = briefingDosAtributos(resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" })));
   assert.match(b, /Gênero: FALTA/);
   assert.match(b, /Só Gênero pode\(m\) virar pendência/);
+});
+
+// ---------------------------------------------------------------------------
+// DES-002 D6 — o que veio do marketplace entra na resolução
+// ---------------------------------------------------------------------------
+//
+// Gênero e tipo de calçado NÃO têm campo no cadastro. Antes eram sempre lidos
+// do NOME do produto — e nome sem gênero devolvia null, que virava pendência.
+//
+// Agora `produto_atributos` guarda o que a lojista informou ao ML. A regra é
+// uma só, e vale para os seis: MEDIDO VENCE ADIVINHADO.
+//
+//     cadastro → marketplace → nome → ausente
+
+const SEM_NADA = { nome: "Produto", marca: "", modelo: "", cores: [], tamanhos: [] };
+
+test("D6: o marketplace resolve o que o nome não diz", () => {
+  const r = resolverObrigatorios(SEM_NADA, new Map([["GENDER", "Feminino"]]));
+  const genero = r.find((a) => a.id === "GENDER");
+  assert.equal(genero?.valor, "Feminino");
+  assert.equal(genero?.origem, "marketplace");
+});
+
+test("D6: o marketplace VENCE o chute pelo nome", () => {
+  // "Chinelo Masculino" diz masculino; se o ML diz Feminino, é o ML que a
+  // lojista preencheu — e um valor medido vale mais que um lido de string.
+  const r = resolverObrigatorios(
+    { ...SEM_NADA, nome: "Chinelo Masculino Confort" },
+    new Map([["GENDER", "Feminino"]])
+  );
+  const genero = r.find((a) => a.id === "GENDER");
+  assert.equal(genero?.valor, "Feminino");
+  assert.equal(genero?.origem, "marketplace");
+});
+
+test("D6: o CADASTRO vence o marketplace — é o dado da casa", () => {
+  const r = resolverObrigatorios(
+    { ...SEM_NADA, marca: "Modare" },
+    new Map([["BRAND", "Outra Marca"]])
+  );
+  const marca = r.find((a) => a.id === "BRAND");
+  assert.equal(marca?.valor, "Modare");
+  assert.equal(marca?.origem, "cadastro");
+});
+
+test("D6: sem marketplace, o comportamento é EXATAMENTE o de antes", () => {
+  // A garantia de que o D6 não mudou nada para quem não enriqueceu.
+  const antes = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" });
+  const comMapaVazio = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" }, new Map());
+  assert.deepEqual(antes, comMapaVazio);
+  assert.equal(antes.find((a) => a.id === "GENDER")?.origem, "nome");
+});
+
+test("D6: valor vazio no marketplace NÃO conta — cai para o nome", () => {
+  const r = resolverObrigatorios(
+    { ...SEM_NADA, nome: "Chinelo Feminino" },
+    new Map([["GENDER", "   "]])
+  );
+  assert.equal(r.find((a) => a.id === "GENDER")?.origem, "nome");
+});
+
+test("D6: o briefing DIZ de onde veio — a origem muda o que o modelo faz", () => {
+  // O que veio do ML é o que a própria lojista informou lá, e não se questiona.
+  // O que veio do nome é leitura nossa, e pode estar errada.
+  const texto = briefingDosAtributos(
+    resolverObrigatorios(SEM_NADA, new Map([["FOOTWEAR_TYPE", "Papetes"]]))
+  );
+  assert.match(texto, /Tipo de calçado: Papetes \(já resolvido pelo Mercado Livre\)/);
+});
+
+// ---------------------------------------------------------------------------
+// A PONTE nome → id
+// ---------------------------------------------------------------------------
+
+test("`atributosPorId` traduz o NOME guardado de volta para o id do ML", () => {
+  // `produto_atributos` guarda o nome, não o id — consequência declarada do
+  // DES-002. A volta usa o MESMO mapa que monta o payload.
+  const mapa = atributosPorId([
+    { nomeAtributo: "Gênero", valorAtributo: "Feminino" },
+    { nomeAtributo: "Tipo de calçado", valorAtributo: "Papetes" },
+    { nomeAtributo: "Marca", valorAtributo: "Modare" },
+  ]);
+  assert.equal(mapa.get("GENDER"), "Feminino");
+  assert.equal(mapa.get("FOOTWEAR_TYPE"), "Papetes");
+  assert.equal(mapa.get("BRAND"), "Modare");
+});
+
+test("atributo sem id conhecido fica de FORA — não se finge que resolve", () => {
+  // Um atributo que não vira id não chega ao ML como aquele atributo. Contá-lo
+  // como resolvido seria afirmar o que não se sabe.
+  const mapa = atributosPorId([
+    { nomeAtributo: "Material da sola", valorAtributo: "Borracha" },
+    { nomeAtributo: "Personagem", valorAtributo: "Minnie" },
+  ]);
+  assert.equal(mapa.size, 0);
+});
+
+test("valor vazio não entra, e o primeiro vence o repetido", () => {
+  const mapa = atributosPorId([
+    { nomeAtributo: "Gênero", valorAtributo: "" },
+    { nomeAtributo: "Marca", valorAtributo: "Modare" },
+    { nomeAtributo: "Marca", valorAtributo: "Outra" },
+  ]);
+  assert.ok(!mapa.has("GENDER"));
+  assert.equal(mapa.get("BRAND"), "Modare");
 });

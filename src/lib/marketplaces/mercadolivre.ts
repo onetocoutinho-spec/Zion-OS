@@ -221,6 +221,30 @@ export async function atributosForaDaFicha(
   return fora;
 }
 
+/**
+ * O que a categoria EXIGE — `tags.required`, do mesmo endpoint público.
+ *
+ * Devolve `[]` quando o ML não responde, e isso é deliberado: sem confirmação,
+ * não se bloqueia nada. Afirmar uma exigência que ninguém confirmou é o defeito
+ * que o DES-001 arrancou do A10; o ML continua sendo a última palavra.
+ */
+export async function atributosObrigatorios(
+  categoria: string
+): Promise<{ id: string; nome: string }[]> {
+  if (!categoria) return [];
+  try {
+    const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
+    if (!r.ok) return [];
+    const lista = (await r.json()) as { id?: string; name?: string; tags?: Record<string, unknown> }[];
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .filter((a) => a.tags && "required" in a.tags && a.id)
+      .map((a) => ({ id: a.id as string, nome: a.name || (a.id as string) }));
+  } catch {
+    return [];
+  }
+}
+
 /** Prediz a categoria (category_id) a partir do título. null se não achar. */
 export async function preverCategoria(accessToken: string, titulo: string): Promise<string | null> {
   const url = `${API}/sites/MLB/domain_discovery/search?limit=1&q=${encodeURIComponent(titulo)}`;

@@ -33,6 +33,8 @@
 // adivinhar que escreveu "PVC de alta performance" numa descrição e cor
 // "Arco Iris" num produto branco.
 
+import { idDoAtributoML } from "../../integration/domain/mlPayload";
+
 /** Os 6 obrigatórios de MLB273770, medidos em 2026-07-29 na API pública. */
 export const OBRIGATORIOS_CALCADO = [
   { id: "BRAND", nome: "Marca" },
@@ -120,37 +122,69 @@ export interface AtributoResolvido {
   nome: string;
   /** O valor que o cadastro sustenta, ou null quando ninguém sabe. */
   valor: string | null;
-  /** De onde saiu — para a pessoa saber no que confiar. */
-  origem: "cadastro" | "nome" | "ausente";
+  /**
+   * De onde saiu — para a pessoa saber no que confiar, e em que ordem.
+   *
+   * `cadastro` e `marketplace` são MEDIDOS: alguém preencheu um campo, aqui ou
+   * no ML. `nome` é ADIVINHADO de uma string. A precedência sai daí, e é uma
+   * regra só: medido vence adivinhado.
+   *
+   *   cadastro → marketplace → nome → ausente
+   *
+   * `marketplace` entrou com o DES-002 D6: gênero e tipo de calçado não têm
+   * campo no cadastro, e antes eram sempre chutados do nome do produto. Agora
+   * vêm de `produto_atributos`, que é o que a lojista informou ao ML.
+   */
+  origem: "cadastro" | "marketplace" | "nome" | "ausente";
 }
 
 /**
- * Os 6 obrigatórios, resolvidos contra o cadastro.
+ * Resolve os seis obrigatórios do ML contra o que se SABE.
  *
  * Cor e Tamanho aceitam vários valores porque a grade tem vários; o ML os
  * recebe por variação. Aqui interessa só se EXISTEM.
+ *
+ * `doMarketplace` é `id → valor`, vindo de `produto_atributos` — o que a
+ * lojista já informou ao Mercado Livre (DES-002). Vazio, o comportamento é
+ * exatamente o de antes.
+ *
+ * UMA regra de precedência, e ela vale para os seis: **medido vence adivinhado**.
+ *
+ *   cadastro → marketplace → nome → ausente
+ *
+ * Não há caso especial por atributo. Marca e cor têm campo no cadastro e
+ * ganham por ali; gênero e tipo de calçado não têm, então o marketplace passa
+ * na frente do chute pelo nome — sozinho, sem `if`.
  */
-export function resolverObrigatorios(p: DadosDoProduto): AtributoResolvido[] {
-  const doCadastro = (id: string, nome: string, v: string | null): AtributoResolvido => ({
-    id,
-    nome,
-    valor: v && v.trim() ? v.trim() : null,
-    origem: v && v.trim() ? "cadastro" : "ausente",
-  });
-  const doNome = (id: string, nome: string, v: string | null): AtributoResolvido => ({
-    id,
-    nome,
-    valor: v,
-    origem: v ? "nome" : "ausente",
-  });
+export function resolverObrigatorios(
+  p: DadosDoProduto,
+  doMarketplace: ReadonlyMap<string, string> = new Map()
+): AtributoResolvido[] {
+  const limpo = (v: string | null | undefined): string | null =>
+    v && v.trim() ? v.trim() : null;
+
+  const resolver = (
+    id: string,
+    nome: string,
+    doCadastro: string | null,
+    doNome: string | null = null
+  ): AtributoResolvido => {
+    const cadastro = limpo(doCadastro);
+    if (cadastro) return { id, nome, valor: cadastro, origem: "cadastro" };
+    const mercado = limpo(doMarketplace.get(id));
+    if (mercado) return { id, nome, valor: mercado, origem: "marketplace" };
+    const adivinhado = limpo(doNome);
+    if (adivinhado) return { id, nome, valor: adivinhado, origem: "nome" };
+    return { id, nome, valor: null, origem: "ausente" };
+  };
 
   return [
-    doCadastro("BRAND", "Marca", p.marca),
-    doCadastro("MODEL", "Modelo", p.modelo),
-    doNome("GENDER", "Gênero", generoDoNome(p.nome)),
-    doCadastro("COLOR", "Cor", p.cores.length ? p.cores.join(", ") : null),
-    doCadastro("SIZE", "Tamanho", p.tamanhos.length ? p.tamanhos.join(", ") : null),
-    doNome("FOOTWEAR_TYPE", "Tipo de calçado", tipoDeCalcadoDoNome(p.nome)),
+    resolver("BRAND", "Marca", p.marca),
+    resolver("MODEL", "Modelo", p.modelo),
+    resolver("GENDER", "Gênero", null, generoDoNome(p.nome)),
+    resolver("COLOR", "Cor", p.cores.length ? p.cores.join(", ") : null),
+    resolver("SIZE", "Tamanho", p.tamanhos.length ? p.tamanhos.join(", ") : null),
+    resolver("FOOTWEAR_TYPE", "Tipo de calçado", null, tipoDeCalcadoDoNome(p.nome)),
   ];
 }
 
@@ -162,11 +196,41 @@ export function resolverObrigatorios(p: DadosDoProduto): AtributoResolvido[] {
  * ("antiderrapante", "vegano", "materiais reciclados") que travavam a
  * publicação para sempre, porque publicar exige a lista de pendências vazia.
  */
+/**
+ * `produto_atributos` → `id → valor`, para alimentar `resolverObrigatorios`.
+ *
+ * A tabela guarda o NOME que o ML devolveu, não o id — consequência declarada
+ * do DES-002. `idDoAtributoML` faz o caminho de volta, com o MESMO mapa que
+ * monta o payload.
+ *
+ * O que não tem id conhecido fica de fora: um atributo que não vira id não
+ * chega ao ML como aquele atributo, e fingir que resolveria seria afirmar o que
+ * não se sabe.
+ */
+export function atributosPorId(
+  atributos: readonly { nomeAtributo: string; valorAtributo: string }[]
+): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const a of atributos) {
+    const id = idDoAtributoML(a.nomeAtributo);
+    if (!id || !a.valorAtributo?.trim()) continue;
+    if (!mapa.has(id)) mapa.set(id, a.valorAtributo.trim());
+  }
+  return mapa;
+}
+
 export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): string {
+  // A origem aparece no briefing porque ela muda o que o modelo deve fazer com
+  // o valor: o que veio do Mercado Livre é o que a própria lojista informou lá,
+  // e não se questiona; o que veio do nome é leitura nossa, e pode estar errado.
+  const deOnde: Record<AtributoResolvido["origem"], string> = {
+    cadastro: "cadastro",
+    marketplace: "Mercado Livre",
+    nome: "nome do produto",
+    ausente: "",
+  };
   const linhas = resolvidos.map((a) =>
-    a.valor
-      ? `- ${a.nome}: ${a.valor} (já resolvido pelo ${a.origem === "nome" ? "nome do produto" : "cadastro"})`
-      : `- ${a.nome}: FALTA`
+    a.valor ? `- ${a.nome}: ${a.valor} (já resolvido pelo ${deOnde[a.origem]})` : `- ${a.nome}: FALTA`
   );
   const faltam = resolvidos.filter((a) => !a.valor).map((a) => a.nome);
 
