@@ -371,7 +371,15 @@ export default function ClienteProdutos() {
         setMsgML(juntar(
             `${m.anuncios} anúncios lidos, NADA foi gravado. ` +
             `${m.comFichaPropria} têm ficha própria · média de ${m.mediaDaFicha} atributos.` +
-            (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido.")
+            (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido.") +
+            // O status vem ANTES da ficha em importância: um anúncio encerrado
+            // não deveria entrar aqui como publicado, e hoje entraria.
+            ` No ML: ${m.porStatus.map((s) => `${s.anuncios} ${s.status}`).join(" · ")}.` +
+            (m.novosPorStatus.length > 0
+              ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
+                  .map((s) => `${s.anuncios} ${s.status}`)
+                  .join(" · ")}.`
+              : " O Zion já tem todos.")
         ));
         return;
       }
