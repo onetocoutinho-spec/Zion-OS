@@ -119,7 +119,9 @@ const ROTA = readFileSync(
 );
 
 test("PESO usa a primitiva atômica", () => {
-  assert.match(ROTA, /const atomico = p\.tipo === "peso"/);
+  // O gate lista vários tipos e cresce a cada ciclo. O que este teste guarda é
+  // que PESO está nele — não a forma literal da expressão.
+  assert.match(ROTA, /const atomico =[\s\S]{0,200}p\.tipo === "peso"/);
   assert.match(ROTA, /executarPesoAtomico\(p\.id, clienteDaSessao\)/);
 });
 
@@ -136,11 +138,11 @@ test("zero linhas NÃO queima a proposta de peso", () => {
   assert.match(ROTA, /if \(!atomico\) await marcarProposta\(p\.id, "falhou"/);
 });
 
-test("título e cadastro continuam fora da primitiva", () => {
-  // CUSTO saiu desta lista na 046 e PREÇO na 047 — cada um ganhou primitiva
-  // própria. Os dois que restam: `titulo` não recebeu desenho equivalente, e
-  // `cadastro` é multi-statement, não idempotente e valida em TypeScript.
-  for (const tipo of ["titulo", "cadastro"]) {
+test("cadastro continua fora da primitiva", () => {
+  // CUSTO saiu desta lista na 046, PREÇO na 047 e TÍTULO na 048 — cada um
+  // ganhou primitiva própria. Sobrou `cadastro`: multi-statement, não
+  // idempotente e valida em TypeScript.
+  for (const tipo of ["cadastro"]) {
     assert.ok(
       !new RegExp(`p\\.tipo === "${tipo}"[\\s\\S]{0,80}executar\\w+Atomico`).test(ROTA),
       `${tipo} encostou numa primitiva atômica`

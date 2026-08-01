@@ -110,7 +110,9 @@ const ROTA = readFileSync(
 );
 
 test("CUSTO entrou no caminho atômico, junto do peso", () => {
-  assert.match(ROTA, /const atomico = p\.tipo === "peso" \|\| p\.tipo === "custo"/);
+  // Sobre a presença de CUSTO no gate, não sobre a forma literal — a expressão
+  // cresce a cada tipo que entra.
+  assert.match(ROTA, /const atomico =[\s\S]{0,200}p\.tipo === "custo"/);
   assert.match(ROTA, /executarCustoAtomico\(p\.id, clienteDaSessao\)/);
 });
 

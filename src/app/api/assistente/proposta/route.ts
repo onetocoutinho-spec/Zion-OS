@@ -29,6 +29,7 @@ import {
   executarCustoAtomico,
   executarPesoAtomico,
   executarPrecoAtomico,
+  executarTituloAtomico,
   type DesfechoDoPrecoAtomico,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
@@ -55,7 +56,6 @@ import {
   tentativasDoCadastro,
 } from "@/modules/assistant/domain/candidatosDoCadastro";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
-import { aplicarTitulo } from "@/lib/services/preparacaoDeAnuncio";
 import { estadoParaRevalidar } from "@/lib/services/precificacaoDoCopilot";
 import { margemLiquida } from "@/modules/pricing/domain/modeloPreco";
 import {
@@ -395,6 +395,19 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
 }> {
   const admin = getSupabaseAdmin();
 
+  // TÍTULO: o título de agora, para a auditoria dizer de onde saiu. `alvos[0]`
+  // é o ID DO ANÚNCIO neste tipo.
+  if (p.tipo === "titulo") {
+    const { data } = await admin
+      .from("anuncios_gerados")
+      .select("anuncio")
+      .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
+      .maybeSingle();
+    const anuncio = (data as { anuncio?: Record<string, unknown> } | null)?.anuncio;
+    return { antes: anuncio ? { titulo: String(anuncio.tituloOtimizado ?? "") } : null };
+  }
+
   // PREÇO: o preço e a margem anteriores — a MESMA forma que `aplicarPreco`
   // devolvia, porque `antesDoPreco` e o rastro de procedência a leem.
   if (p.tipo === "preco") {
@@ -495,12 +508,9 @@ async function gravar(p: PropostaPersistida): Promise<{
   // PREPARAR NÃO É PUBLICAR: isto altera o rascunho no Zion. O anúncio no ar
   // não é tocado — publicar tem rota própria e outra confirmação.
   if (p.tipo === "titulo") {
-    const novo = (p.texto ?? "").trim();
-    if (!novo) throw new Error("proposta de título sem texto");
-    const r = await aplicarTitulo(produtoId, p.clienteId, novo);
-    // Anúncio de outro tenant ou inexistente produzem o MESMO `null`.
-    if (!r) return { afetados: 0, antes: null, depois: null };
-    return { afetados: 1, antes: { titulo: r.antes }, depois: { titulo: r.depois } };
+    // CAMINHO ANTIGO REMOVIDO — título passa pela 048, atomicamente. Lança pelo
+    // mesmo motivo do preço: os ramos abaixo terminam no write de PESO.
+    throw new Error("título não passa mais por `gravar`: use copilot_executar_titulo (048)");
   }
 
   // ---- PREÇO: grava no CATÁLOGO DO ZION, e só nele.
@@ -849,7 +859,8 @@ export async function POST(request: Request) {
   // título não receberam desenho equivalente, e `cadastro` é multi-statement,
   // não idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
   // `validarRascunho` em SQL. T1 continua aberto para os três, e isso está dito.
-  const atomico = p.tipo === "peso" || p.tipo === "custo" || p.tipo === "preco";
+  const atomico =
+    p.tipo === "peso" || p.tipo === "custo" || p.tipo === "preco" || p.tipo === "titulo";
   const retrato = atomico ? await retratoAntesDaEscrita(p) : null;
   const rpc = !atomico
     ? null
@@ -857,7 +868,9 @@ export async function POST(request: Request) {
       ? { ...(await executarPesoAtomico(p.id, clienteDaSessao)), margem: undefined }
       : p.tipo === "custo"
         ? { ...(await executarCustoAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
-        : { ...(await executarPrecoNaTransacao(p, clienteDaSessao)), elegiveis: undefined };
+        : p.tipo === "titulo"
+          ? { ...(await executarTituloAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
+          : { ...(await executarPrecoNaTransacao(p, clienteDaSessao)), elegiveis: undefined };
 
   // `nada_gravado` NÃO é corrida perdida: a transação reverteu a transição e a
   // proposta continua `pendente`. Ela segue o fluxo abaixo para ser auditada
@@ -900,7 +913,9 @@ export async function POST(request: Request) {
               ? { variacoesAtualizadas: rpc!.afetados, pesoKg: p.valor / 1000 }
               : p.tipo === "custo"
                 ? { id: p.alvos[0], custo: p.valor }
-                : { preco: p.valor, margem: rpc!.margem ?? null },
+                : p.tipo === "titulo"
+                  ? { titulo: (p.texto ?? "").trim() }
+                  : { preco: p.valor, margem: rpc!.margem ?? null },
           medidasAntes: retrato!.medidasAntes,
           // `undefined` em custo: `ressalvaDoPreenchimento` devolve string vazia
           // e a mensagem continua a de antes.
