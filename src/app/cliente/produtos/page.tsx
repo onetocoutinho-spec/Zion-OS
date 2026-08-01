@@ -344,13 +344,29 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function importarDoML(modo: "substituir" | "novos") {
+  async function importarDoML(modo: "substituir" | "novos" | "medir") {
     if (importandoML) return;
     setEscolhendoML(false);
     setImportandoML(true);
     setMsgML(null);
     try {
       const r = await importarAnunciosDoCliente(clienteId, nome, modo);
+      // MEDIR não grava e não recarrega a lista: não há o que recarregar.
+      if (r.medicao) {
+        const m = r.medicao;
+        const topo = m.porAtributo
+          .slice(0, 6)
+          .map((a) => `${a.nome} (${a.anuncios})`)
+          .join(" · ");
+        setMsgML({
+          tipo: "ok",
+          texto:
+            `${m.anuncios} anúncios lidos, NADA foi gravado. ` +
+            `${m.comFichaPropria} têm ficha própria · média de ${m.mediaDaFicha} atributos.` +
+            (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido."),
+        });
+        return;
+      }
       if (r.produtos === 0) {
         setMsgML({ tipo: r.pulados > 0 ? "ok" : "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
       } else {
@@ -468,7 +484,17 @@ export default function ClienteProdutos() {
             <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <button
+              onClick={() => importarDoML("medir")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
+            >
+              <p className="text-sm font-medium text-sky-300">Só conferir (não grava)</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Lê os anúncios no Mercado Livre e mostra quais informações já estão lá — material, palmilha,
+                salto. Não altera nada aqui.
+              </p>
+            </button>
             <button
               onClick={() => importarDoML("novos")}
               className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-emerald-500/40"
@@ -478,13 +504,22 @@ export default function ClienteProdutos() {
                 Mantém o que já está aqui e traz apenas os anúncios ainda não importados. Ideal no dia a dia.
               </p>
             </button>
+            {/* A descrição diz o que ESTA opção destrói.
+                Ela dizia "Apaga a importação anterior do ML e traz tudo de novo.
+                Use se algo ficou errado" — e omitia que o apagão é em cascata:
+                custo (que o ML NÃO devolve), peso, fotos, e o vínculo entre
+                produto e anúncio publicado. Medido em 2026-08-01: 73 produtos,
+                684 variantes, 157 custos, 595 imagens. Um controle que não conta
+                a consequência convida ao clique que não se desfaz. */}
             <button
               onClick={() => importarDoML("substituir")}
-              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-violet-500/40"
+              className="rounded-lg border border-red-500/25 bg-red-500/[0.03] p-3 text-left transition-colors hover:border-red-500/50"
             >
-              <p className="text-sm font-medium text-violet-300">Importar tudo de novo</p>
+              <p className="text-sm font-medium text-red-300">Apagar tudo e importar de novo</p>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Apaga a importação anterior do ML e traz tudo de novo, reagrupado. Use se algo ficou errado.
+                <span className="text-red-300/90">Apaga os produtos importados e tudo que veio depois:</span>{" "}
+                custo digitado, peso, fotos e a ligação com os anúncios já publicados. O Mercado Livre não
+                devolve o custo — ele não volta. Use só se a importação ficou errada.
               </p>
             </button>
           </div>
