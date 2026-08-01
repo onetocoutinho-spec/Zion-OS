@@ -620,4 +620,102 @@ indisponível.
 mas nenhum caminho concreto de exceção foi encontrado entre a escrita e a
 resposta.
 
-**INC-002 não está encerrado.**
+---
+
+# Encerramento da INVESTIGAÇÃO — 2026-08-01 (CICLOS H.7 a H.10)
+
+Depois do H.7, que tirou o `falhou` de cima de uma mutação commitada, sobraram
+três perguntas em aberto no roteiro: reaper, o estado `aprovada` e a
+idempotência. **As três terminaram em "nada a fazer" — e isso é um resultado.**
+Congeladas em [`estadosDaProposta.test.ts`](../../../src/lib/services/estadosDaProposta.test.ts),
+oito testes, para que a conclusão não seja lida no futuro como omissão.
+
+## H.8 — reaper: não é preciso, e o motivo não é o volume
+
+Medido em 2026-08-01: `copilot_propostas` tem **uma linha** (`pendente`,
+vencida, nunca executada). Mas o argumento é estrutural, não estatístico:
+
+1. Para peso/custo/preço/título, as 045–048 fizeram `executada` implicar
+   mutação commitada. O intervalo em que o status mentia não existe mais.
+2. A autoridade sobre validade é **`expira_em`**, não a coluna `status`.
+   `podeExecutar` compara a data — uma proposta parada em `pendente` **não
+   executa** depois de vencida.
+3. **Nenhum leitor se engana:** não há listagem de propostas em lugar nenhum.
+   `buscarProposta(id)` é a única leitura, e vive dentro de `podeExecutar`.
+
+`expirada` e `obsoleta` são escritos, mas só quando alguém tenta executar
+(`route.ts`). É reconciliação **preguiçosa**, e ela basta — um reaper faria a
+coluna concordar mais cedo com um valor que ninguém consulta.
+
+**O único caso real de reconciliação é `cadastro`**, onde `reservarParaExecucao`
+marca `executada` antes de criar. É o T1, dívida deliberada do H.6, com dono. Um
+reaper genérico trataria o sintoma de um problema que tem endereço.
+
+Dois testes guardam as premissas: se `podeExecutar` passar a decidir pelo
+status, ou se alguém consultar `copilot_propostas` fora do serviço (isto é: se
+nascer uma listagem), **o H.8 reabre**.
+
+## H.9 — `aprovada` e `rejeitada` são vocabulário, não estado alcançável
+
+Zero escritas de cada um, no código inteiro. Sobraram de um desenho em que
+aprovar era um passo separado de executar; hoje confirmar **é** executar, e
+`reservarParaExecucao` vai direto de `pendente` a `executada`.
+
+Os dois não morreram do mesmo jeito, e a diferença importa:
+
+```ts
+status: Extract<StatusProposta, "falhou" | "obsoleta" | "rejeitada" | "expirada">
+```
+
+`rejeitada` é alcançável por construção — falta só um chamador. **`aprovada` já
+é barrado pelo compilador**; só o CHECK do banco ainda o admite. Usar o primeiro
+custa uma linha; usar o segundo obriga a mexer no tipo, e isso deve doer o
+bastante para alguém perguntar por quê.
+
+**Nenhum dos dois foi removido.** Apagar do CHECK é DDL sobre coluna com dados,
+e o ganho seria estético.
+
+## H.10 — a idempotência é a Proposal, não a coluna
+
+`chave_idempotencia` existe desde a 035, tem índice único parcial
+`(cliente_id, chave_idempotencia)`, é aceita por `criarProposta`… e **nenhum
+chamador jamais passa valor**. É sempre `NULL`. Foi desenhada para uma forma
+— chave fornecida pelo cliente — que nunca se materializou.
+
+O que barra o duplo clique é o **id da Proposal com CAS de status**, em dois
+lugares, e o teste exige que a guarda esteja **dentro** do lock:
+
+| onde | mecanismo |
+|---|---|
+| `reservarParaExecucao` (cadastro) | `.eq("id", id).eq("status", "pendente")` |
+| RPCs 045–048 | `for update` → `if v_status = 'executada' then 'ja_executada'` |
+
+A coluna é vestigial. **Não foi removida** — o índice parcial não custa nada, e
+apagar é mais arriscado que documentar.
+
+## Estado final das cinco camadas
+
+| # | camada | estado |
+|---|---|---|
+| 1 | sobrescrita de peso preenchido | **CORRIGIDA** |
+| 2 | referência derivada obsoleta | **CORRIGIDA** |
+| 3 | identidade do conjunto | **CORRIGIDA** (G.1) |
+| 4 | TOCTOU revalidação → escrita | **RISCO ACEITO** — não corrigida |
+| 5 | atomicidade operacional | **CORRIGIDA** para peso/custo/preço/título · **ABERTA** para cadastro (T1) |
+
+## O que este encerramento NÃO autoriza dizer
+
+**A investigação está encerrada. O incidente não está resolvido.** Não sobrou
+nada a apurar; sobraram duas decisões já tomadas, e elas continuam sendo
+dívidas, não conquistas:
+
+- **Camada 4 é risco aceito.** Fechá-la exigiria SERIALIZABLE (participação não
+  imponível por transação neste stack) ou lock cooperativo (os participantes são
+  bundles de navegador fora do controle de deploy). Nada disso mudou.
+- **Camada 5 segue aberta em `cadastro`**, e com ela o T1 e o H4.
+- **Concorrência real continua NÃO OBSERVADA.** A exclusividade é provada por
+  construção (`FOR UPDATE`), nunca por duas sessões concorrentes.
+- **Nada disto foi observado em produção.** Na data deste encerramento, o
+  caminho de execução tinha rodado **zero vezes**: nenhuma proposta executada,
+  nenhuma linha de auditoria, nenhuma procedência. Toda a garantia é por
+  construção e por teste.
