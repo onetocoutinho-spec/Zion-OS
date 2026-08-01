@@ -112,6 +112,31 @@ export async function trocarCodigoPorToken(cred: {
   };
 }
 
+/**
+ * O ML RESPONDEU recusando a renovação — `status` é o HTTP da resposta dele.
+ *
+ * Existe para que o chamador possa separar "a credencial salva não vale mais"
+ * (4xx: só reconectar resolve) de "o ML está fora do ar" (5xx: tentar depois)
+ * sem inspecionar a prosa em inglês da mensagem. Uma falha de REDE não produz
+ * este erro: nesse caso o `fetch` rejeita antes, e o chamador continua vendo o
+ * erro genérico — corretamente, porque ninguém sabe o estado da credencial.
+ *
+ * A mensagem é idêntica à de antes: quem só faz `catch (e) { e.message }` não
+ * muda de comportamento.
+ */
+export class RenovacaoRecusadaError extends Error {
+  readonly status: number;
+  constructor(status: number, detalhe: string) {
+    super(`Falha ao renovar token do ML: ${detalhe}`);
+    this.name = "RenovacaoRecusadaError";
+    this.status = status;
+  }
+  /** true quando o ML atribuiu o problema à credencial, e não a si mesmo. */
+  get credencialRecusada(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+}
+
 /** Renova o access token via refresh_token grant. Retorna o novo par de tokens. */
 export async function renovarToken(cred: {
   clientId: string;
@@ -131,7 +156,7 @@ export async function renovarToken(cred: {
       refresh_token: cred.refreshToken,
     }),
   });
-  if (!resposta.ok) throw new Error(`Falha ao renovar token do ML: ${await extrairErro(resposta)}`);
+  if (!resposta.ok) throw new RenovacaoRecusadaError(resposta.status, await extrairErro(resposta));
   const j = (await resposta.json()) as {
     access_token: string;
     refresh_token: string;

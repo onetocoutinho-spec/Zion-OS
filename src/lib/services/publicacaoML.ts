@@ -139,6 +139,22 @@ export class JaPublicadoError extends Error {
   }
 }
 
+/**
+ * Erro identificável: o canal existe e está ativo, mas o marketplace RECUSOU a
+ * credencial salva. Só reconectar a conta resolve.
+ *
+ * Precisa ser distinguível de uma falha de publicação qualquer por dois
+ * motivos: a tela mostra um caminho (o link de reconectar) em vez de uma
+ * mensagem sem saída, e o veredito NÃO é anexado às observações do anúncio —
+ * uma credencial morta não diz nada sobre o conteúdo que se tentou publicar.
+ */
+export class ReconectarCanalError extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = "ReconectarCanalError";
+  }
+}
+
 /** Publicações em voo, por registro — barra o duplo clique simultâneo. */
 const emVoo = new Set<string>();
 
@@ -200,7 +216,11 @@ async function executarPublicacao(
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
   if (!canal?.ativo) {
     throw new Error(
-      "Cliente não conectado ao Mercado Livre. Conecte a conta em Configurações do canal antes de publicar."
+      // "Configurações do canal" não existe — nunca existiu. O fluxo de conexão
+      // é `/cliente/conectar-ml`, rotulado "Conexão com o Mercado Livre" no
+      // contexto Zion (ver portal/domain/navegacao). Mandar alguém procurar uma
+      // tela inventada é a mesma falha do INC-009 num degrau acima.
+      "Cliente não conectado ao Mercado Livre. Conecte a conta em Zion › Conexão com o Mercado Livre antes de publicar."
     );
   }
 
@@ -224,12 +244,18 @@ async function executarPublicacao(
     id?: string;
     permalink?: string;
     erro?: string;
+    motivo?: string;
     categoriaPrevista?: string | null;
     categoriaUsada?: string | null;
   };
 
   if (!resposta.ok || !dados.id) {
     const motivo = dados.erro ?? "Falha ao publicar no Mercado Livre.";
+    // Sai ANTES do Learning Loop (2): credencial recusada não é veto ao
+    // conteúdo. Anexá-la às observações sujaria o registro do anúncio com um
+    // problema de conexão, e o próximo leitor acharia que o ML reprovou o
+    // anúncio.
+    if (dados.motivo === "reconectar") throw new ReconectarCanalError(motivo);
     // Learning Loop (2): o VETO do ambiente entra no domínio. Nunca pode
     // mascarar a falha original — qualquer erro aqui é engolido.
     try {

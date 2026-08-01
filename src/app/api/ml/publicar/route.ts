@@ -14,6 +14,7 @@ import {
   preverCategoria,
   criarItem,
   criarGuiaTamanhos,
+  RenovacaoRecusadaError,
 } from "@/lib/marketplaces/mercadolivre";
 import { montarItensUserProducts } from "@/modules/integration/domain/mlUserProducts";
 import type { BundleUserProducts } from "@/modules/publication/domain/composicaoConteudo";
@@ -121,7 +122,36 @@ export async function POST(request: Request) {
     }
 
     // 2) Renova o token (e captura o refresh_token rotacionado).
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    //
+    // Este passo tem `catch` PRÓPRIO de propósito. Uma credencial que o ML
+    // recusa não é "falha ao publicar": não há o que tentar de novo, e o único
+    // caminho é reconectar a conta. Caindo no catch genérico lá embaixo, ela
+    // virava um 502 com a mensagem crua do ML — em inglês, e sem rota de saída
+    // na tela, porque o aviso de "conectar" está atrás de `ativo === false` e
+    // aqui `ativo` é true: existe conexão, o que não vale é a credencial.
+    //
+    // Só 4xx entra aqui. 5xx e falha de rede seguem para o catch genérico: o
+    // ML fora do ar não diz nada sobre a validade do token, e mandar o lojista
+    // reconectar seria afirmar o que não se sabe.
+    //
+    // NÃO marcamos o canal como inativo. `ativo` é a intenção do lojista, e uma
+    // indisponibilidade do ML derrubaria a conexão de quem está bem — a
+    // validade da credencial continua sendo apurada no uso.
+    let tokens: Awaited<ReturnType<typeof renovarToken>>;
+    try {
+      tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    } catch (e) {
+      if (!(e instanceof RenovacaoRecusadaError) || !e.credencialRecusada) throw e;
+      log("warn", "bloqueio", { status: "bloqueado", motivo: "reconectar", http: e.status });
+      return Response.json(
+        {
+          erro: `O ${marketplace} recusou a credencial salva desta conta. Reconecte a conta para publicar.`,
+          motivo: "reconectar",
+          detalhe: e.message,
+        },
+        { status: 409 }
+      );
+    }
     // Persiste o refresh_token rotacionado imediatamente (mesmo se publicar falhar depois).
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
 
