@@ -409,6 +409,9 @@ export interface AnuncioGeradoRow {
   observacoes: string | null;
   ml_item_id?: string | null;
   ml_permalink?: string | null;
+  /** Migração 050 — o estado no marketplace, eixo independente de `status`. */
+  status_marketplace?: string | null;
+  status_marketplace_em?: string | null;
   created_at?: string;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;

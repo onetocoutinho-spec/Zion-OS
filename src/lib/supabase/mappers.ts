@@ -929,6 +929,9 @@ export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegist
     observacoes: row.observacoes ?? "",
     mlItemId: row.ml_item_id ?? null,
     mlPermalink: row.ml_permalink ?? null,
+    // `?? null` e não `?? "active"`: ausência continua significando ausência.
+    statusMarketplace: row.status_marketplace ?? null,
+    statusMarketplaceEm: row.status_marketplace_em ?? null,
   };
 }
 
@@ -952,6 +955,8 @@ export function anuncioGeradoParaBanco(
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
   if (d.mlItemId !== undefined) r.ml_item_id = d.mlItemId;
   if (d.mlPermalink !== undefined) r.ml_permalink = d.mlPermalink;
+  if (d.statusMarketplace !== undefined) r.status_marketplace = d.statusMarketplace;
+  if (d.statusMarketplaceEm !== undefined) r.status_marketplace_em = d.statusMarketplaceEm;
   // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }
