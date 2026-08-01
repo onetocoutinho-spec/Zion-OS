@@ -68,6 +68,15 @@ export interface ResultadoPublicacao {
   id?: string;
   permalink?: string;
   payload: Record<string, unknown>;
+  /**
+   * O que o cadastro tem de estranho e foi publicado assim mesmo.
+   *
+   * Hoje só uma coisa: o mesmo tamanho escrito de duas formas (`33 - 34` e
+   * `33 BR` no mesmo produto), que vira duas opções para a compradora. Não é
+   * deduplicado porque escolher a grafia certa é da lojista — mas morrer no
+   * domínio sem ninguém ver seria o mesmo que não detectar.
+   */
+  avisos?: string[];
 }
 
 // ── Learning Loop · PR-006 ───────────────────────────────────────────────────
@@ -202,7 +211,15 @@ async function executarPublicacao(
     }
   }
   const payload = montarPreviewML(registro, { ...opcoes, pictures });
-  if (!go) return { dry: true, payload };
+  if (!go) {
+    // A simulação também precisa avisar: é justamente onde dá para corrigir
+    // antes de ir ao ar.
+    const previa = montarBundleUserProducts(registro.anuncio, {
+      pictures,
+      tipoAnuncio: opcoes.tipoAnuncio,
+    });
+    return { dry: true, payload, ...(previa.ok && previa.avisos ? { avisos: previa.avisos } : {}) };
+  }
 
   // Ingredientes do fluxo User Products (calçado). Vão SEMPRE que dá para
   // montá-los; o servidor só os usa se a categoria prevista exigir esse modelo.
@@ -212,6 +229,7 @@ async function executarPublicacao(
     tipoAnuncio: opcoes.tipoAnuncio,
   });
   const userProducts = bundleUP.ok ? bundleUP.bundle : undefined;
+  const avisosDoBundle = bundleUP.ok ? bundleUP.avisos : undefined;
 
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
   if (!canal?.ativo) {
@@ -287,5 +305,11 @@ async function executarPublicacao(
   );
   if (captura) capturarDecisao({ ...captura, autor: await autorAtual() });
 
-  return { dry: false, id: dados.id, permalink: dados.permalink, payload };
+  return {
+    dry: false,
+    id: dados.id,
+    permalink: dados.permalink,
+    payload,
+    ...(avisosDoBundle ? { avisos: avisosDoBundle } : {}),
+  };
 }

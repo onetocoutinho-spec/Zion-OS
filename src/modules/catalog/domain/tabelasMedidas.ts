@@ -211,6 +211,63 @@ export function medidasDaMarca(marca: string): Record<string, number> {
   return TABELAS_MARCA[key] ?? PADRAO_REFERENCIA;
 }
 
+/**
+ * A medida (cm) de um tamanho na tabela da marca — aceitando o número DENTRO
+ * do par.
+ *
+ * ===========================================================================
+ * O CASO QUE ORIGINOU (DES-004)
+ * ===========================================================================
+ *
+ * Um anúncio Zaxy aprovado não publicava. A tabela da Zaxy é do grupo Grendene
+ * e numera em PARES — `33/34`, `35/36`, `37/38`. O cadastro da lojista diz
+ * `37`. `tabela["37"]` é `undefined`, a variação era pulada, `variacoes` ficava
+ * vazio e a rota respondia 422.
+ *
+ * E ELA ESTAVA CERTA EM RECUSAR o que fazia antes. O que faltava não era
+ * afrouxar: era ler o par.
+ *
+ * ===========================================================================
+ * A ASSIMETRIA É O CORAÇÃO DISTO
+ * ===========================================================================
+ *
+ * Número dentro de par → LÊ. `37/38` CONTÉM o 37, e a medida do par é a medida
+ * daquele sapato. Isso é leitura, não palpite.
+ *
+ * Par contra tabela individual → RECUSA. Se o cadastro diz `35/36` e a tabela
+ * tem `35 = 23,0` e `36 = 23,7`, escolher qualquer um inventa 0,7 cm no que a
+ * compradora usa para decidir o pé.
+ *
+ * E NADA de aproximação: sem vizinho mais próximo, sem interpolação. Se a
+ * tabela da Modare começa no 34, o 33 continua sem medida — porque a marca não
+ * publica um 33. Aproximar seria pôr na guia um número que ninguém mediu.
+ */
+export function medidaDoTamanho(
+  tabela: Record<string, number>,
+  token: string
+): number | undefined {
+  const t = (token ?? "").trim();
+  if (!t) return undefined;
+
+  // 1) chave exata sempre vence — inclusive quando o cadastro já traz o par.
+  const exato = tabela[t];
+  if (exato !== undefined) return exato;
+
+  // 2) o token é um inteiro? só então vale procurar dentro dos pares.
+  if (!/^\d+$/.test(t)) return undefined;
+
+  // 3) varre os pares `A/B` da tabela. Se o token for A ou B, a medida do par
+  //    é a dele. Um par que aparecer duas vezes contendo o mesmo número seria
+  //    tabela inconsistente — o primeiro em ordem de chave vence, e a ordem é
+  //    estável porque as chaves são ordenadas antes de varrer.
+  for (const chave of Object.keys(tabela).sort()) {
+    const partes = chave.split("/");
+    if (partes.length !== 2) continue;
+    if (partes[0].trim() === t || partes[1].trim() === t) return tabela[chave];
+  }
+  return undefined;
+}
+
 /** Parece grade de calçado? (evita montar tabela para não-calçado.) */
 function ehCalcado(tamanhos: string[]): boolean {
   return tamanhos.some((t) => {
