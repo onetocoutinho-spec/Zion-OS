@@ -1,7 +1,7 @@
 # DES-002 — Enriquecer a ficha a partir do Mercado Livre
 
 ```
-Estado:  DESENHO — nada implementado
+Estado:  IMPLEMENTADO em 2026-08-01 (D1-D5). D6 segue pendente.
 Data:    2026-08-01
 Medido:  500 anúncios · 500 com ficha própria · média de 17,7 atributos
 Guardado hoje: 2
@@ -50,12 +50,20 @@ se ter publicado.
 |---|---|
 | `produto_id` | CASCADE só com o produto |
 | `nome_atributo` · `valor_atributo` | o par, como o ML devolveu |
-| `tipo_atributo` | o `id` estável do ML (`OUTSOLE_MATERIAL`) |
-| `origem` | **`"Mercado Livre"`** — procedência real |
+| `tipo_atributo` | **`"texto"`** — ver a correção abaixo |
+| `origem` | **`"Marketplace"`** — o valor que o enum `OrigemAtributo` já tem |
 | `obrigatorio` | **sempre `false`** — ver D3 |
 
 Ela é por PRODUTO, e os atributos vêm por ANÚNCIO (vários MLBs por produto no
 modelo User Products). Isso gera a primeira decisão.
+
+> **Corrigido na implementação (01/08).** O desenho dizia que `tipo_atributo`
+> guardaria o id estável do ML e que `origem` seria `"Mercado Livre"`. Nenhum dos
+> dois cabia: `TipoAtributo` é `"texto" | "numero" | "lista" | "booleano"` e
+> `OrigemAtributo` já tem `"Marketplace"`. O id estável **se perde**, e isso é
+> aceitável por causa do D2 — cada enriquecimento reescreve o conjunto inteiro do
+> produto em vez de casar linha a linha, então um rótulo que muda no ML não gera
+> linha órfã.
 
 ## As decisões
 
@@ -75,7 +83,7 @@ forma. Não invento mecânica nova.
 Rodar duas vezes não pode duplicar. Sem índice único (que seria DDL), a chave é
 o escopo:
 
-> por produto, apaga as linhas com `origem = 'Mercado Livre'` e insere de novo.
+> por produto, apaga as linhas com `origem = 'Marketplace'` e insere de novo.
 
 Entradas manuais (`origem = 'Manual'`) sobrevivem — o apagão é do que nós mesmos
 escrevemos. **Nenhuma migração, nenhuma DDL.**
@@ -121,7 +129,7 @@ contra o provedor real e comparar, que é mais caro e tem outro portão.
 
 | | antes | esperado |
 |---|---|---|
-| linhas em `produto_atributos` | 0 | > 0, com `origem = 'Mercado Livre'` |
+| linhas em `produto_atributos` | 0 | > 0, com `origem = 'Marketplace'` |
 | produtos com material/palmilha/solado | 0 | a maioria |
 | conflitos | — | listados, não escolhidos |
 | custo · peso · fotos · vínculo com anúncios | intactos | **idênticos** |
