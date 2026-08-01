@@ -352,19 +352,27 @@ export default function ClienteProdutos() {
     try {
       const r = await importarAnunciosDoCliente(clienteId, nome, modo);
       // MEDIR não grava e não recarrega a lista: não há o que recarregar.
+      // A COBERTURA vai em todos os três ramos, e é dita mesmo quando dá certo.
+      // "Li os 561 da conta" é uma afirmação conferível; o silêncio anterior
+      // afirmava a mesma coisa sem nunca ter verificado.
+      const lt = r.leitura;
+      const cobertura = lt && lt.total >= 0 && lt.ids >= lt.total ? `Li os ${lt.total} anúncios da conta. ` : "";
+      const juntar = (texto: string) => ({
+        tipo: (r.aviso ? "erro" : "ok") as "erro" | "ok",
+        texto: `${cobertura}${texto}${r.aviso ? ` ${r.aviso}` : ""}`,
+      });
+
       if (r.medicao) {
         const m = r.medicao;
         const topo = m.porAtributo
           .slice(0, 6)
           .map((a) => `${a.nome} (${a.anuncios})`)
           .join(" · ");
-        setMsgML({
-          tipo: "ok",
-          texto:
+        setMsgML(juntar(
             `${m.anuncios} anúncios lidos, NADA foi gravado. ` +
             `${m.comFichaPropria} têm ficha própria · média de ${m.mediaDaFicha} atributos.` +
-            (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido."),
-        });
+            (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido.")
+        ));
         return;
       }
       // ENRIQUECER também não recarrega a lista de produtos: nada mudou nela.
@@ -376,9 +384,7 @@ export default function ClienteProdutos() {
           .slice(0, 4)
           .map((c) => c.nomeAtributo)
           .join(", ");
-        setMsgML({
-          tipo: "ok",
-          texto:
+        setMsgML(juntar(
             `${e.atributos} informações trazidas para ${e.produtos} produtos. ` +
             `Nada foi apagado — custo, peso e fotos seguem como estavam.` +
             (e.conflitos.length > 0
@@ -388,8 +394,8 @@ export default function ClienteProdutos() {
               : "") +
             (e.anunciosSemProduto > 0
               ? ` ${e.anunciosSemProduto} anúncios não têm produto vinculado aqui.`
-              : ""),
-        });
+              : "")
+        ));
         return;
       }
       // `casados` conta os produtos que já existiam e receberam os anúncios.
@@ -397,10 +403,13 @@ export default function ClienteProdutos() {
       // no ramo de erro e diria "nenhum anúncio encontrado" tendo gravado tudo.
       const casadosML = r.casados ?? 0;
       if (r.produtos === 0 && casadosML === 0) {
-        setMsgML({ tipo: r.pulados > 0 ? "ok" : "erro", texto: r.aviso ?? "Nenhum anúncio encontrado na conta." });
+        setMsgML({
+          tipo: r.aviso || r.pulados === 0 ? "erro" : "ok",
+          texto: `${cobertura}${r.aviso ?? "Nenhum anúncio encontrado na conta."}`,
+        });
       } else {
         const base = `${r.produtos} produtos${casadosML > 0 ? ` · ${casadosML} já cadastrados receberam os anúncios (sem foto nova)` : ""} · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
-        setMsgML({ tipo: r.aviso ? "erro" : "ok", texto: r.aviso ? `${base} ${r.aviso}` : base });
+        setMsgML(juntar(base));
         reload();
       }
     } catch (e) {

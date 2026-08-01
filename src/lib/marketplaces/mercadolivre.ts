@@ -734,28 +734,87 @@ function mapearItem(it: ItemRaw): AnuncioML {
   };
 }
 
-/** Lista os MLBs do vendedor e busca cada um (multiget de 20 em 20). */
+/**
+ * A parede que interrompeu a leitura, quando ela não leu tudo.
+ *
+ * `offset-1000` é do ML, não nossa: o `/items/search` clássico recusa
+ * `offset >= 1000`. Acima disso o ML exige `search_type=scan` com `scroll_id`,
+ * que NÃO está implementado aqui — implementar às cegas significaria estrear em
+ * produção, na conta de um cliente. Enquanto não estiver, a parede é dita.
+ */
+export type ParedeDaLeitura = "nenhuma" | "offset-1000" | "teto" | "paginacao-parou";
+
+/** O limite do `/items/search` clássico do ML. */
+const OFFSET_MAXIMO_ML = 1000;
+
+export interface LeituraDoVendedor {
+  anuncios: AnuncioML[];
+  /** Quantos o ML DIZ que a conta tem (`paging.total`). -1 = não informou. */
+  total: number;
+  /** Quantos ids conseguimos listar. */
+  ids: number;
+  /** Ids listados que o multiget não devolveu (lote com falha, ou code != 200). */
+  perdidos: number;
+  parede: ParedeDaLeitura;
+}
+
+/**
+ * Lista os MLBs do vendedor e busca cada um (multiget de 20 em 20).
+ *
+ * ===========================================================================
+ * POR QUE ISTO DEVOLVE UM OBJETO, E NÃO UM ARRAY
+ * ===========================================================================
+ *
+ * Até 2026-08-01 esta função tinha `const teto = opcoes.max ?? 500`, o único
+ * chamador não passava `opcoes`, e o laço parava nos 500 — CALADO. Observado em
+ * produção no mesmo dia: a importação trouxe 489 já conhecidos + 11 novos = 500
+ * exatos, e a tela disse "489 já existiam", que se lê como "está tudo em dia".
+ * O ERP da lojista listava 561.
+ *
+ * O `paging.total` estava na resposta o tempo todo. O laço lia esse campo só
+ * para parar mais cedo, e jogava fora.
+ *
+ * Então o array não serve mais como retorno: quem chama precisa poder comparar
+ * o que o ML DIZ ter com o que nós LEMOS. Um array não carrega essa diferença,
+ * e foi por isso que ela ficou invisível por meses.
+ */
 export async function buscarAnunciosDoVendedor(
   accessToken: string,
   sellerId: string,
   opcoes: { max?: number } = {}
-): Promise<AnuncioML[]> {
-  const teto = opcoes.max ?? 500;
+): Promise<LeituraDoVendedor> {
+  const teto = opcoes.max ?? Infinity;
   const headers = { Authorization: `Bearer ${accessToken}` };
 
-  // 1) Coleta os ids (paginado).
+  // 1) Coleta os ids (paginado), até o fim — ou até uma parede, que é NOMEADA.
   const ids: string[] = [];
+  let total = -1;
   let offset = 0;
-  while (ids.length < teto) {
+  let parede: ParedeDaLeitura = "nenhuma";
+  for (;;) {
+    if (ids.length >= teto) {
+      parede = "teto";
+      break;
+    }
+    if (offset >= OFFSET_MAXIMO_ML) {
+      parede = "offset-1000";
+      break;
+    }
     const url = `${API}/users/${sellerId}/items/search?limit=50&offset=${offset}`;
     const r = await fetch(url, { headers });
     if (!r.ok) throw new Error(`Falha ao listar anúncios do ML: ${await extrairErro(r)}`);
     const d = (await r.json()) as { results?: string[]; paging?: { total?: number } };
+    if (total < 0 && typeof d.paging?.total === "number") total = d.paging.total;
     const results = d.results ?? [];
-    if (results.length === 0) break;
+    // Página vazia ANTES de chegar ao total é uma parede também — o ML parou de
+    // devolver sem dizer por quê. Antes isso era um `break` mudo.
+    if (results.length === 0) {
+      if (total >= 0 && ids.length < total) parede = "paginacao-parou";
+      break;
+    }
     ids.push(...results);
     offset += 50;
-    if (offset >= (d.paging?.total ?? 0)) break;
+    if (total >= 0 && ids.length >= total) break;
   }
 
   // 2) Multiget (20 por vez) com os campos que interessam.
@@ -765,6 +824,8 @@ export async function buscarAnunciosDoVendedor(
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+    // Um lote que falha derrubava até 20 anúncios sem uma linha de aviso. Ele
+    // continua não derrubando a importação inteira — mas agora é CONTADO.
     if (!r.ok) continue;
     const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
     for (const x of arr) {
@@ -772,7 +833,7 @@ export async function buscarAnunciosDoVendedor(
     }
   }
 
-  return anuncios;
+  return { anuncios, total, ids: ids.length, perdidos: ids.length - anuncios.length, parede };
 }
 
 // ---- Guia de tamanhos (SIZE_GRID) — modelo User Products ----
