@@ -17,6 +17,22 @@ export function listingTypeId(tipoAnuncio: string): string {
 }
 
 /** fichaTecnica.atributo (pt) → id de atributo do ML (calçados). */
+/**
+ * O id do ML para um atributo escrito por nome — `"Gênero"` → `"GENDER"`.
+ *
+ * Exportada no DES-002 D6. `produto_atributos` guarda o NOME que o ML devolveu,
+ * não o id (a coluna `tipo_atributo` não comportava o id — ver a correção no
+ * DES-002), então resolver os obrigatórios contra o que veio do marketplace
+ * exige o caminho de volta.
+ *
+ * Reusa o mesmo mapa que monta o payload, e não uma cópia: duas tabelas de
+ * tradução divergiriam, e aí o briefing diria "gênero resolvido" enquanto o
+ * payload mandaria o atributo sem id.
+ */
+export function idDoAtributoML(nome: string): string | null {
+  return MAPA_ATRIBUTOS_ML[normalizar(nome)] ?? null;
+}
+
 const MAPA_ATRIBUTOS_ML: Record<string, string> = {
   marca: "BRAND",
   modelo: "MODEL",

@@ -15,7 +15,12 @@ import {
   criarItem,
   criarGuiaTamanhos,
   RenovacaoRecusadaError,
+  atributosObrigatorios,
 } from "@/lib/marketplaces/mercadolivre";
+import {
+  obrigatoriosAusentes,
+  explicarAusentes,
+} from "@/modules/integration/domain/exigenciasDoPayload";
 import { montarItensUserProducts } from "@/modules/integration/domain/mlUserProducts";
 import type { BundleUserProducts } from "@/modules/publication/domain/composicaoConteudo";
 import {
@@ -329,6 +334,35 @@ export async function POST(request: Request) {
       log("warn", "bloqueio", { status: "bloqueado", motivo: "sem_categoria" });
       return Response.json(
         { erro: "Não foi possível determinar a categoria do ML. Informe uma categoria manualmente." },
+        { status: 422 }
+      );
+    }
+
+    // 4.5) O que a CATEGORIA exige, conferido antes de mandar — DES-001 D4.
+    //
+    // Sem isto, o payload vai, o ML recusa, e a lojista lê a prosa dele em
+    // inglês. Mesma forma do INC-009: dizer antes o que impede.
+    //
+    // A lista vem da API do ML, por categoria — nunca de nós. Uma exigência
+    // inventada aqui travaria a publicação para sempre, que é exatamente o que
+    // o DES-001 arrancou do A10.
+    //
+    // SÓ NO CAMINHO CLÁSSICO. Os itens do modelo User Products são montados por
+    // `montarItensUserProducts`, com outra forma, e eu não conferi como os
+    // obrigatórios aparecem lá. Aplicar uma checagem que não verifiquei seria
+    // repetir o defeito num lugar novo.
+    const ausentes = obrigatoriosAusentes(
+      payload,
+      await atributosObrigatorios(String(payload.category_id))
+    );
+    if (ausentes.length > 0) {
+      log("warn", "bloqueio", {
+        status: "bloqueado",
+        motivo: "atributos_obrigatorios",
+        faltando: ausentes.map((a) => a.id),
+      });
+      return Response.json(
+        { erro: explicarAusentes(ausentes), faltando: ausentes.map((a) => a.id) },
         { status: 422 }
       );
     }

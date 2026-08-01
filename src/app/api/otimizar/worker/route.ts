@@ -18,6 +18,11 @@ import {
   briefingDaGrade,
   montarVariacoes,
 } from "@/modules/publication/domain/variacoesDoAnuncio";
+import {
+  atributosPorId,
+  briefingDosAtributos,
+  resolverObrigatorios,
+} from "@/modules/publication/domain/atributosDoMarketplace";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
 import {
@@ -104,13 +109,40 @@ function montarMensagem(contexto: string): string {
 async function gerarAnuncio(
   produto: Produto,
   variantes: ProdutoVariante[],
-  tabelasMedidas: TabelaMedida[]
+  tabelasMedidas: TabelaMedida[],
+  atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[]
 ): Promise<AnuncioGerado> {
   // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
   // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
   const grade = montarVariacoes(variantes, produto.precoVenda);
+
+  // Os 6 obrigatórios do ML, resolvidos — DES-002 D6.
+  //
+  // O worker NÃO recebia este briefing; só `/cliente/anunciar` recebia. Era
+  // justamente o caminho silencioso rodando com menos contexto que o da tela.
+  //
+  // E agora eles são resolvidos também contra `produto_atributos`, o que a
+  // lojista informou ao ML. Antes gênero e tipo de calçado só podiam ser
+  // adivinhados do NOME do produto; agora há valor medido, e medido vence
+  // adivinhado.
+  const briefingAtributos = briefingDosAtributos(
+    resolverObrigatorios(
+      {
+        nome: produto.nome,
+        marca: produto.marca,
+        modelo: produto.modelo,
+        cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
+        tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
+      },
+      atributosPorId(atributosDoProduto)
+    )
+  );
+
   const mensagem = montarMensagem(
-    [montarContexto({ produto, variantes, tabelasMedidas }), briefingDaGrade(grade)].join("\n\n")
+    [
+      montarContexto({ produto, variantes, tabelasMedidas, atributosObrigatorios: briefingAtributos }),
+      briefingDaGrade(grade),
+    ].join("\n\n")
   );
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
@@ -163,7 +195,19 @@ async function processarUm(
       .eq("produto_id", fila.produto_id);
     const variantes = ((varRows ?? []) as ProdutoVarianteRow[]).map(varianteParaApp);
     const tabelas = await tabelasDoCliente(admin, fila.cliente_id, cacheTabelas);
-    const anuncio = await gerarAnuncio(produto, variantes, tabelas);
+
+    // A ficha que veio do marketplace (DES-002). Sem `error` checado de
+    // propósito: um atributo que não chega deixa o briefing como era antes —
+    // pior contexto, nunca contexto errado. Falhar a esteira inteira por causa
+    // de um enriquecimento ausente seria trocar um bom anúncio por nenhum.
+    const { data: atrRows } = await admin
+      .from("produto_atributos")
+      .select("nome_atributo, valor_atributo")
+      .eq("produto_id", fila.produto_id);
+    const atributosDoProduto = ((atrRows ?? []) as { nome_atributo: string; valor_atributo: string | null }[])
+      .map((r) => ({ nomeAtributo: r.nome_atributo, valorAtributo: r.valor_atributo ?? "" }));
+
+    const anuncio = await gerarAnuncio(produto, variantes, tabelas, atributosDoProduto);
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({
