@@ -11,6 +11,10 @@ import {
   Sparkles,
   Download,
   Rocket,
+  PauseCircle,
+  PlayCircle,
+  CheckCircle2,
+  AlertTriangle,
   ExternalLink,
 } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
@@ -31,6 +35,7 @@ import {
   ROTULO_STATUS_ANUNCIO_GERADO,
   rotuloStatusMarketplace,
 } from "@/lib/services/anunciosGerados";
+import { definirEstadoNoML, explicarEstado } from "@/lib/services/estadoDoAnuncioML";
 import { listarProdutos } from "@/lib/services/produtos";
 import { baixarVinculacaoCsv } from "@/lib/services/exportacaoErp";
 import { toneScore } from "@/lib/client-portal/metrics";
@@ -57,6 +62,7 @@ export default function ClienteAnuncios() {
   const [fStatus, setFStatus] = useState("Todos");
   const [aberto, setAberto] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [msgEstado, setMsgEstado] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   // Publicar é do lojista: ele aprova e ele coloca no ar. Não passa pela equipe.
   const [publicar, setPublicar] = useState<AnuncioGeradoRegistro | null>(null);
   const [publicado, setPublicado] = useState<ResultadoPublicado | null>(null);
@@ -83,6 +89,25 @@ export default function ClienteAnuncios() {
       .filter((a) => fStatus === "Todos" || a.status === MAPA_FILTRO[fStatus])
       .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
   }, [anuncios, fStatus]);
+
+  // Pausar tira da vitrine e MANTÉM o histórico; encerrar é definitivo. São
+  // ações de consequências muito diferentes, e por isso a mensagem diz o que
+  // o ML CONFIRMOU, não o que foi pedido — reativar pode voltar
+  // `under_review`, e dizer "no ar" nesse caso seria mentira.
+  async function mudarEstadoNoML(a: AnuncioGeradoRegistro, estado: "paused" | "active") {
+    setBusy(a.id);
+    try {
+      const r = await definirEstadoNoML(a, estado);
+      setMsgEstado({ tipo: r.divergiu ? "erro" : "ok", texto: explicarEstado(estado, r.status) });
+    } catch (e) {
+      setMsgEstado({
+        tipo: "erro",
+        texto: e instanceof Error ? e.message : "Falha ao mudar o estado do anúncio.",
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function aprovar(id: string) {
     setBusy(id);
@@ -139,6 +164,19 @@ export default function ClienteAnuncios() {
       />
 
       {publicado && <AvisoPublicado resultado={publicado} />}
+
+      {msgEstado && (
+        <p
+          className={`flex items-center gap-2 rounded-lg border p-3 text-sm ${
+            msgEstado.tipo === "ok"
+              ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400"
+              : "border-amber-500/20 bg-amber-500/5 text-amber-400"
+          }`}
+        >
+          {msgEstado.tipo === "ok" ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}{" "}
+          {msgEstado.texto}
+        </p>
+      )}
 
       {total === 0 ? (
         <VazioAmigavel
@@ -238,6 +276,28 @@ export default function ClienteAnuncios() {
                               </span>
                             );
                           })()}
+                          {a.mlItemId && a.statusMarketplace === "active" && (
+                            <Button
+                              variant="ghost"
+                              className="px-2 py-1 text-xs"
+                              disabled={busy === a.id}
+                              onClick={() => mudarEstadoNoML(a, "paused")}
+                              title="Tira da vitrine sem encerrar: o anúncio mantém o id e o histórico, e você reativa quando quiser"
+                            >
+                              <PauseCircle size={12} /> Pausar
+                            </Button>
+                          )}
+                          {a.mlItemId && a.statusMarketplace === "paused" && (
+                            <Button
+                              variant="ghost"
+                              className="px-2 py-1 text-xs"
+                              disabled={busy === a.id}
+                              onClick={() => mudarEstadoNoML(a, "active")}
+                              title="Devolve o anúncio à vitrine. O Mercado Livre pode revisar antes de recolocar."
+                            >
+                              <PlayCircle size={12} /> Reativar
+                            </Button>
+                          )}
                           {a.status === "publicado" && a.mlPermalink && (
                             <a
                               href={a.mlPermalink}
