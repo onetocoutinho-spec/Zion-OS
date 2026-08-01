@@ -336,6 +336,43 @@ export async function executarPrecoAtomico(
   return { motivo: linha.motivo as DesfechoDoPrecoAtomico, afetados: Number(linha.afetados ?? 0) };
 }
 
+/**
+ * O desfecho da execução atômica de TÍTULO — migração 048.
+ *
+ * `sem_texto` é próprio deste tipo: uma proposta de título sem título não é
+ * executável, e o caminho antigo lançava. Aqui vira desfecho, e a proposta
+ * continua `pendente` em vez de queimar.
+ */
+export type DesfechoDoTituloAtomico = DesfechoDoCustoAtomico | "sem_texto";
+
+/**
+ * Executa uma Proposal de TÍTULO em UMA transação.
+ *
+ * Dois parâmetros, como as 045 e 046: o título proposto está na Proposal, em
+ * `texto`, e o alvo em `alvos[0]` — que aqui é o ID DO ANÚNCIO, não do produto.
+ *
+ * O merge do jsonb acontece no banco (`jsonb_set` numa chave de topo), que é a
+ * mesma substituição que `{ ...atual, tituloOtimizado: titulo }` fazia. Não é
+ * porte de regra de negócio: é a mesma operação estrutural, escrita onde o dado
+ * mora.
+ */
+export async function executarTituloAtomico(
+  propostaId: string,
+  clienteId: string
+): Promise<{ motivo: DesfechoDoTituloAtomico; afetados: number }> {
+  const { data, error } = await getSupabaseAdmin().rpc("copilot_executar_titulo", {
+    p_proposta: propostaId,
+    p_cliente: clienteId,
+  });
+  if (error) throw new Error(`Não consegui executar a proposta de título: ${error.message}`);
+  const linha = (Array.isArray(data) ? data[0] : data) as
+    | { motivo: string; afetados: number }
+    | null
+    | undefined;
+  if (!linha) throw new Error("A execução de título não devolveu desfecho.");
+  return { motivo: linha.motivo as DesfechoDoTituloAtomico, afetados: Number(linha.afetados ?? 0) };
+}
+
 /** Marca o desfecho quando a execução reservada não deu certo. */
 export async function marcarProposta(
   id: string,

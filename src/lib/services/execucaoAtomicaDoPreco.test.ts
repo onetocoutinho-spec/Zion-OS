@@ -122,7 +122,8 @@ const ROTA = readFileSync(
 );
 
 test("PREÇO entrou no caminho atômico", () => {
-  assert.match(ROTA, /const atomico = p\.tipo === "peso" \|\| p\.tipo === "custo" \|\| p\.tipo === "preco"/);
+  // Sobre a presença de PREÇO no gate, não sobre a forma literal.
+  assert.match(ROTA, /const atomico =[\s\S]{0,200}p\.tipo === "preco"/);
   assert.match(ROTA, /executarPrecoNaTransacao\(p, clienteDaSessao\)/);
 });
 
@@ -152,8 +153,9 @@ test("zero linhas NÃO queima a proposta — vale para os três tipos atômicos"
   assert.match(ROTA, /if \(!atomico\) await marcarProposta\(p\.id, "falhou"/);
 });
 
-test("título e cadastro continuam fora", () => {
-  for (const tipo of ["titulo", "cadastro"]) {
+test("cadastro continua fora", () => {
+  // TÍTULO saiu desta lista na 048.
+  for (const tipo of ["cadastro"]) {
     assert.ok(
       !new RegExp(`p\\.tipo === "${tipo}"[\\s\\S]{0,80}executar\\w+Atomico`).test(ROTA),
       `${tipo} encostou numa primitiva atômica`
