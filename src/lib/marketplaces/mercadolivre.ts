@@ -442,8 +442,33 @@ export interface VariacaoAnuncioML {
   estoque: number;
 }
 
+/**
+ * Um atributo do item, como o Mercado Livre o devolveu.
+ *
+ * `nome` é o rótulo em português que o ML já traduz ("Material da sola"); `id` é
+ * a chave estável ("OUTSOLE_MATERIAL"). Guardamos os dois: o nome é o que o
+ * lojista lê, o id é o que sobrevive a mudanças de rótulo.
+ */
+export interface AtributoML {
+  id: string;
+  nome: string;
+  valor: string;
+}
+
 export interface AnuncioML {
   mlb: string;
+  /**
+   * TODOS os atributos preenchidos do item, sem escolha nossa.
+   *
+   * Existe porque até 2026-08-01 o mapeamento extraía só os ids que conhecia e
+   * o resto era descartado em silêncio — material da sola, palmilha, tipo de
+   * salto, gênero, tipo de calçado chegavam do ML e morriam aqui. Medido: 500
+   * dos 501 anúncios importados ficaram com dois atributos.
+   *
+   * A lista é FIEL: quem quiser filtrar filtra na hora de exibir, não aqui.
+   * Descartar na origem foi exatamente o defeito.
+   */
+  atributos: AtributoML[];
   titulo: string;
   categoria: string; // category_id
   preco: number;
@@ -493,7 +518,9 @@ interface ItemRaw {
   seller_custom_field?: string;
   family_name?: string | null;
   user_product_id?: string | null;
-  attributes?: { id?: string; value_name?: string | null }[];
+  // `name` é o rótulo já traduzido pelo ML ("Material da sola"). Ele sempre
+  // veio na resposta; só nunca foi declarado aqui, porque nada o lia.
+  attributes?: { id?: string; name?: string; value_name?: string | null }[];
   shipping?: { dimensions?: string | null; free_shipping?: boolean; logistic_type?: string };
   pictures?: { url?: string; secure_url?: string }[];
   variations?: {
@@ -592,8 +619,20 @@ function mapearItem(it: ItemRaw): AnuncioML {
     preco: Number(v.price ?? it.price ?? 0),
     estoque: Number(v.available_quantity ?? 0),
   }));
+  // Sem escolher: tudo o que veio preenchido. Um atributo sem `value_name` é
+  // um campo que o ML conhece e o anúncio não respondeu — guardá-lo vazio faria
+  // a ficha listar dezenas de linhas em branco.
+  const atributos: AtributoML[] = (it.attributes ?? [])
+    .map((a) => ({
+      id: (a.id ?? "").trim(),
+      nome: (a.name ?? "").trim(),
+      valor: (a.value_name ?? "").trim(),
+    }))
+    .filter((a) => a.id && a.valor);
+
   return {
     mlb: it.id ?? "",
+    atributos,
     // O ML devolve `free_shipping` como booleano. Ausente = não informado, e
     // não "falso": undefined faz o cálculo assumir que o vendedor paga.
     ...(typeof it.shipping?.free_shipping === "boolean"
