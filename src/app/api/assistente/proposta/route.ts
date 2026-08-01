@@ -28,6 +28,8 @@ import {
   registrarAcao,
   executarCustoAtomico,
   executarPesoAtomico,
+  executarPrecoAtomico,
+  type DesfechoDoPrecoAtomico,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
 import { avaliacaoDeAlvos, type MedidasAnteriores } from "@/lib/services/avaliacaoDeAlvos";
@@ -54,7 +56,8 @@ import {
 } from "@/modules/assistant/domain/candidatosDoCadastro";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
 import { aplicarTitulo } from "@/lib/services/preparacaoDeAnuncio";
-import { aplicarPreco, estadoParaRevalidar } from "@/lib/services/precificacaoDoCopilot";
+import { estadoParaRevalidar } from "@/lib/services/precificacaoDoCopilot";
+import { margemLiquida } from "@/modules/pricing/domain/modeloPreco";
 import {
   CAMPO_CONFIGURACAO,
   CAMPO_CUSTO,
@@ -392,6 +395,23 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
 }> {
   const admin = getSupabaseAdmin();
 
+  // PREÇO: o preço e a margem anteriores — a MESMA forma que `aplicarPreco`
+  // devolvia, porque `antesDoPreco` e o rastro de procedência a leem.
+  if (p.tipo === "preco") {
+    const { data } = await admin
+      .from("produtos")
+      .select("preco_venda, margem")
+      .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
+      .maybeSingle();
+    const atual = data as { preco_venda?: number | null; margem?: number | null } | null;
+    return {
+      antes: atual
+        ? { preco: Number(atual.preco_venda ?? 0), margem: atual.margem ?? null }
+        : null,
+    };
+  }
+
   // CUSTO: o valor anterior do produto. Uma leitura, e é tudo o que a auditoria
   // precisa — custo não tem grade nem retrato de embalagem.
   if (p.tipo === "custo") {
@@ -422,6 +442,28 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
     .select("id, peso")
     .eq("produto_id", p.alvos[0]);
   return { antes: data ?? null };
+}
+
+/**
+ * O PREÇO na transação da 047.
+ *
+ * A margem é calculada AQUI, imediatamente antes da chamada, com as taxas e o
+ * custo RELIDOS agora — exatamente como o caminho antigo fazia dentro de
+ * `aplicarPreco`. Ela viaja como parâmetro porque é valor DERIVADO; `valor` e
+ * `alvos` continuam saindo da Proposal, sob lock, dentro da função.
+ *
+ * Produto sumido ou de outro tenant: `nada_gravado` SEM chamar a RPC. O status
+ * não é tocado, então a proposta continua `pendente` e pode ser tentada de novo
+ * com a mesma autorização — a mesma regra das 045 e 046.
+ */
+async function executarPrecoNaTransacao(
+  p: PropostaPersistida,
+  clienteId: string
+): Promise<{ motivo: DesfechoDoPrecoAtomico; afetados: number; margem: number | null }> {
+  const atual = await estadoParaRevalidar(clienteId, p.alvos[0]);
+  if (!atual) return { motivo: "nada_gravado", afetados: 0, margem: null };
+  const margem = margemLiquida(atual.custo, p.valor, atual.taxas);
+  return { ...(await executarPrecoAtomico(p.id, clienteId, margem)), margem };
 }
 
 /** Executa a escrita pelo mesmo caminho que a tela usa. Nunca um segundo. */
@@ -470,11 +512,13 @@ async function gravar(p: PropostaPersistida): Promise<{
   // As taxas são RELIDAS aqui, não vêm da proposta: a margem gravada tem que
   // ser a do mundo de agora, e a revalidação já garantiu que ele não mudou.
   if (p.tipo === "preco") {
-    const atual = await estadoParaRevalidar(p.clienteId, produtoId);
-    if (!atual) return { afetados: 0, antes: null, depois: null };
-    const r = await aplicarPreco(produtoId, p.clienteId, p.valor, atual.taxas, atual.custo);
-    if (!r) return { afetados: 0, antes: null, depois: null };
-    return { afetados: 1, antes: r.antes, depois: r.depois };
+    // CAMINHO ANTIGO REMOVIDO — preço passa pela 047, atomicamente.
+    //
+    // Isto não é defensividade decorativa: os ramos abaixo terminam no write de
+    // PESO individual, então uma proposta de preço que chegasse aqui gravaria
+    // peso num produto. Se a fiação quebrar, é melhor um 502 alto do que uma
+    // mutação silenciosa no campo errado.
+    throw new Error("preço não passa mais por `gravar`: use copilot_executar_preco (047)");
   }
 
   // ---- CADASTRO: o produto nasce aqui, e por um caminho só.
@@ -805,13 +849,15 @@ export async function POST(request: Request) {
   // título não receberam desenho equivalente, e `cadastro` é multi-statement,
   // não idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
   // `validarRascunho` em SQL. T1 continua aberto para os três, e isso está dito.
-  const atomico = p.tipo === "peso" || p.tipo === "custo";
+  const atomico = p.tipo === "peso" || p.tipo === "custo" || p.tipo === "preco";
   const retrato = atomico ? await retratoAntesDaEscrita(p) : null;
   const rpc = !atomico
     ? null
     : p.tipo === "peso"
-      ? await executarPesoAtomico(p.id, clienteDaSessao)
-      : { ...(await executarCustoAtomico(p.id, clienteDaSessao)), elegiveis: undefined };
+      ? { ...(await executarPesoAtomico(p.id, clienteDaSessao)), margem: undefined }
+      : p.tipo === "custo"
+        ? { ...(await executarCustoAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
+        : { ...(await executarPrecoNaTransacao(p, clienteDaSessao)), elegiveis: undefined };
 
   // `nada_gravado` NÃO é corrida perdida: a transação reverteu a transição e a
   // proposta continua `pendente`. Ela segue o fluxo abaixo para ser auditada
@@ -852,7 +898,9 @@ export async function POST(request: Request) {
           depois:
             p.tipo === "peso"
               ? { variacoesAtualizadas: rpc!.afetados, pesoKg: p.valor / 1000 }
-              : { id: p.alvos[0], custo: p.valor },
+              : p.tipo === "custo"
+                ? { id: p.alvos[0], custo: p.valor }
+                : { preco: p.valor, margem: rpc!.margem ?? null },
           medidasAntes: retrato!.medidasAntes,
           // `undefined` em custo: `ressalvaDoPreenchimento` devolve string vazia
           // e a mensagem continua a de antes.

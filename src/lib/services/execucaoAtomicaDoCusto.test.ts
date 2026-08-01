@@ -117,7 +117,9 @@ test("CUSTO entrou no caminho atômico, junto do peso", () => {
 test("custo NÃO manda `elegiveis` adiante", () => {
   // `ressalvaDoPreenchimento` devolve string vazia com `undefined`, e a
   // mensagem continua exatamente a de antes deste ciclo.
-  assert.match(ROTA, /executarCustoAtomico\(p\.id, clienteDaSessao\)\), elegiveis: undefined \}/);
+  // Sem exigir o `}` logo depois: a 047 acrescentou `margem: undefined` à mesma
+  // linha. O que importa é que `elegiveis` sai indefinido do ramo de custo.
+  assert.match(ROTA, /executarCustoAtomico\(p\.id, clienteDaSessao\)\), elegiveis: undefined/);
 });
 
 test("o `depois` de cada tipo mantém a forma que já ia para a auditoria", () => {
