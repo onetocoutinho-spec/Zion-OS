@@ -145,6 +145,24 @@ export async function marcarAnuncioPublicado(
   });
 }
 
+/**
+ * Atualiza o estado NO MARKETPLACE de muitos anúncios de uma vez.
+ *
+ * `atualizarVarios` agrupa por payload idêntico, então 502 linhas em 5 estados
+ * distintos viram 5 requisições, não 502. Isso não é otimização: um laço por
+ * anúncio dispara `notificarMudanca()` a cada escrita, e foi assim que 146
+ * gravações derrubaram o navegador com `TypeError: Failed to fetch`.
+ *
+ * Escreve SÓ as duas colunas do eixo do marketplace. `status` (a esteira do
+ * Zion) não é tocado.
+ */
+export async function atualizarEstadoNoMarketplaceBulk(
+  atualizacoes: { id: string; statusMarketplace: string; statusMarketplaceEm: string }[]
+): Promise<void> {
+  if (atualizacoes.length === 0) return;
+  return repo.atualizarVarios(atualizacoes);
+}
+
 export async function excluirAnuncioGerado(id: string): Promise<void> {
   return repo.excluir(id);
 }

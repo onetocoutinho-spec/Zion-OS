@@ -17,11 +17,13 @@ import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { criarProdutos, excluirProdutosImportadosML, listarProdutosDoCliente } from "./produtos";
 import { criarVariantesBulk, listarTodasVariantes } from "./produtoVariantes";
 import {
+  atualizarEstadoNoMarketplaceBulk,
   criarAnunciosGeradosBulk,
   excluirAnunciosImportadosML,
   listarAnunciosGeradosDoCliente,
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
+import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
 import { substituirAtributosDoMarketplace } from "./produtoAtributos";
 import {
   casarGruposComProdutos,
@@ -145,6 +147,8 @@ export interface ResultadoImportacaoAnuncios {
   casados?: number;
   /** O que a leitura do ML viu — presente sempre que a rota respondeu. */
   leitura?: LeituraRelatada;
+  /** Anúncios JÁ cadastrados cujo estado no marketplace mudou (modo `novos`). */
+  estadosAtualizados?: number;
   aviso?: string;
   /** Só no modo `medir`. */
   medicao?: MedicaoDaFicha;
@@ -543,6 +547,7 @@ export async function importarAnunciosDoCliente(
 
   let anuncios = todos;
   let pulados = 0;
+  let estadosAtualizados = 0;
   if (modo === "substituir") {
     // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
     // variações em cascata) antes de reimportar — evita duplicar e não depende
@@ -552,6 +557,23 @@ export async function importarAnunciosDoCliente(
   } else {
     // NOVOS: mantém o que já existe; só traz os MLBs ainda não importados.
     const existentes = await listarAnunciosGeradosDoCliente(clienteId);
+
+    // O estado dos anúncios que JÁ temos chega nesta mesma resposta, e era
+    // descartado — o mesmo defeito que jogou fora a ficha do lojista, a
+    // associação foto↔cor e o `paging.total`. Não é leitura nova: é parar de
+    // descartar a que já foi feita.
+    //
+    // Grava só onde o valor MUDOU, e só as duas colunas do eixo do marketplace.
+    // `status` (a esteira do Zion) não é tocado. Anúncio que o ML não devolveu
+    // fica intocado: ausência não é encerramento.
+    const desatualizados = estadosDesatualizados(
+      existentes,
+      todos.map((a) => ({ mlb: a.mlb, status: a.status })),
+      new Date().toISOString()
+    );
+    if (desatualizados.length > 0) await atualizarEstadoNoMarketplaceBulk(desatualizados);
+    estadosAtualizados = desatualizados.length;
+
     const jaTem = new Set(existentes.map((e) => e.mlItemId).filter(Boolean));
     anuncios = todos.filter((a) => !jaTem.has(a.mlb));
     pulados = todos.length - anuncios.length;
@@ -560,6 +582,7 @@ export async function importarAnunciosDoCliente(
       // ser dita quando a leitura viu tudo; senão, o que sai é o que faltou.
       return {
         produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, leitura,
+        estadosAtualizados,
         aviso: avisoLeitura ?? "Nenhum anúncio novo — tudo já estava importado.",
       };
     }
@@ -736,6 +759,7 @@ export async function importarAnunciosDoCliente(
     imagens: imagensOk,
     pulados,
     leitura,
+    estadosAtualizados,
     aviso: [avisoLeitura, avisoParcial].filter(Boolean).join(" ") || undefined,
   };
 }
