@@ -379,6 +379,24 @@ operacional visível para ela.
 que se sabe é que voltaram a ser *alcançáveis* — a conversa agora persiste
 entre turnos —, não que funcionem.
 
+> **Atualização de 2026-08-01.** O impedimento acima continua de pé: medido,
+> `copilot_cadastros` tem **zero** linhas e `copilot_mensagens` tem **zero** com
+> `metadata`. Nada mudou.
+>
+> Mas havia uma pergunta diferente, que ninguém tinha feito: se não dá para
+> **observar**, dá para **provar**? Dava. A cadeia da referência estruturada é
+> `paraMetadata → gravarTurno → ultimaApresentacao → conjuntoVigente →
+> resolverEscolha`, e todos os elos já tinham teste **menos as duas leitoras**.
+>
+> `leitorasDaConversa.test.ts` fecha o buraco: filtro de tenant e de conversa,
+> só a fala do assistente, só a última, o `metadata` atravessando, os três
+> estados abertos do rascunho, a versão numérica que sustenta a trava otimista
+> de `salvarDraft`, e erro de banco devolvendo vazio/`null` sem lançar.
+>
+> A cadeia passa a estar **PROVADA POR CONSTRUÇÃO de ponta a ponta** — e segue
+> **NÃO OBSERVADA EM PRODUÇÃO**. A distinção é o ponto, e não a apago escrevendo
+> "validado".
+
 Registro a consequência: **não existe caminho de leitura que exercite a
 referência estruturada.** Validá-la exige ou um produto de teste autorizado, ou
 um cenário de cadastro real conduzido pela própria lojista.
