@@ -425,7 +425,7 @@ export default function ClienteProdutos() {
       if (r.produtos === 0 && casadosML === 0) {
         setMsgML({
           tipo: r.aviso || estadosFalhos > 0 || (r.pulados === 0 && estados === 0) ? "erro" : "ok",
-          texto: `${cobertura}${r.aviso ?? "Nenhum anúncio novo."}${fraseEstados}`,
+          texto: `${cobertura}${r.aviso ?? "Nenhum anúncio novo — tudo já estava importado."}${fraseEstados}`,
         });
         if (estados > 0) reload();
       } else {
