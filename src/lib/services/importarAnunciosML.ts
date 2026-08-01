@@ -60,7 +60,31 @@ const ATRIBUTOS_COM_CASA_PROPRIA = new Set([
  * "substituir" = apaga a importação anterior do ML e traz tudo de novo.
  * "novos" = mantém o que já existe e só adiciona os anúncios (MLBs) inéditos.
  */
-export type ModoImportacao = "substituir" | "novos";
+/**
+ * `medir` NÃO ESCREVE NADA. Existe porque as outras duas não servem para
+ * perguntar "o que o ML tem?":
+ *
+ *   substituir → APAGA os produtos importados antes de reimportar, e o apagão
+ *                é em cascata: variantes (com o CUSTO, que o ML não devolve),
+ *                imagens, e o vínculo produto↔anúncio vira NULL, cegando a
+ *                guarda contra publicação duplicada;
+ *   novos      → importa só MLBs ausentes. Com tudo já importado, não faz nada.
+ *
+ * A busca no ML é a mesma nos três — a rota só LÊ, e toda a escrita acontece
+ * deste lado. Então medir é devolver antes de escrever, e custa uma leitura.
+ */
+export type ModoImportacao = "substituir" | "novos" | "medir";
+
+/** Quantos anúncios informaram cada atributo, sem tocar em nada. */
+export interface MedicaoDaFicha {
+  anuncios: number;
+  /** Anúncios com ao menos um atributo ALÉM dos que já têm casa própria. */
+  comFichaPropria: number;
+  /** Média de atributos de ficha por anúncio, uma casa decimal. */
+  mediaDaFicha: number;
+  /** Cada atributo e em quantos anúncios ele veio preenchido, do mais comum. */
+  porAtributo: { id: string; nome: string; anuncios: number }[];
+}
 
 export interface ResultadoImportacaoAnuncios {
   produtos: number;
@@ -69,6 +93,41 @@ export interface ResultadoImportacaoAnuncios {
   imagens: number;
   pulados: number;
   aviso?: string;
+  /** Só no modo `medir`. */
+  medicao?: MedicaoDaFicha;
+}
+
+/**
+ * A medição, PURA — sem rede, sem banco, sem decisão.
+ *
+ * Conta o que a lojista já informou ao Mercado Livre e que o Zion descartava
+ * até 2026-08-01. Usa o MESMO recorte da ficha (`ATRIBUTOS_COM_CASA_PROPRIA`
+ * fora), senão o número mediria uma coisa e a tela mostraria outra.
+ */
+export function medirFichas(anuncios: readonly AnuncioML[]): MedicaoDaFicha {
+  const contagem = new Map<string, { nome: string; anuncios: number }>();
+  let comFichaPropria = 0;
+  let totalDeLinhas = 0;
+
+  for (const a of anuncios) {
+    const daFicha = a.atributos.filter((at) => !ATRIBUTOS_COM_CASA_PROPRIA.has(at.id));
+    if (daFicha.length > 0) comFichaPropria++;
+    totalDeLinhas += daFicha.length;
+    for (const at of daFicha) {
+      const atual = contagem.get(at.id);
+      if (atual) atual.anuncios++;
+      else contagem.set(at.id, { nome: at.nome || at.id, anuncios: 1 });
+    }
+  }
+
+  return {
+    anuncios: anuncios.length,
+    comFichaPropria,
+    mediaDaFicha: anuncios.length === 0 ? 0 : Math.round((totalDeLinhas / anuncios.length) * 10) / 10,
+    porAtributo: [...contagem.entries()]
+      .map(([id, v]) => ({ id, nome: v.nome, anuncios: v.anuncios }))
+      .sort((x, y) => y.anuncios - x.anuncios || x.id.localeCompare(y.id)),
+  };
 }
 
 /** Um grupo vira 1 produto. */
@@ -313,6 +372,22 @@ export async function importarAnunciosDoCliente(
   const todos = (dados.anuncios ?? []).filter((a) => a.mlb);
   if (todos.length === 0) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
+  }
+
+  // MEDIR sai AQUI, antes de qualquer escrita — e a posição é o ponto.
+  //
+  // Tudo o que apaga vem depois desta linha. Sair antes não é economia de
+  // trabalho: é a garantia de que perguntar "o que o ML tem?" não pode, por
+  // nenhum caminho, apagar o catálogo.
+  if (modo === "medir") {
+    return {
+      produtos: 0,
+      anuncios: 0,
+      variacoes: 0,
+      imagens: 0,
+      pulados: 0,
+      medicao: medirFichas(todos),
+    };
   }
 
   let anuncios = todos;

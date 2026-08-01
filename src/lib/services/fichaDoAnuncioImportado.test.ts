@@ -190,3 +190,107 @@ test("anúncio sem atributo nenhum devolve ficha vazia, não linha inventada", a
   const [a] = await buscarAnunciosDoVendedor("tok", "123");
   assert.deepEqual(anuncioGeradoDoML(a).fichaTecnica, []);
 });
+
+// ---------------------------------------------------------------------------
+// O MODO `medir` — a pergunta que não pode apagar o catálogo
+// ---------------------------------------------------------------------------
+//
+// `substituir` chama `excluirProdutosImportadosML`, que apaga produtos com
+// `observacoes ilike 'Importado do %'` — os 73, o catálogo inteiro. Em cascata
+// vão 684 variantes (com os 157 CUSTOS, que o ML não devolve: o código escreve
+// `custo: 0` e diz "o ML não expõe o custo"), 595 imagens, e o vínculo
+// produto↔anúncio vira NULL em 583 linhas — cegando `buscarAnunciosAtivosDoProduto`,
+// que é a guarda contra publicação duplicada.
+//
+// `novos` só traz MLBs ausentes: com tudo importado, não faz nada.
+//
+// Nenhuma das duas responde "o que o ML já tem?". `medir` responde, e a prova
+// de que é seguro é POSICIONAL: ela retorna antes de qualquer escrita.
+
+import { medirFichas } from "./importarAnunciosML.ts";
+import { readFileSync } from "node:fs";
+
+const FONTE = readFileSync(new URL("./importarAnunciosML.ts", import.meta.url), "utf8")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
+
+test("`medir` retorna ANTES de qualquer coisa que apague — a prova é posicional", () => {
+  const saida = FONTE.indexOf('if (modo === "medir")');
+  assert.ok(saida > 0, "o modo `medir` sumiu");
+  for (const destrutivo of [
+    "excluirAnunciosImportadosML(",
+    "excluirProdutosImportadosML(",
+    "criarProdutos(",
+    "criarVariantesBulk(",
+    "criarImagensBulk(",
+  ]) {
+    const onde = FONTE.indexOf(destrutivo, FONTE.indexOf("export async function importarAnunciosDoCliente"));
+    assert.ok(onde > 0, `${destrutivo} sumiu do importador`);
+    assert.ok(
+      onde > saida,
+      `${destrutivo} passou a acontecer ANTES da saída de \`medir\`: medir virou destrutivo`
+    );
+  }
+});
+
+test("`medirFichas` é pura — conta e não decide", () => {
+  const anuncio = (atributos: { id: string; nome: string; valor: string }[]) =>
+    ({ atributos }) as unknown as Parameters<typeof medirFichas>[0][number];
+
+  const m = medirFichas([
+    anuncio([
+      { id: "OUTSOLE_MATERIAL", nome: "Material da sola", valor: "Borracha" },
+      { id: "HEEL_TYPE", nome: "Tipo de salto", valor: "Sem salto" },
+      { id: "COLOR", nome: "Cor", valor: "Nude" },
+    ]),
+    anuncio([{ id: "OUTSOLE_MATERIAL", nome: "Material da sola", valor: "EVA" }]),
+    anuncio([{ id: "GTIN", nome: "GTIN", valor: "789" }]),
+  ]);
+
+  assert.equal(m.anuncios, 3);
+  // O terceiro só tem identidade: não conta como ficha própria.
+  assert.equal(m.comFichaPropria, 2);
+  assert.equal(m.mediaDaFicha, 1);
+  assert.deepEqual(m.porAtributo[0], {
+    id: "OUTSOLE_MATERIAL",
+    nome: "Material da sola",
+    anuncios: 2,
+  });
+});
+
+test("`medir` usa o MESMO recorte da ficha — senão mede uma coisa e mostra outra", () => {
+  const so = (id: string) =>
+    ({ atributos: [{ id, nome: id, valor: "x" }] }) as unknown as Parameters<typeof medirFichas>[0][number];
+  for (const comCasaPropria of ["SELLER_SKU", "GTIN", "COLOR", "SIZE", "PACKAGE_WEIGHT"]) {
+    const m = medirFichas([so(comCasaPropria)]);
+    assert.equal(m.comFichaPropria, 0, `${comCasaPropria} entrou na contagem da ficha`);
+    assert.deepEqual(m.porAtributo, []);
+  }
+});
+
+test("lista vazia não divide por zero", () => {
+  assert.deepEqual(medirFichas([]), {
+    anuncios: 0,
+    comFichaPropria: 0,
+    mediaDaFicha: 0,
+    porAtributo: [],
+  });
+});
+
+test("a tela nomeia o que a opção destrutiva destrói", () => {
+  // Ela dizia "Apaga a importação anterior do ML... Use se algo ficou errado",
+  // e omitia custo, peso, fotos e o vínculo com os anúncios publicados. Um
+  // controle que não conta a consequência convida ao clique que não se desfaz.
+  const tela = readFileSync(
+    new URL("../../app/cliente/produtos/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const bloco = tela.slice(tela.indexOf('importarDoML("substituir")'));
+  // Espaços normalizados: a frase quebra em três linhas no JSX, e casar a
+  // formatação em vez do texto faria o teste cair a cada reindentação.
+  const ate = bloco.slice(0, bloco.indexOf("</button>")).replace(/\s+/g, " ");
+  for (const palavra of ["custo", "peso", "fotos", "não devolve o custo"]) {
+    assert.ok(ate.includes(palavra), `a descrição destrutiva não menciona "${palavra}"`);
+  }
+  assert.ok(tela.includes('importarDoML("medir")'), "o botão de conferir sumiu");
+});
