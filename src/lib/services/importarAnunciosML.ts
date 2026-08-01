@@ -22,6 +22,12 @@ import {
   listarAnunciosGeradosDoCliente,
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
+import { substituirAtributosDoMarketplace } from "./produtoAtributos";
+import {
+  ATRIBUTOS_COM_CASA_PROPRIA,
+  planejarEnriquecimento,
+  type ConflitoDeAtributo,
+} from "../../modules/integration/domain/enriquecimentoDaFicha";
 import type { AnuncioML } from "../marketplaces/mercadolivre";
 import type { AnuncioGerado } from "../agentes/esteira";
 import type { BaseProduto } from "./importacaoProdutos";
@@ -30,31 +36,14 @@ import type { ProdutoVariante, ImagemProduto } from "../types";
 /** Máximo de fotos importadas por produto (o ML permite ~10-12 por anúncio). */
 const MAX_FOTOS = 10;
 
-/**
- * Atributos que já têm casa própria — ficam FORA da ficha técnica.
- *
- * Não é filtro de importância: os três primeiros grupos são a IDENTIDADE, e ela
- * mora na grade de variações, que vem do cadastro. Repeti-los na ficha seria
- * oferecer uma segunda fonte para SKU, EAN, cor e tamanho — exatamente o que o
- * PR #79 arrancou quando a IA passou a inventar identidade a partir de texto.
- *
- * As medidas de embalagem saem porque `medidasDoItem` já as converte em peso e
- * dimensões do produto; na ficha virariam número duplicado, com unidade
- * diferente.
- *
- * A lista bruta continua em `AnuncioML.atributos`, fiel. Isto aqui é escolha de
- * EXIBIÇÃO, e é por isso que mora no importador e não no mapeador.
- */
-const ATRIBUTOS_COM_CASA_PROPRIA = new Set([
-  "SELLER_SKU",
-  "GTIN",
-  "COLOR",
-  "SIZE",
-  "PACKAGE_WEIGHT",
-  "PACKAGE_HEIGHT",
-  "PACKAGE_WIDTH",
-  "PACKAGE_LENGTH",
-]);
+// O recorte da ficha vive no DOMÍNIO, e é importado — não copiado.
+//
+// Ele é usado em três lugares: a ficha do anúncio importado, a conferência
+// (`medirFichas`) e o enriquecimento. Duas cópias divergiriam no primeiro dia em
+// que alguém acrescentasse um id a uma delas, e aí a tela mostraria um número e
+// a ficha guardaria outro.
+//
+// O motivo do recorte está lá: identidade mora na grade, medida vira peso.
 
 /**
  * "substituir" = apaga a importação anterior do ML e traz tudo de novo.
@@ -73,7 +62,7 @@ const ATRIBUTOS_COM_CASA_PROPRIA = new Set([
  * A busca no ML é a mesma nos três — a rota só LÊ, e toda a escrita acontece
  * deste lado. Então medir é devolver antes de escrever, e custa uma leitura.
  */
-export type ModoImportacao = "substituir" | "novos" | "medir";
+export type ModoImportacao = "substituir" | "novos" | "medir" | "enriquecer";
 
 /** Quantos anúncios informaram cada atributo, sem tocar em nada. */
 export interface MedicaoDaFicha {
@@ -95,6 +84,13 @@ export interface ResultadoImportacaoAnuncios {
   aviso?: string;
   /** Só no modo `medir`. */
   medicao?: MedicaoDaFicha;
+  /** Só no modo `enriquecer`. */
+  enriquecimento?: {
+    atributos: number;
+    produtos: number;
+    conflitos: ConflitoDeAtributo[];
+    anunciosSemProduto: number;
+  };
 }
 
 /**
@@ -387,6 +383,52 @@ export async function importarAnunciosDoCliente(
       imagens: 0,
       pulados: 0,
       medicao: medirFichas(todos),
+    };
+  }
+
+  // ENRIQUECER sai aqui também — e pelo mesmo motivo.
+  //
+  // Escreve SÓ em `produto_atributos`. Não cria produto, não cria variante, não
+  // toca em custo, peso, foto nem no vínculo com anúncios publicados. É a
+  // diferença inteira em relação a `substituir`, e ela é posicional: tudo o que
+  // apaga catálogo continua depois desta linha.
+  //
+  // O vínculo anúncio→produto já existe em `anuncios_gerados` (`ml_item_id` →
+  // `produto_id`). Não é preciso reagrupar por família nem adivinhar: quem já
+  // sabe qual MLB é de qual produto é a própria base.
+  if (modo === "enriquecer") {
+    const registros = await listarAnunciosGeradosDoCliente(clienteId);
+    const produtoPorMlb = new Map<string, string>();
+    for (const r of registros) {
+      if (r.mlItemId && r.produtoId) produtoPorMlb.set(r.mlItemId, r.produtoId);
+    }
+
+    const plano = planejarEnriquecimento(todos, produtoPorMlb);
+
+    // Agrupa por produto: `substituirAtributosDoMarketplace` apaga e reinsere o
+    // conjunto INTEIRO daquele produto, então precisa recebê-lo de uma vez.
+    const porProduto = new Map<string, { nomeAtributo: string; valorAtributo: string }[]>();
+    for (const a of plano.paraGravar) {
+      const lista = porProduto.get(a.produtoId) ?? [];
+      lista.push({ nomeAtributo: a.nomeAtributo, valorAtributo: a.valorAtributo });
+      porProduto.set(a.produtoId, lista);
+    }
+    for (const [produtoId, atributos] of porProduto) {
+      await substituirAtributosDoMarketplace(produtoId, atributos);
+    }
+
+    return {
+      produtos: 0,
+      anuncios: 0,
+      variacoes: 0,
+      imagens: 0,
+      pulados: 0,
+      enriquecimento: {
+        atributos: plano.paraGravar.length,
+        produtos: plano.produtos,
+        conflitos: plano.conflitos,
+        anunciosSemProduto: plano.anunciosSemProduto,
+      },
     };
   }
 

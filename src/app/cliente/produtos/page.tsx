@@ -344,7 +344,7 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function importarDoML(modo: "substituir" | "novos" | "medir") {
+  async function importarDoML(modo: "substituir" | "novos" | "medir" | "enriquecer") {
     if (importandoML) return;
     setEscolhendoML(false);
     setImportandoML(true);
@@ -364,6 +364,31 @@ export default function ClienteProdutos() {
             `${m.anuncios} anúncios lidos, NADA foi gravado. ` +
             `${m.comFichaPropria} têm ficha própria · média de ${m.mediaDaFicha} atributos.` +
             (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido."),
+        });
+        return;
+      }
+      // ENRIQUECER também não recarrega a lista de produtos: nada mudou nela.
+      // Os conflitos vão POR NOME — "3 conflitos" sem dizer quais deixaria a
+      // lojista sabendo que há um problema e não onde.
+      if (r.enriquecimento) {
+        const e = r.enriquecimento;
+        const quaisConflitos = e.conflitos
+          .slice(0, 4)
+          .map((c) => c.nomeAtributo)
+          .join(", ");
+        setMsgML({
+          tipo: "ok",
+          texto:
+            `${e.atributos} informações trazidas para ${e.produtos} produtos. ` +
+            `Nada foi apagado — custo, peso e fotos seguem como estavam.` +
+            (e.conflitos.length > 0
+              ? ` ${e.conflitos.length} em conflito (anúncios do mesmo produto discordam): ${quaisConflitos}${
+                  e.conflitos.length > 4 ? "…" : ""
+                }. Não gravei esses — escolha você.`
+              : "") +
+            (e.anunciosSemProduto > 0
+              ? ` ${e.anunciosSemProduto} anúncios não têm produto vinculado aqui.`
+              : ""),
         });
         return;
       }
@@ -484,7 +509,7 @@ export default function ClienteProdutos() {
             <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <button
               onClick={() => importarDoML("medir")}
               className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
@@ -493,6 +518,16 @@ export default function ClienteProdutos() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Lê os anúncios no Mercado Livre e mostra quais informações já estão lá — material, palmilha,
                 salto. Não altera nada aqui.
+              </p>
+            </button>
+            <button
+              onClick={() => importarDoML("enriquecer")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
+            >
+              <p className="text-sm font-medium text-sky-300">Trazer as informações</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Copia para cá o que você já preencheu no Mercado Livre — material, palmilha, solado. Só
+                acrescenta: custo, peso e fotos ficam como estão.
               </p>
             </button>
             <button

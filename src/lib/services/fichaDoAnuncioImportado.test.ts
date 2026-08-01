@@ -294,3 +294,90 @@ test("a tela nomeia o que a opção destrutiva destrói", () => {
   }
   assert.ok(tela.includes('importarDoML("medir")'), "o botão de conferir sumiu");
 });
+
+// ---------------------------------------------------------------------------
+// DES-002 — o modo `enriquecer`
+// ---------------------------------------------------------------------------
+
+test("`enriquecer` também sai ANTES de tudo que apaga", () => {
+  const saida = FONTE.indexOf('if (modo === "enriquecer")');
+  assert.ok(saida > 0, "o modo `enriquecer` sumiu");
+  for (const destrutivo of [
+    "excluirAnunciosImportadosML(",
+    "excluirProdutosImportadosML(",
+    "criarProdutos(",
+    "criarVariantesBulk(",
+    "criarImagensBulk(",
+  ]) {
+    const onde = FONTE.indexOf(destrutivo, FONTE.indexOf("export async function importarAnunciosDoCliente"));
+    assert.ok(onde > saida, `${destrutivo} acontece antes da saída de \`enriquecer\``);
+  }
+});
+
+test("`enriquecer` escreve em UM lugar só — produto_atributos", () => {
+  // A diferença inteira em relação a `substituir`. Se aparecer qualquer outra
+  // escrita neste bloco, o modo deixou de ser aditivo.
+  const ini = FONTE.indexOf('if (modo === "enriquecer")');
+  const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
+  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, atributos\)/);
+  for (const proibido of [
+    "criarProdutos",
+    "criarVariantesBulk",
+    "criarImagensBulk",
+    "criarAnunciosGeradosBulk",
+    "excluir",
+    "atualizarProduto",
+  ]) {
+    assert.ok(!bloco.includes(proibido), `\`enriquecer\` passou a chamar ${proibido}`);
+  }
+});
+
+test("o vínculo vem de `anuncios_gerados`, não de adivinhação", () => {
+  // Quem já sabe qual MLB é de qual produto é a própria base. Reagrupar por
+  // família aqui poderia ligar atributo ao produto errado.
+  const ini = FONTE.indexOf('if (modo === "enriquecer")');
+  const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
+  assert.match(bloco, /listarAnunciosGeradosDoCliente\(clienteId\)/);
+  assert.match(bloco, /r\.mlItemId && r\.produtoId/);
+  assert.ok(!bloco.includes("agrupar("), "voltou a agrupar por família em vez de usar o vínculo real");
+});
+
+test("o recorte da ficha é IMPORTADO do domínio, nunca copiado", () => {
+  // Três lugares usam o mesmo recorte: a ficha do importado, a conferência e o
+  // enriquecimento. Duas cópias divergiriam no primeiro id acrescentado a uma.
+  assert.match(
+    FONTE,
+    /import \{[\s\S]{0,120}ATRIBUTOS_COM_CASA_PROPRIA[\s\S]{0,160}enriquecimentoDaFicha"/,
+    "o recorte voltou a ser declarado localmente"
+  );
+  assert.ok(
+    !/const ATRIBUTOS_COM_CASA_PROPRIA = new Set/.test(FONTE),
+    "existe uma segunda cópia do recorte no importador"
+  );
+});
+
+test("`obrigatorio` nunca é gravado como true — quem exige é o marketplace", () => {
+  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(servico, /obrigatorio: false/);
+  assert.ok(
+    !/obrigatorio: true/.test(servico),
+    "o enriquecimento passou a declarar obrigatoriedade — ela é do ML, por categoria"
+  );
+});
+
+test("a idempotência é o ESCOPO: apaga só a origem Marketplace", () => {
+  // Sem índice único (que seria DDL), rodar duas vezes duplicaria. O apagão é
+  // do que nós mesmos escrevemos — o que a lojista digitou sobrevive.
+  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8");
+  const fn = servico.slice(servico.indexOf("export async function substituirAtributosDoMarketplace"));
+  const corpo = fn.slice(0, fn.indexOf("\n}"));
+  assert.match(corpo, /excluirPorFiltro\(/);
+  assert.match(corpo, /coluna: "produto_id"/);
+  assert.match(corpo, /valor: "Marketplace"/);
+  assert.match(corpo, /origem: "Marketplace" as const/);
+  const apaga = corpo.indexOf("excluirPorFiltro");
+  const insere = corpo.indexOf("criarVarios");
+  assert.ok(apaga < insere, "insere antes de apagar: a segunda rodada duplicaria");
+});
