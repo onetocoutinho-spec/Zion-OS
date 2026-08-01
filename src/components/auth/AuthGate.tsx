@@ -19,7 +19,13 @@ import { Field, Input } from "@/components/ui/form";
 import { RealtimeSync } from "./RealtimeSync";
 import { carregarPerfil, type Perfil } from "@/lib/services/perfil";
 import { decidirRota } from "@/lib/auth/roteamentoPapel";
-import { decidirEstadoAuth, type FasePerfil, type FaseSessao } from "@/lib/auth/estadoAuth";
+import {
+  decidirEstadoAuth,
+  precisaRecarregarPerfil,
+  type FasePerfil,
+  type FasePerfilConhecida,
+  type FaseSessao,
+} from "@/lib/auth/estadoAuth";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 // Timeout do carregamento do perfil (A-01): 12s (entre 10 e 15). Antes eram 8s,
@@ -360,6 +366,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   const montadoRef = useRef(true);
   const cargaIdRef = useRef(0); // "latest-wins": ignora respostas obsoletas
+  // Quem estava logado no último evento, e o que sabíamos do perfil dele.
+  // `onAuthStateChange` dispara ao voltar para a aba (o Supabase reconfere e
+  // renova o token) — sem isto, cada troca de aba recarregava o perfil e
+  // jogava o app inteiro na tela de carregando.
+  const usuarioIdRef = useRef<string | null>(null);
+  const fasePerfilRef = useRef<FasePerfilConhecida>("inicial");
+  fasePerfilRef.current = supabaseConfigurado ? fasePerfil : "ok";
 
   // Carrega o perfil com timeout; ignora resultado se o componente desmontou
   // ou se uma carga mais nova começou. Não cria requisições concorrentes úteis
@@ -405,21 +418,32 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
     const sb = getSupabase();
 
-    function aoResolverSessao(logado: boolean) {
+    function aoResolverSessao(usuarioId: string | null) {
       if (!montadoRef.current) return;
-      if (!logado) {
+      if (!usuarioId) {
         cargaIdRef.current++; // invalida qualquer carga de perfil em voo
+        usuarioIdRef.current = null;
+        fasePerfilRef.current = "inicial";
         setFaseSessao("ausente");
         setPerfil(null);
         return;
       }
+      const recarregar = precisaRecarregarPerfil(
+        usuarioIdRef.current,
+        usuarioId,
+        fasePerfilRef.current
+      );
+      usuarioIdRef.current = usuarioId;
       setFaseSessao("presente");
-      void carregar();
+      // Renovar token não é trocar de sessão. Sem esta guarda, voltar para a
+      // aba chamava `carregar()`, que começa em `setFasePerfil("carregando")`
+      // — a tela cheia de carregando, por cima de um app que estava funcionando.
+      if (recarregar) void carregar();
     }
 
     sb.auth
       .getSession()
-      .then(({ data }) => aoResolverSessao(Boolean(data.session)))
+      .then(({ data }) => aoResolverSessao(data.session?.user?.id ?? null))
       .catch(() => {
         // Falha ao restaurar a sessão: trata como não autenticado (login),
         // não como "sem acesso".
@@ -427,7 +451,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       });
 
     const { data: listener } = sb.auth.onAuthStateChange((_evento, sessao) =>
-      aoResolverSessao(Boolean(sessao))
+      aoResolverSessao(sessao?.user?.id ?? null)
     );
     return () => {
       montadoRef.current = false;
