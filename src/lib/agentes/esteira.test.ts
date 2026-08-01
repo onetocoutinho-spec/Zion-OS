@@ -29,13 +29,15 @@ function daIA(over: Partial<AnuncioDaIA> = {}): AnuncioDaIA {
     palavrasChaveSecundarias: ["infantil", "conforto"],
     descricaoCompleta: "Descrição completa e caprichada.",
     descricaoCurta: "Descrição curta.",
-    fichaTecnica: [{ atributo: "Marca", valor: "Molekinha", obrigatorio: true }],
+    fichaTecnica: [{ atributo: "Marca", valor: "Molekinha" }],
     tabelaMedidas: "| Número | cm |",
     comoMedir: "Meça do calcanhar à ponta.",
     forma: "normal",
     imagensSugeridas: [{ tipo: "capa", prompt: "Foto de capa." }],
     faq: [{ pergunta: "Qual o prazo?", resposta: "5 dias." }],
-    pendencias: ["⚠️ informação necessária: fotos reais do produto"],
+    // `pendencias` NÃO está aqui: o tipo `AnuncioDaIA` deixou de tê-la, e é essa
+    // ausência que torna erro de compilação esquecer de compô-la.
+    sugestoes: ["Fotos reais do produto rendem mais que renderização."],
     vereditoA10: "aprovado",
     motivoVeredito: "Texto completo e competitivo.",
     ...over,
@@ -103,13 +105,65 @@ test("grade inteira preserva o veredito do modelo — a trava não inverte o sin
   );
 });
 
-test("as pendências da grade vêm PRIMEIRO — são as que impedem publicar", () => {
+// ---------------------------------------------------------------------------
+// DES-001 — as pendências deixaram de ser do modelo
+// ---------------------------------------------------------------------------
+//
+// ESTE TESTE MUDOU DE LADO EM 2026-08-01. Ele exigia que as pendências do
+// modelo viessem DEPOIS das da grade — o que congelava a premissa de que elas
+// deveriam vir. Não deveriam.
+//
+// Medido em quatro regerações reais: 13 pendências do modelo, e conferidas
+// contra `GET /categories/{id}/attributes` do ML, ZERO eram obrigatórias. Três
+// nem existiam na categoria. Como publicar exige `pendencias.length === 0`,
+// cada uma delas era uma trava permanente sobre um dado que ninguém pede.
+
+test("as pendências vêm SÓ da grade — o modelo não trava mais nada", () => {
   const a = comAGradeDoCadastro(daIA(), []);
+  assert.equal(a.pendencias.length, 1, "entrou pendência que não é da grade");
   assert.match(a.pendencias[0], /grade de variações/);
-  assert.match(a.pendencias[a.pendencias.length - 1], /fotos reais/);
 });
 
-test("IA sem pendências não quebra a junção", () => {
-  const a = comAGradeDoCadastro(daIA({ pendencias: [] }), GRADE_INTEIRA);
+test("o que o modelo observa vira SUGESTÃO, e sugestão não bloqueia", () => {
+  // Grade inteira: nada trava. As observações do modelo continuam visíveis.
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA);
   assert.deepEqual(a.pendencias, []);
+  assert.ok(a.sugestoes.length > 0, "as sugestões do modelo sumiram");
+  assert.match(a.sugestoes.join(" "), /fotos reais/i);
+});
+
+test("nenhuma sugestão vaza para pendencias — nem por engano", () => {
+  // A separação é o ponto do DES-001. Se um dia alguém reconcatenar, isto cai.
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA);
+  for (const s of a.sugestoes) {
+    assert.ok(!a.pendencias.includes(s), `a sugestão "${s}" virou trava de novo`);
+  }
+});
+
+test("o prompt PROÍBE o modelo de declarar obrigatoriedade", () => {
+  // A causa do defeito era o modelo escrever "atributo obrigatório" sobre uma
+  // lista que é do Mercado Livre e varia por categoria.
+  const p = montarSystemPromptEsteira();
+  assert.match(p, /O QUE O MARKETPLACE EXIGE NÃO É COM VOCÊ/);
+  assert.match(p, /Você NÃO decide quais atributos são obrigatórios/);
+  assert.ok(
+    !/Consolide TODAS as .* em "pendencias"/.test(p),
+    "o prompt voltou a pedir que o modelo consolide pendências"
+  );
+});
+
+test("o esquema NÃO pede pendencias nem obrigatoriedade — é o que fecha a porta", () => {
+  // Pedir "não invente" a um campo obrigatório sem fonte é pedir o impossível.
+  // A correção que funciona é não pedir — mesma lição de `variacoes`.
+  const props = ESQUEMA_ANUNCIO.properties as Record<string, unknown>;
+  const req = ESQUEMA_ANUNCIO.required as readonly string[];
+  assert.ok(!("pendencias" in props), "`pendencias` voltou ao esquema do modelo");
+  assert.ok(!req.includes("pendencias"));
+  assert.ok("sugestoes" in props);
+  assert.ok(req.includes("sugestoes"));
+  const ficha = props.fichaTecnica as { items: { properties: Record<string, unknown> } };
+  assert.ok(
+    !("obrigatorio" in ficha.items.properties),
+    "a ficha técnica voltou a deixar o modelo declarar o que é obrigatório"
+  );
 });

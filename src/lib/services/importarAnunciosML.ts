@@ -237,7 +237,10 @@ function anuncioGeradoDoML(a: AnuncioML): AnuncioGerado {
     variacoes,
     imagensSugeridas: [],
     faq: [],
+    // Um anúncio IMPORTADO já está no ar: não há o que travar nem o que
+    // sugerir. As duas listas vazias são afirmações verdadeiras.
     pendencias: [],
+    sugestoes: [],
     vereditoA10: "aprovado",
     motivoVeredito: "Importado do Mercado Livre (já publicado).",
   };

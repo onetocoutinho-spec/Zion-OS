@@ -25,6 +25,7 @@ function anuncio(over: { ficha?: Ficha[]; variacoes?: Var[]; titulo?: string }):
     imagensSugeridas: [],
     faq: [],
     pendencias: [],
+    sugestoes: [],
     vereditoA10: "aprovado",
     motivoVeredito: "",
   };
