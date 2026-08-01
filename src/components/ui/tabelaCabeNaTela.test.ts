@@ -66,10 +66,13 @@ test("a rolagem horizontal continua POSSÍVEL — só deixou de ser necessária"
 // A COLUNA QUE SAIU — e o critério foi medição, não gosto
 // ---------------------------------------------------------------------------
 
-test("a tabela de anúncios não mostra mais `marketplace`", () => {
-  // Medido em 2026-08-01: 1 valor distinto em 590 anúncios ("Mercado Livre").
-  // Uma coluna que diz a mesma coisa em toda linha custa largura e não informa
-  // nada. Mesmo argumento que a tirou da tabela de produtos no PR #70.
+test("as duas colunas que saíram não voltaram — e por motivos diferentes", () => {
+  // "Marketplace": 1 valor distinto em 590 anúncios ("Mercado Livre"). Não
+  // informava nada. Mesmo argumento do PR #70 na tabela de produtos.
+  //
+  // "Prioridade": VARIAVA — vinha de `prioridade(a)`, calculada de nota e
+  // pendências. Saiu por ser DERIVADA de Score e Problema principal, que estão
+  // ali ao lado. Redundância, não constância, e decisão do dono do produto.
   const tela = semComentarios(
     readFileSync(new URL("../../app/cliente/anuncios/page.tsx", import.meta.url), "utf8")
   );
@@ -77,6 +80,13 @@ test("a tabela de anúncios não mostra mais `marketplace`", () => {
   const bloco = tela.slice(inicio, tela.indexOf("</Table>", inicio));
   assert.ok(!/<Td>\{a\.marketplace\}<\/Td>/.test(bloco), "a coluna constante voltou");
   assert.ok(!/"Marketplace"/.test(bloco), "o cabeçalho da coluna constante voltou");
+  assert.ok(!/"Prioridade"/.test(bloco), "o cabeçalho da coluna derivada voltou");
+  // A função que só existia para ela também saiu: código morto que ninguém
+  // remove vira código que alguém religa sem entender por que saiu.
+  assert.ok(
+    !/function prioridade\(/.test(tela),
+    "`prioridade()` continua no arquivo sem nenhuma coluna que a use"
+  );
 });
 
 test("os colSpan acompanharam o número de colunas", () => {
@@ -88,7 +98,7 @@ test("os colSpan acompanharam o número de colunas", () => {
   );
   const cabecalhos = tela.slice(tela.indexOf("headers={["), tela.indexOf("]}", tela.indexOf("headers={[")));
   const colunas = (cabecalhos.match(/"/g) ?? []).length / 2;
-  assert.equal(colunas, 6, `esperava 6 colunas, achei ${colunas}`);
+  assert.equal(colunas, 5, `esperava 5 colunas, achei ${colunas}`);
   for (const m of tela.matchAll(/colSpan=\{(\d+)\}/g)) {
     assert.equal(Number(m[1]), colunas, `colSpan=${m[1]} não acompanha as ${colunas} colunas`);
   }
