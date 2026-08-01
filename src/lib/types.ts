@@ -210,6 +210,15 @@ export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA";
 export interface ProdutoAtributo {
   id: string;
   produtoId: string;
+  /**
+   * O tenant. Obrigatório desde a migração 049 — ver o `.sql` para o porquê.
+   *
+   * Esta era a ÚNICA tabela do catálogo sem escopo de cliente, e por isso o
+   * enriquecimento a partir do ML batia em RLS quando disparado pela lojista:
+   * ela alcançava a tela e não podia escrever; a equipe podia escrever e não
+   * alcançava a tela.
+   */
+  clienteId: string;
   nomeAtributo: string;
   valorAtributo: string;
   tipoAtributo: TipoAtributo;

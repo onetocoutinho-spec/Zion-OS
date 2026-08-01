@@ -414,7 +414,7 @@ export async function importarAnunciosDoCliente(
       porProduto.set(a.produtoId, lista);
     }
     for (const [produtoId, atributos] of porProduto) {
-      await substituirAtributosDoMarketplace(produtoId, atributos);
+      await substituirAtributosDoMarketplace(produtoId, clienteId, atributos);
     }
 
     return {
