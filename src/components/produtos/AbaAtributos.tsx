@@ -31,6 +31,7 @@ export function AbaAtributos({ produto }: { produto: Produto }) {
     if (!nome.trim()) return;
     await criarAtributo({
       produtoId: produto.id,
+      clienteId: produto.clienteId,
       nomeAtributo: nome.trim(),
       valorAtributo: valor.trim(),
       tipoAtributo: tipo,

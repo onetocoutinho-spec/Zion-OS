@@ -135,6 +135,8 @@ export interface ProdutoVarianteRow {
 export interface ProdutoAtributoRow {
   id: string;
   produto_id: string;
+  /** NOT NULL desde a 049 — o escopo de cliente que faltava a esta tabela. */
+  cliente_id: string;
   nome_atributo: string;
   valor_atributo: string | null;
   tipo_atributo: string;

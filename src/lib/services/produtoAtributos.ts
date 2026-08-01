@@ -56,6 +56,7 @@ export async function excluirAtributo(id: string): Promise<void> {
  */
 export async function substituirAtributosDoMarketplace(
   produtoId: string,
+  clienteId: string,
   atributos: readonly { nomeAtributo: string; valorAtributo: string }[]
 ): Promise<void> {
   await repo.excluirPorFiltro(
@@ -66,6 +67,10 @@ export async function substituirAtributosDoMarketplace(
   await repo.criarVarios(
     atributos.map((a) => ({
       produtoId,
+      // O tenant vem de fora, da sessão — nunca é derivado do produto aqui.
+      // Derivar exigiria uma leitura a mais e daria à função uma autoridade que
+      // ela não deve ter: quem sabe de quem é a sessão é quem a abriu.
+      clienteId,
       nomeAtributo: a.nomeAtributo,
       valorAtributo: a.valorAtributo,
       tipoAtributo: "texto" as const,

@@ -521,6 +521,7 @@ export function atributoParaApp(row: ProdutoAtributoRow): ProdutoAtributo {
   return {
     id: row.id,
     produtoId: row.produto_id,
+    clienteId: row.cliente_id,
     nomeAtributo: row.nome_atributo,
     valorAtributo: row.valor_atributo ?? "",
     tipoAtributo: row.tipo_atributo as ProdutoAtributo["tipoAtributo"],
@@ -532,6 +533,7 @@ export function atributoParaApp(row: ProdutoAtributoRow): ProdutoAtributo {
 export function atributoParaBanco(d: Partial<ProdutoAtributo>): Record<string, unknown> {
   const r: Record<string, unknown> = {};
   if (d.produtoId !== undefined) r.produto_id = d.produtoId;
+  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
   if (d.nomeAtributo !== undefined) r.nome_atributo = d.nomeAtributo;
   if (d.valorAtributo !== undefined) r.valor_atributo = d.valorAtributo;
   if (d.tipoAtributo !== undefined) r.tipo_atributo = d.tipoAtributo;

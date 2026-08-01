@@ -7,6 +7,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-01",
     produtoId: "prd-11",
+    clienteId: "cli-06",
     nomeAtributo: "Gênero",
     valorAtributo: "Unissex",
     tipoAtributo: "lista",
@@ -16,6 +17,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-02",
     produtoId: "prd-11",
+    clienteId: "cli-06",
     nomeAtributo: "Material do cabedal",
     valorAtributo: "Couro sintético",
     tipoAtributo: "texto",
@@ -25,6 +27,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-03",
     produtoId: "prd-11",
+    clienteId: "cli-06",
     nomeAtributo: "Tipo de fechamento",
     valorAtributo: "Cadarço",
     tipoAtributo: "lista",
@@ -35,6 +38,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-04",
     produtoId: "prd-13",
+    clienteId: "cli-08",
     nomeAtributo: "Potência",
     valorAtributo: "1500W",
     tipoAtributo: "texto",
@@ -44,6 +48,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-05",
     produtoId: "prd-13",
+    clienteId: "cli-08",
     nomeAtributo: "Capacidade",
     valorAtributo: "1,8 litros",
     tipoAtributo: "texto",
@@ -53,6 +58,7 @@ export const produtoAtributos: ProdutoAtributo[] = [
   {
     id: "atr-06",
     produtoId: "prd-13",
+    clienteId: "cli-08",
     nomeAtributo: "Desligamento automático",
     valorAtributo: "Sim",
     tipoAtributo: "booleano",

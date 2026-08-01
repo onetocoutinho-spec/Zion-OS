@@ -319,7 +319,7 @@ test("`enriquecer` escreve em UM lugar só — produto_atributos", () => {
   // escrita neste bloco, o modo deixou de ser aditivo.
   const ini = FONTE.indexOf('if (modo === "enriquecer")');
   const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
-  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, atributos\)/);
+  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, clienteId, atributos\)/);
   for (const proibido of [
     "criarProdutos",
     "criarVariantesBulk",
@@ -380,4 +380,77 @@ test("a idempotência é o ESCOPO: apaga só a origem Marketplace", () => {
   const apaga = corpo.indexOf("excluirPorFiltro");
   const insere = corpo.indexOf("criarVarios");
   assert.ok(apaga < insere, "insere antes de apagar: a segunda rodada duplicaria");
+});
+
+// ---------------------------------------------------------------------------
+// A 049 — o escopo de cliente que faltava
+// ---------------------------------------------------------------------------
+//
+// `produto_atributos` era a ÚNICA tabela do catálogo sem `cliente_id` e com uma
+// política só (`equipe_total`). O enriquecimento nasceu no portal da lojista e
+// bateu em RLS:
+//
+//   new row violates row-level security policy for table "produto_atributos"
+//
+// Não era configuração: era o recurso no lugar errado. O botão aparece SÓ para
+// quem tem `papel = "cliente"` (a equipe não tem `clienteId` e a importação para
+// antes) — quem podia escrever não alcançava, e quem alcançava não podia.
+//
+// A saída NÃO foi afrouxar `equipe_total` nem criar política permissiva. A
+// tabela ganhou escopo, igual às irmãs.
+
+test("o tenant é ESCRITO em cada atributo — sem ele o RLS barra, como deve", () => {
+  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const fn = servico.slice(servico.indexOf("export async function substituirAtributosDoMarketplace"));
+  const corpo = fn.slice(0, fn.indexOf("\n}"));
+  assert.match(corpo, /clienteId: string/, "o tenant deixou de ser parâmetro");
+  assert.match(corpo, /\n\s*clienteId,/, "o tenant não chega à linha gravada");
+});
+
+test("o tenant vem da SESSÃO, não é derivado do produto", () => {
+  // Derivar exigiria uma leitura a mais e daria à função uma autoridade que ela
+  // não deve ter. Quem sabe de quem é a sessão é quem a abriu — mesma regra das
+  // primitivas do Copilot, onde o tenant nunca vem do corpo da requisição.
+  const ini = FONTE.indexOf('if (modo === "enriquecer")');
+  const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
+  assert.match(bloco, /substituirAtributosDoMarketplace\(produtoId, clienteId, atributos\)/);
+  assert.ok(
+    !/buscarProduto|\.clienteId\b/.test(bloco),
+    "o enriquecimento passou a derivar o tenant em vez de usar o da sessão"
+  );
+});
+
+test("a 049 é aditiva e NÃO afrouxa nada", () => {
+  const sql = readFileSync(
+    new URL("../../../database/migrations/049-escopo-de-cliente-nos-atributos.sql", import.meta.url),
+    "utf8"
+  );
+  // A política nova é a MESMA das irmãs, palavra por palavra.
+  assert.match(sql, /using\s+\(cliente_id = cliente_do_usuario\(\)\)/);
+  assert.match(sql, /with check \(cliente_id = cliente_do_usuario\(\)\)/);
+  // `equipe_total` não é tocada: a equipe continua enxergando tudo.
+  assert.ok(
+    !/drop policy if exists equipe_total|alter policy equipe_total/.test(sql),
+    "a migração mexeu na política da equipe"
+  );
+  // E nada de permissivo.
+  assert.ok(!/using\s+\(true\)|with check \(true\)/.test(sql), "entrou política permissiva");
+  // Registra-se no ledger — regra da 043.
+  assert.match(sql, /insert into public\.migracoes_aplicadas[\s\S]*'049'/);
+});
+
+test("a 049 GRITA se um dia rodar numa base com linhas órfãs", () => {
+  // O NOT NULL entrou direto porque a tabela estava vazia (0 linhas, conferido).
+  // Numa base com dados, isso falharia de um jeito difícil de ler — a guarda
+  // troca isso por uma mensagem que diz o que fazer.
+  const sql = readFileSync(
+    new URL("../../../database/migrations/049-escopo-de-cliente-nos-atributos.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(sql, /raise exception[\s\S]{0,120}faca o backfill antes do NOT NULL/);
+  const guarda = sql.indexOf("raise exception");
+  const notNull = sql.indexOf("set not null");
+  assert.ok(guarda < notNull, "a guarda ficou depois do NOT NULL: não protege nada");
 });
