@@ -151,10 +151,13 @@ export default function ClienteAnuncios() {
           </div>
 
           <Table
-            headers={["Anúncio", "Marketplace", "Score", "Problema principal", "Prioridade", "Status", "Ação"]}
+            // "Marketplace" saiu: 1 valor em 590 anúncios ("Mercado Livre"). Uma coluna
+            // que diz a mesma coisa em toda linha custa largura e não informa nada —
+            // mesmo argumento que a tirou da tabela de produtos no PR #70.
+            headers={["Anúncio", "Score", "Problema principal", "Prioridade", "Status", "Ação"]}
           >
             {filtrados.length === 0 ? (
-              <EmptyRow colSpan={7} />
+              <EmptyRow colSpan={6} />
             ) : (
               filtrados.map((a) => {
                 const prio = prioridade(a);
@@ -167,7 +170,6 @@ export default function ClienteAnuncios() {
                       <TdMain sub={a.produto || undefined}>
                         {a.anuncio?.tituloOtimizado || a.produto || "Anúncio"}
                       </TdMain>
-                      <Td>{a.marketplace}</Td>
                       <Td>
                         <Pill tone={toneScore(a.notaDiagnostico)}>{a.notaDiagnostico}/100</Pill>
                       </Td>
@@ -241,7 +243,7 @@ export default function ClienteAnuncios() {
                     </tr>
                     {expandido && a.anuncio && (
                       <tr className="bg-white/[0.015]">
-                        <td colSpan={7} className="px-4 py-4">
+                        <td colSpan={6} className="px-4 py-4">
                           <DetalheAnuncio registro={a} />
                         </td>
                       </tr>

@@ -52,9 +52,19 @@ export function TdMain({
   children: React.ReactNode;
   sub?: string;
 }) {
+  // SEM `whitespace-nowrap`, e é o ponto desta célula.
+  //
+  // Ela guarda o NOME do registro, e nomes de produto são longos — "Chinelo
+  // Ortopedico Modare Feminino Esporao Massageador Macio". Proibindo a quebra,
+  // esta coluna passava a ter a largura do nome mais comprido da lista inteira,
+  // empurrava a tabela além da tela e nascia a barra de rolagem horizontal.
+  //
+  // Nas telas de 7 colunas isso escondia as três últimas — inclusive a de AÇÃO,
+  // que é onde a pessoa clica. Uma tabela que esconde o botão é pior que uma
+  // tabela com o nome em duas linhas.
   return (
     <td className="px-4 py-3 align-top">
-      <p className="font-medium text-zinc-200 whitespace-nowrap">{children}</p>
+      <p className="font-medium text-zinc-200">{children}</p>
       {sub && <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>}
     </td>
   );
