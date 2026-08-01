@@ -1,0 +1,74 @@
+// Quais anúncios já cadastrados precisam ter o estado no marketplace corrigido.
+//
+// ===========================================================================
+// POR QUE ISTO EXISTE
+// ===========================================================================
+//
+// A migração 050 deu um lugar para a verdade, mas não a preencheu: as 511
+// linhas já importadas ficaram `null` — e `null` significa "não sabemos".
+//
+// Só que nós SABEMOS. A importação lê os 781 anúncios da conta inteira e depois
+// usa só os que faltam. O estado dos outros 502 chega na mesma resposta e era
+// jogado fora — o mesmo defeito que descartou a ficha do lojista, a associação
+// foto↔cor e o `paging.total`.
+//
+// Então não é uma leitura nova. É parar de descartar a que já foi feita.
+//
+// ===========================================================================
+// O QUE ISTO NÃO FAZ
+// ===========================================================================
+//
+// Não toca em `status` (o eixo da esteira do Zion), não apaga, não cria. Só
+// escreve as duas colunas do eixo do marketplace, e só nas linhas em que o
+// valor MUDOU — reescrever `active` por cima de `active` seria gravação sem
+// fato novo, e faria `status_marketplace_em` mentir sobre quando aprendemos.
+
+export interface AnuncioConhecido {
+  id: string;
+  mlItemId?: string | null;
+  statusMarketplace?: string | null;
+}
+
+export interface EstadoLidoNoMarketplace {
+  mlb: string;
+  status: string;
+}
+
+export interface AtualizacaoDeEstado {
+  id: string;
+  statusMarketplace: string;
+  statusMarketplaceEm: string;
+}
+
+/**
+ * As linhas cujo estado no marketplace mudou (ou nunca foi conhecido).
+ *
+ * `lidoEm` é injetado, não gerado aqui: a função é pura e o mesmo instante vale
+ * para o lote inteiro — o que faz `atualizarVarios` agrupar 502 linhas em uma
+ * requisição por estado distinto, em vez de 502 requisições.
+ */
+export function estadosDesatualizados(
+  conhecidos: readonly AnuncioConhecido[],
+  lidos: readonly EstadoLidoNoMarketplace[],
+  lidoEm: string
+): AtualizacaoDeEstado[] {
+  const porMlb = new Map<string, string>();
+  for (const l of lidos) {
+    const mlb = (l.mlb ?? "").trim();
+    const status = (l.status ?? "").trim();
+    // Estado em branco não vira atualização: o ML não disse, e sobrescrever o
+    // que sabíamos com "não sabemos" perderia informação.
+    if (mlb && status && !porMlb.has(mlb)) porMlb.set(mlb, status);
+  }
+
+  const saida: AtualizacaoDeEstado[] = [];
+  for (const a of conhecidos) {
+    const mlb = (a.mlItemId ?? "").trim();
+    if (!mlb) continue; // anúncio que nunca foi ao ar não tem estado lá
+    const lido = porMlb.get(mlb);
+    if (!lido) continue; // o ML não devolveu este anúncio nesta leitura
+    if ((a.statusMarketplace ?? "").trim() === lido) continue; // nada mudou
+    saida.push({ id: a.id, statusMarketplace: lido, statusMarketplaceEm: lidoEm });
+  }
+  return saida;
+}

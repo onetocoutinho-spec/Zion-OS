@@ -410,14 +410,19 @@ export default function ClienteProdutos() {
       // Sem ele aqui, uma importação em que TODOS casaram (produtos = 0) cairia
       // no ramo de erro e diria "nenhum anúncio encontrado" tendo gravado tudo.
       const casadosML = r.casados ?? 0;
+      // Atualizar o estado de 502 anúncios É uma mudança. Sem esta frase, a
+      // tela diria "nada novo" tendo corrigido meio catálogo.
+      const estados = r.estadosAtualizados ?? 0;
+      const fraseEstados =
+        estados > 0 ? ` ${estados} anúncio(s) já cadastrados mudaram de estado no ML.` : "";
       if (r.produtos === 0 && casadosML === 0) {
         setMsgML({
           tipo: r.aviso || r.pulados === 0 ? "erro" : "ok",
-          texto: `${cobertura}${r.aviso ?? "Nenhum anúncio encontrado na conta."}`,
+          texto: `${cobertura}${r.aviso ?? "Nenhum anúncio novo."}${fraseEstados}`,
         });
       } else {
         const base = `${r.produtos} produtos${casadosML > 0 ? ` · ${casadosML} já cadastrados receberam os anúncios (sem foto nova)` : ""} · ${r.anuncios} anúncios${r.variacoes > 0 ? ` · ${r.variacoes} variações` : ""}${r.imagens > 0 ? ` · ${r.imagens} fotos` : ""}${r.pulados > 0 ? ` · ${r.pulados} já existiam` : ""}.`;
-        setMsgML(juntar(base));
+        setMsgML(juntar(`${base}${fraseEstados}`));
         reload();
       }
     } catch (e) {
