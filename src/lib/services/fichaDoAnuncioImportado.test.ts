@@ -342,17 +342,85 @@ test("o vínculo vem de `anuncios_gerados`, não de adivinhação", () => {
   assert.ok(!bloco.includes("agrupar("), "voltou a agrupar por família em vez de usar o vínculo real");
 });
 
-test("o recorte da ficha é IMPORTADO do domínio, nunca copiado", () => {
-  // Três lugares usam o mesmo recorte: a ficha do importado, a conferência e o
-  // enriquecimento. Duas cópias divergiriam no primeiro id acrescentado a uma.
+test("os TRÊS lugares usam a mesma função de recorte", () => {
+  // A ficha do importado, a conferência e o enriquecimento. Antes eram três
+  // filtros sobre a mesma constante — iguais por disciplina. Agora chamam
+  // `ehDeFicha`, e divergir deixou de ser possível sem alguém perceber.
+  //
+  // Foi a divergência que produziu 260 falsos conflitos: eu excluía uma lista
+  // de nomes que EU conhecia, e `SELLER_PACKAGE_*` e `SIZE_GRID_ROW_ID`
+  // passavam porque eu não sabia que existiam.
   assert.match(
     FONTE,
-    /import \{[\s\S]{0,120}ATRIBUTOS_COM_CASA_PROPRIA[\s\S]{0,160}enriquecimentoDaFicha"/,
+    /import \{[\s\S]{0,160}ehDeFicha[\s\S]{0,200}enriquecimentoDaFicha"/,
     "o recorte voltou a ser declarado localmente"
   );
   assert.ok(
     !/const ATRIBUTOS_COM_CASA_PROPRIA = new Set/.test(FONTE),
     "existe uma segunda cópia do recorte no importador"
+  );
+  // Dois aqui — `medirFichas` e `anuncioGeradoDoML`. O terceiro é
+  // `planejarEnriquecimento`, que vive no domínio e é conferido logo abaixo.
+  assert.equal(
+    (FONTE.match(/ehDeFicha\(/g) ?? []).length,
+    2,
+    "a conferência ou a ficha do importado deixou de usar a função de recorte"
+  );
+  const dominio = readFileSync(
+    new URL("../../modules/integration/domain/enriquecimentoDaFicha.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(
+    dominio,
+    /const daFicha = ehDeFicha\(fora\)/,
+    "o enriquecimento deixou de usar a função de recorte"
+  );
+});
+
+test("o recorte vem do ML, por CATEGORIA — não de uma lista nossa", () => {
+  // A lição que custou 260 falsos conflitos: quem decide o que é ficha é o
+  // marketplace. `hidden` e `variation_attribute` são tags DELE, por categoria,
+  // e vêm do endpoint público.
+  const ml = readFileSync(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
+  const fn = ml.slice(ml.indexOf("export async function atributosForaDaFicha"));
+  const corpo = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.match(corpo, /categories\/\$\{encodeURIComponent\(categoria\)\}\/attributes/);
+  assert.match(corpo, /"hidden" in a\.tags \|\| "variation_attribute" in a\.tags/);
+  // Público: nada de Authorization aqui.
+  assert.ok(!/Authorization/.test(corpo), "passou a mandar token num endpoint público");
+});
+
+test("se o ML não responder, o atributo PASSA — falha aberta", () => {
+  // Esconder sem saber seria afirmar o que não se sabe (INC-009). O preço de
+  // errar para o lado aberto é ruído na tela; para o outro lado, é dado sumido.
+  const ml = readFileSync(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
+  const fn = ml.slice(ml.indexOf("export async function atributosForaDaFicha"));
+  const corpo = fn.slice(0, fn.indexOf("\n}\n"));
+  assert.equal(
+    (corpo.match(/fora\[categoria\] = \[\];/g) ?? []).length,
+    3,
+    "algum caminho de falha deixou de devolver lista vazia"
+  );
+  assert.match(corpo, /catch \{/);
+});
+
+test("`SIZE_GRID_ID` fica fora por decisão NOSSA — o ML não o esconde", () => {
+  // Ele não tem tag nenhuma: o ML o mostraria. Mas é referência interna da guia
+  // de tamanhos, não característica do produto — decisão do dono do produto.
+  // Sem comentários: o doc do tipo cita `ITEM_CONDITION` como EXEMPLO do que o
+  // ML devolve, e a busca crua acusaria a prosa. Quarta vez que caio nisso.
+  const dominio = readFileSync(
+    new URL("../../modules/integration/domain/enriquecimentoDaFicha.ts", import.meta.url),
+    "utf8"
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(dominio, /"SIZE_GRID_ID",/);
+  // E `ITEM_CONDITION` NÃO está na lista: o ML já o marca como `hidden`, e
+  // duplicar aqui esconderia que a regra de tags dá conta.
+  assert.ok(
+    !/"ITEM_CONDITION"/.test(dominio),
+    "ITEM_CONDITION foi declarado à mão — a tag `hidden` do ML já o cobre"
   );
 });
 

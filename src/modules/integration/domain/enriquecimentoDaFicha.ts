@@ -29,14 +29,21 @@
 import type { AnuncioML } from "../../../lib/marketplaces/mercadolivre";
 
 /**
- * Atributos que já têm casa própria — não viram ficha.
- *
- * Idêntico ao recorte do importador, e não por acaso: um recorte diferente aqui
- * faria a conferência mostrar um número e a ficha guardar outro.
+ * O recorte que é NOSSO, e só ele.
  *
  * Identidade (`SELLER_SKU`, `GTIN`, `COLOR`, `SIZE`) mora na grade de variações,
  * que vem do cadastro — repeti-la seria oferecer uma SEGUNDA fonte, que foi como
  * a IA passou a inventá-la (PR #79). `PACKAGE_*` já vira peso e dimensão.
+ *
+ * `SIZE_GRID_ID` é referência interna do ML para a guia de tamanhos: não tem
+ * tag nenhuma, então o ML não o esconde — mas ele não é característica do
+ * produto, e o dono do produto decidiu deixá-lo fora.
+ *
+ * O QUE NÃO ESTÁ AQUI, e é o ponto: o resto do recorte vem da API do ML, por
+ * categoria (`hidden`, `variation_attribute`). Uma lista escrita aqui envelhece
+ * no dia em que o ML criar um atributo novo — e foi assim que 260 falsos
+ * conflitos apareceram, todos `SELLER_PACKAGE_*` e `SIZE_GRID_ROW_ID` que eu
+ * não sabia que existiam.
  */
 export const ATRIBUTOS_COM_CASA_PROPRIA: ReadonlySet<string> = new Set([
   "SELLER_SKU",
@@ -47,7 +54,32 @@ export const ATRIBUTOS_COM_CASA_PROPRIA: ReadonlySet<string> = new Set([
   "PACKAGE_HEIGHT",
   "PACKAGE_WIDTH",
   "PACKAGE_LENGTH",
+  "SIZE_GRID_ID",
 ]);
+
+/** O que o ML esconde, por categoria: `{ "MLB273770": ["ITEM_CONDITION", …] }`. */
+export type ForaDaFichaPorCategoria = Readonly<Record<string, readonly string[]>>;
+
+/**
+ * Monta o teste "este atributo é ficha?" — nosso recorte MAIS o do ML.
+ *
+ * Devolve uma função e não um Set porque a resposta depende da CATEGORIA: o
+ * mesmo id pode ser oculto num lugar e visível noutro, e quem sabe é o ML.
+ */
+export function ehDeFicha(
+  fora: ForaDaFichaPorCategoria = {}
+): (categoria: string, atributoId: string) => boolean {
+  const cache = new Map<string, ReadonlySet<string>>();
+  return (categoria, atributoId) => {
+    if (ATRIBUTOS_COM_CASA_PROPRIA.has(atributoId)) return false;
+    let doMl = cache.get(categoria);
+    if (!doMl) {
+      doMl = new Set(fora[categoria] ?? []);
+      cache.set(categoria, doMl);
+    }
+    return !doMl.has(atributoId);
+  };
+}
 
 export interface AtributoParaGravar {
   produtoId: string;
@@ -81,8 +113,10 @@ export interface PlanoDeEnriquecimento {
  */
 export function planejarEnriquecimento(
   anuncios: readonly AnuncioML[],
-  produtoPorMlb: ReadonlyMap<string, string>
+  produtoPorMlb: ReadonlyMap<string, string>,
+  fora: ForaDaFichaPorCategoria = {}
 ): PlanoDeEnriquecimento {
+  const daFicha = ehDeFicha(fora);
   // produtoId → nomeAtributo → valor → quantos anúncios dizem isso.
   const porProduto = new Map<string, Map<string, Map<string, number>>>();
   let anunciosSemProduto = 0;
@@ -97,7 +131,7 @@ export function planejarEnriquecimento(
     porProduto.set(produtoId, doProduto);
 
     for (const at of a.atributos) {
-      if (ATRIBUTOS_COM_CASA_PROPRIA.has(at.id)) continue;
+      if (!daFicha(a.categoria, at.id)) continue;
       const nome = at.nome || at.id;
       const valores = doProduto.get(nome) ?? new Map<string, number>();
       doProduto.set(nome, valores);
