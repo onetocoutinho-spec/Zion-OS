@@ -80,6 +80,44 @@ export interface MedicaoDaFicha {
   porAtributo: { id: string; nome: string; anuncios: number }[];
 }
 
+/** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
+export interface LeituraRelatada {
+  /** Quantos o ML DIZ que a conta tem. -1 = não informou. */
+  total: number;
+  /** Quantos ids listamos. */
+  ids: number;
+  /** Ids listados que o multiget não devolveu. */
+  perdidos: number;
+  parede: "nenhuma" | "offset-1000" | "teto" | "paginacao-parou";
+}
+
+/**
+ * A frase que conta a verdade da leitura — ou `undefined` quando leu tudo.
+ *
+ * Existe porque `489 já existiam` se lê como "está tudo em dia", e naquele dia
+ * faltavam 61. Silêncio aqui não é neutro: ele afirma completude.
+ */
+export function avisoDaLeitura(l: LeituraRelatada | undefined): string | undefined {
+  if (!l) return undefined;
+  const partes: string[] = [];
+  if (l.total >= 0 && l.ids < l.total) {
+    partes.push(`O ML diz que a conta tem ${l.total} anúncios e só consegui listar ${l.ids}.`);
+  }
+  if (l.perdidos > 0) {
+    partes.push(`${l.perdidos} anúncio(s) foram listados mas não vieram — lote com falha no ML.`);
+  }
+  if (l.parede === "offset-1000") {
+    partes.push(
+      "O Mercado Livre não deixa passar do anúncio 1.000 nesta forma de busca. Ler além disso exige outro endpoint, que ainda não está implementado."
+    );
+  } else if (l.parede === "paginacao-parou") {
+    partes.push("O ML parou de devolver páginas antes do total, sem dizer por quê.");
+  } else if (l.parede === "teto") {
+    partes.push("A leitura parou num limite pedido por quem chamou.");
+  }
+  return partes.length > 0 ? partes.join(" ") : undefined;
+}
+
 export interface ResultadoImportacaoAnuncios {
   produtos: number;
   anuncios: number;
@@ -93,6 +131,8 @@ export interface ResultadoImportacaoAnuncios {
    * Estes NÃO recebem foto — veja o passo 4.
    */
   casados?: number;
+  /** O que a leitura do ML viu — presente sempre que a rota respondeu. */
+  leitura?: LeituraRelatada;
   aviso?: string;
   /** Só no modo `medir`. */
   medicao?: MedicaoDaFicha;
@@ -384,15 +424,22 @@ export async function importarAnunciosDoCliente(
     anuncios?: AnuncioML[];
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
+    leitura?: LeituraRelatada;
     erro?: string;
   };
   if (!resposta.ok) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
   }
 
+  // A verdade da leitura anda junto com o resultado, em TODOS os retornos
+  // daqui pra baixo. Ela não é um extra: sem ela, "489 já existiam" afirma uma
+  // completude que ninguém verificou.
+  const leitura = dados.leitura;
+  const avisoLeitura = avisoDaLeitura(leitura);
+
   const todos = (dados.anuncios ?? []).filter((a) => a.mlb);
   if (todos.length === 0) {
-    return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: "Nenhum anúncio encontrado na conta." };
+    return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, leitura, aviso: avisoLeitura ?? "Nenhum anúncio encontrado na conta." };
   }
 
   // MEDIR sai AQUI, antes de qualquer escrita — e a posição é o ponto.
@@ -407,6 +454,8 @@ export async function importarAnunciosDoCliente(
       variacoes: 0,
       imagens: 0,
       pulados: 0,
+      leitura,
+      aviso: avisoLeitura,
       medicao: medirFichas(todos, dados.foraDaFicha),
     };
   }
@@ -448,6 +497,8 @@ export async function importarAnunciosDoCliente(
       variacoes: 0,
       imagens: 0,
       pulados: 0,
+      leitura,
+      aviso: avisoLeitura,
       enriquecimento: {
         atributos: plano.paraGravar.length,
         produtos: plano.produtos,
@@ -472,7 +523,12 @@ export async function importarAnunciosDoCliente(
     anuncios = todos.filter((a) => !jaTem.has(a.mlb));
     pulados = todos.length - anuncios.length;
     if (anuncios.length === 0) {
-      return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, aviso: "Nenhum anúncio novo — tudo já estava importado." };
+      // "tudo já estava importado" é uma AFIRMAÇÃO de completude. Ela só pode
+      // ser dita quando a leitura viu tudo; senão, o que sai é o que faltou.
+      return {
+        produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, leitura,
+        aviso: avisoLeitura ?? "Nenhum anúncio novo — tudo já estava importado.",
+      };
     }
   }
 
@@ -636,6 +692,7 @@ export async function importarAnunciosDoCliente(
     variacoes: variantes.length,
     imagens: imagensOk,
     pulados,
-    aviso: avisoParcial,
+    leitura,
+    aviso: [avisoLeitura, avisoParcial].filter(Boolean).join(" ") || undefined,
   };
 }

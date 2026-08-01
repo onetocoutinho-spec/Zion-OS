@@ -86,7 +86,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 test("todos os atributos preenchidos atravessam o mapeador", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const ids = a.atributos.map((x) => x.id);
   for (const esperado of [
     "BRAND",
@@ -104,7 +104,7 @@ test("todos os atributos preenchidos atravessam o mapeador", async () => {
 test("o mapeador NÃO filtra por importância — a lista é fiel", async () => {
   // Identidade e medidas continuam na lista bruta. Quem quiser filtrar filtra
   // ao exibir; descartar na origem foi o defeito.
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const ids = a.atributos.map((x) => x.id);
   for (const id of ["COLOR", "SIZE", "GTIN", "PACKAGE_WEIGHT"]) {
     assert.ok(ids.includes(id), `${id} sumiu da lista bruta`);
@@ -112,20 +112,20 @@ test("o mapeador NÃO filtra por importância — a lista é fiel", async () => 
 });
 
 test("atributo sem valor NÃO entra — campo em branco não é informação", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   assert.ok(!a.atributos.some((x) => x.id === "SEASON"));
   assert.ok(a.atributos.every((x) => x.valor.length > 0));
 });
 
 test("guarda id E nome — um sobrevive a rótulo novo, o outro é o que se lê", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const sola = a.atributos.find((x) => x.id === "OUTSOLE_MATERIAL");
   assert.equal(sola?.nome, "Material da sola");
   assert.equal(sola?.valor, "Borracha");
 });
 
 test("os campos antigos continuam funcionando — nada foi trocado, só somado", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   assert.equal(a.marca, "Modare");
   assert.equal(a.modelo, "7208.101");
   assert.equal(a.cor, "Nude");
@@ -138,7 +138,7 @@ test("os campos antigos continuam funcionando — nada foi trocado, só somado",
 // ---------------------------------------------------------------------------
 
 test("a ficha traz o que o lojista informou ao ML, não dois campos fixos", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const ficha = anuncioGeradoDoML(a).fichaTecnica;
   const nomes = ficha.map((f) => f.atributo);
   assert.ok(ficha.length > 2, `a ficha voltou a ter ${ficha.length} linhas`);
@@ -150,7 +150,7 @@ test("a ficha traz o que o lojista informou ao ML, não dois campos fixos", asyn
 test("identidade NÃO entra na ficha — ela mora na grade, e uma fonte só", async () => {
   // Repetir SKU, EAN, cor e tamanho aqui seria oferecer uma segunda fonte para
   // a identidade. Foi assim que a IA passou a inventá-la (PR #79).
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const nomes = anuncioGeradoDoML(a).fichaTecnica.map((f) => f.atributo);
   for (const proibido of ["Cor", "Tamanho", "GTIN"]) {
     assert.ok(!nomes.includes(proibido), `${proibido} entrou na ficha`);
@@ -158,7 +158,7 @@ test("identidade NÃO entra na ficha — ela mora na grade, e uma fonte só", as
 });
 
 test("medida de embalagem também fica fora — já vira peso e dimensão", async () => {
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const nomes = anuncioGeradoDoML(a).fichaTecnica.map((f) => f.atributo);
   assert.ok(!nomes.includes("Peso da embalagem"), "o peso apareceria duas vezes, em unidades diferentes");
 });
@@ -166,7 +166,7 @@ test("medida de embalagem também fica fora — já vira peso e dimensão", asyn
 test("Marca e Modelo continuam na ficha — agora vindos do ML", async () => {
   // Antes eram as duas ÚNICAS, e escritas aqui. Continuam, e pelo mesmo caminho
   // de todas as outras.
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   const ficha = anuncioGeradoDoML(a).fichaTecnica;
   assert.deepEqual(
     ficha.find((f) => f.atributo === "Marca"),
@@ -187,7 +187,7 @@ test("anúncio sem atributo nenhum devolve ficha vazia, não linha inventada", a
       headers: { "Content-Type": "application/json" },
     });
   }) as unknown as typeof fetch;
-  const [a] = await buscarAnunciosDoVendedor("tok", "123");
+  const { anuncios: [a] } = await buscarAnunciosDoVendedor("tok", "123");
   assert.deepEqual(anuncioGeradoDoML(a).fichaTecnica, []);
 });
 

@@ -62,7 +62,8 @@ export async function POST(request: Request) {
     if (!sellerId) {
       return Response.json({ erro: "seller_id não encontrado." }, { status: 422 });
     }
-    const anuncios = await buscarAnunciosDoVendedor(tokens.accessToken, sellerId);
+    const leitura = await buscarAnunciosDoVendedor(tokens.accessToken, sellerId);
+    const anuncios = leitura.anuncios;
 
     // O recorte da ficha vem do ML, por categoria — não de uma lista escrita
     // por nós. Vai junto porque é aqui que as categorias são conhecidas, e
@@ -70,7 +71,20 @@ export async function POST(request: Request) {
     // navegador, e nenhum problema de CORS.
     const foraDaFicha = await atributosForaDaFicha(anuncios.map((a) => a.categoria));
 
-    return Response.json({ anuncios, sellerId, foraDaFicha });
+    // `leitura` vai junto porque a diferença entre o que o ML DIZ ter e o que
+    // nós lemos precisa chegar à tela. Enquanto ela morria aqui, a importação
+    // parava nos 500 e ninguém sabia — inclusive nós.
+    return Response.json({
+      anuncios,
+      sellerId,
+      foraDaFicha,
+      leitura: {
+        total: leitura.total,
+        ids: leitura.ids,
+        perdidos: leitura.perdidos,
+        parede: leitura.parede,
+      },
+    });
   } catch (e) {
     return Response.json(
       { erro: e instanceof Error ? e.message : "Falha ao importar anúncios do ML." },
