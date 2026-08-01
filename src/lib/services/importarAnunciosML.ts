@@ -149,6 +149,14 @@ export interface ResultadoImportacaoAnuncios {
   leitura?: LeituraRelatada;
   /** Anúncios JÁ cadastrados cujo estado no marketplace mudou (modo `novos`). */
   estadosAtualizados?: number;
+  /**
+   * Anúncios cujo estado NÃO conseguiu ser gravado.
+   *
+   * Fica separado de `estadosAtualizados` porque somar os dois esconderia a
+   * falha: "767 atualizados" e "767 atualizados, 14 falharam" são frases
+   * diferentes, e só a segunda é verdadeira.
+   */
+  estadosQueFalharam?: number;
   aviso?: string;
   /** Só no modo `medir`. */
   medicao?: MedicaoDaFicha;
@@ -548,6 +556,7 @@ export async function importarAnunciosDoCliente(
   let anuncios = todos;
   let pulados = 0;
   let estadosAtualizados = 0;
+  let estadosQueFalharam = 0;
   if (modo === "substituir") {
     // SUBSTITUI: apaga a importação anterior do ML (anúncios + produtos, com as
     // variações em cascata) antes de reimportar — evita duplicar e não depende
@@ -571,8 +580,11 @@ export async function importarAnunciosDoCliente(
       todos.map((a) => ({ mlb: a.mlb, status: a.status })),
       new Date().toISOString()
     );
-    if (desatualizados.length > 0) await atualizarEstadoNoMarketplaceBulk(desatualizados);
-    estadosAtualizados = desatualizados.length;
+    if (desatualizados.length > 0) {
+      const r = await atualizarEstadoNoMarketplaceBulk(desatualizados);
+      estadosAtualizados = r.atualizados;
+      estadosQueFalharam = r.falharam;
+    }
 
     const jaTem = new Set(existentes.map((e) => e.mlItemId).filter(Boolean));
     anuncios = todos.filter((a) => !jaTem.has(a.mlb));
@@ -583,6 +595,7 @@ export async function importarAnunciosDoCliente(
       return {
         produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados, leitura,
         estadosAtualizados,
+        estadosQueFalharam,
         aviso: avisoLeitura ?? "Nenhum anúncio novo — tudo já estava importado.",
       };
     }
@@ -760,6 +773,7 @@ export async function importarAnunciosDoCliente(
     pulados,
     leitura,
     estadosAtualizados,
+    estadosQueFalharam,
     aviso: [avisoLeitura, avisoParcial].filter(Boolean).join(" ") || undefined,
   };
 }
