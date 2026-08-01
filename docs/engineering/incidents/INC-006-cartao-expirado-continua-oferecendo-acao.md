@@ -1,7 +1,8 @@
 # INC-006 — O cartão de uma proposta expirada continua oferecendo o botão
 
 ```
-Status:      LIMITAÇÃO CONHECIDA — documentada, NÃO corrigida
+Status:      CORRIGIDO em 2026-08-01 — ver "A conta estava errada", no fim
+Status antes: LIMITAÇÃO CONHECIDA — documentada, NÃO corrigida
 Detectado:   2026-07-31, CICLO B, ao tratar a proposta observacional da Fase 5B
 Severidade:  UX. Sem risco de dado: o servidor recusa antes de qualquer escrita
 Classe:      servidor seguro, interface enganosa
@@ -82,6 +83,72 @@ status novo, sem efeito colateral ao detectar.
 
 Vale para **qualquer** proposta do Copilot, não só a de peso: os cinco cartões
 têm o mesmo comportamento.
+
+---
+
+# A conta estava errada (2026-08-01)
+
+A recusa acima foi por **custo**, não por impossibilidade: *"um estado novo em
+cinco máquinas de cartão"*, e daí *"o risco da mudança é maior que o do
+defeito"*. Fui reexaminar a premissa antes de aceitá-la, e ela é falsa.
+
+As cinco máquinas começam **todas** pela mesma linha:
+
+```ts
+if (desfecho) return { estado: "concluido", ok, mensagem };
+```
+
+A interface **já sabe** desenhar "este cartão acabou, eis o motivo, sem botão" —
+é exatamente o estado que o servidor produz depois do clique. E o padrão de
+desfecho sintético já existia: o descarte usa um (*"Descartado. Nada foi
+gravado."*). Os cinco cartões recebiam `desfecho={t.desfecho}` do mesmo lugar.
+
+Então não foi preciso nada do que a estimativa previa: **sem `expiraEm` no wire,
+sem campo no protocolo, sem estado novo em máquina nenhuma.** O turno passou a
+saber quando chegou, e o desfecho do cartão passa a ser calculado.
+
+## O desenho, que é o que o próprio INC-006 pediu
+
+O texto acima já dizia: *"relógio do cliente serve para UX, nunca como barreira
+— o servidor continua sendo a autoridade… sem cancelamento automático, sem
+status novo, sem efeito colateral ao detectar."* É literalmente o que foi feito.
+
+E há uma propriedade que dá para **provar**, não só afirmar. `chegouEm` é o
+instante em que a resposta chegou ao navegador; a proposta nasceu antes disso,
+no servidor. Para qualquer latência ≥ 0:
+
+```
+chegouEm         >=  criadaEm
+chegouEm + 30min >=  criadaEm + 30min  =  expiraEm
+```
+
+**A tela vence sempre em cima da hora ou depois, nunca antes.** O erro possível
+é deixar o botão visível um instante a mais — e aí o servidor recusa, como
+sempre fez. O erro impossível é esconder um botão ainda válido.
+
+## O que mudou, em linhas
+
+| onde | o quê |
+|---|---|
+| `vencimentoNaTela.ts` (novo) | função pura: chegada + agora → desfecho ou nada |
+| `ChatDaOperacao` | `chegouEm` no turno (só quando veio autorização), relógio de 30 s que só tiquetaqueia com cartão vivo, e os 5 cartões computando o desfecho |
+| guarda do `confirmar` | passa a incluir a validade — a checagem sempre repetiu a do render de propósito, para o clique que escapa por teclado ou corrida |
+
+`chegouEm` **não atravessa o recarregamento**: `paraGuardar` é lista branca e
+não o copia. Não precisa — a proposta também não atravessa, então um turno
+retomado do disco não tem botão. Há teste guardando isso.
+
+## O que continua verdadeiro do texto original
+
+- **o servidor segue sendo a autoridade.** Nada foi removido do caminho de
+  recusa: `podeExecutar` continua checando expiração antes das precondições, e o
+  `409 { motivo: "expirada" }` continua tendo que ser tratado — o relógio do
+  navegador pode estar errado;
+- **clicar num cartão vencido continua não sendo inócuo** (transiciona para
+  `expirada` e audita a recusa). A diferença é que agora quase não há como
+  clicar;
+- a janela continua estreita. O ganho é de honestidade da interface, não de
+  segurança — ela era segura antes.
 
 ## O que isto NÃO diz
 
