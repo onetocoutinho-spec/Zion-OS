@@ -383,6 +383,50 @@ Registro a consequência: **não existe caminho de leitura que exercite a
 referência estruturada.** Validá-la exige ou um produto de teste autorizado, ou
 um cenário de cadastro real conduzido pela própria lojista.
 
+## As sete órfãs, explicadas — e o `void`, desfeito (2026-08-01)
+
+Medido no banco, todas as conversas com a contagem de mensagens:
+
+| conversas | mensagens | quando |
+|---|---|---|
+| 4 | 2 · 2 · 6 · 2 — pares perfeitos lojista/assistente | de **31/07 01:56** em diante |
+| **7** | **zero** | de 30/07 17:41 a **31/07 00:53** |
+
+**As sete órfãs são todas anteriores ao conserto do INC-004.** Não são lixo: são
+o registro fóssil daquele defeito — o `23502` em `ferramentas` derrubava o
+insert inteiro, e a conversa nascia sem nunca receber uma linha. A fronteira no
+tempo é a prova, e apagá-las destruiria justamente isso.
+
+**Nenhuma limpeza retroativa, e agora por decisão e não por omissão.** São onze
+linhas; o custo de mantê-las é zero e o de apagá-las é perder a evidência.
+
+### O `void` deixou de ser aposta
+
+Na janela pós-conserto, o `void gravarTurno` **não perdeu nada**: 6 turnos, 12
+mensagens, todos pareados. Mas isso é ausência de sintoma em seis turnos, não
+garantia — e o risco é estrutural: a promise flutuava enquanto o `mandar`
+seguinte fechava o `ReadableStream`, e uma invocação serverless pode congelar
+antes de o insert terminar. Perder-se-ia o turno **e** o log que avisaria: o
+INC-004 de novo, por outro caminho.
+
+Passou a `await`. O que tornou a troca barata:
+
+- `gravarTurno` captura o `error`, loga e **nunca lança** — esperar por ela não
+  pode derrubar a resposta;
+- a rota **já** bloqueava em escrita de banco logo antes, ao persistir a
+  proposta de preço. O `await` não inaugura categoria de risco, fecha janela;
+- o custo é um insert (dezenas de ms) num turno que já gastou segundos no
+  modelo.
+
+**`after()` do `next/server` seria o mecanismo "certo"** e existe no Next
+16.2.10 — mas o corpo deste handler roda dentro de um `ReadableStream`, e **não
+está demonstrado que o escopo de request sobrevive ali**. Não entra mecanismo
+que não se prove neste stack. `waitUntil` e `after(` seguem proibidos por teste.
+
+Um teste **mudou de lado**: `gravarTurno.test.ts` exigia `void permanece` e agora
+exige o contrário. A troca está documentada no próprio teste, com o motivo — não
+foi afrouxamento para passar.
+
 ## Ainda NÃO validado
 
 - **`ultimaApresentacao` e `draftAbertoDaConversa`** — pelo motivo acima;
@@ -392,7 +436,7 @@ um cenário de cadastro real conduzido pela própria lojista.
 - **login posterior ao logout**;
 - se `draftsAbertos` compensa o draft por conversa;
 - retomada entre dispositivos;
-- as sete conversas órfãs — **nenhuma limpeza retroativa**.
+- ~~as sete conversas órfãs~~ — explicadas acima: são anteriores ao conserto do INC-004, e a não-limpeza virou decisão.
 
 O que está validado é a propriedade nomeada no cabeçalho, mais o ciclo de vida
 acima. E só.

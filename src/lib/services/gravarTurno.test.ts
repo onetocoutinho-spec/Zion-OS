@@ -239,14 +239,37 @@ test("T16: falha de REDE também é registrada — e quem a registra é o `error
 // Controle de regressão — o que esta fase não podia tocar
 // ---------------------------------------------------------------------------
 
-test("a rota continua NÃO aguardando gravarTurno — `void` permanece", async () => {
+test("a rota AGUARDA gravarTurno — o `void` era uma aposta, e foi desfeita", async () => {
+  // ESTE TESTE MUDOU DE LADO EM 2026-08-01, e o motivo fica registrado porque a
+  // versão anterior exigia o contrário ("`void` permanece").
+  //
+  // A promise flutuante apostava que o insert terminaria antes de a invocação
+  // congelar. Num handler que responde por ReadableStream e fecha o fluxo na
+  // linha seguinte, isso é uma corrida — e o prêmio de perder é silêncio: sem
+  // turno gravado E sem o log que avisaria, exatamente o INC-004 por outro
+  // caminho.
+  //
+  // O que tornou a troca barata: `gravarTurno` captura o `error`, loga e NUNCA
+  // lança (provado nos testes acima). Esperar por ela não pode derrubar a
+  // resposta. E a rota já bloqueava em escrita de banco logo antes, ao
+  // persistir a proposta de preço — o `await` não inaugura risco, fecha janela.
+  //
+  // `waitUntil`/`after()` continuam proibidos: o corpo roda dentro do stream, e
+  // não está demonstrado que o escopo de request sobrevive ali. Mecanismo que
+  // não se prova neste stack não entra.
   const { readFileSync } = await import("node:fs");
+  // Sem comentários: o comentário logo acima do `await`, na rota, EXPLICA por
+  // que `after()` não entrou — e a busca pela string crua acusava justamente o
+  // texto que existe para impedir o defeito. Terceira vez que caio nisso hoje.
   const rota = readFileSync(
     new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
     "utf8"
-  );
-  assert.match(rota, /void gravarTurno\(/);
-  for (const proibido of ["await gravarTurno(", "waitUntil", "after("]) {
-    assert.ok(!rota.includes(proibido), `apareceu "${proibido}" — mudou o dono da Promise`);
+  )
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(rota, /await gravarTurno\(/);
+  assert.ok(!/void gravarTurno\(/.test(rota), "o `void` voltou: a corrida foi reaberta");
+  for (const proibido of ["waitUntil", "after("]) {
+    assert.ok(!rota.includes(proibido), `apareceu "${proibido}" — mecanismo não demonstrado aqui`);
   }
 });

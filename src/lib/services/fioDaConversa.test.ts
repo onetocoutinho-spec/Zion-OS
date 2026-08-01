@@ -194,7 +194,9 @@ test("T17: o INC-004 continua de pé — payload homogêneo e erro lido", () => 
   assert.match(CONVERSAS, /ferramentas: \[\]/);
   assert.match(CONVERSAS, /const \{ error \} = await getSupabaseAdmin\(\)/);
   assert.match(CONVERSAS, /if \(error\)/);
-  assert.match(ROTA, /void gravarTurno\(/);
+  // Era `void` até 2026-08-01; virou `await`. O que este teste guarda é que a
+  // rota CHAMA gravarTurno — o dono da Promise é assunto de gravarTurno.test.
+  assert.match(ROTA, /await gravarTurno\(/);
 });
 
 test("T18: o C1R continua intacto", () => {
