@@ -45,12 +45,6 @@ const MAPA_FILTRO: Record<string, string> = {
   Publicado: "publicado",
 };
 
-function prioridade(a: AnuncioGeradoRegistro): { label: string; tone: "red" | "yellow" | "green" } {
-  if (a.notaDiagnostico < 40 || a.qtdPendencias >= 3) return { label: "Alta", tone: "red" };
-  if (a.notaDiagnostico < 70 || a.qtdPendencias > 0) return { label: "Média", tone: "yellow" };
-  return { label: "Baixa", tone: "green" };
-}
-
 export default function ClienteAnuncios() {
   const { clienteId, nome } = useClientPortal();
   const { data: anuncios } = useLiveQuery(
@@ -151,16 +145,17 @@ export default function ClienteAnuncios() {
           </div>
 
           <Table
-            // "Marketplace" saiu: 1 valor em 590 anúncios ("Mercado Livre"). Uma coluna
-            // que diz a mesma coisa em toda linha custa largura e não informa nada —
-            // mesmo argumento que a tirou da tabela de produtos no PR #70.
-            headers={["Anúncio", "Score", "Problema principal", "Prioridade", "Status", "Ação"]}
+            // Duas colunas saíram, por motivos DIFERENTES:
+            //   "Marketplace" — 1 valor em 590 anúncios. Não informava nada.
+            //   "Prioridade"  — variava, mas era DERIVADA de Score e Problema
+            //                   principal, que estão ali ao lado. Redundância,
+            //                   não constância. Decisão do dono do produto.
+            headers={["Anúncio", "Score", "Problema principal", "Status", "Ação"]}
           >
             {filtrados.length === 0 ? (
-              <EmptyRow colSpan={6} />
+              <EmptyRow colSpan={5} />
             ) : (
               filtrados.map((a) => {
-                const prio = prioridade(a);
                 const problema = a.anuncio?.pendencias?.[0] ?? "—";
                 const podeAprovar = a.vereditoA10 === "aprovado" && a.qtdPendencias === 0;
                 const expandido = aberto === a.id;
@@ -175,9 +170,6 @@ export default function ClienteAnuncios() {
                       </Td>
                       <Td className="max-w-56 truncate" >
                         {problema}
-                      </Td>
-                      <Td>
-                        <Pill tone={prio.tone}>{prio.label}</Pill>
                       </Td>
                       <Td>
                         <Pill tone={toneFor(a.status)}>
@@ -243,7 +235,7 @@ export default function ClienteAnuncios() {
                     </tr>
                     {expandido && a.anuncio && (
                       <tr className="bg-white/[0.015]">
-                        <td colSpan={6} className="px-4 py-4">
+                        <td colSpan={5} className="px-4 py-4">
                           <DetalheAnuncio registro={a} />
                         </td>
                       </tr>
