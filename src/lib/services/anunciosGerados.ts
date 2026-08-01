@@ -20,6 +20,43 @@ export const ROTULO_STATUS_ANUNCIO_GERADO: Record<StatusAnuncioGerado, string> =
   publicado: "Publicado",
 };
 
+/**
+ * Como mostrar o estado NO MARKETPLACE para a lojista.
+ *
+ * Três regras que não são estilo:
+ *
+ *  1. `null` NÃO é "no ar". Um anúncio que tem MLB e não tem estado conhecido
+ *     mostra "estado desconhecido", porque é o que sabemos. Esconder o caso
+ *     faria a ausência de selo significar "está tudo bem" — a mesma mentira
+ *     que a coluna veio corrigir.
+ *  2. Estado que não conhecemos aparece com a PALAVRA do ML, não some. Se o
+ *     Mercado Livre criar um estado novo amanhã, ele fica visível em vez de
+ *     ser engolido por um `default`.
+ *  3. `active` também é mostrado. Selo só no caso ruim treinaria a leitora a
+ *     ignorar o campo, e aí o ruim volta a passar despercebido.
+ */
+export function rotuloStatusMarketplace(
+  status: string | null | undefined
+): { texto: string; tom: "ok" | "atencao" | "ruim" | "neutro" } {
+  const s = (status ?? "").trim().toLowerCase();
+  if (!s) return { texto: "Estado desconhecido", tom: "neutro" };
+  switch (s) {
+    case "active":
+      return { texto: "No ar", tom: "ok" };
+    case "paused":
+      return { texto: "Pausado no ML", tom: "atencao" };
+    case "under_review":
+      return { texto: "Em revisão pelo ML", tom: "atencao" };
+    case "closed":
+      return { texto: "Encerrado no ML", tom: "ruim" };
+    case "inactive":
+      return { texto: "Inativo no ML", tom: "ruim" };
+    default:
+      // A palavra crua. Nunca um "—" que apagaria o estado desconhecido.
+      return { texto: `No ML: ${status}`, tom: "neutro" };
+  }
+}
+
 export async function listarAnunciosGerados(): Promise<AnuncioGeradoRegistro[]> {
   return repo.listar();
 }
@@ -82,15 +119,29 @@ export async function rejeitarAnuncioGerado(
   });
 }
 
-/** Marca como publicado após o envio via API do marketplace (Fase 3). */
+/**
+ * Marca como publicado após o envio via API do marketplace (Fase 3).
+ *
+ * `status` é a esteira do Zion; `statusMarketplace` é o que o ML respondeu ao
+ * criar o item. Os dois são gravados aqui porque é o único momento em que
+ * sabemos os dois com certeza — e porque publicar sem registrar o estado do que
+ * acabou de ser publicado deixaria o anúncio novo em `null` (não sabemos)
+ * tendo o ML acabado de dizer.
+ *
+ * Sem `?? "active"`: se o marketplace não devolver estado, fica sem.
+ */
 export async function marcarAnuncioPublicado(
   id: string,
-  ml?: { itemId?: string; permalink?: string }
+  ml?: { itemId?: string; permalink?: string; status?: string }
 ): Promise<AnuncioGeradoRegistro | null> {
+  const statusMarketplace = (ml?.status ?? "").trim();
   return repo.atualizar(id, {
     status: "publicado",
     ...(ml?.itemId ? { mlItemId: ml.itemId } : {}),
     ...(ml?.permalink ? { mlPermalink: ml.permalink } : {}),
+    ...(statusMarketplace
+      ? { statusMarketplace, statusMarketplaceEm: new Date().toISOString() }
+      : {}),
   });
 }
 

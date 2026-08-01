@@ -634,6 +634,18 @@ export type StatusAnuncioGerado =
   | "rejeitado"
   | "publicado";
 
+/**
+ * O estado do anúncio NO MARKETPLACE — a palavra dele, sem tradução.
+ *
+ * `active | paused | under_review | closed | inactive` no ML. Guardamos
+ * verbatim porque normalizar exigiria um mapa nosso, e no dia em que o ML
+ * criar um estado novo o mapa o engoliria em silêncio. A tradução para a
+ * lojista acontece na tela, onde errar é visível.
+ *
+ * `null` significa NÃO SABEMOS — nunca "está no ar".
+ */
+export type StatusMarketplace = string;
+
 export interface AnuncioGeradoRegistro {
   id: string;
   clienteId: string;
@@ -662,4 +674,25 @@ export interface AnuncioGeradoRegistro {
   mlItemId?: string | null;
   /** Link público do anúncio no ML. */
   mlPermalink?: string | null;
+  /**
+   * O estado NO MARKETPLACE, na palavra dele. Eixo INDEPENDENTE de `status`.
+   *
+   * `status` é a esteira do Zion (rascunho → aprovado → publicado); este é o
+   * ML. Um anúncio pode ser `publicado` aqui e `paused` lá ao mesmo tempo — as
+   * duas afirmações são verdadeiras e nenhuma substitui a outra.
+   *
+   * Existe porque o importador gravava `status: "publicado"` fixo. Medido em
+   * 2026-08-01: 104 dos 511 anúncios que o Zion dizia publicados não estavam
+   * no ar — 52 em revisão, 38 pausados, 12 encerrados, 2 inativos.
+   *
+   * `null` = não sabemos. Nunca "está no ar".
+   */
+  statusMarketplace?: StatusMarketplace | null;
+  /**
+   * Quando aprendemos esse estado.
+   *
+   * Um estado sem data parece atual e não é: "paused" lido há três semanas é
+   * palpite vestido de fato.
+   */
+  statusMarketplaceEm?: string | null;
 }

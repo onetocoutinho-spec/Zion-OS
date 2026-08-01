@@ -29,6 +29,7 @@ import {
   aprovarAnuncioGerado,
   rejeitarAnuncioGerado,
   ROTULO_STATUS_ANUNCIO_GERADO,
+  rotuloStatusMarketplace,
 } from "@/lib/services/anunciosGerados";
 import { listarProdutos } from "@/lib/services/produtos";
 import { baixarVinculacaoCsv } from "@/lib/services/exportacaoErp";
@@ -61,6 +62,16 @@ export default function ClienteAnuncios() {
   const [publicado, setPublicado] = useState<ResultadoPublicado | null>(null);
 
   const publicados = (anuncios ?? []).filter((a) => a.status === "publicado" && a.mlItemId).length;
+
+  // "Publicado" é a esteira do Zion; "no ar" é o Mercado Livre. Medido em
+  // 2026-08-01: 104 dos 511 que o Zion dizia publicados não estavam no ar.
+  // Enquanto os dois números forem o mesmo número, ninguém descobre isso.
+  const comMlb = (anuncios ?? []).filter((a) => a.mlItemId);
+  const noAr = comMlb.filter((a) => a.statusMarketplace === "active").length;
+  const foraDoAr = comMlb.filter(
+    (a) => a.statusMarketplace && a.statusMarketplace !== "active"
+  ).length;
+  const semEstado = comMlb.filter((a) => !a.statusMarketplace).length;
 
   function exportarVinculacao() {
     const mapa = new Map<string, Produto>((produtos ?? []).map((p) => [p.id, p]));
@@ -96,7 +107,14 @@ export default function ClienteAnuncios() {
     <>
       <PageHeader
         titulo="Meus Anúncios"
-        subtitulo="Os anúncios que a IA gerou para você. Revise e aprove os que estiverem prontos."
+        subtitulo={
+          comMlb.length > 0
+            ? `Os anúncios que a IA gerou para você. No Mercado Livre: ${noAr} no ar` +
+              (foraDoAr > 0 ? ` · ${foraDoAr} fora do ar` : "") +
+              (semEstado > 0 ? ` · ${semEstado} sem estado conhecido` : "") +
+              "."
+            : "Os anúncios que a IA gerou para você. Revise e aprove os que estiverem prontos."
+        }
         acao={
           <div className="flex items-center gap-2">
             {publicados > 0 && (
@@ -197,6 +215,29 @@ export default function ClienteAnuncios() {
                               <Rocket size={12} /> Publicar
                             </Button>
                           )}
+                          {a.mlItemId && (() => {
+                            const r = rotuloStatusMarketplace(a.statusMarketplace);
+                            const cor =
+                              r.tom === "ok"
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                : r.tom === "atencao"
+                                  ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                                  : r.tom === "ruim"
+                                    ? "border-red-500/30 bg-red-500/10 text-red-300"
+                                    : "border-white/10 bg-white/[0.03] text-zinc-400";
+                            return (
+                              <span
+                                className={`inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium ${cor}`}
+                                title={
+                                  a.statusMarketplaceEm
+                                    ? `Lido do ${a.marketplace} em ${new Date(a.statusMarketplaceEm).toLocaleString("pt-BR")}`
+                                    : `O Zion ainda não leu o estado deste anúncio no ${a.marketplace}. Use "Só conferir" para atualizar.`
+                                }
+                              >
+                                {r.texto}
+                              </span>
+                            );
+                          })()}
                           {a.status === "publicado" && a.mlPermalink && (
                             <a
                               href={a.mlPermalink}

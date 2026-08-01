@@ -656,7 +656,17 @@ export async function importarAnunciosDoCliente(
       vereditoA10: "aprovado" as const,
       qtdPendencias: 0,
       anuncio: anuncioGeradoDoML(a, dados.foraDaFicha),
+      // `status` é a esteira do Zion: o anúncio VEIO do ML, então do ponto de
+      // vista dela ele está publicado — isso continua verdade.
       status: "publicado" as const,
+      // O estado NO ML é outro eixo, e é o que estava sendo mentido. Antes da
+      // migração 050 não havia onde dizer `paused`, e todo anúncio importado
+      // virava publicado. Medido: 104 dos 511 não estavam no ar.
+      //
+      // Sem tradução e sem `?? "active"`: se o ML não disser, fica `null`, que
+      // significa NÃO SABEMOS.
+      statusMarketplace: (a.status || "").trim() || null,
+      statusMarketplaceEm: agora,
       aprovadoPor: "Mercado Livre",
       aprovadoEm: agora,
       criadoEm: agora,

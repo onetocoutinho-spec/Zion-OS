@@ -243,6 +243,8 @@ async function executarPublicacao(
   const dados = (await resposta.json()) as {
     id?: string;
     permalink?: string;
+    /** O estado que o ML deu ao item recém-criado. */
+    status?: string;
     erro?: string;
     motivo?: string;
     categoriaPrevista?: string | null;
@@ -269,7 +271,11 @@ async function executarPublicacao(
     throw new Error(motivo);
   }
 
-  await marcarAnuncioPublicado(registro.id, { itemId: dados.id, permalink: dados.permalink });
+  await marcarAnuncioPublicado(registro.id, {
+    itemId: dados.id,
+    permalink: dados.permalink,
+    status: dados.status,
+  });
 
   // Learning Loop (1): ambiente propôs → humano decidiu → memória.
   // capturarDecisao garante delta real e fire-and-forget. Autoria (E4.2.3):

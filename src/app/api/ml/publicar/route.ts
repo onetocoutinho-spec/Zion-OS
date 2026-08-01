@@ -258,12 +258,15 @@ export async function POST(request: Request) {
 
       // Publica sequencialmente. Em falha parcial ABORTA e reporta os IDs já
       // criados — nunca reenvia (evita duplicar a família num retry cego).
-      const criados: { id: string; permalink?: string }[] = [];
+      // `status` entra aqui porque `criarItem` já o devolve e nós o jogávamos
+      // fora. Publicar e em seguida não saber o estado do que acabamos de
+      // publicar é o mesmo buraco da importação, na outra ponta.
+      const criados: { id: string; permalink?: string; status?: string }[] = [];
       for (let i = 0; i < itens.length; i++) {
         const tamanho = bundle.variacoes[i]?.tamanho ?? null;
         try {
           const item = await criarItem(tokens.accessToken, itens[i]);
-          criados.push({ id: item.id, permalink: item.permalink });
+          criados.push({ id: item.id, permalink: item.permalink, status: item.status });
           log("info", "item", {
             status: "ok",
             indice: i + 1,
@@ -308,6 +311,9 @@ export async function POST(request: Request) {
         dry: false,
         id: familia.id,
         permalink: familia.permalink,
+        // O caminho clássico já devolvia `status`; este o descartava. Dois
+        // caminhos para a mesma coisa não podem contar histórias diferentes.
+        status: familia.status,
         modelo: "user_products",
         itens: criados,
         sellerId: canal.sellerId ?? tokens.userId ?? null,
