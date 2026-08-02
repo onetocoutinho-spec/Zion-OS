@@ -24,6 +24,7 @@ import {
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
 import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
+import { exigenciasNaoAtendidas } from "../../modules/integration/domain/oQueOMlEstaPedindo";
 import { substituirAtributosDoMarketplace } from "./produtoAtributos";
 import {
   casarGruposComProdutos,
@@ -99,6 +100,13 @@ export interface MedicaoDaFicha {
    * e sem isso a lojista vê "155 em revisão" e não tem onde mexer.
    */
   motivosDeNaoEstarNoAr: { motivo: string; anuncios: number }[];
+  /**
+   * Campos que a categoria EXIGE e faltam nos anúncios fora do ar.
+   *
+   * `waiting_for_patch` diz que falta alguma coisa e não diz o quê. Isto
+   * responde a pergunta que a lojista tem de verdade: o que preencher.
+   */
+  exigenciasNaoAtendidas: { id: string; nome: string; anuncios: number }[];
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -219,7 +227,8 @@ function contarMotivos(anuncios: readonly AnuncioML[]): { motivo: string; anunci
 export function medirFichas(
   anuncios: readonly AnuncioML[],
   fora: ForaDaFichaPorCategoria = {},
-  mlbsJaConhecidos: ReadonlySet<string> = new Set()
+  mlbsJaConhecidos: ReadonlySet<string> = new Set(),
+  obrigatorios: Record<string, { id: string; nome: string }[]> = {}
 ): MedicaoDaFicha {
   // O MESMO recorte do enriquecimento, e por construção: os dois chamam
   // `ehDeFicha`. Antes eram duas listas iguais por disciplina; agora é uma
@@ -249,6 +258,7 @@ export function medirFichas(
       .sort((x, y) => y.anuncios - x.anuncios || x.id.localeCompare(y.id)),
     porStatus: contarStatus(anuncios),
     motivosDeNaoEstarNoAr: contarMotivos(anuncios),
+    exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
     novosPorStatus: contarStatus(anuncios.filter((a) => !mlbsJaConhecidos.has(a.mlb))),
   };
 }
@@ -492,6 +502,7 @@ export async function importarAnunciosDoCliente(
     anuncios?: AnuncioML[];
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
+    obrigatorios?: Record<string, { id: string; nome: string }[]>;
     leitura?: LeituraRelatada;
     erro?: string;
   };
@@ -529,7 +540,7 @@ export async function importarAnunciosDoCliente(
       pulados: 0,
       leitura,
       aviso: avisoLeitura,
-      medicao: medirFichas(todos, dados.foraDaFicha, conhecidos),
+      medicao: medirFichas(todos, dados.foraDaFicha, conhecidos, dados.obrigatorios),
     };
   }
 

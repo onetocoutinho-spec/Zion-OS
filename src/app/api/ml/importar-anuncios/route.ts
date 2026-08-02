@@ -8,7 +8,7 @@
 import {
   renovarToken,
   buscarAnunciosDoVendedor,
-  atributosForaDaFicha,
+  recorteDaCategoria,
 } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
@@ -69,7 +69,13 @@ export async function POST(request: Request) {
     // por nós. Vai junto porque é aqui que as categorias são conhecidas, e
     // porque o endpoint é público: uma chamada a mais no servidor, nenhuma no
     // navegador, e nenhum problema de CORS.
-    const foraDaFicha = await atributosForaDaFicha(anuncios.map((a) => a.categoria));
+    // Os DOIS recortes numa passada: o que não é ficha do lojista, e o que a
+    // categoria EXIGE. Saem da mesma resposta do ML; pedir separado dobraria a
+    // rede por nada. Os obrigatórios entraram porque 150 anúncios estavam em
+    // `waiting_for_patch` — o ML pedindo correção — e ninguém sabia qual campo.
+    const { foraDaFicha, obrigatorios } = await recorteDaCategoria(
+      anuncios.map((a) => a.categoria)
+    );
 
     // `leitura` vai junto porque a diferença entre o que o ML DIZ ter e o que
     // nós lemos precisa chegar à tela. Enquanto ela morria aqui, a importação
@@ -78,6 +84,7 @@ export async function POST(request: Request) {
       anuncios,
       sellerId,
       foraDaFicha,
+      obrigatorios,
       leitura: {
         total: leitura.total,
         ids: leitura.ids,

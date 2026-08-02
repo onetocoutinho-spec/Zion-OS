@@ -383,6 +383,14 @@ export default function ClienteProdutos() {
                   .map((x) => `${x.anuncios} ${x.motivo}`)
                   .join(" · ")}.`
               : "") +
+            // O que FALTA vem depois do motivo: "waiting_for_patch" diz que
+            // falta algo; isto diz o quê, que é a pergunta que ela tem.
+            (m.exigenciasNaoAtendidas.length > 0
+              ? ` Campos exigidos que faltam nesses: ${m.exigenciasNaoAtendidas
+                  .slice(0, 6)
+                  .map((x) => `${x.nome} (${x.anuncios})`)
+                  .join(" · ")}.`
+              : "") +
             (m.novosPorStatus.length > 0
               ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
                   .map((s) => `${s.anuncios} ${s.status}`)
