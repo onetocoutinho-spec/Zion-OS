@@ -6,11 +6,13 @@
 
 import { montarItemML } from "../../modules/integration/domain/mlPayload";
 import { montarBundleUserProducts } from "../../modules/publication/domain/composicaoConteudo";
+import { irmaosDaFamilia } from "../../modules/publication/domain/irmaosDaFamilia";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import {
   atualizarAnuncioGerado,
   buscarAnuncioGerado,
+  criarAnunciosGeradosBulk,
   marcarAnuncioPublicado,
 } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
@@ -263,6 +265,14 @@ async function executarPublicacao(
     permalink?: string;
     /** O estado que o ML deu ao item recém-criado. */
     status?: string;
+    /**
+     * TODOS os MLBs criados — no modelo User Products, um por tamanho.
+     *
+     * A rota sempre devolveu este campo e este arquivo não o declarava, então
+     * só `id` (o primeiro) era persistido. Os outros ficavam vivos no ML sem
+     * registro nenhum no Zion. Observado em 2026-08-01 com o Papete Modare.
+     */
+    itens?: { id?: string; permalink?: string; status?: string }[];
     erro?: string;
     motivo?: string;
     categoriaPrevista?: string | null;
@@ -295,6 +305,30 @@ async function executarPublicacao(
     status: dados.status,
   });
 
+  // Os DEMAIS tamanhos da família. Sem isto eles ficam vivos no Mercado Livre
+  // e invisíveis aqui: não aparecem na lista, não contam como publicados, não
+  // podem ser pausados pelo Zion, e a guarda contra publicação duplicada não os
+  // enxerga. A importação seguinte os traz de volta como anúncios NOVOS e cria
+  // um produto duplicado — foi o que aconteceu com o `MLB4980078561`.
+  //
+  // Falhar aqui NÃO derruba a publicação: o anúncio principal já está no ar, e
+  // lançar agora faria a lojista achar que a publicação falhou quando ela deu
+  // certo. Os irmãos que não gravarem entram como aviso — e a próxima
+  // importação os recupera de qualquer forma.
+  const irmaos = irmaosDaFamilia(registro, dados.itens ?? [], dados.id, new Date().toISOString());
+  const avisosDaFamilia: string[] = [];
+  if (irmaos.length > 0) {
+    try {
+      await criarAnunciosGeradosBulk(irmaos);
+    } catch {
+      avisosDaFamilia.push(
+        `${irmaos.length} tamanho(s) foram publicados no Mercado Livre mas não foram registrados aqui (${irmaos
+          .map((i) => i.mlItemId)
+          .join(", ")}). Importe do ML para completar.`
+      );
+    }
+  }
+
   // Learning Loop (1): ambiente propôs → humano decidiu → memória.
   // capturarDecisao garante delta real e fire-and-forget. Autoria (E4.2.3):
   // quem publicou é quem decidiu — o autor da sessão; o builder segue puro.
@@ -310,6 +344,8 @@ async function executarPublicacao(
     id: dados.id,
     permalink: dados.permalink,
     payload,
-    ...(avisosDoBundle ? { avisos: avisosDoBundle } : {}),
+    ...(avisosDoBundle || avisosDaFamilia.length > 0
+      ? { avisos: [...(avisosDoBundle ?? []), ...avisosDaFamilia] }
+      : {}),
   };
 }
