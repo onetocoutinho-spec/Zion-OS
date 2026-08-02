@@ -11,6 +11,7 @@
 // pede. O diagnóstico busca o item inteiro, sem filtro, e compara.
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
+import { lerJson } from "../http/respostaJson";
 import type { InventarioDoItem } from "../../modules/integration/domain/inventarioDoItemML";
 
 export interface ResultadoInventario {
@@ -33,11 +34,11 @@ export async function inventariarItemDoML(
     clienteId
   )}&itemId=${encodeURIComponent(itemId)}`;
   const resposta = await fetch(url, { headers: await cabecalhoAutenticacao() });
-  const dados = (await resposta.json()) as {
+  const dados = await lerJson<{
     itemId?: string;
     inventario?: InventarioDoItem;
     erro?: string;
-  };
+  }>(resposta, "A inspeção do anúncio no Mercado Livre");
   if (!resposta.ok || !dados.inventario) {
     throw new Error(dados.erro ?? "Falha ao consultar o item no Mercado Livre.");
   }

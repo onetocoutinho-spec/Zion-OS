@@ -24,6 +24,7 @@
 // lê o estado real e corrige. Uma afirmação falsa, não.
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
+import { lerJson } from "../http/respostaJson";
 import { atualizarAnuncioGerado } from "./anunciosGerados";
 import type { AnuncioGeradoRegistro } from "../types";
 
@@ -76,7 +77,10 @@ export async function definirEstadoNoML(
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({ clienteId: registro.clienteId, itemId, estado }),
   });
-  const dados = (await resposta.json()) as { status?: string; erro?: string };
+  const dados = await lerJson<{ status?: string; erro?: string }>(
+    resposta,
+    estado === "paused" ? "A pausa do anúncio" : "A reativação do anúncio"
+  );
   if (!resposta.ok) throw new Error(dados.erro ?? "Falha ao mudar o estado do anúncio.");
 
   const confirmado = (dados.status ?? "").trim();

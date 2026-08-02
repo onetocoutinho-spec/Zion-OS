@@ -1078,19 +1078,39 @@ export async function buscarAnunciosDoVendedor(
     if (total >= 0 && ids.length >= total) break;
   }
 
-  // 2) Multiget (20 por vez) com os campos que interessam.
+  // 2) Multiget (20 por vez), com LOTES EM PARALELO.
+  //
+  // Era um laço `await` sequencial: 781 anúncios viravam 40 idas e voltas uma
+  // depois da outra. Somado às 16 páginas da busca, isso já roçava os 60s de
+  // `maxDuration` da rota — e em 02/08/2026, ao acrescentar 18 campos ao
+  // pedido, cada resposta ficou maior e o limite estourou. A plataforma
+  // devolveu HTML de 504 e a tela mostrou "Unexpected token '<'".
+  //
+  // O teto de 6 não é enfeite: sem ele, 40 requisições simultâneas ao ML são um
+  // pico que a API pode recusar, e aí trocaríamos tempo esgotado por lote
+  // perdido.
   const anuncios: AnuncioML[] = [];
   const campos = CAMPOS_PEDIDOS_AO_ML;
-  for (let i = 0; i < ids.length; i += 20) {
-    const lote = ids.slice(i, i + 20).join(",");
-    const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
-    // Um lote que falha derrubava até 20 anúncios sem uma linha de aviso. Ele
-    // continua não derrubando a importação inteira — mas agora é CONTADO.
-    if (!r.ok) continue;
-    const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
-    for (const x of arr) {
-      if (x.code === 200 && x.body?.id) anuncios.push(mapearItem(x.body));
-    }
+  const lotes: string[] = [];
+  for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20).join(","));
+
+  const SIMULTANEOS = 6;
+  for (let i = 0; i < lotes.length; i += SIMULTANEOS) {
+    const rodada = await Promise.all(
+      lotes.slice(i, i + SIMULTANEOS).map(async (lote) => {
+        try {
+          const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+          // Um lote que falha derrubava até 20 anúncios sem uma linha de aviso.
+          // Continua não derrubando a importação — mas é CONTADO em `perdidos`.
+          if (!r.ok) return [];
+          const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+          return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+        } catch {
+          return []; // rede caiu neste lote; os outros seguem
+        }
+      })
+    );
+    for (const doLote of rodada) anuncios.push(...doLote);
   }
 
   return { anuncios, total, ids: ids.length, perdidos: ids.length - anuncios.length, parede };
