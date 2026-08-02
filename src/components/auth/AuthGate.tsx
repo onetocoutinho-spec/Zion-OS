@@ -372,7 +372,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // jogava o app inteiro na tela de carregando.
   const usuarioIdRef = useRef<string | null>(null);
   const fasePerfilRef = useRef<FasePerfilConhecida>("inicial");
-  fasePerfilRef.current = supabaseConfigurado ? fasePerfil : "ok";
+  // Espelhado em EFEITO, não no corpo do render: escrever em ref durante o
+  // render é leitura de estado fora de fase (o React reclama, e com razão —
+  // um render descartado deixaria o ref adiantado). O valor inicial "inicial"
+  // já é o certo para a primeira carga, então nada se perde na defasagem de um
+  // frame.
+  useEffect(() => {
+    fasePerfilRef.current = supabaseConfigurado ? fasePerfil : "ok";
+  }, [fasePerfil]);
 
   // Carrega o perfil com timeout; ignora resultado se o componente desmontou
   // ou se uma carga mais nova começou. Não cria requisições concorrentes úteis

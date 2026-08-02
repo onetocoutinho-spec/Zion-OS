@@ -596,6 +596,18 @@ export interface AnuncioML {
   preco: number;
   estoque: number;
   status: string;
+  /**
+   * Por que o anúncio está no estado em que está — a lista do ML.
+   *
+   * `under_review` sozinho não diz nada acionável. `sub_status` traz o motivo:
+   * `pending_documentation`, `picture_download_pending`, `waiting_for_patch`,
+   * `suspended`... Medido em 2026-08-01: 155 dos 781 anúncios da conta estavam
+   * `under_review`, com 16 produtos INTEIROS fora do ar, e não havia como
+   * saber por quê — porque o multiget não pedia este campo.
+   *
+   * Vazio quando o ML não informou. Nunca preenchido por nós.
+   */
+  subStatus: string[];
   permalink: string;
   sku: string; // seller_custom_field / SELLER_SKU
   marca: string;
@@ -636,6 +648,11 @@ interface ItemRaw {
   price?: number;
   available_quantity?: number;
   status?: string;
+  // O ML DIZ por que o anúncio não está no ar — `under_review` sozinho não
+  // explica nada, e `sub_status` traz o motivo ("pending_documentation",
+  // "picture_download_pending", "waiting_for_patch"...). Estava na API o tempo
+  // todo; nós é que não pedíamos o campo.
+  sub_status?: string[];
   permalink?: string;
   seller_custom_field?: string;
   family_name?: string | null;
@@ -765,6 +782,8 @@ function mapearItem(it: ItemRaw): AnuncioML {
     preco: Number(it.price ?? 0),
     estoque: Number(it.available_quantity ?? 0),
     status: it.status ?? "",
+    // Fiel: a lista do ML, sem tradução e sem preencher o que não veio.
+    subStatus: (it.sub_status ?? []).map((x) => (x ?? "").trim()).filter(Boolean),
     permalink: it.permalink ?? "",
     sku: (it.seller_custom_field || attr(it.attributes, "SELLER_SKU") || "").trim(),
     marca: attr(it.attributes, "BRAND"),
@@ -866,7 +885,7 @@ export async function buscarAnunciosDoVendedor(
   // 2) Multiget (20 por vez) com os campos que interessam.
   const anuncios: AnuncioML[] = [];
   const campos =
-    "id,title,price,available_quantity,category_id,status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
+    "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });

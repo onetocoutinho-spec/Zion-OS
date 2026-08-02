@@ -375,6 +375,14 @@ export default function ClienteProdutos() {
             // O status vem ANTES da ficha em importância: um anúncio encerrado
             // não deveria entrar aqui como publicado, e hoje entraria.
             ` No ML: ${m.porStatus.map((s) => `${s.anuncios} ${s.status}`).join(" · ")}.` +
+            // O motivo vem DEPOIS do status e antes de tudo mais: "155 em
+            // revisão" não é acionável, "155 em revisão por X" é.
+            (m.motivosDeNaoEstarNoAr.length > 0
+              ? ` Fora do ar por: ${m.motivosDeNaoEstarNoAr
+                  .slice(0, 5)
+                  .map((x) => `${x.anuncios} ${x.motivo}`)
+                  .join(" · ")}.`
+              : "") +
             (m.novosPorStatus.length > 0
               ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
                   .map((s) => `${s.anuncios} ${s.status}`)

@@ -280,6 +280,7 @@ test("lista vazia não divide por zero", () => {
     porAtributo: [],
     porStatus: [],
     novosPorStatus: [],
+    motivosDeNaoEstarNoAr: [],
   });
 });
 
