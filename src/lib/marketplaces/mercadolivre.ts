@@ -221,6 +221,62 @@ export async function atributosForaDaFicha(
   return fora;
 }
 
+export interface RecorteDaCategoria {
+  /** ids `hidden` ou `variation_attribute` — não são ficha do lojista. */
+  foraDaFicha: Record<string, string[]>;
+  /** ids `required` — o que a categoria EXIGE, por categoria. */
+  obrigatorios: Record<string, { id: string; nome: string }[]>;
+}
+
+/**
+ * Os dois recortes da categoria, numa passada só.
+ *
+ * `atributosForaDaFicha` e `atributosObrigatorios` leem o MESMO endpoint
+ * (`/categories/{id}/attributes`) e olham tags diferentes da mesma resposta.
+ * Chamar os dois dobraria a rede por nada.
+ *
+ * Existe porque a medição precisou dos obrigatórios: em 2026-08-01 a conta da
+ * Chinelaria tinha 150 anúncios em `waiting_for_patch` — o ML pedindo uma
+ * correção — e ninguém sabia QUAL campo. O ML publica a lista de exigências
+ * nesta mesma resposta.
+ *
+ * Falha ABERTA, igual às duas originais: categoria que não responde entra com
+ * listas vazias. Sem confirmação do ML, não se afirma exigência nenhuma.
+ */
+export async function recorteDaCategoria(
+  categorias: readonly string[]
+): Promise<RecorteDaCategoria> {
+  const unicas = [...new Set(categorias.filter(Boolean))];
+  const foraDaFicha: Record<string, string[]> = {};
+  const obrigatorios: Record<string, { id: string; nome: string }[]> = {};
+  await Promise.all(
+    unicas.map(async (categoria) => {
+      foraDaFicha[categoria] = [];
+      obrigatorios[categoria] = [];
+      try {
+        const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
+        if (!r.ok) return;
+        const lista = (await r.json()) as {
+          id?: string;
+          name?: string;
+          tags?: Record<string, unknown>;
+        }[];
+        if (!Array.isArray(lista)) return;
+        foraDaFicha[categoria] = lista
+          .filter((a) => a.tags && ("hidden" in a.tags || "variation_attribute" in a.tags))
+          .map((a) => a.id ?? "")
+          .filter(Boolean);
+        obrigatorios[categoria] = lista
+          .filter((a) => a.tags && "required" in a.tags && a.id)
+          .map((a) => ({ id: a.id as string, nome: (a.name ?? a.id) as string }));
+      } catch {
+        // Rede/ML fora: nada escondido, nada exigido.
+      }
+    })
+  );
+  return { foraDaFicha, obrigatorios };
+}
+
 /**
  * O que a categoria EXIGE — `tags.required`, do mesmo endpoint público.
  *
