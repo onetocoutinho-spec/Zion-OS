@@ -592,7 +592,9 @@ export default function ClienteProdutos() {
             <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Cinco opções: 4 colunas deixaria uma sozinha na linha, e card
+              solitário lê como "esta é diferente" quando não é. 3 e 5 fecham. */}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <button
               onClick={() => importarDoML("medir")}
               className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
