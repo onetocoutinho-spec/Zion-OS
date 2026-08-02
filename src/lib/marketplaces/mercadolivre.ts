@@ -669,6 +669,17 @@ export interface AnuncioML {
   marca: string;
   modelo: string;
   fotos: string[];
+  /**
+   * O tamanho REAL da foto de capa, na palavra do ML (`max_size`, ex.
+   * "1200x1200"). Vazio quando o ML não informou.
+   *
+   * O ML tira exposição de anúncio cuja capa não cumpre o padrão dele, e o
+   * painel da lojista mostrava "A foto de capa não cumpre os requisitos" em
+   * dezenas de anúncios sem dizer o tamanho. Este campo é o único jeito de
+   * saber sem adivinhar: a URL guardada aponta para uma VARIANTE (500px), e o
+   * sufixo não indica qual é a maior.
+   */
+  fotoCapaMaxSize: string;
   variacoes: VariacaoAnuncioML[];
   // Modelo User Products (ex.: chinelo): cada tamanho é um MLB separado,
   // agrupado por família. Usamos isso para reunir os "SKUs separados".
@@ -717,7 +728,11 @@ interface ItemRaw {
   // veio na resposta; só nunca foi declarado aqui, porque nada o lia.
   attributes?: { id?: string; name?: string; value_name?: string | null }[];
   shipping?: { dimensions?: string | null; free_shipping?: boolean; logistic_type?: string };
-  pictures?: { url?: string; secure_url?: string }[];
+  // `size` e `max_size` vêm do ML em toda resposta e nunca foram lidos.
+  // Sem eles não dá para saber o tamanho REAL da foto — e adivinhar pelo
+  // sufixo da URL não funciona: medido em 02/08/2026, `-F` é 1200x1200 numa
+  // imagem e 492x245 em outra, enquanto `-B` é a maior nessa segunda.
+  pictures?: { url?: string; secure_url?: string; size?: string; max_size?: string }[];
   variations?: {
     price?: number;
     available_quantity?: number;
@@ -845,6 +860,8 @@ function mapearItem(it: ItemRaw): AnuncioML {
     marca: attr(it.attributes, "BRAND"),
     modelo: attr(it.attributes, "MODEL"),
     fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
+    // A capa é a primeira foto — é ela que o ML avalia.
+    fotoCapaMaxSize: ((it.pictures ?? [])[0]?.max_size ?? "").trim(),
     variacoes,
     ...medidasDoItem(it),
     familyId: (it.user_product_id ?? "").toString().trim(),
@@ -942,6 +959,8 @@ export async function buscarAnunciosDoVendedor(
   const anuncios: AnuncioML[] = [];
   const campos =
     "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
+  // `pictures` já traz `size` e `max_size` — não é preciso pedir campo novo,
+  // só parar de descartar o que vem.
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });

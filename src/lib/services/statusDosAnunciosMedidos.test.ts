@@ -21,9 +21,15 @@ import assert from "node:assert/strict";
 import { medirFichas } from "./importarAnunciosML.ts";
 import type { AnuncioML } from "../marketplaces/mercadolivre.ts";
 
-const anuncio = (mlb: string, status: string, subStatus: string[] = []): AnuncioML => ({
+const anuncio = (
+  mlb: string,
+  status: string,
+  subStatus: string[] = [],
+  fotoCapaMaxSize = ""
+): AnuncioML => ({
   mlb,
   subStatus,
+  fotoCapaMaxSize,
   atributos: [],
   titulo: `Anúncio ${mlb}`,
   categoria: "MLB273770",
