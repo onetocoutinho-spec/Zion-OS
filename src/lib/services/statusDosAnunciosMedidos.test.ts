@@ -21,8 +21,9 @@ import assert from "node:assert/strict";
 import { medirFichas } from "./importarAnunciosML.ts";
 import type { AnuncioML } from "../marketplaces/mercadolivre.ts";
 
-const anuncio = (mlb: string, status: string): AnuncioML => ({
+const anuncio = (mlb: string, status: string, subStatus: string[] = []): AnuncioML => ({
   mlb,
+  subStatus,
   atributos: [],
   titulo: `Anúncio ${mlb}`,
   categoria: "MLB273770",
@@ -112,4 +113,49 @@ test("a medição continua não gravando nada — a contagem é pura", () => {
   const m = medirFichas(antes, {}, new Set());
   assert.equal(m.anuncios, 1);
   assert.equal(antes.length, 1, "a entrada foi mutada");
+});
+
+// ---------------------------------------------------------------------------
+// POR QUE NÃO ESTÁ NO AR — o campo que a API sempre teve e nós não pedíamos
+// ---------------------------------------------------------------------------
+
+test("o motivo do ML é contado, e um anúncio com dois motivos conta os dois", () => {
+  const m = medirFichas([
+    anuncio("A", "under_review", ["pending_documentation"]),
+    anuncio("B", "under_review", ["pending_documentation", "waiting_for_patch"]),
+  ]);
+  assert.deepEqual(m.motivosDeNaoEstarNoAr, [
+    { motivo: "pending_documentation", anuncios: 2 },
+    { motivo: "waiting_for_patch", anuncios: 1 },
+  ]);
+});
+
+test("anúncio ATIVO não entra na conta de motivos", () => {
+  // Um `active` com sub_status residual não é "fora do ar".
+  const m = medirFichas([anuncio("A", "active", ["deleted"]), anuncio("B", "paused")]);
+  assert.equal(m.motivosDeNaoEstarNoAr.some((x) => x.motivo === "deleted"), false);
+});
+
+test("sem motivo informado, a resposta é que o ML NÃO disse — não silêncio", () => {
+  // "155 em revisão" sem motivo é o problema original. Se o ML também não
+  // explicar, isso precisa aparecer como fato, não como lista vazia.
+  const m = medirFichas([anuncio("A", "under_review", [])]);
+  assert.equal(m.motivosDeNaoEstarNoAr.length, 1);
+  assert.match(m.motivosDeNaoEstarNoAr[0].motivo, /não informou/i);
+});
+
+test("conta só de ativos não produz motivo nenhum", () => {
+  const m = medirFichas([anuncio("A", "active"), anuncio("B", "active")]);
+  assert.deepEqual(m.motivosDeNaoEstarNoAr, []);
+});
+
+test("anúncio vindo de um servidor SEM o campo novo não derruba a medição", () => {
+  // Defasagem de deploy é real: em 2026-08-01 uma aba aberta rodou o pacote
+  // antigo e a importação inteira saiu sem gravar estado. Campo novo que
+  // atravessa a fronteira JSON pode chegar ausente.
+  const velho = { ...anuncio("A", "under_review") } as Partial<AnuncioML>;
+  delete velho.subStatus;
+  const m = medirFichas([velho as AnuncioML]);
+  assert.equal(m.anuncios, 1);
+  assert.match(m.motivosDeNaoEstarNoAr[0].motivo, /não informou/i);
 });

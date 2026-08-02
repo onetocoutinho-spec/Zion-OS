@@ -92,6 +92,13 @@ export interface MedicaoDaFicha {
   porStatus: { status: string; anuncios: number }[];
   /** Os que o Zion ainda não tem, pelo status deles no ML. */
   novosPorStatus: { status: string; anuncios: number }[];
+  /**
+   * POR QUE os anúncios que não estão `active` não estão no ar.
+   *
+   * `under_review` sozinho não é acionável. O ML diz o motivo em `sub_status`,
+   * e sem isso a lojista vê "155 em revisão" e não tem onde mexer.
+   */
+  motivosDeNaoEstarNoAr: { motivo: string; anuncios: number }[];
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -189,6 +196,26 @@ function contarStatus(anuncios: readonly AnuncioML[]): { status: string; anuncio
     .sort((x, y) => y.anuncios - x.anuncios || x.status.localeCompare(y.status));
 }
 
+function contarMotivos(anuncios: readonly AnuncioML[]): { motivo: string; anuncios: number }[] {
+  const c = new Map<string, number>();
+  for (const a of anuncios) {
+    if ((a.status || "").trim().toLowerCase() === "active") continue;
+    // Um anúncio pode ter mais de um motivo — cada um conta uma vez. E quando
+    // o ML não informou nenhum, isso É a resposta: ele não disse.
+    // `?? []` não é zelo com fixture: `anuncios` chega por JSON de
+    // `/api/ml/importar-anuncios`, e o servidor pode ser de um deploy diferente
+    // do pacote que está na aba. Aconteceu hoje mesmo — uma aba aberta rodou o
+    // código de antes e não gravou estado nenhum. Campo novo atravessando essa
+    // fronteira pode chegar ausente, e ausente não pode explodir.
+    const lista = a.subStatus ?? [];
+    const motivos = lista.length > 0 ? lista : ["(o ML não informou o motivo)"];
+    for (const m of motivos) c.set(m, (c.get(m) ?? 0) + 1);
+  }
+  return [...c.entries()]
+    .map(([motivo, anuncios]) => ({ motivo, anuncios }))
+    .sort((x, y) => y.anuncios - x.anuncios || x.motivo.localeCompare(y.motivo));
+}
+
 export function medirFichas(
   anuncios: readonly AnuncioML[],
   fora: ForaDaFichaPorCategoria = {},
@@ -221,6 +248,7 @@ export function medirFichas(
       .map(([id, v]) => ({ id, nome: v.nome, anuncios: v.anuncios }))
       .sort((x, y) => y.anuncios - x.anuncios || x.id.localeCompare(y.id)),
     porStatus: contarStatus(anuncios),
+    motivosDeNaoEstarNoAr: contarMotivos(anuncios),
     novosPorStatus: contarStatus(anuncios.filter((a) => !mlbsJaConhecidos.has(a.mlb))),
   };
 }
