@@ -1017,6 +1017,16 @@ export interface LeituraDoVendedor {
   /** Ids listados que o multiget não devolveu (lote com falha, ou code != 200). */
   perdidos: number;
   parede: ParedeDaLeitura;
+  /** O que o ML respondeu ao recusar um lote. Vazio quando nada foi recusado. */
+  erroDoMultiget: string;
+  /**
+   * O ML recusou o filtro de campos e a leitura seguiu pedindo o item inteiro.
+   *
+   * Não é falha: os dados vêm iguais, só mais pesados. Mas precisa ser DITO —
+   * silêncio aqui esconderia que a lista de campos está inválida, e ela ficaria
+   * inválida para sempre.
+   */
+  filtroDeCamposRecusado: boolean;
 }
 
 /**
@@ -1094,17 +1104,50 @@ export async function buscarAnunciosDoVendedor(
   const lotes: string[] = [];
   for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20).join(","));
 
+  // O FILTRO DE CAMPOS PODE SER RECUSADO — e em 02/08/2026 foi.
+  //
+  // Ao pedir 31 campos em vez de 14, TODOS os 40 lotes voltaram vazios: 781
+  // anúncios listados, zero trazidos. O `if (!r.ok) return []` engolia a
+  // resposta do ML, então nem eu nem a lojista soubemos o motivo — terceira vez
+  // no mesmo dia que um `catch` mudo transformou uma resposta em silêncio.
+  //
+  // Duas correções aqui, e a segunda importa mais:
+  //
+  //  1. O erro do ML é GUARDADO e sobe até a tela.
+  //  2. Se o filtro é recusado, o lote é refeito SEM ele. O ML devolve o item
+  //     inteiro, que é maior mas contém tudo que o filtro pediria — a
+  //     importação passa a funcionar mesmo com um campo inválido na lista, em
+  //     vez de zerar. Detectado uma vez, o filtro é abandonado para os lotes
+  //     seguintes: não adianta insistir 39 vezes num pedido que já foi negado.
+  let filtroRecusado = false;
+  let erroDoMultiget = "";
+
+  async function buscarLote(lote: string, comFiltro: boolean): Promise<AnuncioML[] | "recusado"> {
+    const url = comFiltro
+      ? `${API}/items?ids=${lote}&attributes=${campos}`
+      : `${API}/items?ids=${lote}`;
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      const detalhe = await extrairErro(r);
+      if (!erroDoMultiget) erroDoMultiget = `${r.status} — ${detalhe}`;
+      return "recusado";
+    }
+    const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+    return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+  }
+
   const SIMULTANEOS = 6;
   for (let i = 0; i < lotes.length; i += SIMULTANEOS) {
     const rodada = await Promise.all(
       lotes.slice(i, i + SIMULTANEOS).map(async (lote) => {
         try {
-          const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
-          // Um lote que falha derrubava até 20 anúncios sem uma linha de aviso.
-          // Continua não derrubando a importação — mas é CONTADO em `perdidos`.
-          if (!r.ok) return [];
-          const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
-          return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+          if (!filtroRecusado) {
+            const comFiltro = await buscarLote(lote, true);
+            if (comFiltro !== "recusado") return comFiltro;
+            filtroRecusado = true; // os próximos já nascem sem filtro
+          }
+          const semFiltro = await buscarLote(lote, false);
+          return semFiltro === "recusado" ? [] : semFiltro;
         } catch {
           return []; // rede caiu neste lote; os outros seguem
         }
@@ -1113,7 +1156,17 @@ export async function buscarAnunciosDoVendedor(
     for (const doLote of rodada) anuncios.push(...doLote);
   }
 
-  return { anuncios, total, ids: ids.length, perdidos: ids.length - anuncios.length, parede };
+  return {
+    anuncios,
+    total,
+    ids: ids.length,
+    perdidos: ids.length - anuncios.length,
+    parede,
+    // O que o ML respondeu quando recusou. Vazio quando nada foi recusado.
+    erroDoMultiget,
+    // `true` quando o filtro de campos foi negado e a leitura seguiu sem ele.
+    filtroDeCamposRecusado: filtroRecusado,
+  };
 }
 
 // ---- Guia de tamanhos (SIZE_GRID) — modelo User Products ----

@@ -46,10 +46,24 @@ const item = (id: string) => ({
  */
 function mlFalso(
   total: number,
-  opcoes: { pararNoOffset?: number; lotesQuebrados?: number[] } = {}
+  opcoes: {
+    pararNoOffset?: number;
+    /**
+     * MLBs que o multiget SEMPRE recusa, com ou sem filtro de campos.
+     *
+     * A versão anterior quebrava por ORDEM DE CHAMADA (`lotesQuebrados: [1]`),
+     * e isso deixou de descrever a realidade quando a leitura passou a repetir
+     * o lote sem o filtro: a repetição recebia outro número de chamada e
+     * passava. O teste media uma falha TRANSITÓRIA sem querer.
+     *
+     * Quebrar por CONTEÚDO é o que o nome do teste sempre prometeu.
+     */
+    idsQuebrados?: string[];
+    /** O ML recusa o filtro `attributes`, mas aceita o pedido inteiro. */
+    recusaFiltro?: boolean;
+  } = {}
 ) {
   const ids = Array.from({ length: total }, (_, i) => `MLB${1000 + i}`);
-  let loteAtual = -1;
   globalThis.fetch = (async (entrada: unknown) => {
     const url = typeof entrada === "string" ? entrada : String((entrada as { url?: string })?.url);
     if (url.includes("/items/search")) {
@@ -58,11 +72,14 @@ function mlFalso(
       const pagina = parar != null && offset >= parar ? [] : ids.slice(offset, offset + 50);
       return new Response(JSON.stringify({ results: pagina, paging: { total } }), { status: 200 });
     }
-    loteAtual++;
-    if (opcoes.lotesQuebrados?.includes(loteAtual)) {
+    const params = new URL(url).searchParams;
+    const pedidos = (params.get("ids") ?? "").split(",");
+    if (opcoes.recusaFiltro && params.has("attributes")) {
+      return new Response('{"message":"invalid attribute"}', { status: 400 });
+    }
+    if (pedidos.some((id) => opcoes.idsQuebrados?.includes(id))) {
       return new Response("erro do ML", { status: 500 });
     }
-    const pedidos = (new URL(url).searchParams.get("ids") ?? "").split(",");
     return new Response(
       JSON.stringify(pedidos.map((id) => ({ code: 200, body: item(id) }))),
       { status: 200 }
@@ -129,15 +146,38 @@ test("o ML parar de devolver páginas antes do total é uma parede", async () =>
   assert.equal(r.total, 561);
 });
 
-test("lote do multiget que falha é CONTADO — antes sumia calado", async () => {
-  // `if (!r.ok) continue` derrubava até 20 anúncios sem uma linha de aviso.
-  mlFalso(60, { lotesQuebrados: [1] });
+test("lote que falha nas DUAS tentativas é contado, com o erro do ML junto", async () => {
+  // `if (!r.ok) return []` derrubava até 20 anúncios sem uma linha de aviso — e
+  // em 02/08/2026 derrubou 781 de 781 sem dizer por quê.
+  mlFalso(60, { idsQuebrados: ["MLB1020"] }); // cai no 2º lote de 20
   const r = await buscarAnunciosDoVendedor("tok", "123");
   assert.equal(r.ids, 60);
   assert.equal(r.anuncios.length, 40);
   assert.equal(r.perdidos, 20, "os 20 do lote quebrado precisam aparecer");
+  assert.match(r.erroDoMultiget, /500/, "o erro do ML precisa chegar a quem chamou");
   // A listagem foi completa: a perda é do multiget, não da paginação.
   assert.equal(r.parede, "nenhuma");
+});
+
+test("filtro de campos recusado: a leitura REFAZ sem ele e traz tudo", async () => {
+  // O caso real de 02/08/2026: pedir 31 campos em vez de 14 fez o ML recusar
+  // TODOS os lotes e a importação trouxe ZERO anúncio. Pedir o item inteiro é
+  // mais pesado e funciona — muito melhor que zerar.
+  mlFalso(60, { recusaFiltro: true });
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.anuncios.length, 60, "a recusa do filtro não pode zerar a leitura");
+  assert.equal(r.perdidos, 0);
+  assert.equal(r.filtroDeCamposRecusado, true, "a recusa precisa ser DITA");
+  assert.match(r.erroDoMultiget, /400/);
+});
+
+test("sem recusa, o filtro NÃO é abandonado", async () => {
+  // O caminho normal continua pedindo só os campos que interessam: a
+  // degradação é exceção, não o padrão.
+  mlFalso(20);
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.filtroDeCamposRecusado, false);
+  assert.equal(r.erroDoMultiget, "");
 });
 
 test("`max` explícito ainda para, e se identifica como teto de quem chamou", async () => {
