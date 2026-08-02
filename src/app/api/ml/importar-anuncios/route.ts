@@ -85,6 +85,10 @@ export async function POST(request: Request) {
       sellerId,
       foraDaFicha,
       obrigatorios,
+      // A versão que o SERVIDOR está rodando. O navegador compara com a que
+      // veio compilada no pacote dele; divergir significa aba velha, e aba
+      // velha já fez uma importação inteira gravar zero estado sem ninguém ver.
+      versao: process.env.VERCEL_GIT_COMMIT_SHA ?? "dev",
       leitura: {
         total: leitura.total,
         ids: leitura.ids,

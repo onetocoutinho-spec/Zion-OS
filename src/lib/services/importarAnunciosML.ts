@@ -25,6 +25,10 @@ import {
 import { criarImagensBulk } from "./imagensProduto";
 import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
 import { exigenciasNaoAtendidas } from "../../modules/integration/domain/oQueOMlEstaPedindo";
+import {
+  abaDesatualizada,
+  AVISO_ABA_DESATUALIZADA,
+} from "../../modules/integration/domain/abaDesatualizada";
 import { substituirAtributosDoMarketplace } from "./produtoAtributos";
 import {
   casarGruposComProdutos,
@@ -107,6 +111,20 @@ export interface MedicaoDaFicha {
    * responde a pergunta que a lojista tem de verdade: o que preencher.
    */
   exigenciasNaoAtendidas: { id: string; nome: string; anuncios: number }[];
+  /**
+   * Quantas categorias tiveram a lista de exigências obtida do ML.
+   *
+   * Existe porque `exigenciasNaoAtendidas: []` significava DUAS coisas — "nada
+   * falta" e "não perguntamos" — e a tela mostrava silêncio para as duas.
+   * Observado em 2026-08-02: a linha não apareceu e nem eu soube dizer qual dos
+   * dois era. É o mesmo defeito mudo que passei o dia arrancando, criado por
+   * mim na véspera.
+   *
+   * `0` = não sabemos o que o ML exige. Nunca "está tudo certo".
+   */
+  categoriasComExigencias: number;
+  /** Anúncios fora do ar que foram conferidos contra as exigências. */
+  anunciosForaDoArConferidos: number;
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -259,6 +277,12 @@ export function medirFichas(
     porStatus: contarStatus(anuncios),
     motivosDeNaoEstarNoAr: contarMotivos(anuncios),
     exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
+    categoriasComExigencias: Object.values(obrigatorios).filter((v) => v.length > 0).length,
+    anunciosForaDoArConferidos: anuncios.filter(
+      (a) =>
+        (a.status || "").trim().toLowerCase() !== "active" &&
+        (obrigatorios[a.categoria] ?? []).length > 0
+    ).length,
     novosPorStatus: contarStatus(anuncios.filter((a) => !mlbsJaConhecidos.has(a.mlb))),
   };
 }
@@ -503,6 +527,8 @@ export async function importarAnunciosDoCliente(
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
     obrigatorios?: Record<string, { id: string; nome: string }[]>;
+    /** A versão que o SERVIDOR está rodando (ver `abaDesatualizada`). */
+    versao?: string;
     leitura?: LeituraRelatada;
     erro?: string;
   };
@@ -514,7 +540,17 @@ export async function importarAnunciosDoCliente(
   // daqui pra baixo. Ela não é um extra: sem ela, "489 já existiam" afirma uma
   // completude que ninguém verificou.
   const leitura = dados.leitura;
-  const avisoLeitura = avisoDaLeitura(leitura);
+  // A aba pode estar rodando um pacote anterior ao do servidor — aconteceu três
+  // vezes em 01–02/08 e cada vez o resultado parcial foi lido como completo.
+  // O aviso vem PRIMEIRO, antes de qualquer número, porque ele muda como todos
+  // os outros devem ser lidos.
+  const avisoVersao = abaDesatualizada({
+    doNavegador: process.env.NEXT_PUBLIC_VERSAO,
+    doServidor: dados.versao,
+  })
+    ? AVISO_ABA_DESATUALIZADA
+    : undefined;
+  const avisoLeitura = [avisoVersao, avisoDaLeitura(leitura)].filter(Boolean).join(" ") || undefined;
 
   const todos = (dados.anuncios ?? []).filter((a) => a.mlb);
   if (todos.length === 0) {

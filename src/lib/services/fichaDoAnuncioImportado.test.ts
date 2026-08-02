@@ -282,6 +282,8 @@ test("lista vazia não divide por zero", () => {
     novosPorStatus: [],
     motivosDeNaoEstarNoAr: [],
     exigenciasNaoAtendidas: [],
+    categoriasComExigencias: 0,
+    anunciosForaDoArConferidos: 0,
   });
 });
 
