@@ -173,6 +173,10 @@ export interface LeituraRelatada {
   /** Ids listados que o multiget não devolveu. */
   perdidos: number;
   parede: "nenhuma" | "offset-1000" | "teto" | "paginacao-parou";
+  /** O que o ML respondeu ao recusar um lote. */
+  erroDoMultiget?: string;
+  /** O ML negou o filtro de campos; a leitura seguiu pedindo o item inteiro. */
+  filtroDeCamposRecusado?: boolean;
 }
 
 /**
@@ -188,7 +192,18 @@ export function avisoDaLeitura(l: LeituraRelatada | undefined): string | undefin
     partes.push(`O ML diz que a conta tem ${l.total} anúncios e só consegui listar ${l.ids}.`);
   }
   if (l.perdidos > 0) {
-    partes.push(`${l.perdidos} anúncio(s) foram listados mas não vieram — lote com falha no ML.`);
+    // A resposta do ML entra na frase. Sem ela, "lote com falha" manda alguém
+    // procurar rede quando o problema pode ser o pedido — foi o que aconteceu
+    // em 02/08/2026, com 781 de 781 perdidos e nenhuma pista.
+    partes.push(
+      `${l.perdidos} anúncio(s) foram listados mas não vieram` +
+        (l.erroDoMultiget ? ` — o Mercado Livre respondeu: ${l.erroDoMultiget}.` : " — lote com falha no ML.")
+    );
+  }
+  if (l.filtroDeCamposRecusado) {
+    partes.push(
+      "O Mercado Livre recusou a lista de campos e a leitura seguiu pedindo o anúncio inteiro — os dados vieram, mas há um campo inválido no pedido."
+    );
   }
   if (l.parede === "offset-1000") {
     partes.push(

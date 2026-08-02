@@ -94,6 +94,8 @@ export async function POST(request: Request) {
         ids: leitura.ids,
         perdidos: leitura.perdidos,
         parede: leitura.parede,
+        erroDoMultiget: leitura.erroDoMultiget,
+        filtroDeCamposRecusado: leitura.filtroDeCamposRecusado,
       },
     });
   } catch (e) {
