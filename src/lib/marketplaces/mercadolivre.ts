@@ -680,6 +680,38 @@ export interface AnuncioML {
    * sufixo não indica qual é a maior.
    */
   fotoCapaMaxSize: string;
+  /** A avaliação que o ML faz da foto de capa. Vazio quando não informou. */
+  fotoCapaQualidade?: string;
+  /**
+   * A NOTA do ML para o anúncio (0..1). `null` = não informou.
+   *
+   * É o número que decide exposição. Passamos duas horas em 02/08/2026
+   * tentando deduzir por tamanho de foto o que o ML entrega pronto.
+   */
+  saude?: number | null;
+  /** O anúncio está atrelado a um produto do catálogo do ML? */
+  doCatalogo?: boolean | null;
+  catalogoProdutoId?: string;
+  /** Quanto este anúncio VENDEU. O catálogo do Zion não tinha nenhum dado de venda. */
+  vendidos?: number | null;
+  quantidadeInicial?: number | null;
+  /** Quando o anúncio foi criado e alterado — testa a hipótese da edição em massa. */
+  criadoEmML?: string;
+  atualizadoEmML?: string;
+  /** `gold_special`, `gold_pro`… muda a comissão, e a precificação não sabia. */
+  tipoDeAnuncio?: string;
+  /** A estrutura de família. Se lida antes, o MLB órfão do Papete teria se identificado. */
+  itemPaiId?: string;
+  familiaIdDoML?: string;
+  /** SE existe descrição. O TEXTO vem de `/items/{id}/description` — outra rota. */
+  temDescricao?: boolean;
+  garantia?: string;
+  condicao?: string;
+  videoId?: string;
+  /** As tags do item no ML (`good_quality_picture`, `poor_quality_thumbnail`…). */
+  tagsDoML?: string[];
+  precoBase?: number | null;
+  precoOriginal?: number | null;
   variacoes: VariacaoAnuncioML[];
   // Modelo User Products (ex.: chinelo): cada tamanho é um MLB separado,
   // agrupado por família. Usamos isso para reunir os "SKUs separados".
@@ -720,6 +752,25 @@ interface ItemRaw {
   // "picture_download_pending", "waiting_for_patch"...). Estava na API o tempo
   // todo; nós é que não pedíamos o campo.
   sub_status?: string[];
+  /** A nota de qualidade que o ML dá ao anúncio (0..1). É ela que decide exposição. */
+  health?: number | null;
+  catalog_listing?: boolean | null;
+  catalog_product_id?: string | null;
+  sold_quantity?: number | null;
+  initial_quantity?: number | null;
+  date_created?: string | null;
+  last_updated?: string | null;
+  listing_type_id?: string | null;
+  parent_item_id?: string | null;
+  family_id?: string | null;
+  /** Lista de IDs, NÃO o texto — a descrição vem de /items/{id}/description. */
+  descriptions?: { id?: string }[] | null;
+  warranty?: string | null;
+  condition?: string | null;
+  video_id?: string | null;
+  tags?: string[] | null;
+  base_price?: number | null;
+  original_price?: number | null;
   permalink?: string;
   seller_custom_field?: string;
   family_name?: string | null;
@@ -732,7 +783,15 @@ interface ItemRaw {
   // Sem eles não dá para saber o tamanho REAL da foto — e adivinhar pelo
   // sufixo da URL não funciona: medido em 02/08/2026, `-F` é 1200x1200 numa
   // imagem e 492x245 em outra, enquanto `-B` é a maior nessa segunda.
-  pictures?: { url?: string; secure_url?: string; size?: string; max_size?: string }[];
+  pictures?: {
+    url?: string;
+    secure_url?: string;
+    size?: string;
+    max_size?: string;
+    /** A avaliação que o ML faz da própria foto. Estava dentro de `pictures`
+     *  desde sempre, num campo que já pedíamos e líamos pela metade. */
+    quality?: string;
+  }[];
   variations?: {
     price?: number;
     available_quantity?: number;
@@ -862,6 +921,29 @@ function mapearItem(it: ItemRaw): AnuncioML {
     fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
     // A capa é a primeira foto — é ela que o ML avalia.
     fotoCapaMaxSize: ((it.pictures ?? [])[0]?.max_size ?? "").trim(),
+    fotoCapaQualidade: ((it.pictures ?? [])[0]?.quality ?? "").trim(),
+    // FIEL: número vira número, ausência vira `null` — e `null` significa "o ML
+    // não disse", nunca zero. Uma saúde 0 e uma saúde desconhecida são coisas
+    // diferentes, e confundi-las seria o defeito do dia inteiro outra vez.
+    saude: typeof it.health === "number" ? it.health : null,
+    doCatalogo: typeof it.catalog_listing === "boolean" ? it.catalog_listing : null,
+    catalogoProdutoId: (it.catalog_product_id ?? "").trim(),
+    vendidos: typeof it.sold_quantity === "number" ? it.sold_quantity : null,
+    quantidadeInicial: typeof it.initial_quantity === "number" ? it.initial_quantity : null,
+    criadoEmML: (it.date_created ?? "").trim(),
+    atualizadoEmML: (it.last_updated ?? "").trim(),
+    tipoDeAnuncio: (it.listing_type_id ?? "").trim(),
+    itemPaiId: (it.parent_item_id ?? "").trim(),
+    familiaIdDoML: (it.family_id ?? "").trim(),
+    // `descriptions` é uma lista de IDs, NÃO o texto. Só dá para afirmar se
+    // existe alguma — dizer que "temos a descrição" seria falso.
+    temDescricao: (it.descriptions ?? []).length > 0,
+    garantia: (it.warranty ?? "").trim(),
+    condicao: (it.condition ?? "").trim(),
+    videoId: (it.video_id ?? "").trim(),
+    tagsDoML: (it.tags ?? []).map((t) => (t ?? "").trim()).filter(Boolean),
+    precoBase: typeof it.base_price === "number" ? it.base_price : null,
+    precoOriginal: typeof it.original_price === "number" ? it.original_price : null,
     variacoes,
     ...medidasDoItem(it),
     familyId: (it.user_product_id ?? "").toString().trim(),
@@ -890,8 +972,28 @@ function mapearItem(it: ItemRaw): AnuncioML {
  * inteira. Pedir o campo não garante ler o conteúdo — os dois já foram lidos
  * pela metade.
  */
-export const CAMPOS_PEDIDOS_AO_ML =
-  "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
+export const CAMPOS_PEDIDOS_AO_ML = [
+  // ---- o que já era pedido ----
+  "id","title","price","available_quantity","category_id","status","sub_status",
+  "permalink","seller_custom_field","family_name","user_product_id",
+  "attributes","pictures","variations",
+  // ---- acrescentados em 02/08/2026, depois do inventário ----
+  // O inventário mostrou 61 campos disponíveis e 14 pedidos. Estes sete grupos
+  // entraram porque respondem perguntas ABERTAS, não porque estavam na lista:
+  "health",                              // a nota do ML — é ela que decide exposição
+  "catalog_listing","catalog_product_id",// "dados não correspondem ao produto original"
+  "sold_quantity","initial_quantity",    // o que cada anúncio VENDEU
+  "date_created","last_updated",         // testa a hipótese da edição em massa
+  "listing_type_id",                     // clássico vs premium — muda a comissão
+  "parent_item_id","family_id",          // a estrutura de família (o MLB órfão)
+  "descriptions",                        // SE existe descrição (o texto é outra rota)
+  "warranty","condition","video_id","tags",
+  "base_price","original_price",
+  // NÃO entraram, de propósito: geolocation, seller_address, coverage_areas,
+  // channels, deal_ids, thumbnail, site_id, currency_id, accepts_mercadopago,
+  // non_mercado_pago_payment_methods. São dado de conta e de plataforma, não de
+  // produto. Pedir os 47 seria trocar um defeito por outro — ler sem saber por quê.
+].join(",");
 
 /**
  * A parede que interrompeu a leitura, quando ela não leu tudo.
