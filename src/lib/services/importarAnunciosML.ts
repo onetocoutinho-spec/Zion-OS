@@ -14,6 +14,7 @@
 
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
+import { lerJson } from "../http/respostaJson";
 import { criarProdutos, excluirProdutosImportadosML, listarProdutosDoCliente } from "./produtos";
 import { criarVariantesBulk, listarTodasVariantes } from "./produtoVariantes";
 import {
@@ -574,7 +575,7 @@ export async function importarAnunciosDoCliente(
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({ clienteId }),
   });
-  const dados = (await resposta.json()) as {
+  const dados = await lerJson<{
     anuncios?: AnuncioML[];
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
@@ -583,7 +584,7 @@ export async function importarAnunciosDoCliente(
     versao?: string;
     leitura?: LeituraRelatada;
     erro?: string;
-  };
+  }>(resposta, "A leitura dos anúncios do Mercado Livre");
   if (!resposta.ok) {
     return { produtos: 0, anuncios: 0, variacoes: 0, imagens: 0, pulados: 0, aviso: dados.erro ?? "Falha ao importar anúncios." };
   }
