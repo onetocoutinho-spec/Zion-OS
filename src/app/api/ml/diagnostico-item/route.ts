@@ -12,7 +12,8 @@
 // autorização server-side, refresh_token via RLS, token rotacionado persistido
 // antes da operação externa.
 
-import { renovarToken } from "@/lib/marketplaces/mercadolivre";
+import { renovarToken, CAMPOS_PEDIDOS_AO_ML } from "@/lib/marketplaces/mercadolivre";
+import { inventariarItem } from "@/modules/integration/domain/inventarioDoItemML";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
@@ -73,6 +74,13 @@ export async function GET(request: Request) {
 
     return Response.json({
       itemId,
+      // O INVENTÁRIO: o que o ML tem, o que pedimos, e o que ignoramos.
+      //
+      // A busca acima é `/items/{id}` SEM `?attributes=`, então vem o objeto
+      // inteiro — que é justamente o que a importação nunca vê, porque ela usa
+      // a lista branca. Sete defeitos em dois dias foram campo não lido; esta
+      // é a lista de candidatos ao oitavo.
+      inventario: inventariarItem(item, CAMPOS_PEDIDOS_AO_ML),
       // O que a importação lê HOJE:
       deItems: {
         status: itemResp.status,

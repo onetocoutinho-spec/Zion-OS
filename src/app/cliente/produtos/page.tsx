@@ -38,6 +38,7 @@ import { importarPeso } from "@/lib/services/importacaoPeso";
 import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";

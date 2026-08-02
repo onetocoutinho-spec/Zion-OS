@@ -873,6 +873,27 @@ function mapearItem(it: ItemRaw): AnuncioML {
 }
 
 /**
+ * Os campos que o multiget pede ao ML — e é uma LISTA BRANCA.
+ *
+ * O ML devolve SÓ o que está aqui. Campo fora desta string não chega nem para
+ * ser ignorado: ele não existe do ponto de vista do Zion, e nenhuma leitura de
+ * código revela o que está faltando.
+ *
+ * Foi assim que `sub_status` ficou invisível — o ML dizia por que o anúncio
+ * estava fora do ar, e a pergunta nunca era feita.
+ *
+ * Exportada para `/api/ml/diagnostico-item` comparar esta lista com o que o ML
+ * devolve quando pedimos o item INTEIRO. Fonte única: quem muda o pedido muda
+ * o diagnóstico junto.
+ *
+ * `pictures` já traz `size` e `max_size` dentro; `attributes` traz a ficha
+ * inteira. Pedir o campo não garante ler o conteúdo — os dois já foram lidos
+ * pela metade.
+ */
+export const CAMPOS_PEDIDOS_AO_ML =
+  "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
+
+/**
  * A parede que interrompeu a leitura, quando ela não leu tudo.
  *
  * `offset-1000` é do ML, não nossa: o `/items/search` clássico recusa
@@ -957,10 +978,7 @@ export async function buscarAnunciosDoVendedor(
 
   // 2) Multiget (20 por vez) com os campos que interessam.
   const anuncios: AnuncioML[] = [];
-  const campos =
-    "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
-  // `pictures` já traz `size` e `max_size` — não é preciso pedir campo novo,
-  // só parar de descartar o que vem.
+  const campos = CAMPOS_PEDIDOS_AO_ML;
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
