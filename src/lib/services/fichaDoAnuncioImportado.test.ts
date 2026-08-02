@@ -285,6 +285,17 @@ test("lista vazia não divide por zero", () => {
     categoriasComExigencias: 0,
     anunciosForaDoArConferidos: 0,
     capas: { medidas: 0, semTamanho: 0, noPadrao: 0, foraDoPadrao: 0, piores: [] },
+    retrato: {
+      comSaude: 0,
+      saudeMedia: 0,
+      piores: [],
+      doCatalogo: 0,
+      noArSemVenda: 0,
+      vendidosTotal: 0,
+      semDescricao: 0,
+      porTipo: [],
+      alteradosPorDia: [],
+    },
   });
 });
 

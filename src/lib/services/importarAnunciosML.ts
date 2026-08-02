@@ -30,6 +30,10 @@ import {
   type ResumoDasCapas,
 } from "../../modules/integration/domain/capaForaDoPadrao";
 import {
+  retratarCatalogo,
+  type RetratoDoCatalogo,
+} from "../../modules/integration/domain/saudeDoCatalogo";
+import {
   abaDesatualizada,
   AVISO_ABA_DESATUALIZADA,
 } from "../../modules/integration/domain/abaDesatualizada";
@@ -149,6 +153,14 @@ export interface MedicaoDaFicha {
    * URL não funciona: `-F` é a maior variante numa imagem e não é em outra.
    */
   capas: ResumoDasCapas;
+  /**
+   * O que os campos novos do ML dizem sobre o catálogo.
+   *
+   * Saúde, catálogo, vendas, descrição, tipo de anúncio e data de alteração —
+   * todos vinham na mesma resposta e eram descartados. O inventário de
+   * 02/08/2026 mostrou 61 campos disponíveis contra 14 pedidos.
+   */
+  retrato: RetratoDoCatalogo;
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -317,6 +329,7 @@ export function medirFichas(
     exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
     categoriasComExigencias: Object.values(obrigatorios).filter((v) => v.length > 0).length,
     capas: resumirCapas(anuncios),
+    retrato: retratarCatalogo(anuncios),
     anunciosForaDoArConferidos: anuncios.filter(
       (a) =>
         (a.status || "").trim().toLowerCase() !== "active" &&

@@ -446,6 +446,35 @@ export default function ClienteProdutos() {
                 (m.capas.semTamanho > 0 ? ` · ${m.capas.semTamanho} sem tamanho informado` : "") +
                 "."
               : "") +
+            // O RETRATO vem por último e é o que ordena o trabalho: a saúde é
+            // a nota que o ML usa para decidir exposição, e as vendas separam
+            // o que trabalha do que só ocupa espaço.
+            (m.retrato.comSaude > 0
+              ? ` Saúde média ${m.retrato.saudeMedia} (${m.retrato.comSaude} avaliados)` +
+                (m.retrato.piores.length > 0
+                  ? `; piores: ${m.retrato.piores
+                      .slice(0, 4)
+                      .map((x) => `${x.mlb} ${x.saude}`)
+                      .join(", ")}`
+                  : "") +
+                "."
+              : "") +
+            (m.retrato.vendidosTotal > 0 || m.retrato.noArSemVenda > 0
+              ? ` Vendas: ${m.retrato.vendidosTotal} no total · ${m.retrato.noArSemVenda} no ar sem vender nenhuma.`
+              : "") +
+            (m.retrato.doCatalogo > 0
+              ? ` ${m.retrato.doCatalogo} atrelados ao catálogo do ML.`
+              : "") +
+            (m.retrato.semDescricao > 0 ? ` ${m.retrato.semDescricao} sem descrição.` : "") +
+            (m.retrato.porTipo.length > 0
+              ? ` Tipo: ${m.retrato.porTipo.map((t) => `${t.anuncios} ${t.tipo}`).join(" · ")}.`
+              : "") +
+            (m.retrato.alteradosPorDia.length > 0
+              ? ` Alterados: ${m.retrato.alteradosPorDia
+                  .slice(0, 3)
+                  .map((d) => `${d.anuncios} em ${d.dia}`)
+                  .join(" · ")}.`
+              : "") +
             (m.novosPorStatus.length > 0
               ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
                   .map((s) => `${s.anuncios} ${s.status}`)
