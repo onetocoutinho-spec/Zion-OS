@@ -284,6 +284,7 @@ test("lista vazia não divide por zero", () => {
     exigenciasNaoAtendidas: [],
     categoriasComExigencias: 0,
     anunciosForaDoArConferidos: 0,
+    capas: { medidas: 0, semTamanho: 0, noPadrao: 0, foraDoPadrao: 0, piores: [] },
   });
 });
 

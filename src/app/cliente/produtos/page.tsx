@@ -406,6 +406,20 @@ export default function ClienteProdutos() {
                     .map((x) => `${x.nome} (${x.anuncios})`)
                     .join(" · ")}.`
                 : ` Conferi os ${m.anunciosForaDoArConferidos} fora do ar contra as exigências do ML: nenhum campo obrigatório falta.`) +
+            // A capa vem por último e é a linha mais acionável: o ML tira
+            // exposição por ela, e o número sai de `max_size` — a palavra dele,
+            // não um palpite pelo sufixo da URL.
+            (m.capas.medidas > 0
+              ? ` Foto de capa: ${m.capas.noPadrao} no padrão do ML, ${m.capas.foraDoPadrao} fora` +
+                (m.capas.piores.length > 0
+                  ? ` (menores: ${m.capas.piores
+                      .slice(0, 4)
+                      .map((c) => `${c.mlb} ${c.tamanho}`)
+                      .join(", ")})`
+                  : "") +
+                (m.capas.semTamanho > 0 ? ` · ${m.capas.semTamanho} sem tamanho informado` : "") +
+                "."
+              : "") +
             (m.novosPorStatus.length > 0
               ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
                   .map((s) => `${s.anuncios} ${s.status}`)

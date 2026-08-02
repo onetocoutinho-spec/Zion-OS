@@ -26,6 +26,10 @@ import { criarImagensBulk } from "./imagensProduto";
 import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
 import { exigenciasNaoAtendidas } from "../../modules/integration/domain/oQueOMlEstaPedindo";
 import {
+  resumirCapas,
+  type ResumoDasCapas,
+} from "../../modules/integration/domain/capaForaDoPadrao";
+import {
   abaDesatualizada,
   AVISO_ABA_DESATUALIZADA,
 } from "../../modules/integration/domain/abaDesatualizada";
@@ -138,6 +142,13 @@ export interface MedicaoDaFicha {
   categoriasComExigencias: number;
   /** Anúncios fora do ar que foram conferidos contra as exigências. */
   anunciosForaDoArConferidos: number;
+  /**
+   * As fotos de capa contra o padrão do ML — a causa do "Perdendo exposição".
+   *
+   * Sai de `max_size`, que é o ML dizendo o tamanho. Adivinhar pelo sufixo da
+   * URL não funciona: `-F` é a maior variante numa imagem e não é em outra.
+   */
+  capas: ResumoDasCapas;
 }
 
 /** O que a leitura do ML conseguiu ver, e o que não conseguiu. */
@@ -305,6 +316,7 @@ export function medirFichas(
     motivosDeNaoEstarNoAr: contarMotivos(anuncios),
     exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
     categoriasComExigencias: Object.values(obrigatorios).filter((v) => v.length > 0).length,
+    capas: resumirCapas(anuncios),
     anunciosForaDoArConferidos: anuncios.filter(
       (a) =>
         (a.status || "").trim().toLowerCase() !== "active" &&
