@@ -385,12 +385,17 @@ export default function ClienteProdutos() {
               : "") +
             // O que FALTA vem depois do motivo: "waiting_for_patch" diz que
             // falta algo; isto diz o quê, que é a pergunta que ela tem.
-            (m.exigenciasNaoAtendidas.length > 0
-              ? ` Campos exigidos que faltam nesses: ${m.exigenciasNaoAtendidas
-                  .slice(0, 6)
-                  .map((x) => `${x.nome} (${x.anuncios})`)
-                  .join(" · ")}.`
-              : "") +
+            // TRÊS respostas diferentes, e nenhuma delas é silêncio: não
+            // perguntei / perguntei e nada falta / falta isto. Silêncio para as
+            // duas primeiras foi o defeito de 02/08.
+            (m.categoriasComExigencias === 0
+              ? " Não consegui a lista de exigências do Mercado Livre — não dá para dizer que campo falta."
+              : m.exigenciasNaoAtendidas.length > 0
+                ? ` Campos exigidos que faltam nesses: ${m.exigenciasNaoAtendidas
+                    .slice(0, 6)
+                    .map((x) => `${x.nome} (${x.anuncios})`)
+                    .join(" · ")}.`
+                : ` Conferi os ${m.anunciosForaDoArConferidos} fora do ar contra as exigências do ML: nenhum campo obrigatório falta.`) +
             (m.novosPorStatus.length > 0
               ? ` O Zion não tem ${m.novosPorStatus.reduce((n, s) => n + s.anuncios, 0)} deles: ${m.novosPorStatus
                   .map((s) => `${s.anuncios} ${s.status}`)
