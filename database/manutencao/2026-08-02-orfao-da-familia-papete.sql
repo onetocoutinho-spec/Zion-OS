@@ -2,7 +2,22 @@
 -- Órfão da família — Papete Modare (MLB4980078561)
 -- ============================================================
 --
--- ESTADO: PRONTO, NÃO EXECUTADO. Aguarda autorização.
+-- ESTADO: EXECUTADO em 02/08/2026, com autorização explícita do autor.
+--
+-- CONFERIDO ANTES do delete, e este passo faltava no plano original: as 8
+-- imagens do duplicado têm URL IDÊNTICA às 8 do produto correto. A cascata não
+-- levou nenhuma imagem que só existisse ali.
+--
+-- RESULTADO MEDIDO:
+--
+--   Papete Slide Modare 7208.101 Nobuck   16 -> 17 anúncios · 13 variantes · 8 imagens
+--   produtos do cliente                   81 -> 80
+--   anúncios                                   880  (nenhum perdido)
+--   imagens                              661 -> 653  (as 8 do duplicado)
+--   linhas órfãs em qualquer tabela                0
+--
+-- As duas guardas dispararam como esperado: o update casou pelo `ml_item_id` e
+-- o delete só agiu depois de o produto ficar sem anúncio e sem variante.
 --
 -- NÃO é migração: não muda schema. É um conserto de DADOS pontual, num
 -- registro só, e por isso vive fora de `database/migrations/`.
@@ -71,5 +86,12 @@ select p.nome,
 -- e 13 variantes. Se aparecerem duas, o passo 2 foi barrado pela guarda —
 -- e aí NÃO confirme: investigue primeiro.
 
--- commit;   -- descomente depois de conferir o SELECT acima
-rollback;    -- padrão SEGURO: nada é gravado sem alguém trocar esta linha
+-- Executado por statement, com verificação entre cada um — não em bloco. O
+-- `rollback` de segurança que estava aqui perdeu a função: reexecutar este
+-- arquivo hoje não faz nada, porque as duas guardas já não casam.
+--
+-- REVERTER o passo 1 (o passo 2 NÃO tem volta):
+--   update public.anuncios_gerados
+--      set produto_id = '31377bf1-f170-4208-add3-b99ff83e898e'
+--    where id = 'f6f9bb98-8540-4876-9969-126865e08739';
+--   -- e o produto 31377bf1 teria de ser recriado à mão.
