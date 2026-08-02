@@ -345,6 +345,31 @@ export default function ClienteProdutos() {
     }
   }
 
+  // "Tem como verificar todas as informações que o ML nos traz?" — sim, e é a
+  // pergunta mais útil do dia: SETE defeitos em dois dias foram campo não lido.
+  // A importação usa lista branca (`?attributes=`) e por isso NUNCA vê o que
+  // não pede; esta busca traz o item inteiro e compara.
+  async function inventariarML() {
+    const comMlb = (anuncios ?? []).find((a) => a.mlItemId);
+    if (!comMlb?.mlItemId) {
+      setMsgML({ tipo: "erro", texto: "Nenhum anúncio com item no Mercado Livre para inspecionar." });
+      return;
+    }
+    setImportandoML(true);
+    setMsgML(null);
+    try {
+      const r = await inventariarItemDoML(clienteId, comMlb.mlItemId);
+      setMsgML({
+        tipo: r.inventario.ignorados.length > 0 ? "erro" : "ok",
+        texto: textoDoInventario(r),
+      });
+    } catch (e) {
+      setMsgML({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao inspecionar o item." });
+    } finally {
+      setImportandoML(false);
+    }
+  }
+
   async function importarDoML(modo: "substituir" | "novos" | "medir" | "enriquecer") {
     if (importandoML) return;
     setEscolhendoML(false);
@@ -603,6 +628,16 @@ export default function ClienteProdutos() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Lê os anúncios no Mercado Livre e mostra quais informações já estão lá — material, palmilha,
                 salto. Não altera nada aqui.
+              </p>
+            </button>
+            <button
+              onClick={() => inventariarML()}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
+            >
+              <p className="text-sm font-medium text-sky-300">O que o ML manda</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Lista todos os campos que o Mercado Livre devolve de um anúncio e marca quais o Zion
+                ainda não lê. Não altera nada.
               </p>
             </button>
             <button
