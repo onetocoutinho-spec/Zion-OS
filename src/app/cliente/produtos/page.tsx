@@ -377,10 +377,20 @@ export default function ClienteProdutos() {
             ` No ML: ${m.porStatus.map((s) => `${s.anuncios} ${s.status}`).join(" · ")}.` +
             // O motivo vem DEPOIS do status e antes de tudo mais: "155 em
             // revisão" não é acionável, "155 em revisão por X" é.
+            // Os MLBs dos baldes PEQUENOS vão inteiros: "7 forbidden" diz que
+            // existe problema, `MLB123, MLB456` diz onde procurar. Nos grandes
+            // sai amostra, e a palavra "ex." marca que é amostra — sem ela, 10
+            // de 150 se lê como "são só esses".
             (m.motivosDeNaoEstarNoAr.length > 0
               ? ` Fora do ar por: ${m.motivosDeNaoEstarNoAr
-                  .slice(0, 5)
-                  .map((x) => `${x.anuncios} ${x.motivo}`)
+                  .slice(0, 6)
+                  .map(
+                    (x) =>
+                      `${x.anuncios} ${x.motivo}` +
+                      (x.completo
+                        ? ` (${x.exemplos.join(", ")})`
+                        : ` (ex.: ${x.exemplos.slice(0, 3).join(", ")})`)
+                  )
                   .join(" · ")}.`
               : "") +
             // O que FALTA vem depois do motivo: "waiting_for_patch" diz que

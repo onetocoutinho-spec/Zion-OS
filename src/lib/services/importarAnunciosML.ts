@@ -103,7 +103,20 @@ export interface MedicaoDaFicha {
    * `under_review` sozinho não é acionável. O ML diz o motivo em `sub_status`,
    * e sem isso a lojista vê "155 em revisão" e não tem onde mexer.
    */
-  motivosDeNaoEstarNoAr: { motivo: string; anuncios: number }[];
+  motivosDeNaoEstarNoAr: {
+    motivo: string;
+    anuncios: number;
+    /**
+     * Os MLBs, para dar o que fazer com o número.
+     *
+     * "7 forbidden" diz que existe problema; `MLB123, MLB456` diz onde. Até 10
+     * é a lista INTEIRA do balde; acima disso são exemplos, e a diferença é
+     * dita — senão 3 de 150 se lê como "são só esses três".
+     */
+    exemplos: string[];
+    /** `true` quando `exemplos` é o balde inteiro, não uma amostra. */
+    completo: boolean;
+  }[];
   /**
    * Campos que a categoria EXIGE e faltam nos anúncios fora do ar.
    *
@@ -222,8 +235,13 @@ function contarStatus(anuncios: readonly AnuncioML[]): { status: string; anuncio
     .sort((x, y) => y.anuncios - x.anuncios || x.status.localeCompare(y.status));
 }
 
-function contarMotivos(anuncios: readonly AnuncioML[]): { motivo: string; anuncios: number }[] {
-  const c = new Map<string, number>();
+/** Quantos MLBs listar por motivo antes de virar amostra. */
+const MLBS_POR_MOTIVO = 10;
+
+function contarMotivos(
+  anuncios: readonly AnuncioML[]
+): { motivo: string; anuncios: number; exemplos: string[]; completo: boolean }[] {
+  const c = new Map<string, string[]>();
   for (const a of anuncios) {
     if ((a.status || "").trim().toLowerCase() === "active") continue;
     // Um anúncio pode ter mais de um motivo — cada um conta uma vez. E quando
@@ -235,10 +253,19 @@ function contarMotivos(anuncios: readonly AnuncioML[]): { motivo: string; anunci
     // fronteira pode chegar ausente, e ausente não pode explodir.
     const lista = a.subStatus ?? [];
     const motivos = lista.length > 0 ? lista : ["(o ML não informou o motivo)"];
-    for (const m of motivos) c.set(m, (c.get(m) ?? 0) + 1);
+    for (const m of motivos) {
+      const mlbs = c.get(m) ?? [];
+      mlbs.push(a.mlb);
+      c.set(m, mlbs);
+    }
   }
   return [...c.entries()]
-    .map(([motivo, anuncios]) => ({ motivo, anuncios }))
+    .map(([motivo, mlbs]) => ({
+      motivo,
+      anuncios: mlbs.length,
+      exemplos: mlbs.slice(0, MLBS_POR_MOTIVO),
+      completo: mlbs.length <= MLBS_POR_MOTIVO,
+    }))
     .sort((x, y) => y.anuncios - x.anuncios || x.motivo.localeCompare(y.motivo));
 }
 

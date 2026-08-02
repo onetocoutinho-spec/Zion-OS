@@ -125,8 +125,8 @@ test("o motivo do ML é contado, e um anúncio com dois motivos conta os dois", 
     anuncio("B", "under_review", ["pending_documentation", "waiting_for_patch"]),
   ]);
   assert.deepEqual(m.motivosDeNaoEstarNoAr, [
-    { motivo: "pending_documentation", anuncios: 2 },
-    { motivo: "waiting_for_patch", anuncios: 1 },
+    { motivo: "pending_documentation", anuncios: 2, exemplos: ["A", "B"], completo: true },
+    { motivo: "waiting_for_patch", anuncios: 1, exemplos: ["B"], completo: true },
   ]);
 });
 
@@ -158,4 +158,46 @@ test("anúncio vindo de um servidor SEM o campo novo não derruba a medição", 
   const m = medirFichas([velho as AnuncioML]);
   assert.equal(m.anuncios, 1);
   assert.match(m.motivosDeNaoEstarNoAr[0].motivo, /não informou/i);
+});
+
+// ---------------------------------------------------------------------------
+// QUAIS ANÚNCIOS — o número sozinho não dá o que fazer
+// ---------------------------------------------------------------------------
+
+test("balde pequeno lista TODOS e se declara completo", () => {
+  // "7 forbidden" diz que existe problema. Os MLBs dizem onde.
+  const m = medirFichas([
+    anuncio("MLB1", "under_review", ["forbidden"]),
+    anuncio("MLB2", "under_review", ["forbidden"]),
+  ]);
+  const b = m.motivosDeNaoEstarNoAr[0];
+  assert.deepEqual(b.exemplos, ["MLB1", "MLB2"]);
+  assert.equal(b.completo, true);
+});
+
+test("balde grande vira AMOSTRA e se declara incompleto", () => {
+  // Sem essa distinção, 10 de 150 se lê como "são só esses dez".
+  const muitos = Array.from({ length: 25 }, (_, i) =>
+    anuncio(`MLB${i}`, "under_review", ["waiting_for_patch"])
+  );
+  const b = medirFichas(muitos).motivosDeNaoEstarNoAr[0];
+  assert.equal(b.anuncios, 25);
+  assert.equal(b.exemplos.length, 10, "listou mais que o teto");
+  assert.equal(b.completo, false);
+});
+
+test("o MLB entra em CADA motivo dele, não só no primeiro", () => {
+  const m = medirFichas([anuncio("MLB1", "under_review", ["forbidden", "out_of_stock"])]);
+  for (const b of m.motivosDeNaoEstarNoAr) {
+    assert.deepEqual(b.exemplos, ["MLB1"], `${b.motivo} perdeu o MLB`);
+  }
+});
+
+test("anúncio ATIVO não aparece em exemplo nenhum", () => {
+  const m = medirFichas([
+    anuncio("ATIVO", "active", ["deleted"]),
+    anuncio("FORA", "paused", ["deleted"]),
+  ]);
+  const b = m.motivosDeNaoEstarNoAr.find((x) => x.motivo === "deleted");
+  assert.deepEqual(b?.exemplos, ["FORA"]);
 });
