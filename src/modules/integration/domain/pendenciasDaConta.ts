@@ -140,17 +140,23 @@ export function pendenciasDaConta(
         ...base,
         gravidade: "receita",
         tipo: daParaAjustar ? "capa-nao-quadrada" : "capa-pequena",
-        // FALSIFICADO em 03/08/2026: eu dizia "basta completar as laterais com
-        // fundo branco". Não basta — o Mercado Livre REPROCESSA a imagem no
-        // upload e apara a faixa. Enviamos 1200x1200 e ele guardou 1062x1200.
+        // A REGRA, NAS PALAVRAS DO ML — lida no painel dela em 03/08/2026:
         //
-        // E a premissa por trás disso era minha, não dele: eu ASSUMI que o
-        // requisito é "quadrada e >= 1200". O ML nunca disse isso item a item;
-        // o painel dele diz apenas "a foto de capa não cumpre os requisitos".
-        // Instruir com base em suposição foi o erro — a instrução agora manda
-        // ler o que ELE diz.
+        //   "Descumpre o tamanho mínimo, posição e proporção do produto na foto."
+        //
+        // São TRÊS coisas, e só a primeira é resolução. "Proporção do produto na
+        // foto" é o quanto o produto OCUPA do quadro.
+        //
+        // Isso derruba a ideia de completar com fundo branco por dois lados:
+        // o ML apara a faixa no upload (enviamos 1200x1200, ele guardou
+        // 1062x1200) E, mesmo se não aparasse, a faixa deixaria o produto MENOR
+        // dentro da foto — piorando justamente o critério que ele cobra.
+        //
+        // Antes desta linha eu instruía com base numa premissa minha
+        // ("quadrada e >= 1200") que o ML nunca enunciou. O erro não foi o
+        // reprocessamento: foi eu ter suposto a regra.
         oQueFazer: daParaAjustar
-          ? "Abra no Mercado Livre e use 'Revisar fotos': ele diz o que falta nesta capa. Tentar completar com fundo branco NÃO funciona — ele corta a faixa no envio."
+          ? "Precisa de foto nova. O Mercado Livre cobra tamanho mínimo, posição E proporção do produto na foto — o produto tem que aparecer maior e centralizado no quadro, e isso não se resolve editando o arquivo atual. No anúncio, 'Alterar fotos' mostra o diagnóstico dele."
           : `Precisa de foto nova: o maior lado tem ${maior} pixels e o Mercado Livre pede ${LADO_MINIMO_DA_CAPA}. Não há como ampliar sem perder qualidade.`,
         porque: `A capa tem ${capa.largura}x${capa.altura} — fora do padrão que o Mercado Livre exige para dar exposição.`,
       });
