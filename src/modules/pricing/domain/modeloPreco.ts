@@ -318,6 +318,21 @@ export type SaudeMargem = "Saudável" | "Atenção" | "Risco" | "Prejuízo" | "�
  * A saúde é medida contra a margem que O LOJISTA escolheu. Margem desconhecida
  * não vira veredito: "—" é honesto, "Saudável" seria mentira.
  */
+/**
+ * Quantos PISOS acima do mínimo uma margem precisa estar para virar "Saudável".
+ *
+ * ISTO É UMA CONVENÇÃO NOSSA, NÃO UMA REGRA DE MERCADO. Auditado em
+ * 03/08/2026 (AUD-001): o `* 2` apareceu no código e virou a palavra mais forte
+ * da tela de Precificação sem ninguém ter decidido que "o dobro do piso" é
+ * saudável.
+ *
+ * Fica como constante nomeada e exportada por dois motivos: para ser
+ * encontrável quando a decisão for tomada, e para `explicarClassificacao`
+ * poder dizer à lojista de onde o rótulo vem — que é o mínimo enquanto a
+ * escolha não é dela.
+ */
+export const PISOS_PARA_SAUDAVEL = 2;
+
 export function classificarMargem(
   margem: number | null,
   margemMinima: number
@@ -325,6 +340,47 @@ export function classificarMargem(
   if (margem === null) return "—";
   if (margem < 0) return "Prejuízo";
   if (margem < margemMinima) return "Risco";
-  if (margem < margemMinima * 2) return "Atenção";
+  if (margem < margemMinima * PISOS_PARA_SAUDAVEL) return "Atenção";
   return "Saudável";
+}
+
+/**
+ * De onde vem o rótulo — a frase que a tela deve mostrar junto dele.
+ *
+ * A régua da AUD-001: fato afirma, palavra do marketplace cita, suposição
+ * PERGUNTA. "Saudável" era suposição nossa exibida como veredito, e a lojista
+ * não tinha como saber contra o que estava sendo medida.
+ *
+ * `pisoEscolhido = false` diz que ela nunca escolheu e o padrão da Zion está
+ * no lugar — o comentário de `MARGEM_MINIMA_PADRAO` já admite isso ("o piso que
+ * a Zion assumia pelo lojista"), e admitir no código sem admitir na tela é
+ * admitir para ninguém.
+ */
+export function explicarClassificacao(
+  status: SaudeMargem,
+  margemMinima: number,
+  pisoEscolhido: boolean
+): string {
+  if (status === "—") return "Falta custo ou preço para calcular a margem.";
+
+  const origem = pisoEscolhido
+    ? `o seu piso de ${margemMinima}%`
+    : `${margemMinima}%, um piso que a Zion assumiu porque você ainda não escolheu o seu`;
+
+  switch (status) {
+    case "Prejuízo":
+      return `A margem é negativa: esta venda dá prejuízo. Comparado com ${origem}.`;
+    case "Risco":
+      return `A margem está abaixo de ${origem}.`;
+    case "Atenção":
+      return (
+        `A margem passa de ${origem}, mas não chega ao dobro dele. ` +
+        `O dobro é convenção da Zion, não regra do mercado.`
+      );
+    case "Saudável":
+      return (
+        `A margem passa do dobro de ${origem}. ` +
+        `O dobro é convenção da Zion, não regra do mercado — quem define o que é saudável na sua loja é você.`
+      );
+  }
 }

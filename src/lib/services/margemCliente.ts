@@ -19,14 +19,36 @@ import {
  * de saudável uma margem que o lojista considera risco.
  */
 export async function margemMinimaDoCliente(): Promise<number> {
-  if (!supabaseConfigurado) return MARGEM_MINIMA_PADRAO;
+  return (await margemMinimaComOrigem()).margem;
+}
+
+/**
+ * A margem E DE ONDE ELA VEIO.
+ *
+ * `margemMinimaDoCliente` devolve o padrão em qualquer falha — o que é a
+ * decisão certa (piso ausente viraria "sem piso") e apaga uma diferença que
+ * importa: **"ela escolheu 5%"** e **"assumimos 5% por ela"** produzem o mesmo
+ * número e não a mesma frase.
+ *
+ * Auditado em 03/08/2026 (AUD-001): a tela chamava de "Saudável" uma margem
+ * medida contra um piso que a lojista nunca viu. O número continua igual; o que
+ * muda é a tela poder dizer isso.
+ */
+export async function margemMinimaComOrigem(): Promise<{
+  margem: number;
+  /** `true` só quando o valor veio do banco. Falha e ausência são `false`. */
+  escolhida: boolean;
+}> {
+  if (!supabaseConfigurado) return { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
   try {
     const { data, error } = await getSupabase().rpc("portal_margem_minima");
-    if (error || data == null) return MARGEM_MINIMA_PADRAO;
+    if (error || data == null) return { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
     const n = Number(data);
-    return Number.isFinite(n) ? n : MARGEM_MINIMA_PADRAO;
+    return Number.isFinite(n)
+      ? { margem: n, escolhida: true }
+      : { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
   } catch {
-    return MARGEM_MINIMA_PADRAO;
+    return { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
   }
 }
 
