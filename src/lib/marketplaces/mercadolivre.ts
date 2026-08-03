@@ -221,6 +221,22 @@ export async function atributosForaDaFicha(
   return fora;
 }
 
+/**
+ * Qualquer coisa vira texto aparado — sem supor o tipo.
+ *
+ * Observado em 02/08/2026: `familiaIdDoML: (it.family_id ?? "").trim()` estourou
+ * com "(t.family_id ?? '').trim is not a function", porque `family_id` vem como
+ * NÚMERO. A exceção era capturada como "lote recusado", a leitura degradava, e
+ * a mensagem acusava o Mercado Livre de recusar campos que ele nunca recusou.
+ *
+ * O `?? ""` só protege contra `null`/`undefined` — não contra tipo diferente do
+ * esperado. Numa fronteira que não controlamos, supor o tipo é o mesmo que
+ * supor o valor.
+ */
+function texto(v: unknown): string {
+  return v == null ? "" : String(v).trim();
+}
+
 export interface RecorteDaCategoria {
   /** ids `hidden` ou `variation_attribute` — não são ficha do lojista. */
   foraDaFicha: Record<string, string[]>;
@@ -762,7 +778,8 @@ interface ItemRaw {
   last_updated?: string | null;
   listing_type_id?: string | null;
   parent_item_id?: string | null;
-  family_id?: string | null;
+  /** NÚMERO na resposta do ML, apesar do nome. Foi o que quebrou o mapeador. */
+  family_id?: string | number | null;
   /** Lista de IDs, NÃO o texto — a descrição vem de /items/{id}/description. */
   descriptions?: { id?: string }[] | null;
   warranty?: string | null;
@@ -920,31 +937,31 @@ function mapearItem(it: ItemRaw): AnuncioML {
     modelo: attr(it.attributes, "MODEL"),
     fotos: (it.pictures ?? []).map((p) => p.secure_url || p.url || "").filter(Boolean),
     // A capa é a primeira foto — é ela que o ML avalia.
-    fotoCapaMaxSize: ((it.pictures ?? [])[0]?.max_size ?? "").trim(),
-    fotoCapaQualidade: ((it.pictures ?? [])[0]?.quality ?? "").trim(),
+    fotoCapaMaxSize: texto((it.pictures ?? [])[0]?.max_size),
+    fotoCapaQualidade: texto((it.pictures ?? [])[0]?.quality),
     // FIEL: número vira número, ausência vira `null` — e `null` significa "o ML
     // não disse", nunca zero. Uma saúde 0 e uma saúde desconhecida são coisas
     // diferentes, e confundi-las seria o defeito do dia inteiro outra vez.
     saude: typeof it.health === "number" ? it.health : null,
     doCatalogo: typeof it.catalog_listing === "boolean" ? it.catalog_listing : null,
-    catalogoProdutoId: (it.catalog_product_id ?? "").trim(),
+    catalogoProdutoId: texto(it.catalog_product_id),
     vendidos: typeof it.sold_quantity === "number" ? it.sold_quantity : null,
     quantidadeInicial: typeof it.initial_quantity === "number" ? it.initial_quantity : null,
-    criadoEmML: (it.date_created ?? "").trim(),
-    atualizadoEmML: (it.last_updated ?? "").trim(),
-    tipoDeAnuncio: (it.listing_type_id ?? "").trim(),
-    itemPaiId: (it.parent_item_id ?? "").trim(),
-    familiaIdDoML: (it.family_id ?? "").trim(),
+    criadoEmML: texto(it.date_created),
+    atualizadoEmML: texto(it.last_updated),
+    tipoDeAnuncio: texto(it.listing_type_id),
+    itemPaiId: texto(it.parent_item_id),
+    familiaIdDoML: texto(it.family_id),
     // `descriptions` é uma lista de IDs, NÃO o texto. E `undefined` NÃO é
     // "não tem descrição": é "não perguntamos". Observado em 02/08/2026 — o ML
     // recusou a lista de 31 campos, a leitura caiu para a lista mínima (que não
     // pede `descriptions`), e a tela afirmou "781 sem descrição" sobre um campo
     // que ninguém tinha lido. Ausência virando afirmação, no meu próprio código.
     temDescricao: it.descriptions == null ? undefined : it.descriptions.length > 0,
-    garantia: (it.warranty ?? "").trim(),
-    condicao: (it.condition ?? "").trim(),
-    videoId: (it.video_id ?? "").trim(),
-    tagsDoML: (it.tags ?? []).map((t) => (t ?? "").trim()).filter(Boolean),
+    garantia: texto(it.warranty),
+    condicao: texto(it.condition),
+    videoId: texto(it.video_id),
+    tagsDoML: (it.tags ?? []).map(texto).filter(Boolean),
     precoBase: typeof it.base_price === "number" ? it.base_price : null,
     precoOriginal: typeof it.original_price === "number" ? it.original_price : null,
     variacoes,
@@ -1043,6 +1060,13 @@ export interface LeituraDoVendedor {
    * inválida para sempre.
    */
   filtroDeCamposRecusado: boolean;
+  /**
+   * A falha da leitura completa foi NOSSA (exceção) e não do ML (HTTP).
+   *
+   * Muda inteiramente onde procurar — e culpar a fonte por defeito próprio
+   * manda quem lê para o lugar errado.
+   */
+  falhaDaLeituraFoiNossa: boolean;
 }
 
 /**
@@ -1147,6 +1171,17 @@ export async function buscarAnunciosDoVendedor(
     if (!erroDoMultiget) erroDoMultiget = motivo;
   }
 
+  /**
+   * A falha foi DELE ou NOSSA?
+   *
+   * Um HTTP 4xx é o ML recusando. Uma exceção é o nosso código quebrando — e em
+   * 02/08/2026 foi exatamente isso: `family_id` veio como número, `.trim()`
+   * estourou dentro do mapeador, e a mensagem acusou o Mercado Livre de recusar
+   * campos que ele nunca recusou. Culpar a fonte por defeito próprio é pior que
+   * não explicar: manda procurar no lugar errado.
+   */
+  let falhaFoiNossa = false;
+
   async function buscarLote(lote: string, campos: string): Promise<AnuncioML[] | "recusado"> {
     try {
       const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
@@ -1162,7 +1197,8 @@ export async function buscarAnunciosDoVendedor(
       const erro = e instanceof Error ? e.message : String(e);
       const causa = (e as { cause?: { code?: string; message?: string } })?.cause;
       const detalhe = causa?.code ?? causa?.message ?? "";
-      registrar(`exceção: ${erro}${detalhe ? ` (${detalhe})` : ""}`);
+      falhaFoiNossa = true;
+      registrar(`exceção no nosso código: ${erro}${detalhe ? ` (${detalhe})` : ""}`);
       return "recusado";
     }
   }
@@ -1195,8 +1231,10 @@ export async function buscarAnunciosDoVendedor(
     parede,
     // O que o ML respondeu quando recusou. Vazio quando nada foi recusado.
     erroDoMultiget,
-    // `true` quando o filtro de campos foi negado e a leitura seguiu sem ele.
+    // `true` quando a leitura completa falhou e seguiu com a lista mínima.
     filtroDeCamposRecusado: filtroRecusado,
+    // A falha foi nossa (exceção) ou do ML (HTTP)? Muda onde procurar.
+    falhaDaLeituraFoiNossa: falhaFoiNossa,
   };
 }
 
