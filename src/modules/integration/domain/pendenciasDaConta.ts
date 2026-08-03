@@ -46,7 +46,7 @@ export type Gravidade = "conta" | "receita" | "atencao";
 export interface PendenciaDaConta {
   gravidade: Gravidade;
   /** Chave para agrupar na tela. */
-  tipo: "bloqueado" | "capa" | "sem-estoque" | "em-revisao" | "sem-motivo";
+  tipo: "bloqueado" | "capa-pequena" | "capa-nao-quadrada" | "sem-estoque" | "em-revisao" | "sem-motivo";
   mlb: string;
   permalink: string;
   titulo: string;
@@ -125,13 +125,24 @@ export function pendenciasDaConta(
     // 2) RECEITA — a capa fora do padrão tira exposição. Só conta para quem
     //    está NO AR: mandar refotografar um anúncio pausado é trabalho jogado
     //    fora enquanto ele não voltar.
+    // DUAS pendências diferentes, com remédios diferentes — e chamar as duas de
+    // "refotografe" mandava a lojista fotografar de novo o que só precisa de
+    // faixa branca. Medido em 02/08/2026 na conta dela: `993x1200`, `961x1200`
+    // e `896x1152` não são fotos pequenas, são fotos EM PÉ.
+    //
+    //   lado maior >= 1200  ->  só falta virar quadrada. Ajuste, não fotografia.
+    //   lado maior <  1200  ->  não há pixel para recuperar. Foto nova.
     const capa = lerMaxSize(a.fotoCapaMaxSize);
     if (ativo(a) && capa && !(capa.quadrada && capa.grandeOSuficiente)) {
+      const maior = Math.max(capa.largura, capa.altura);
+      const daParaAjustar = maior >= LADO_MINIMO_DA_CAPA;
       todas.push({
         ...base,
         gravidade: "receita",
-        tipo: "capa",
-        oQueFazer: `Refotografe a capa: quadrada e com pelo menos ${LADO_MINIMO_DA_CAPA} pixels de lado.`,
+        tipo: daParaAjustar ? "capa-nao-quadrada" : "capa-pequena",
+        oQueFazer: daParaAjustar
+          ? "A foto tem tamanho suficiente e só não é quadrada. Basta completar as laterais com fundo branco até ficar quadrada — não precisa fotografar de novo."
+          : `Precisa de foto nova: o maior lado tem ${maior} pixels e o Mercado Livre pede ${LADO_MINIMO_DA_CAPA}. Não há como ampliar sem perder qualidade.`,
         porque: `A capa tem ${capa.largura}x${capa.altura} — fora do padrão que o Mercado Livre exige para dar exposição.`,
       });
     }

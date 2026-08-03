@@ -75,7 +75,7 @@ test("capa ruim de anúncio FORA do ar não vira tarefa", () => {
   // Mandar refotografar um anúncio pausado é trabalho jogado fora enquanto ele
   // não voltar.
   const r = pendenciasDaConta([an("PAUSADO", { status: "paused", fotoCapaMaxSize: "165x93" })]);
-  assert.equal(r.itens.filter((p) => p.tipo === "capa").length, 0);
+  assert.equal(r.itens.filter((p) => p.tipo.startsWith("capa")).length, 0);
 });
 
 test("capa DENTRO do padrão não vira tarefa", () => {
@@ -86,7 +86,7 @@ test("capa DENTRO do padrão não vira tarefa", () => {
 test("capa sem tamanho informado NÃO é acusada", () => {
   // Acusar a foto de alguém com base em campo ausente é inventar defeito.
   const r = pendenciasDaConta([an("SEM_TAMANHO"), an("VAZIO", { fotoCapaMaxSize: "" })]);
-  assert.equal(r.itens.filter((p) => p.tipo === "capa").length, 0);
+  assert.equal(r.itens.filter((p) => p.tipo.startsWith("capa")).length, 0);
 });
 
 test("bloqueado NÃO acumula outras pendências — bloqueio manda", () => {
@@ -114,7 +114,7 @@ test("a lista é recortada; os TOTAIS não", () => {
   );
   const r = pendenciasDaConta(muitos, 10);
   assert.equal(r.itens.length, 10);
-  assert.deepEqual(r.totais, [{ tipo: "capa", quantas: 40 }]);
+  assert.deepEqual(r.totais, [{ tipo: "capa-pequena", quantas: 40 }]);
 });
 
 test("o limite é POR TIPO — um tipo grande não engole os outros", () => {
@@ -123,7 +123,7 @@ test("o limite é POR TIPO — um tipo grande não engole os outros", () => {
     an("BLOQ", { subStatus: ["forbidden"] }),
   ];
   const r = pendenciasDaConta(itens, 5);
-  assert.equal(r.itens.filter((p) => p.tipo === "capa").length, 5);
+  assert.equal(r.itens.filter((p) => p.tipo.startsWith("capa")).length, 5);
   assert.equal(r.itens.filter((p) => p.tipo === "bloqueado").length, 1);
 });
 
@@ -192,4 +192,50 @@ test("anúncio incompleto vindo do JSON não derruba a lista", () => {
     "campo ausente virou undefined na saída"
   );
   assert.match(r.itens.find((p) => !p.mlb)!.titulo, /sem t[íi]tulo/i);
+});
+
+// ---------------------------------------------------------------------------
+// DOIS PROBLEMAS DE FOTO, DOIS REMÉDIOS
+// ---------------------------------------------------------------------------
+
+test("foto EM PÉ com lado grande: ajuste, não fotografia", () => {
+  // Medido na conta real em 02/08/2026: `993x1200`, `961x1200`, `896x1152`.
+  // Não são fotos pequenas — são fotos em pé. Mandar refotografar seria mandar
+  // refazer o que só precisa de faixa branca.
+  const r = pendenciasDaConta([an("A", { estoque: 5, fotoCapaMaxSize: "993x1200" })]);
+  assert.equal(r.itens[0].tipo, "capa-nao-quadrada");
+  assert.match(r.itens[0].oQueFazer, /fundo branco/i);
+  assert.match(r.itens[0].oQueFazer, /não precisa fotografar de novo/i);
+});
+
+test("foto pequena de verdade: foto nova, e diz por quê", () => {
+  const r = pendenciasDaConta([an("A", { estoque: 5, fotoCapaMaxSize: "699x344" })]);
+  assert.equal(r.itens[0].tipo, "capa-pequena");
+  assert.match(r.itens[0].oQueFazer, /foto nova/i);
+  assert.match(r.itens[0].oQueFazer, /699/, "precisa dizer QUAL é o maior lado");
+  assert.doesNotMatch(r.itens[0].oQueFazer, /fundo branco/i);
+});
+
+test("o corte é pelo MAIOR lado, não pelo menor", () => {
+  // 1200x400: o menor lado é minúsculo, mas há 1200 pixels para trabalhar.
+  assert.equal(
+    pendenciasDaConta([an("A", { fotoCapaMaxSize: "1200x400" })]).itens[0].tipo,
+    "capa-nao-quadrada"
+  );
+  // 1199x1199: quase lá, e ainda assim não há 1200 em lado nenhum.
+  assert.equal(
+    pendenciasDaConta([an("B", { fotoCapaMaxSize: "1199x1199" })]).itens[0].tipo,
+    "capa-pequena"
+  );
+});
+
+test("os dois tipos de foto são contados SEPARADOS", () => {
+  // Somar os dois num número só devolveria "341 fotos ruins" e apagaria a
+  // diferença entre uma tarde de ajuste e semanas de fotografia.
+  const r = pendenciasDaConta([
+    an("AJUSTE", { fotoCapaMaxSize: "993x1200" }),
+    an("NOVA", { fotoCapaMaxSize: "165x93" }),
+  ]);
+  const tipos = r.totais.map((t) => t.tipo).sort();
+  assert.deepEqual(tipos, ["capa-nao-quadrada", "capa-pequena"]);
 });
