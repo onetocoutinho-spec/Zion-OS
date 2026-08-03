@@ -39,6 +39,7 @@ import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
+import { diagnosticarInfracoes, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
@@ -370,6 +371,39 @@ export default function ClienteProdutos() {
     }
   }
 
+  // "O ML cancelou 6 anúncios e não disse por quê" — 31/07/2026.
+  //
+  // O `sub_status: forbidden` que revelou as 6 só enxerga anúncio que AINDA
+  // está no catálogo importado; infração de anúncio já apagado da conta é
+  // invisível. A rota de infrações do ML foi lida na documentação e medida sem
+  // token antes de ser escrita — `/marketplace/moderations/infractions/{id}`
+  // responde 403 (existe) e `/users/{id}/infractions` responde 404 (não
+  // existe). Isto aqui é a pergunta; o que fazer com a resposta vem depois dela.
+  async function verInfracoes() {
+    if (importandoML) return;
+    setEscolhendoML(false);
+    setImportandoML(true);
+    setMsgML(null);
+    try {
+      const d = await diagnosticarInfracoes(clienteId);
+      // Vermelho quando há infração OU quando a conta está barrada. Um
+      // diagnóstico que só sabe dizer "ok" não é diagnóstico.
+      const grave =
+        d.contaPodeAnunciar === false || (d.leitura?.infracoes.length ?? 0) > 0 || !d.varianteQueRespondeu;
+      setMsgML({ tipo: grave ? "erro" : "ok", texto: textoDoDiagnostico(d) });
+      // A resposta CRUA vai para o console de propósito: esta rota existe para
+      // aprender o formato real, e o formato não cabe numa faixa de uma linha.
+      console.info("[diagnóstico de infrações]", d);
+    } catch (e) {
+      setMsgML({
+        tipo: "erro",
+        texto: e instanceof Error ? e.message : "Falha ao consultar as infrações.",
+      });
+    } finally {
+      setImportandoML(false);
+    }
+  }
+
   async function importarDoML(modo: "substituir" | "novos" | "medir" | "enriquecer") {
     if (importandoML) return;
     setEscolhendoML(false);
@@ -649,9 +683,11 @@ export default function ClienteProdutos() {
             <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
-          {/* Cinco opções: 4 colunas deixaria uma sozinha na linha, e card
-              solitário lê como "esta é diferente" quando não é. 3 e 5 fecham. */}
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {/* SEIS opções: 5 colunas deixaria uma sozinha na linha, e card
+              solitário lê como "esta é diferente" quando não é. 2 e 3 fecham,
+              então o xl deixa de ser 5 e passa a repetir o lg — duas fileiras
+              de três, sem sobra. */}
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <button
               onClick={() => importarDoML("medir")}
               className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
@@ -670,6 +706,16 @@ export default function ClienteProdutos() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Lista todos os campos que o Mercado Livre devolve de um anúncio e marca quais o Zion
                 ainda não lê. Não altera nada.
+              </p>
+            </button>
+            <button
+              onClick={() => verInfracoes()}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-rose-500/40"
+            >
+              <p className="text-sm font-medium text-rose-300">Infrações da conta</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Pergunta ao Mercado Livre quais anúncios ele puniu, por quê e o que ele manda fazer —
+                inclusive os que já saíram do ar. Não altera nada.
               </p>
             </button>
             <button
