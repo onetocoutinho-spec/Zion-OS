@@ -14,6 +14,9 @@ import {
   Plug,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
+import { toneSaudeMargem } from "@/lib/client-portal/metrics";
+import { margemMinimaComOrigem } from "@/lib/services/margemCliente";
+import { classificarMargem, MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
@@ -62,6 +65,27 @@ export default function ClienteVendas() {
   }, [clienteId, dias]);
 
   const m = useMemo(() => calcularMetricas(pedidos, produtos ?? []), [pedidos, produtos]);
+
+  // O PISO DELA — a mesma fonte da tela de Precificação. Sem isto, a cor da
+  // margem sairia de um número escrito nesta página (AUD-002).
+  const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
+  useEffect(() => {
+    let vivo = true;
+    margemMinimaComOrigem().then((r) => vivo && setMargem(r.margem));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  /**
+   * O lucro é PARCIAL quando nem todo item vendido tem custo cadastrado.
+   *
+   * `lucroLiquido = faturamento - taxas - custo`, e `custo` só soma o que
+   * existe na base — então cobertura abaixo de 100% produz lucro
+   * SUPERESTIMADO por construção, nunca subestimado. Medido em 03/08/2026:
+   * 30 de 80 produtos têm custo.
+   */
+  const parcial = m.coberturaCusto < 100 && m.pedidos > 0;
   const maxDia = Math.max(1, ...m.porDia.map((d) => d.faturamento));
   const naoConectado = aviso?.toLowerCase().includes("não conectado") || aviso?.toLowerCase().includes("nao conectado");
 
@@ -116,19 +140,40 @@ export default function ClienteVendas() {
           {/* Cards */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Faturamento" value={formatBRL(m.faturamento)} icon={DollarSign} tone="green" hint={`${dias} dias`} />
+            {/* PARCIAL É DITO NO RÓTULO, não só num rodapé.
+                `lucroLiquido = faturamento - taxas - custo`, e `custo` só soma
+                os itens cujo custo existe na base. Com cobertura abaixo de
+                100%, este número está SUPERESTIMADO por construção — medido em
+                03/08/2026: 30 de 80 produtos têm custo. O rodapé já avisava,
+                mas rótulo verde vence rodapé cinza. */}
             <StatCard
-              label="Lucro líquido"
+              label={parcial ? "Lucro líquido (parcial)" : "Lucro líquido"}
               value={formatBRL(m.lucroLiquido)}
               icon={TrendingUp}
-              tone={m.lucroLiquido >= 0 ? "green" : "red"}
-              hint={`margem ${m.margem}%`}
+              tone={parcial ? "yellow" : m.lucroLiquido >= 0 ? "green" : "red"}
+              hint={
+                parcial
+                  ? `superestimado — só ${m.coberturaCusto}% dos itens têm custo`
+                  : `margem ${m.margem}%`
+              }
             />
             <StatCard label="Pedidos" value={m.pedidos} icon={ShoppingCart} tone="violet" hint={`${m.unidades} unidades`} />
             <StatCard label="Ticket médio" value={formatBRL(m.ticketMedio)} icon={Receipt} tone="blue" />
             <StatCard label="Taxas do ML" value={formatBRL(m.taxas)} icon={Percent} tone="orange" />
             <StatCard label="Custo dos produtos" value={formatBRL(m.custo)} icon={Package} tone="cyan" hint={`${m.coberturaCusto}% dos itens c/ custo`} />
             <StatCard label="Unidades vendidas" value={m.unidades} icon={Package} tone="gray" />
-            <StatCard label="Margem" value={`${m.margem}%`} icon={Percent} tone={m.margem >= 20 ? "green" : m.margem >= 0 ? "yellow" : "red"} />
+            {/* A COR SAI DO PISO DELA, não de um 20 escrito aqui.
+                Havia um terceiro limiar de margem no repositório — `>= 20` era
+                verde — desligado do piso que a lojista escolheu e da regra que
+                a tela de Precificação usa. Três réguas para a mesma pergunta é
+                como dois modelos de comissão conviveram meses (AUD-001). */}
+            <StatCard
+              label={parcial ? "Margem (parcial)" : "Margem"}
+              value={`${m.margem}%`}
+              icon={Percent}
+              tone={parcial ? "yellow" : toneSaudeMargem(classificarMargem(m.margem, margem))}
+              hint={parcial ? undefined : `seu piso: ${margem}%`}
+            />
           </div>
 
           {m.coberturaCusto < 100 && m.pedidos > 0 && (

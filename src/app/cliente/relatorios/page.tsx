@@ -15,7 +15,8 @@ import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
-import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
+import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import { listarProdutos } from "@/lib/services/produtos";
 import { toneFor } from "@/lib/status";
 import type { Relatorio } from "@/lib/types";
@@ -27,7 +28,7 @@ export default function ClienteRelatorios() {
     [clienteId]
   );
   const { data: anuncios } = useLiveQuery(
-    () => listarAnunciosGeradosDoCliente(clienteId),
+    () => listarResumoDeAnunciosDoCliente(clienteId),
     [clienteId]
   );
   const { data: produtos } = useLiveQuery(listarProdutos);
@@ -37,11 +38,21 @@ export default function ClienteRelatorios() {
   // Resumo "ao vivo" derivado dos dados atuais (não depende de relatório salvo).
   const vivo = useMemo(() => {
     const ans = anuncios ?? [];
-    const otimizados = ans.filter((a) => a.status === "aprovado" || a.status === "publicado").length;
+    // "Otimizado" NÃO é "publicado" — a mesma correção feita em Meus Produtos
+    // em 03/08/2026, que aqui tinha sobrevivido. Medido: 791 anúncios contavam
+    // como otimizados e ZERO tinham sido avaliados pela IA, porque todo
+    // importado do ML nasce `publicado`.
+    //
+    // A regra mora no domínio e é a mesma nas duas telas: dois lugares com a
+    // mesma pergunta e respostas diferentes é como esta linha sobreviveu.
+    const estados = estadoDeOtimizacao(ans);
+    const otimizados = [...estados.values()].filter((e) => e === "Otimizado").length;
+    const noArSemOtimizar = [...estados.values()].filter((e) => e === "No ar, sem otimização").length;
     const corrigidos = ans.filter((a) => a.qtdPendencias === 0 && a.notaDiagnostico >= 70).length;
     return {
       produtos: (produtos ?? []).length,
       otimizados,
+      noArSemOtimizar,
       corrigidos,
       emRevisao: ans.filter(
         (a) => a.status === "aguardando_aprovacao" || a.status === "rascunho"
@@ -62,6 +73,14 @@ export default function ClienteRelatorios() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard label="Produtos na base" value={vivo.produtos} icon={FileText} tone="blue" />
         <StatCard label="Anúncios otimizados" value={vivo.otimizados} icon={CheckCircle2} tone="green" />
+        {/* O trabalho que FALTA, nomeado. Antes ele estava somado ao número
+            de cima e a tela dizia que estava tudo otimizado. */}
+        <StatCard
+          label="No ar, sem otimização"
+          value={vivo.noArSemOtimizar}
+          icon={FileText}
+          tone="yellow"
+        />
         <StatCard label="Anúncios corrigidos" value={vivo.corrigidos} icon={Sparkles} tone="violet" />
         <StatCard
           label="Aguardando revisão"
