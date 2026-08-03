@@ -153,3 +153,70 @@ test("sem variação utilizável devolve null", () => {
 test("`url` serve quando não há `secure_url`", () => {
   assert.equal(maiorVariacao([{ size: "900x900", url: "http://x/1.jpg" }])?.url, "http://x/1.jpg");
 });
+
+// ---------------------------------------------------------------------------
+// A FRASE SEGUE A CAPA, NÃO O STATUS HTTP
+// ---------------------------------------------------------------------------
+
+import { explicarCapaQuadrada } from "../../../lib/services/quadrarCapaML.ts";
+
+test("capa NÃO trocada: a frase diz isso, e não diz 'ajustada'", () => {
+  // 03/08/2026: a frase dizia "Capa ajustada" porque o `PUT` voltou 200 — e o
+  // 200 significa que o ML ACEITOU o pedido, não que a capa mudou. A lojista
+  // reconferiu e a capa continuava a antiga.
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "960x1200",
+    para: "1200x1200",
+    fotosAntes: 12,
+    fotosDepois: 13,
+    capaTrocada: false,
+    temVariacoes: false,
+  });
+  assert.match(f, /N[ÃA]O MUDOU/i);
+  assert.doesNotMatch(f, /Capa ajustada de/);
+  assert.match(f, /nenhuma foto foi perdida/i);
+});
+
+test("com variação, a frase diz ONDE está o caminho", () => {
+  // Em anúncio com variação o ML controla as fotos por variação. Repetir a
+  // tentativa não resolve, e dizer isso é mais útil que deixar tentar de novo.
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "960x1200",
+    para: "1200x1200",
+    fotosAntes: 12,
+    fotosDepois: 13,
+    capaTrocada: false,
+    temVariacoes: true,
+  });
+  assert.match(f, /varia/i);
+});
+
+test("capa trocada: aí sim a frase afirma o ajuste", () => {
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "960x1200",
+    para: "1200x1200",
+    fotosAntes: 12,
+    fotosDepois: 13,
+    capaTrocada: true,
+    temVariacoes: false,
+  });
+  assert.match(f, /Capa ajustada de 960x1200 para 1200x1200/);
+  assert.match(f, /12 fotos originais/);
+});
+
+test("foto perdida é avisada mesmo com a capa trocada", () => {
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "960x1200",
+    para: "1200x1200",
+    fotosAntes: 12,
+    fotosDepois: 8,
+    capaTrocada: true,
+    temVariacoes: false,
+  });
+  assert.match(f, /ATEN[ÇC][ÃA]O/);
+  assert.match(f, /8/);
+});

@@ -94,12 +94,23 @@ export async function POST(request: Request) {
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     // 1) As fotos ATUAIS do anúncio, na ordem em que estão.
-    const rItem = await fetch(`${API}/items/${itemId}?attributes=id,pictures`, { headers: auth });
+    //
+    // `variations` vem junto porque em anúncio COM VARIAÇÃO o Mercado Livre
+    // controla as fotos por variação (`variations[].picture_ids`), e o
+    // `pictures` do item passa a ser derivado. Mexer só no item pode não ter
+    // efeito nenhum — e foi o que aconteceu em 03/08/2026.
+    const rItem = await fetch(`${API}/items/${itemId}?attributes=id,pictures,variations`, {
+      headers: auth,
+    });
     if (!rItem.ok) {
       return Response.json({ erro: `Não consegui ler o anúncio ${itemId}.` }, { status: 502 });
     }
-    const item = (await rItem.json()) as { pictures?: { id?: string }[] };
+    const item = (await rItem.json()) as {
+      pictures?: { id?: string }[];
+      variations?: { id?: number; picture_ids?: string[] }[];
+    };
     const fotos = (item.pictures ?? []).map((f) => (f.id ?? "").trim()).filter(Boolean);
+    const variacoesDoItem = item.variations ?? [];
     if (fotos.length === 0) {
       return Response.json({ erro: "Este anúncio não tem nenhuma foto." }, { status: 422 });
     }
@@ -154,6 +165,21 @@ export async function POST(request: Request) {
     const novaOrdem = [novaFotoId, ...fotos.filter((f) => f !== novaFotoId)];
     const r = await definirFotosDoItem(tokens.accessToken, itemId, novaOrdem);
 
+    // 6) CONFERE. O `PUT` voltar 200 significa que o ML ACEITOU o pedido, não
+    //    que a capa mudou. Em 03/08/2026 eu afirmei "capa ajustada" com base no
+    //    200, a lojista reconferiu, e a capa continuava a antiga — o mesmo
+    //    defeito que passei o dia arrancando de outros lugares, cometido por
+    //    mim no último passo.
+    //
+    //    A verificação é uma releitura do próprio ML. Custa uma requisição e
+    //    troca uma afirmação por um fato.
+    const rConfere = await fetch(`${API}/items/${itemId}?attributes=id,pictures`, { headers: auth });
+    const depois = rConfere.ok
+      ? ((await rConfere.json()) as { pictures?: { id?: string }[] })
+      : null;
+    const capaAgora = (depois?.pictures ?? [])[0]?.id?.trim() ?? "";
+    const trocou = capaAgora === novaFotoId;
+
     return Response.json({
       itemId: r.id,
       de: quadrada.de,
@@ -163,6 +189,13 @@ export async function POST(request: Request) {
       // ler a resposta consegue perceber sozinho.
       fotosAntes: fotos.length,
       fotosDepois: r.quantasFotos,
+      // A verdade sobre a capa, lida do ML DEPOIS da escrita.
+      capaTrocada: trocou,
+      capaAgora: capaAgora || null,
+      // Em anúncio com variação, o ML controla as fotos por variação. Se a capa
+      // não trocou E há variações, é quase certo que o caminho é outro — e
+      // dizer isso é mais útil que repetir a tentativa.
+      temVariacoes: variacoesDoItem.length > 0,
     });
   } catch (e) {
     return Response.json(
