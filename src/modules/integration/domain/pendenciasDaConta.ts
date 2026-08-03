@@ -140,8 +140,17 @@ export function pendenciasDaConta(
         ...base,
         gravidade: "receita",
         tipo: daParaAjustar ? "capa-nao-quadrada" : "capa-pequena",
+        // FALSIFICADO em 03/08/2026: eu dizia "basta completar as laterais com
+        // fundo branco". Não basta — o Mercado Livre REPROCESSA a imagem no
+        // upload e apara a faixa. Enviamos 1200x1200 e ele guardou 1062x1200.
+        //
+        // E a premissa por trás disso era minha, não dele: eu ASSUMI que o
+        // requisito é "quadrada e >= 1200". O ML nunca disse isso item a item;
+        // o painel dele diz apenas "a foto de capa não cumpre os requisitos".
+        // Instruir com base em suposição foi o erro — a instrução agora manda
+        // ler o que ELE diz.
         oQueFazer: daParaAjustar
-          ? "A foto tem tamanho suficiente e só não é quadrada. Basta completar as laterais com fundo branco até ficar quadrada — não precisa fotografar de novo."
+          ? "Abra no Mercado Livre e use 'Revisar fotos': ele diz o que falta nesta capa. Tentar completar com fundo branco NÃO funciona — ele corta a faixa no envio."
           : `Precisa de foto nova: o maior lado tem ${maior} pixels e o Mercado Livre pede ${LADO_MINIMO_DA_CAPA}. Não há como ampliar sem perder qualidade.`,
         porque: `A capa tem ${capa.largura}x${capa.altura} — fora do padrão que o Mercado Livre exige para dar exposição.`,
       });
