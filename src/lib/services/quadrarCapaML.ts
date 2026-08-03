@@ -16,6 +16,10 @@ export interface CapaQuadrada {
   para: string;
   fotosAntes: number;
   fotosDepois: number;
+  /** A capa MUDOU de fato? Lido do ML depois da escrita, não deduzido. */
+  capaTrocada: boolean;
+  /** O anúncio tem variações — o ML controla as fotos por variação nesse caso. */
+  temVariacoes: boolean;
 }
 
 /** Lançado quando a foto não serve para este conserto — não é falha nossa. */
@@ -38,6 +42,8 @@ export async function quadrarCapaNoML(clienteId: string, itemId: string): Promis
     para?: string;
     fotosAntes?: number;
     fotosDepois?: number;
+    capaTrocada?: boolean;
+    temVariacoes?: boolean;
     erro?: string;
     naoAplicavel?: boolean;
   }>(resposta, "O ajuste da foto de capa");
@@ -55,6 +61,9 @@ export async function quadrarCapaNoML(clienteId: string, itemId: string): Promis
     para: dados.para ?? "",
     fotosAntes: dados.fotosAntes ?? 0,
     fotosDepois: dados.fotosDepois ?? 0,
+    // `?? false` e não `?? true`: sem confirmação, NÃO se afirma que trocou.
+    capaTrocada: dados.capaTrocada ?? false,
+    temVariacoes: dados.temVariacoes ?? false,
   };
 }
 
@@ -67,6 +76,17 @@ export async function quadrarCapaNoML(clienteId: string, itemId: string): Promis
  * resposta do ML.
  */
 export function explicarCapaQuadrada(r: CapaQuadrada): string {
+  // A CAPA VEM PRIMEIRO na frase, porque é a única coisa que importa saber.
+  //
+  // Em 03/08/2026 esta função dizia "Capa ajustada" com base no `PUT` ter
+  // voltado 200 — e o 200 significa que o ML ACEITOU o pedido, não que a capa
+  // mudou. A lojista reconferiu e a capa continuava a antiga.
+  if (!r.capaTrocada) {
+    const porque = r.temVariacoes
+      ? " Este anúncio tem variações, e nesse caso o Mercado Livre controla as fotos por variação — o ajuste precisa ser feito por lá."
+      : " O Mercado Livre aceitou o envio e manteve a capa anterior.";
+    return `A foto quadrada foi enviada, mas a CAPA NÃO MUDOU.${porque} Nenhuma foto foi perdida.`;
+  }
   const base = `Capa ajustada de ${r.de} para ${r.para}.`;
   if (r.fotosDepois < r.fotosAntes) {
     return `${base} ATENÇÃO: o anúncio tinha ${r.fotosAntes} fotos e ficou com ${r.fotosDepois}. Confira no Mercado Livre.`;

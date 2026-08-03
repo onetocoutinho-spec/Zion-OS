@@ -110,7 +110,7 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
     setAjustando(mlb);
     try {
       const r = await quadrarCapaNoML(clienteId, mlb);
-      setAjustes((a) => ({ ...a, [mlb]: { ok: true, texto: explicarCapaQuadrada(r) } }));
+      setAjustes((a) => ({ ...a, [mlb]: { ok: r.capaTrocada, texto: explicarCapaQuadrada(r) } }));
     } catch (e) {
       // "Esta foto não serve" é informação sobre o anúncio; "falhou" é problema
       // nosso. Misturar as duas faria ela tentar de novo o que nunca funciona.
@@ -167,7 +167,9 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
       setAjustando(mlb);
       try {
         const r = await quadrarCapaNoML(clienteId, mlb);
-        setAjustes((a) => ({ ...a, [mlb]: { ok: true, texto: explicarCapaQuadrada(r) } }));
+        // `ok` segue a CAPA, não o fato de a chamada ter respondido. Verde
+        // para "enviei e não mudou nada" é a mentira que a lojista pegou.
+        setAjustes((a) => ({ ...a, [mlb]: { ok: r.capaTrocada, texto: explicarCapaQuadrada(r) } }));
         seguidas = 0;
       } catch (e) {
         const texto = e instanceof Error ? e.message : "Falha ao ajustar a foto.";
