@@ -207,3 +207,19 @@ test("anúncio ATIVO não aparece em exemplo nenhum", () => {
   const b = m.motivosDeNaoEstarNoAr.find((x) => x.motivo === "deleted");
   assert.deepEqual(b?.exemplos, ["FORA"]);
 });
+
+// ---------------------------------------------------------------------------
+// AUSÊNCIA DE LEITURA NÃO É AUSÊNCIA DE DADO
+// ---------------------------------------------------------------------------
+
+test("campo não lido não vira afirmação sobre o anúncio", () => {
+  // O caso real: o ML recusou a lista de 31 campos, a leitura caiu para a
+  // mínima (sem `descriptions`), e a tela disse "781 sem descrição" sobre um
+  // campo que ninguém pediu. O mapeador transformava `undefined` em `[]`.
+  const semLeitura = anuncio("A", "active");
+  assert.equal(
+    semLeitura.temDescricao,
+    undefined,
+    "o fixture precisa refletir campo NÃO LIDO, não campo vazio"
+  );
+});

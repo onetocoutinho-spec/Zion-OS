@@ -935,9 +935,12 @@ function mapearItem(it: ItemRaw): AnuncioML {
     tipoDeAnuncio: (it.listing_type_id ?? "").trim(),
     itemPaiId: (it.parent_item_id ?? "").trim(),
     familiaIdDoML: (it.family_id ?? "").trim(),
-    // `descriptions` é uma lista de IDs, NÃO o texto. Só dá para afirmar se
-    // existe alguma — dizer que "temos a descrição" seria falso.
-    temDescricao: (it.descriptions ?? []).length > 0,
+    // `descriptions` é uma lista de IDs, NÃO o texto. E `undefined` NÃO é
+    // "não tem descrição": é "não perguntamos". Observado em 02/08/2026 — o ML
+    // recusou a lista de 31 campos, a leitura caiu para a lista mínima (que não
+    // pede `descriptions`), e a tela afirmou "781 sem descrição" sobre um campo
+    // que ninguém tinha lido. Ausência virando afirmação, no meu próprio código.
+    temDescricao: it.descriptions == null ? undefined : it.descriptions.length > 0,
     garantia: (it.warranty ?? "").trim(),
     condicao: (it.condition ?? "").trim(),
     videoId: (it.video_id ?? "").trim(),
