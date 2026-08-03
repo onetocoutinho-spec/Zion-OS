@@ -12,6 +12,7 @@
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { lerJson } from "../http/respostaJson";
 import { semHtml, type Infracao } from "../../modules/integration/domain/infracoesDaConta";
+import { gravarInfracoes } from "./infracoesMarketplace";
 
 export interface DiagnosticoDeInfracoes {
   sellerId: string;
@@ -39,6 +40,37 @@ export interface DiagnosticoDeInfracoes {
   } | null;
   contaPodeAnunciar: boolean | null;
   detalhesDaModeracao: { url: string; status: number; corpo: unknown; erro?: string }[];
+}
+
+/**
+ * Lê no ML e GRAVA (migração 052) — nesta ordem, e a ordem é o ponto.
+ *
+ * A gravação vem DEPOIS da leitura inteira e nunca a substitui: se o banco
+ * recusar, o diagnóstico continua verdadeiro na tela e a contagem de falhas
+ * aparece. O contrário — não mostrar nada porque a escrita falhou — perderia a
+ * única leitura completa que a lojista mandou fazer.
+ */
+export async function diagnosticarEGravar(
+  clienteId: string
+): Promise<{ diagnostico: DiagnosticoDeInfracoes; gravadas: number; falharam: number }> {
+  const diagnostico = await diagnosticarInfracoes(clienteId);
+  const lidas = diagnostico.leitura?.infracoes ?? [];
+  if (lidas.length === 0) return { diagnostico, gravadas: 0, falharam: 0 };
+
+  const lidaEm = new Date().toISOString();
+  const { gravadas, falharam } = await gravarInfracoes(
+    lidas.map((i) => ({
+      ...i,
+      clienteId,
+      marketplace: "Mercado Livre",
+      // O idioma que VEIO. Pedimos PT e um motivo voltou em espanhol
+      // ("Algunas fotos incumplen los requisitos") — registrar é a única forma
+      // de a tela não misturar idiomas sem ninguém entender por quê.
+      idioma: /[ñ]|\b(los|las|una|sus|deben|cumplen)\b/i.test(i.motivo) ? "es" : "pt",
+      lidaEm,
+    }))
+  );
+  return { diagnostico, gravadas, falharam };
 }
 
 export async function diagnosticarInfracoes(clienteId: string): Promise<DiagnosticoDeInfracoes> {
