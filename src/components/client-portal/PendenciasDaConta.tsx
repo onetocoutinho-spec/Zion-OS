@@ -28,9 +28,22 @@
 // número que ela talvez não tenha vindo ver. O botão é o consentimento.
 
 import { useState } from "react";
-import { AlertTriangle, ExternalLink, RefreshCw, ShieldAlert, TrendingDown, Info } from "lucide-react";
+import {
+  AlertTriangle,
+  ExternalLink,
+  RefreshCw,
+  ShieldAlert,
+  TrendingDown,
+  Info,
+  Crop,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
+import {
+  quadrarCapaNoML,
+  explicarCapaQuadrada,
+  CapaNaoAplicavelError,
+} from "@/lib/services/quadrarCapaML";
 import type { PendenciaDaConta, Gravidade } from "@/modules/integration/domain/pendenciasDaConta";
 
 const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
@@ -85,6 +98,33 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
       setErro(e instanceof Error ? e.message : "Falha ao conferir a conta.");
     } finally {
       setCarregando(false);
+    }
+  }
+
+  // Um anúncio por vez, e o resultado fica ao lado da linha que o produziu.
+  // Uma mensagem no topo da tela, longe do item, não diz QUAL foi ajustado.
+  const [ajustando, setAjustando] = useState<string | null>(null);
+  const [ajustes, setAjustes] = useState<Record<string, { ok: boolean; texto: string }>>({});
+
+  async function quadrar(mlb: string) {
+    setAjustando(mlb);
+    try {
+      const r = await quadrarCapaNoML(clienteId, mlb);
+      setAjustes((a) => ({ ...a, [mlb]: { ok: true, texto: explicarCapaQuadrada(r) } }));
+    } catch (e) {
+      // "Esta foto não serve" é informação sobre o anúncio; "falhou" é problema
+      // nosso. Misturar as duas faria ela tentar de novo o que nunca funciona.
+      const naoAplicavel = e instanceof CapaNaoAplicavelError;
+      setAjustes((a) => ({
+        ...a,
+        [mlb]: {
+          ok: false,
+          texto: e instanceof Error ? e.message : "Falha ao ajustar a foto.",
+        },
+      }));
+      if (!naoAplicavel) console.error("[quadrar-capa]", e);
+    } finally {
+      setAjustando(null);
     }
   }
 
@@ -166,6 +206,30 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                       </div>
                       <p className="text-xs text-zinc-400">{p.oQueFazer}</p>
                       <p className="text-xs text-zinc-600">{p.porque}</p>
+                      {/* O botão só existe onde o conserto é MECÂNICO. Em
+                          `capa-pequena` não há pixel para recuperar, e oferecer
+                          o botão ali prometeria o que não se cumpre. */}
+                      {p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok && (
+                        <Button
+                          variant="ghost"
+                          className="mt-1 px-2 py-1 text-xs"
+                          disabled={ajustando === p.mlb}
+                          onClick={() => quadrar(p.mlb)}
+                          title="Sobe uma versão quadrada desta foto e a coloca como capa. As fotos atuais continuam no anúncio."
+                        >
+                          <Crop size={12} />
+                          {ajustando === p.mlb ? "Ajustando…" : "Deixar quadrada"}
+                        </Button>
+                      )}
+                      {ajustes[p.mlb] && (
+                        <p
+                          className={`mt-1 text-xs ${
+                            ajustes[p.mlb].ok ? "text-emerald-400" : "text-amber-400"
+                          }`}
+                        >
+                          {ajustes[p.mlb].texto}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
