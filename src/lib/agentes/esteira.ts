@@ -234,6 +234,20 @@ export interface AnuncioGerado {
    * `foiAvaliadoPelaIA`.
    */
   avaliadoPelaIA?: boolean;
+  /**
+   * O que ESTE anúncio custou em tokens, na palavra do provedor.
+   *
+   * `null`/ausente = não sabemos (provedor não informou, ou o anúncio veio da
+   * importação e nunca passou pela IA). Nunca zero: contar desconhecido como
+   * grátis faz a média de custo mentir para baixo.
+   */
+  uso?: {
+    entrada: number;
+    saida: number;
+    total: number;
+    modelo: string;
+    provedor: string;
+  } | null;
 }
 
 /**

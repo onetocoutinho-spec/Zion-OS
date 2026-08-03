@@ -26,6 +26,27 @@ export interface RespostaIA {
   json: string;
   provedor: Provedor;
   modelo: string;
+  /**
+   * O que a chamada CUSTOU, na palavra do provedor.
+   *
+   * `null` quando ele não informou — e `null` não vira zero. Uma execução sem
+   * uso conhecido some da média se for contada como grátis, e aí a conta de
+   * custo mente para baixo, que é a direção pior.
+   *
+   * Existe porque em 03/08/2026 a pergunta "quanto custa um dia de operação"
+   * só tinha resposta pela metade: a SAÍDA dava para medir no banco (4.198
+   * bytes por anúncio), a ENTRADA era estimativa minha. Estimativa de custo é
+   * a mesma classe de suposição-vestida-de-fato que a AUD-001 caçou.
+   */
+  uso: UsoDeTokens | null;
+}
+
+export interface UsoDeTokens {
+  entrada: number;
+  saida: number;
+  total: number;
+  modelo: string;
+  provedor: Provedor;
 }
 
 export function provedorConfigurado(): Provedor | null {
@@ -95,6 +116,14 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
   let resp!: Response;
   let data!: {
     candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+    // O uso SEMPRE veio nesta resposta e o tipo não o declarava, então ele era
+    // descartado sem ninguém notar — mesmo formato do defeito que jogava fora
+    // `sub_status` e a associação foto-cor.
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
     error?: { message?: string; status?: string };
   };
   const MAX = 3;
@@ -125,7 +154,22 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
     throw new Error("O Gemini bloqueou a resposta por política de conteúdo. Ajuste a entrada.");
   }
   if (!texto) throw new Error("O Gemini não retornou conteúdo. Tente novamente.");
-  return { json: texto, provedor: "gemini", modelo };
+  const u = data.usageMetadata;
+  return {
+    json: texto,
+    provedor: "gemini",
+    modelo,
+    uso:
+      typeof u?.totalTokenCount === "number"
+        ? {
+            entrada: u.promptTokenCount ?? 0,
+            saida: u.candidatesTokenCount ?? 0,
+            total: u.totalTokenCount,
+            modelo,
+            provedor: "gemini",
+          }
+        : null,
+  };
 }
 
 // ---- Anthropic (Claude) ----
@@ -156,7 +200,22 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   if (resposta.stop_reason === "refusal" || !texto) {
     throw new Error("O modelo não pôde completar esta solicitação. Ajuste a entrada e tente novamente.");
   }
-  return { json: texto, provedor: "anthropic", modelo: resposta.model };
+  const uA = (resposta as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+  return {
+    json: texto,
+    provedor: "anthropic",
+    modelo: resposta.model,
+    uso:
+      typeof uA?.input_tokens === "number"
+        ? {
+            entrada: uA.input_tokens,
+            saida: uA.output_tokens ?? 0,
+            total: uA.input_tokens + (uA.output_tokens ?? 0),
+            modelo: resposta.model,
+            provedor: "anthropic",
+          }
+        : null,
+  };
 }
 
 /** Chama o provedor configurado e devolve a saída estruturada (JSON). */
