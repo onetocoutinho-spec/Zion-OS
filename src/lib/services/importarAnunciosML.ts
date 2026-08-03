@@ -21,7 +21,7 @@ import {
   atualizarEstadoNoMarketplaceBulk,
   criarAnunciosGeradosBulk,
   excluirAnunciosImportadosML,
-  listarAnunciosGeradosDoCliente,
+  listarResumoDeAnunciosDoCliente,
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
 import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
@@ -668,8 +668,10 @@ export async function importarAnunciosDoCliente(
   if (modo === "medir") {
     // Uma LEITURA a mais, para o "novos por status" existir. `medir` continua
     // não escrevendo nada — e continua saindo antes de tudo que apaga.
+    // O RESUMO basta: daqui só sai um conjunto de MLBs. Trazer o JSONB de cada
+    // anúncio para montar uma lista de strings era ~1 MB de rede por conferida.
     const conhecidos = new Set(
-      (await listarAnunciosGeradosDoCliente(clienteId)).map((e) => e.mlItemId).filter(Boolean) as string[]
+      (await listarResumoDeAnunciosDoCliente(clienteId)).map((e) => e.mlItemId).filter(Boolean) as string[]
     );
     return {
       produtos: 0,
@@ -694,7 +696,7 @@ export async function importarAnunciosDoCliente(
   // `produto_id`). Não é preciso reagrupar por família nem adivinhar: quem já
   // sabe qual MLB é de qual produto é a própria base.
   if (modo === "enriquecer") {
-    const registros = await listarAnunciosGeradosDoCliente(clienteId);
+    const registros = await listarResumoDeAnunciosDoCliente(clienteId);
     const produtoPorMlb = new Map<string, string>();
     for (const r of registros) {
       if (r.mlItemId && r.produtoId) produtoPorMlb.set(r.mlItemId, r.produtoId);
@@ -743,7 +745,12 @@ export async function importarAnunciosDoCliente(
     await excluirProdutosImportadosML(clienteId);
   } else {
     // NOVOS: mantém o que já existe; só traz os MLBs ainda não importados.
-    const existentes = await listarAnunciosGeradosDoCliente(clienteId);
+    //
+    // O RESUMO basta: o que se compara aqui é o estado NO MARKETPLACE (status,
+    // sub_status, tamanho da capa, estoque) e o MLB. O conteúdo gerado pela
+    // esteira não participa de nenhuma dessas contas — e era 76,6% do que
+    // atravessava a rede.
+    const existentes = await listarResumoDeAnunciosDoCliente(clienteId);
 
     // O estado dos anúncios que JÁ temos chega nesta mesma resposta, e era
     // descartado — o mesmo defeito que jogou fora a ficha do lojista, a

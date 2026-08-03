@@ -67,6 +67,50 @@ export async function listarAnunciosGeradosDoCliente(
   return repo.listar({ coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" });
 }
 
+/**
+ * O anúncio SEM o conteúdo gerado pela esteira.
+ *
+ * O tipo omite `anuncio` de propósito, e a omissão é a proteção: o mapeador
+ * tolera coluna ausente (`row.anuncio ?? {}`), então uma leitura estreita que
+ * devolvesse `AnuncioGeradoRegistro` entregaria um anúncio VAZIO com cara de
+ * anúncio de verdade. Quem precisa do conteúdo usa `listarAnunciosGeradosDoCliente`
+ * e paga o preço dele conscientemente.
+ */
+export type ResumoDoAnuncio = Omit<AnuncioGeradoRegistro, "anuncio">;
+
+/**
+ * Todas as colunas MENOS o JSONB — que é 76,6% do peso da linha (medido em
+ * 03/08/2026: 1.055 kB de 1.377 kB em 880 anúncios).
+ *
+ * A lista é explícita porque o PostgREST não tem "tudo menos uma". Coluna nova
+ * que não entrar aqui simplesmente não chega ao resumo — e como o mapeador
+ * tolera ausência, ela chegaria como o padrão dela. Por isso o teste de
+ * cobertura anda junto: ele quebra quando alguém acrescenta coluna à linha e
+ * esquece do resumo.
+ */
+export const COLUNAS_DO_RESUMO =
+  "id, cliente_id, produto_id, auditoria_id, marketplace, origem, tipo_execucao, " +
+  "nota_diagnostico, veredito_a10, qtd_pendencias, status, aprovado_por, aprovado_em, " +
+  "observacoes, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, " +
+  "sub_status_marketplace, foto_capa_max_size, estoque_marketplace, created_at, " +
+  "clientes(empresa), produtos(nome)";
+
+/**
+ * A lista para quem só CONTA e ORDENA — sem trazer o JSONB da esteira.
+ *
+ * Usada pela tela de Produtos (que lê `mlItemId`, `produtoId`, `status`,
+ * `notaDiagnostico`, `criadoEm`) e pela importação, que compara o estado no
+ * marketplace e nunca abre o conteúdo do anúncio.
+ */
+export async function listarResumoDeAnunciosDoCliente(
+  clienteId: string
+): Promise<ResumoDoAnuncio[]> {
+  return repo.listar(
+    { coluna: "cliente_id", valor: clienteId, campoLocal: "clienteId" },
+    COLUNAS_DO_RESUMO
+  );
+}
+
 export async function buscarAnuncioGerado(
   id: string
 ): Promise<AnuncioGeradoRegistro | null> {

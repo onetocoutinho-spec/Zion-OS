@@ -360,7 +360,12 @@ test("o vínculo vem de `anuncios_gerados`, não de adivinhação", () => {
   // família aqui poderia ligar atributo ao produto errado.
   const ini = FONTE.indexOf('if (modo === "enriquecer")');
   const bloco = FONTE.slice(ini, FONTE.indexOf("let anuncios = todos;", ini));
-  assert.match(bloco, /listarAnunciosGeradosDoCliente\(clienteId\)/);
+  // A leitura pode ser a inteira ou o RESUMO (03/08/2026 — o JSONB da esteira
+  // era 76,6% do peso da linha e não participa deste vínculo). O que o teste
+  // guarda é a FONTE, não o nome da função: o par MLB→produto sai de
+  // `anuncios_gerados`, nunca de reagrupamento por família, que poderia ligar
+  // atributo ao produto errado.
+  assert.match(bloco, /listar(ResumoDeAnuncios|AnunciosGerados)DoCliente\(clienteId\)/);
   assert.match(bloco, /r\.mlItemId && r\.produtoId/);
   assert.ok(!bloco.includes("agrupar("), "voltou a agrupar por família em vez de usar o vínculo real");
 });
