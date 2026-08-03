@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Calculator, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,8 @@ import { MARKETPLACES } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { calcularPrecificacao, resumoVariante } from "@/lib/variantes";
+import { custosDoCliente } from "@/lib/services/taxasDoCliente";
+import { comissaoPercentual, taxaFixaVenda } from "@/modules/pricing/domain/modeloPreco";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
   criarPrecificacao,
@@ -34,12 +36,62 @@ export function AbaPrecificacao({ produto }: { produto: Produto }) {
     custoProduto: String(produto.custo || 0),
     embalagem: "3",
     impostoPercentual: "8",
-    taxaMarketplacePercentual: "16",
-    taxaFixa: "6",
+    // VAZIOS ATÉ O MERCADO LIVRE RESPONDER — decisão do dono em 03/08/2026:
+    // "a comissão certa é a da API do ML".
+    //
+    // Aqui havia `taxaMarketplacePercentual: "16"` e `taxaFixa: "6"`, dois
+    // números digitados por nós que competiam com o núcleo de precificação —
+    // que consulta `/sites/MLB/listing_prices` pela categoria exata e a
+    // reputação real da conta. Dois modelos para o mesmo produto, e a auditoria
+    // AUD-001 registrou que ninguém sabia qual valia.
+    //
+    // O 6,00 é pior que o 16: a memória do projeto já registra que os
+    // R$ 5,50/6,00 eram estimativa de terceiros e foram removidos do núcleo —
+    // o app publica com `me2` sem Flex, onde a taxa fixa é ZERO. O número
+    // sobreviveu aqui porque esta tela nunca foi olhada junto com aquela.
+    //
+    // Campo vazio é honesto enquanto a resposta não chega; um número inventado
+    // no lugar dela seria a mesma autoridade emprestada que a capa tinha.
+    taxaMarketplacePercentual: "",
+    taxaFixa: "",
     comissaoGestorPercentual: "0",
     outrosCustos: "0",
   });
   const [salvando, setSalvando] = useState(false);
+  /** De onde vieram as taxas do marketplace — a tela precisa dizer. */
+  const [origemDasTaxas, setOrigemDasTaxas] = useState<{
+    daApi: boolean;
+    aviso: string | null;
+  } | null>(null);
+
+  // A MESMA FONTE DO PORTAL DA LOJISTA.
+  //
+  // `custosDoCliente` é a função que a tela de Precificação usa: comissão da
+  // categoria exata via API do ML + reputação real da conta. Chamar daqui não
+  // é rede nova — a resposta é cacheada por (cliente, categoria, preço, tipo).
+  useEffect(() => {
+    let vivo = true;
+    custosDoCliente({ clienteId: produto.clienteId, marketplace })
+      .then((c) => {
+        if (!vivo) return;
+        setOrigemDasTaxas({ daApi: c.comissaoDaApi, aviso: c.aviso });
+        setF((cur) => ({
+          ...cur,
+          taxaMarketplacePercentual: String(comissaoPercentual(c.taxas)),
+          taxaFixa: String(taxaFixaVenda(c.taxas)),
+        }));
+      })
+      .catch(() =>
+        vivo &&
+        setOrigemDasTaxas({
+          daApi: false,
+          aviso: "Não consegui consultar as taxas no Mercado Livre. Preencha à mão e confira.",
+        })
+      );
+    return () => {
+      vivo = false;
+    };
+  }, [produto.clienteId, marketplace]);
 
   const num = (s: string) => Number(s.replace(",", ".")) || 0;
   function set<K extends keyof typeof f>(k: K, v: string) {
@@ -172,16 +224,36 @@ export function AbaPrecificacao({ produto }: { produto: Produto }) {
           <Field label="Imposto (%)">
             <Input inputMode="decimal" value={f.impostoPercentual} onChange={(e) => set("impostoPercentual", e.target.value)} />
           </Field>
-          <Field label="Taxa marketplace (%)">
+          {/* A ORIGEM VAI JUNTO DO NÚMERO. Editável continua sendo — mas quem
+              editar precisa saber que está sobrescrevendo o que o Mercado Livre
+              respondeu, e não um chute nosso. */}
+          <Field
+            label={
+              origemDasTaxas?.daApi
+                ? "Taxa marketplace (%) — do Mercado Livre"
+                : "Taxa marketplace (%)"
+            }
+          >
             <Input inputMode="decimal" value={f.taxaMarketplacePercentual} onChange={(e) => set("taxaMarketplacePercentual", e.target.value)} />
           </Field>
-          <Field label="Taxa fixa (R$)">
+          <Field
+            label={
+              origemDasTaxas?.daApi ? "Taxa fixa (R$) — do Mercado Livre" : "Taxa fixa (R$)"
+            }
+          >
             <Input inputMode="decimal" value={f.taxaFixa} onChange={(e) => set("taxaFixa", e.target.value)} />
           </Field>
           <Field label="Comissão gestor (%)">
             <Input inputMode="decimal" value={f.comissaoGestorPercentual} onChange={(e) => set("comissaoGestorPercentual", e.target.value)} />
           </Field>
         </FormGrid>
+
+        {/* Quando a consulta NÃO deu certo, isso é dito. Cair no padrão em
+            silêncio foi como dois modelos de precificação conviveram meses sem
+            ninguém saber qual valia (AUD-001). */}
+        {origemDasTaxas?.aviso && (
+          <p className="text-xs text-amber-400">{origemDasTaxas.aviso}</p>
+        )}
 
         {/* Prévia do cálculo (ao vivo) */}
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
