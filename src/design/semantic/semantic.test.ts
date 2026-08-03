@@ -5,15 +5,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { semanticRoles, sem, type SemanticRole } from "./semantic.generated.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const css = readFileSync(join(HERE, "semantic.css"), "utf8");
-const todo = readFileSync(join(HERE, "semantic.todo.md"), "utf8");
+const css = lerFonte(join(HERE, "semantic.css"), "utf8");
+const todo = lerFonte(join(HERE, "semantic.todo.md"), "utf8");
 
 const decls = [...css.matchAll(/(--sem-[\w-]+):\s*([^;]+);/g)].map(([, n, v]) => ({ n, v: v.trim() }));
 

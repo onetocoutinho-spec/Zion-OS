@@ -30,9 +30,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 
-const TABELA = readFileSync(new URL("./Table.tsx", import.meta.url), "utf8");
+const TABELA = lerFonte(new URL("./Table.tsx", import.meta.url), "utf8");
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
@@ -74,7 +74,7 @@ test("as duas colunas que saíram não voltaram — e por motivos diferentes", (
   // pendências. Saiu por ser DERIVADA de Score e Problema principal, que estão
   // ali ao lado. Redundância, não constância, e decisão do dono do produto.
   const tela = semComentarios(
-    readFileSync(new URL("../../app/cliente/anuncios/page.tsx", import.meta.url), "utf8")
+    lerFonte(new URL("../../app/cliente/anuncios/page.tsx", import.meta.url), "utf8")
   );
   const inicio = tela.indexOf("<Table");
   const bloco = tela.slice(inicio, tela.indexOf("</Table>", inicio));
@@ -92,7 +92,7 @@ test("as duas colunas que saíram não voltaram — e por motivos diferentes", (
 test("os colSpan acompanharam o número de colunas", () => {
   // Um `colSpan` desatualizado quebra a linha vazia e a linha expandida em
   // silêncio — a tabela continua desenhando, só torta.
-  const tela = readFileSync(
+  const tela = lerFonte(
     new URL("../../app/cliente/anuncios/page.tsx", import.meta.url),
     "utf8"
   );

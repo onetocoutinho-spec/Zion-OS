@@ -41,13 +41,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 
-const ROTA = readFileSync(
+const ROTA = lerFonte(
   new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
   "utf8"
 );
-const SERVICO = readFileSync(new URL("./copilotPropostas.ts", import.meta.url), "utf8");
+const SERVICO = lerFonte(new URL("./copilotPropostas.ts", import.meta.url), "utf8");
 
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");

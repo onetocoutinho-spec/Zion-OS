@@ -14,7 +14,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 
 import { conversar } from "./conversaDoAssistente.ts";
 import {
@@ -174,7 +174,7 @@ test("T12/T13: cache gravado ANTES do INC-005 continua legível, sem migração"
 // ---------------------------------------------------------------------------
 
 const raiz = new URL("../../", import.meta.url);
-const ler = (rel: string) => readFileSync(new URL(rel, raiz), "utf8");
+const ler = (rel: string) => lerFonte(new URL(rel, raiz), "utf8");
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 

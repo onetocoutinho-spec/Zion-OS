@@ -29,7 +29,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { executarPesoAtomico } from "./copilotPropostas.ts";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://exemplo.supabase.co";
@@ -113,7 +113,7 @@ test("erro de banco LANÇA — não vira desfecho de negócio", async () => {
 // FIAÇÃO — a rota
 // ---------------------------------------------------------------------------
 
-const ROTA = readFileSync(
+const ROTA = lerFonte(
   new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
   "utf8"
 );
@@ -164,7 +164,7 @@ test("o retrato de ANTES fica FORA da transação", () => {
 // GUARDA ESTRUTURAL — a migração 045
 // ---------------------------------------------------------------------------
 
-const SQL = readFileSync(
+const SQL = lerFonte(
   new URL("../../../database/migrations/045-execucao-atomica-do-peso.sql", import.meta.url),
   "utf8"
 );

@@ -14,7 +14,7 @@ import { MargemMinima } from "@/components/client-portal/MargemMinima";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
-import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
+import { margemMinimaComOrigem } from "@/lib/services/margemCliente";
 import { custosDoLojista } from "@/lib/services/custosCliente";
 import {
   SEM_CUSTOS_DO_LOJISTA,
@@ -30,6 +30,7 @@ import {
   margemLiquida,
   precoMinimo,
   classificarMargem,
+  explicarClassificacao,
   MARGEM_MINIMA_PADRAO,
   TAXAS_PADRAO,
   type ModeloTaxas,
@@ -57,6 +58,8 @@ function Precificacao() {
   // A margem que o LOJISTA escolheu. Enquanto não chega, o padrão vale — a tela
   // nunca fica sem piso, o que faria toda margem parecer saudável.
   const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
+  /** `false` enquanto a lojista não escolheu — o rótulo precisa dizer isso. */
+  const [pisoEscolhido, setPisoEscolhido] = useState(false);
   // A REPUTAÇÃO do lojista, do próprio ML: é ela que decide qual das três
   // tabelas de custo de envio vale, e a diferença entre verde e laranja passa
   // de 90% no frete. Enquanto não chega, vale o padrão (verde, a regra do ML
@@ -78,7 +81,13 @@ function Precificacao() {
 
   useEffect(() => {
     let vivo = true;
-    margemMinimaDoCliente().then((m) => vivo && setMargem(m));
+    // A ORIGEM do piso anda junto com ele: "ela escolheu 5%" e "assumimos 5%
+    // por ela" são o mesmo número e não a mesma frase (AUD-001).
+    margemMinimaComOrigem().then((r) => {
+      if (!vivo) return;
+      setMargem(r.margem);
+      setPisoEscolhido(r.escolhida);
+    });
     // Imposto, comissões internas e embalagem entram na MESMA conta. Sem eles a
     // margem saía otimista: 20,7% onde a planilha do lojista mostrava 6%.
     custosDoLojista().then((c) => vivo && setCustosLojista(c));
@@ -318,7 +327,14 @@ function Precificacao() {
                 )}
               </Td>
               <Td>
-                <Pill tone={saude.tone}>{saude.status}</Pill>
+                {/* O rótulo diz de onde vem. "Saudável" era suposição nossa
+                    exibida como veredito, e a lojista não tinha como saber
+                    contra o que estava sendo medida (AUD-001). */}
+                <Pill tone={saude.tone}>
+                  <span title={explicarClassificacao(saude.status, margem, pisoEscolhido)}>
+                    {saude.status}
+                  </span>
+                </Pill>
               </Td>
             </tr>
           ))

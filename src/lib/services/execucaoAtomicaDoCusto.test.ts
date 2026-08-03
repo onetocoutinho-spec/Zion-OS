@@ -25,7 +25,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { executarCustoAtomico } from "./copilotPropostas.ts";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://exemplo.supabase.co";
@@ -104,7 +104,7 @@ test("erro de banco LANÇA — não vira desfecho de negócio", async () => {
 // FIAÇÃO — a rota
 // ---------------------------------------------------------------------------
 
-const ROTA = readFileSync(
+const ROTA = lerFonte(
   new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
   "utf8"
 );
@@ -146,7 +146,7 @@ test("zero linhas NÃO queima a proposta — vale para os dois tipos atômicos",
 // GUARDA ESTRUTURAL — a migração 046
 // ---------------------------------------------------------------------------
 
-const SQL = readFileSync(
+const SQL = lerFonte(
   new URL("../../../database/migrations/046-execucao-atomica-do-custo.sql", import.meta.url),
   "utf8"
 );

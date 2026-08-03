@@ -33,7 +33,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { executarPrecoAtomico } from "./copilotPropostas.ts";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://exemplo.supabase.co";
@@ -116,7 +116,7 @@ test("erro de banco LANÇA — não vira desfecho de negócio", async () => {
 // FIAÇÃO — a rota
 // ---------------------------------------------------------------------------
 
-const ROTA = readFileSync(
+const ROTA = lerFonte(
   new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
   "utf8"
 );
@@ -167,7 +167,7 @@ test("cadastro continua fora", () => {
 // GUARDA ESTRUTURAL — a migração 047
 // ---------------------------------------------------------------------------
 
-const SQL = readFileSync(
+const SQL = lerFonte(
   new URL("../../../database/migrations/047-execucao-atomica-do-preco.sql", import.meta.url),
   "utf8"
 );
@@ -260,7 +260,7 @@ test("047: registra a si mesma no ledger — regra da 043", () => {
 // ---------------------------------------------------------------------------
 
 test("margem NÃO é precondição em lugar nenhum do domínio", () => {
-  const conversa = readFileSync(
+  const conversa = lerFonte(
     new URL("../../modules/pricing/domain/conversaDePreco.ts", import.meta.url),
     "utf8"
   );
@@ -275,7 +275,7 @@ test("margem NÃO é precondição em lugar nenhum do domínio", () => {
 });
 
 test("`podeExecutar` não conhece margem", () => {
-  const fonte = readFileSync(
+  const fonte = lerFonte(
     new URL("../../modules/assistant/domain/propostaPersistida.ts", import.meta.url),
     "utf8"
   );
