@@ -13,7 +13,16 @@ import {
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
-export const maxDuration = 60;
+// 300, não 60 — o teto do plano Pro, que o worker da esteira já usa desde
+// sempre (`/api/otimizar/worker`). Os 60 eram resíduo, não limite: em 02/08/2026
+// a leitura de 781 anúncios estourou o prazo ao ganhar 18 campos novos, a
+// plataforma devolveu HTML de 504 e a tela mostrou "Unexpected token '<'".
+//
+// Isto NÃO é a solução da escala — é tirar do caminho um muro que não precisava
+// existir. O muro de verdade é a importação ser uma requisição em vez de um job
+// retomável, e ele está desenhado no DES-005. Com 2.000 anúncios, 300s também
+// acaba.
+export const maxDuration = 300;
 
 interface Corpo {
   clienteId: string;
