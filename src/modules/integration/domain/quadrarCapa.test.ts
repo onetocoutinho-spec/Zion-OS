@@ -171,6 +171,8 @@ test("capa NÃO trocada: a frase diz isso, e não diz 'ajustada'", () => {
     fotosAntes: 12,
     fotosDepois: 13,
     capaTrocada: false,
+    tamanhoFinal: "",
+    ficouQuadrada: false,
     temVariacoes: false,
   });
   assert.match(f, /N[ÃA]O MUDOU/i);
@@ -188,6 +190,8 @@ test("com variação, a frase diz ONDE está o caminho", () => {
     fotosAntes: 12,
     fotosDepois: 13,
     capaTrocada: false,
+    tamanhoFinal: "",
+    ficouQuadrada: false,
     temVariacoes: true,
   });
   assert.match(f, /varia/i);
@@ -201,6 +205,8 @@ test("capa trocada: aí sim a frase afirma o ajuste", () => {
     fotosAntes: 12,
     fotosDepois: 13,
     capaTrocada: true,
+    tamanhoFinal: "1200x1200",
+    ficouQuadrada: true,
     temVariacoes: false,
   });
   assert.match(f, /Capa ajustada de 960x1200 para 1200x1200/);
@@ -215,8 +221,46 @@ test("foto perdida é avisada mesmo com a capa trocada", () => {
     fotosAntes: 12,
     fotosDepois: 8,
     capaTrocada: true,
+    tamanhoFinal: "1200x1200",
+    ficouQuadrada: true,
     temVariacoes: false,
   });
   assert.match(f, /ATEN[ÇC][ÃA]O/);
   assert.match(f, /8/);
+});
+
+test("capa trocada mas REPROCESSADA pelo ML: não é sucesso", () => {
+  // 03/08/2026: subimos 1200x1200 com faixa branca, a capa trocou (linha
+  // verde), e a releitura mediu 995x1200 — o ML apara borda branca uniforme no
+  // upload. Cada rodada do lote acrescentava uma foto e não consertava nada.
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "995x1200",
+    para: "1200x1200",
+    fotosAntes: 5,
+    fotosDepois: 6,
+    capaTrocada: true,
+    tamanhoFinal: "995x1200",
+    ficouQuadrada: false,
+    temVariacoes: false,
+  });
+  assert.match(f, /REPROCESSOU/);
+  assert.match(f, /995x1200/);
+  assert.match(f, /N[ÃA]O adianta repetir/i, "sem isso ela roda o lote de novo");
+  assert.doesNotMatch(f, /^Capa ajustada/);
+});
+
+test("sem leitura do tamanho final, NÃO se afirma sucesso", () => {
+  const f = explicarCapaQuadrada({
+    itemId: "MLB1",
+    de: "995x1200",
+    para: "1200x1200",
+    fotosAntes: 5,
+    fotosDepois: 6,
+    capaTrocada: true,
+    tamanhoFinal: "",
+    ficouQuadrada: false,
+    temVariacoes: false,
+  });
+  assert.doesNotMatch(f, /^Capa ajustada/);
 });
