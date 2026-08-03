@@ -63,6 +63,15 @@ export interface EstadoDaLoja {
   comFoto: number;
   /** Produtos que já têm algum anúncio gerado. */
   comAnuncio: number;
+  /**
+   * As infrações da conta (migração 052). OPCIONAIS de propósito.
+   *
+   * `undefined` significa "ainda não lemos" e `0` significa "lemos e não há".
+   * Colapsar os dois faria o assistente afirmar conta limpa sem ter olhado —
+   * o mesmo silêncio que a AUD-001 passou o dia arrancando das telas.
+   */
+  infracoes?: number;
+  anunciosComInfracao?: number;
   /** Anúncios aguardando o aval do lojista. */
   aguardandoAprovacao: number;
   /** Anúncios aprovados e ainda não publicados. */

@@ -97,10 +97,14 @@ ${temProdutoAberto ? `CONTEXTO: há um produto aberto na tela — "${nomeDoProdu
 - "peso": peso, gramas, frete, medidas de envio
 - "custo": custo, quanto pago, preço de compra
 - "foto": foto, imagem
-- "anuncio": anúncio gerado, otimização, produto sem anúncio
+- "anuncio": anúncio gerado, produto sem anúncio. NÃO use para "otimizado" /
+  "otimização": ter anúncio gerado e o anúncio TER SIDO OTIMIZADO pela IA são
+  coisas diferentes, e responder uma pela outra afirma um trabalho que não
+  aconteceu. Sem assunto que sirva, devolva "entendeu": false.
 - "aprovacao": anúncio esperando aval, para aprovar, para revisar
 - "publicacao": anúncio para publicar, para subir, para ir ao ar
 - "precificacao": produtos prontos para precificar, com preço mínimo calculado
+- "infracao": infração, punição, anúncio bloqueado ou pausado PELO Mercado Livre, moderação
 
 "capacidade" (só para "por_que_travado"): "precificar", "anunciar" ou "publicar".
 
