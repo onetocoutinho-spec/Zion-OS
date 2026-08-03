@@ -39,7 +39,7 @@ import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
-import { diagnosticarInfracoes, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
+import { diagnosticarEGravar, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
@@ -390,12 +390,19 @@ export default function ClienteProdutos() {
     setImportandoML(true);
     setMsgML(null);
     try {
-      const d = await diagnosticarInfracoes(clienteId);
+      const { diagnostico: d, gravadas, falharam } = await diagnosticarEGravar(clienteId);
       // Vermelho quando há infração OU quando a conta está barrada. Um
       // diagnóstico que só sabe dizer "ok" não é diagnóstico.
       const grave =
         d.contaPodeAnunciar === false || (d.leitura?.infracoes.length ?? 0) > 0 || !d.varianteQueRespondeu;
-      setMsgML({ tipo: grave ? "erro" : "ok", texto: textoDoDiagnostico(d) });
+      // A gravação é DITA, inclusive quando falha em parte. "1.060 lidas" sem
+      // dizer quantas ficaram no banco afirmaria uma memória que pode não
+      // existir — e foi exatamente assim que 155 estados sumiram sem aviso.
+      const memoria =
+        gravadas + falharam > 0
+          ? ` Guardadas ${gravadas}${falharam > 0 ? `, ${falharam} NÃO gravaram — clique de novo para completar` : ""}.`
+          : "";
+      setMsgML({ tipo: grave ? "erro" : "ok", texto: textoDoDiagnostico(d) + memoria });
       // A resposta CRUA vai para o console de propósito: esta rota existe para
       // aprender o formato real, e o formato não cabe numa faixa de uma linha.
       console.info("[diagnóstico de infrações]", d);
