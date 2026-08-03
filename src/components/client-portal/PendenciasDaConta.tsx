@@ -128,6 +128,62 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
     }
   }
 
+  // ===========================================================================
+  // O LOTE
+  // ===========================================================================
+  //
+  // Provado num anúncio real em 03/08/2026: `960x1200 -> 1200x1200`, e as 12
+  // fotos originais continuaram no anúncio. Só DEPOIS disso o lote existe.
+  //
+  // Quatro proteções, e nenhuma é zelo:
+  //
+  //  · SEQUENCIAL, com pausa entre um e outro. Paralelo aqui é um pico de
+  //    escrita na conta dela, e o ML recusa — trocaríamos foto ajustada por
+  //    lote recusado.
+  //  · PARA SOZINHO em 3 falhas seguidas. Uma falha é a foto; três seguidas é
+  //    outra coisa, e insistir 300 vezes contra um problema sistêmico é
+  //    estragar em escala.
+  //  · PARA quando ela manda. O botão fica disponível durante a execução.
+  //  · Só age no que está NA LISTA. A tela mostra 25 de 341; o lote ajusta
+  //    esses 25 — prometer "todos" e fazer 25 seria a mentira do recorte outra
+  //    vez, agora com escrita.
+  const [lote, setLote] = useState<{ feitos: number; total: number; parar: boolean } | null>(null);
+
+  async function ajustarEmLote(mlbs: string[]) {
+    setLote({ feitos: 0, total: mlbs.length, parar: false });
+    let seguidas = 0;
+    for (let i = 0; i < mlbs.length; i++) {
+      // `parar` é lido do estado a cada volta: o clique dela precisa valer no
+      // meio do laço, não só no fim.
+      let cancelado = false;
+      setLote((l) => {
+        cancelado = l?.parar ?? false;
+        return l;
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      if (cancelado) break;
+
+      const mlb = mlbs[i];
+      setAjustando(mlb);
+      try {
+        const r = await quadrarCapaNoML(clienteId, mlb);
+        setAjustes((a) => ({ ...a, [mlb]: { ok: true, texto: explicarCapaQuadrada(r) } }));
+        seguidas = 0;
+      } catch (e) {
+        const texto = e instanceof Error ? e.message : "Falha ao ajustar a foto.";
+        setAjustes((a) => ({ ...a, [mlb]: { ok: false, texto } }));
+        // "Esta foto não serve" não conta como falha do lote: é resposta sobre
+        // o anúncio, não sintoma de problema sistêmico.
+        if (!(e instanceof CapaNaoAplicavelError)) seguidas++;
+      }
+      setLote((l) => (l ? { ...l, feitos: i + 1 } : l));
+      if (seguidas >= 3) break;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    setAjustando(null);
+    setLote(null);
+  }
+
   const grupos: Gravidade[] = ["conta", "receita", "atencao"];
 
   return (
@@ -187,6 +243,39 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                 <p className={`flex items-center gap-1.5 text-sm font-medium ${texto}`}>
                   <Icone size={15} /> {EXPLICACAO[g]}
                 </p>
+                {(() => {
+                  // O botão de lote só existe onde o conserto é mecânico, e
+                  // DIZ quantos vai tocar. "Ajustar todas" sobre uma lista
+                  // recortada prometeria 341 e faria 25.
+                  const ajustaveis = doGrupo
+                    .filter((p) => p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok)
+                    .map((p) => p.mlb);
+                  if (ajustaveis.length < 2) return null;
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        className="px-2 py-1 text-xs"
+                        disabled={!!lote}
+                        onClick={() => ajustarEmLote(ajustaveis)}
+                      >
+                        <Crop size={12} />
+                        {lote
+                          ? `Ajustando ${lote.feitos} de ${lote.total}…`
+                          : `Ajustar as ${ajustaveis.length} desta lista`}
+                      </Button>
+                      {lote && (
+                        <Button
+                          variant="danger"
+                          className="px-2 py-1 text-xs"
+                          onClick={() => setLote((l) => (l ? { ...l, parar: true } : l))}
+                        >
+                          Parar
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })()}
                 <ul className="mt-2 space-y-2">
                   {doGrupo.map((p) => (
                     <li key={`${p.tipo}-${p.mlb}`} className="text-sm">
