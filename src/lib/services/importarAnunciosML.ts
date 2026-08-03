@@ -598,6 +598,10 @@ export function anuncioGeradoDoML(
     sugestoes: [],
     vereditoA10: "aprovado",
     motivoVeredito: "Importado do Mercado Livre (já publicado).",
+    // A esteira NUNCA viu este anúncio. Sem esta marca, a nota 0 do banco vira
+    // "0/100" vermelho ao lado de "aprovado" — e ninguém tira zero e é
+    // aprovado. Zero aqui é ausência de medição, não medição ruim.
+    avaliadoPelaIA: false,
   };
 }
 
