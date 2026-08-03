@@ -11,7 +11,7 @@
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { lerJson } from "../http/respostaJson";
-import type { Infracao } from "../../modules/integration/domain/infracoesDaConta";
+import { semHtml, type Infracao } from "../../modules/integration/domain/infracoesDaConta";
 
 export interface DiagnosticoDeInfracoes {
   sellerId: string;
@@ -24,7 +24,15 @@ export interface DiagnosticoDeInfracoes {
   corpoCru: unknown;
   leitura: {
     infracoes: Infracao[];
+    /** O que o ML DIZ que a conta tem. */
     total: number;
+    /** O que conseguimos ler. Nunca igualado ao total. */
+    lidas: number;
+    paginasLidas: number;
+    paginasComFalha: { offset: number; status: number; erro?: string }[];
+    /** Infrações ≠ anúncios: o mesmo MLB pode ser punido muitas vezes. */
+    anunciosDistintos: number;
+    infracoesSemAnuncio: number;
     nenhumaDeclarada: boolean;
     formatoInesperado: string | null;
     porMotivo: { motivo: string; infracoes: number; itens: string[] }[];
@@ -56,11 +64,18 @@ export async function diagnosticarInfracoes(clienteId: string): Promise<Diagnost
 export function textoDoDiagnostico(d: DiagnosticoDeInfracoes): string {
   const partes: string[] = [];
 
+  // OS TRÊS CASOS SÃO DITOS, inclusive o bom.
+  //
+  // A primeira versão só falava quando era `false` ou `null`, e na leitura real
+  // de 03/08 o resultado bom saiu como SILÊNCIO — a leitora tinha que deduzir
+  // "ele não reclamou, então pode". Silêncio afirmando é exatamente o defeito
+  // que passamos dois dias arrancando desta base, e eu o reintroduzi aqui.
   if (d.contaPodeAnunciar === false) {
     partes.push("⚠️ O Mercado Livre diz que esta conta NÃO pode anunciar agora.");
   } else if (d.contaPodeAnunciar === null) {
-    // Silêncio não é "pode". Foi o defeito mudo que passei 02–03/08 arrancando.
     partes.push("O ML não informou se a conta pode anunciar.");
+  } else {
+    partes.push("A conta AINDA pode anunciar (o ML confirmou).");
   }
 
   if (!d.varianteQueRespondeu) {
@@ -90,16 +105,33 @@ export function textoDoDiagnostico(d: DiagnosticoDeInfracoes): string {
     return partes.join(" ");
   }
 
-  const totalDito = l.total >= 0 ? ` (o ML diz que são ${l.total})` : "";
-  partes.push(`${l.infracoes.length} infração(ões) nesta página${totalDito}.`);
+  // A FRASE QUE MUDA A DECISÃO: infrações não são anúncios.
+  //
+  // Medido em 03/08/2026: o ML declarou 1.060 infrações e o mesmo
+  // `MLB4820492395` aparecia cinco vezes na primeira página. "1.060 anúncios
+  // punidos" e "80 anúncios punidos 1.060 vezes" pedem trabalhos opostos.
+  const totalDito = l.total >= 0 && l.total !== l.lidas ? ` de ${l.total} que o ML declara` : "";
+  partes.push(
+    `${l.lidas} infração(ões)${totalDito}, em ${l.anunciosDistintos} anúncio(s) distinto(s)` +
+      (l.infracoesSemAnuncio > 0 ? ` e ${l.infracoesSemAnuncio} sem anúncio associado` : "") +
+      ` — ${l.paginasLidas} página(s) lida(s).`
+  );
+
+  if (l.paginasComFalha.length > 0) {
+    const f = l.paginasComFalha[0];
+    partes.push(
+      `A leitura PAROU no offset ${f.offset} (HTTP ${f.status}) — o que está acima disso não foi visto.`
+    );
+  }
 
   for (const m of l.porMotivo) {
-    const itens = m.itens.length > 0 ? ` — ${m.itens.slice(0, 5).join(", ")}` : "";
+    const itens = m.itens.length > 0 ? ` — ${m.itens.length} anúncio(s), ex.: ${m.itens.slice(0, 3).join(", ")}` : "";
     partes.push(`${m.infracoes}× ${m.motivo}${itens}.`);
   }
 
+  // Sem as tags: o `remedy` vem em HTML, e a tela mostrava `<div><strong>` cru.
   const comRemedio = l.infracoes.find((i) => i.remedio);
-  if (comRemedio) partes.push(`O ML diz o que fazer: "${comRemedio.remedio}".`);
+  if (comRemedio) partes.push(`O ML diz o que fazer: "${semHtml(comRemedio.remedio)}".`);
 
   return partes.join(" ");
 }

@@ -11,6 +11,8 @@ import {
   lerInfracoes,
   contarPorMotivo,
   contaPodeAnunciar,
+  itensDistintos,
+  semHtml,
   referenciaDeModeracao,
 } from "./infracoesDaConta.ts";
 
@@ -98,6 +100,68 @@ test("campo ausente vira string vazia, nunca 'undefined'", () => {
 // ---------------------------------------------------------------------------
 // A CONTAGEM POR MOTIVO
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// INFRAÇÕES NÃO SÃO ANÚNCIOS — a conta medida na conta real em 03/08/2026
+// ---------------------------------------------------------------------------
+
+test("o mesmo MLB punido 5× é UM anúncio, não cinco", () => {
+  // O ML declarou 1.060 infrações nesta conta e `MLB4820492395` apareceu cinco
+  // vezes na primeira página. "1.060 anúncios punidos" e "80 anúncios punidos
+  // 1.060 vezes" pedem trabalhos opostos.
+  const { infracoes } = lerInfracoes([
+    inf({ related_item_id: "MLB1" }),
+    inf({ related_item_id: "MLB1" }),
+    inf({ related_item_id: "MLB1" }),
+    inf({ related_item_id: "MLB2" }),
+  ]);
+  assert.deepEqual(itensDistintos(infracoes), { itens: 2, semItem: 0 });
+});
+
+test("infração sem anúncio associado é contada à parte, nunca como anúncio", () => {
+  const { infracoes } = lerInfracoes([
+    inf({ related_item_id: "MLB1" }),
+    inf({ related_item_id: "", element_type: "QUE" }),
+  ]);
+  assert.deepEqual(itensDistintos(infracoes), { itens: 1, semItem: 1 });
+});
+
+test("a lista de itens por motivo NÃO repete o mesmo MLB", () => {
+  const r = contarPorMotivo(
+    lerInfracoes([
+      inf({ related_item_id: "MLB1" }),
+      inf({ related_item_id: "MLB1" }),
+      inf({ related_item_id: "MLB2" }),
+    ]).infracoes
+  );
+  assert.equal(r[0].infracoes, 3);
+  assert.deepEqual(r[0].itens, ["MLB1", "MLB2"]);
+});
+
+// ---------------------------------------------------------------------------
+// O REMEDY VEM EM HTML — medido na conta real
+// ---------------------------------------------------------------------------
+
+test("arranca as tags e mantém a frase inteira, com separação", () => {
+  // O texto exato que a conta devolveu em 03/08/2026.
+  const bruto =
+    "<div><strong>Pausamos o anúncio porque ele infringe nossas políticas</strong></div>" +
+    "<div>Ajuste o título e/ou substitua as fotos, garantindo que correspondam ao produto à venda.</div>";
+  assert.equal(
+    semHtml(bruto),
+    "Pausamos o anúncio porque ele infringe nossas políticas Ajuste o título e/ou " +
+      "substitua as fotos, garantindo que correspondam ao produto à venda."
+  );
+});
+
+test("texto sem HTML atravessa intacto", () => {
+  assert.equal(semHtml("Ajuste o título."), "Ajuste o título.");
+  assert.equal(semHtml(""), "");
+});
+
+test("entidades HTML viram os caracteres que representam", () => {
+  assert.equal(semHtml("t&iacute;tulo &amp; fotos"), "t&iacute;tulo & fotos");
+});
 
 test("infração sem item relacionado continua sendo contada", () => {
   // Contar pelo tamanho da lista de MLBs faria essa infração sumir do número —
