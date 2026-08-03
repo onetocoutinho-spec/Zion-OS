@@ -36,8 +36,10 @@ import {
 } from "../../modules/integration/domain/saudeDoCatalogo";
 import {
   pendenciasDaConta,
+  type InfracoesPorAnuncio,
   type ResumoDePendencias,
 } from "../../modules/integration/domain/pendenciasDaConta";
+import { infracoesPorAnuncioDoCliente } from "./infracoesMarketplace";
 import {
   abaDesatualizada,
   AVISO_ABA_DESATUALIZADA,
@@ -338,7 +340,9 @@ export function medirFichas(
   anuncios: readonly AnuncioML[],
   fora: ForaDaFichaPorCategoria = {},
   mlbsJaConhecidos: ReadonlySet<string> = new Set(),
-  obrigatorios: Record<string, { id: string; nome: string }[]> = {}
+  obrigatorios: Record<string, { id: string; nome: string }[]> = {},
+  /** O que o ML já disse de cada anúncio (migração 052). Vazio = ele não falou. */
+  infracoes: InfracoesPorAnuncio = {}
 ): MedicaoDaFicha {
   // O MESMO recorte do enriquecimento, e por construção: os dois chamam
   // `ehDeFicha`. Antes eram duas listas iguais por disciplina; agora é uma
@@ -374,7 +378,9 @@ export function medirFichas(
     // `familia` liga o anúncio bloqueado aos irmãos do mesmo produto que
     // continuam no ar — a conta que muda a decisão dela.
     pendenciasDaConta: pendenciasDaConta(
-      anuncios.map((a) => ({ ...a, familia: a.familyName || a.titulo }))
+      anuncios.map((a) => ({ ...a, familia: a.familyName || a.titulo })),
+      25,
+      infracoes
     ),
     retrato: retratarCatalogo(anuncios),
     anunciosForaDoArConferidos: anuncios.filter(
@@ -673,6 +679,10 @@ export async function importarAnunciosDoCliente(
     const conhecidos = new Set(
       (await listarResumoDeAnunciosDoCliente(clienteId)).map((e) => e.mlItemId).filter(Boolean) as string[]
     );
+    // O que o ML JÁ DISSE, do nosso banco (052). Sem isto, a lista de
+    // pendências volta a cobrar a nossa inferência de capa — que erra em 71%
+    // dos anúncios sobre os quais ele se pronunciou.
+    const jaAcusados = await infracoesPorAnuncioDoCliente(clienteId);
     return {
       produtos: 0,
       anuncios: 0,
@@ -681,7 +691,7 @@ export async function importarAnunciosDoCliente(
       pulados: 0,
       leitura,
       aviso: avisoLeitura,
-      medicao: medirFichas(todos, dados.foraDaFicha, conhecidos, dados.obrigatorios),
+      medicao: medirFichas(todos, dados.foraDaFicha, conhecidos, dados.obrigatorios, jaAcusados),
     };
   }
 

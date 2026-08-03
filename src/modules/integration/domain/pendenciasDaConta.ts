@@ -43,10 +43,46 @@ import { lerMaxSize, LADO_MINIMO_DA_CAPA } from "./capaForaDoPadrao";
 
 export type Gravidade = "conta" | "receita" | "atencao";
 
+/**
+ * O que o ML JÁ DISSE sobre este anúncio — migração 052.
+ *
+ * Até 03/08/2026 esta função inferia a pendência de foto de uma regra NOSSA:
+ * capa quadrada e lado ≥ 1200. A leitura completa das infrações permitiu
+ * conferir a regra contra a fonte, e o resultado condena a inferência:
+ *
+ *                       ML reclama    ML não reclama
+ *   nossa regra reprova       139               373
+ *   nossa regra aprova        166                80
+ *
+ * Concordância: 219 de 758 anúncios — 29%. De cada quatro anúncios que
+ * mandávamos refotografar, três o Mercado Livre nunca reclamou; e 166 que ele
+ * pune passavam como bons.
+ *
+ * A premissa "o ML quer capa quadrada de 1200" era minha, e ele nunca a
+ * enunciou. Onde ele falou, é a palavra dele que vale. Onde ele não falou, a
+ * nossa medida continua — mas dita como palpite, não como cobrança.
+ */
+export interface InfracaoDoAnuncio {
+  /** A acusação, na palavra do ML. */
+  motivo: string;
+  /** O que ele manda fazer. Chega em HTML e deve vir limpo. */
+  remedio: string;
+}
+
+/** As infrações por MLB. Ausente = o ML não falou deste anúncio. */
+export type InfracoesPorAnuncio = Readonly<Record<string, readonly InfracaoDoAnuncio[]>>;
+
 export interface PendenciaDaConta {
   gravidade: Gravidade;
   /** Chave para agrupar na tela. */
-  tipo: "bloqueado" | "capa-pequena" | "capa-nao-quadrada" | "sem-estoque" | "em-revisao" | "sem-motivo";
+  tipo:
+    | "bloqueado"
+    | "infracao-do-ml"
+    | "capa-pequena"
+    | "capa-nao-quadrada"
+    | "sem-estoque"
+    | "em-revisao"
+    | "sem-motivo";
   mlb: string;
   permalink: string;
   titulo: string;
@@ -126,7 +162,8 @@ const ativo = (a: AnuncioParaPendencia) => (a.status || "").trim().toLowerCase()
  */
 export function pendenciasDaConta(
   anuncios: readonly AnuncioParaPendencia[],
-  limitePorTipo = 25
+  limitePorTipo = 25,
+  infracoes: InfracoesPorAnuncio = {}
 ): ResumoDePendencias {
   const todas: PendenciaDaConta[] = [];
 
@@ -161,6 +198,11 @@ export function pendenciasDaConta(
       familia: txt(a.familia) || txt(a.titulo) || txt(a.mlb),
     };
 
+    // O QUE O ML JÁ DISSE deste anúncio. Vazio = ele não falou.
+    const doML = infracoes[txt(a.mlb)] ?? [];
+    const acusacoes = [...new Set(doML.map((i) => i.motivo).filter(Boolean))];
+    const remedios = [...new Set(doML.map((i) => i.remedio).filter(Boolean))];
+
     // 1) CONTA — bloqueio é política, e reincidência custa a conta inteira.
     if (temSub(a, "forbidden")) {
       const irmaos = ativosPorFamilia.get(txt(a.familia)) ?? 0;
@@ -168,14 +210,44 @@ export function pendenciasDaConta(
         ...base,
         gravidade: "conta",
         tipo: "bloqueado",
+        // A ACUSAÇÃO, quando nós a temos.
+        //
+        // Este texto mandava a lojista abrir o painel do ML "e ver a acusação".
+        // Desde a 052 a acusação está no NOSSO banco — continuar mandando ela
+        // procurar fora seria guardar a resposta e não dar.
         oQueFazer:
-          "Abra no Mercado Livre, em Infrações, e veja a acusação. NÃO republique: republicar o que foi cancelado conta como reincidência, e reincidência é o que leva à suspensão da conta." +
+          (acusacoes.length > 0
+            ? `O Mercado Livre diz: ${acusacoes.join(" · ")}. `
+            : "Abra no Mercado Livre, em Infrações, e veja a acusação. ") +
+          "NÃO republique: republicar o que foi cancelado conta como reincidência, e reincidência é o que leva à suspensão da conta." +
           (irmaos > 0
             ? ` Há ${irmaos} anúncio(s) do mesmo produto ainda no ar — se a acusação for sobre o PRODUTO, eles são os próximos. Pausar é reversível.`
             : ""),
         porque: "O Mercado Livre cancelou este anúncio por descumprir uma política.",
       });
       continue; // bloqueio manda; não polui a lista com o resto
+    }
+
+    // 1b) O ML FALOU, e não é cancelamento — é punição que trava a venda.
+    //
+    // 1.060 infrações em 460 anúncios, medidas em 03/08/2026. O remédio é DELE,
+    // e é específico: "Corrija suas fotos: não mostra apenas uma unidade do
+    // produto". Nenhuma inferência nossa chega a esse nível de instrução.
+    if (doML.length > 0) {
+      todas.push({
+        ...base,
+        gravidade: "receita",
+        tipo: "infracao-do-ml",
+        // Sem invenção: o que sai daqui é o que ele escreveu.
+        oQueFazer:
+          remedios.length > 0
+            ? remedios.join(" ")
+            : "O Mercado Livre registrou uma infração e não disse o que fazer. Abra o anúncio no painel dele.",
+        porque:
+          acusacoes.length > 0
+            ? `O Mercado Livre registrou ${doML.length} infração(ões) neste anúncio: ${acusacoes.join(" · ")}`
+            : `O Mercado Livre registrou ${doML.length} infração(ões) neste anúncio, sem informar o motivo.`,
+      });
     }
 
     // 2) RECEITA — a capa fora do padrão tira exposição. Só conta para quem
@@ -188,8 +260,15 @@ export function pendenciasDaConta(
     //
     //   lado maior >= 1200  ->  só falta virar quadrada. Ajuste, não fotografia.
     //   lado maior <  1200  ->  não há pixel para recuperar. Foto nova.
+    // A NOSSA REGRA SÓ FALA ONDE O ML CALOU.
+    //
+    // Conferida contra as 460 infrações em 03/08/2026, ela acerta 29%: manda
+    // refotografar 373 anúncios que ele nunca reclamou e aprova 166 que ele
+    // pune. Onde ele já falou, a palavra dele substitui a nossa — repetir a
+    // inferência ao lado do fato só criaria duas cobranças para o mesmo anúncio,
+    // uma delas provavelmente errada.
     const capa = lerMaxSize(a.fotoCapaMaxSize);
-    if (ativo(a) && capa && !(capa.quadrada && capa.grandeOSuficiente)) {
+    if (ativo(a) && doML.length === 0 && capa && !(capa.quadrada && capa.grandeOSuficiente)) {
       const maior = Math.max(capa.largura, capa.altura);
       const daParaAjustar = maior >= LADO_MINIMO_DA_CAPA;
       todas.push({
@@ -214,7 +293,16 @@ export function pendenciasDaConta(
         oQueFazer: daParaAjustar
           ? "Precisa de foto nova. O Mercado Livre cobra tamanho mínimo, posição E proporção do produto na foto — o produto tem que aparecer maior e centralizado no quadro, e isso não se resolve editando o arquivo atual. No anúncio, 'Alterar fotos' mostra o diagnóstico dele."
           : `Precisa de foto nova: o maior lado tem ${maior} pixels e o Mercado Livre pede ${LADO_MINIMO_DA_CAPA}. Não há como ampliar sem perder qualidade.`,
-        porque: `A capa tem ${capa.largura}x${capa.altura} — fora do padrão que o Mercado Livre exige para dar exposição.`,
+        // DITO COMO PALPITE, porque é o que é.
+        //
+        // A frase anterior — "fora do padrão que o Mercado Livre exige" —
+        // afirmava uma regra que ele nunca enunciou, e a medida de 03/08 mostrou
+        // que ela erra em 71% dos casos. Cobrar com a autoridade dele o que é
+        // suposição nossa é o mesmo defeito do conserto automático de capa,
+        // agora no diagnóstico em vez do conserto.
+        porque:
+          `A capa tem ${capa.largura}x${capa.altura}. O Mercado Livre NÃO reclamou deste anúncio — ` +
+          "isto é uma suspeita nossa, baseada em tamanho, e ela acerta menos da metade das vezes.",
       });
     }
 

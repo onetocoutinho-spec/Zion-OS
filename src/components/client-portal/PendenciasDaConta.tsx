@@ -49,8 +49,12 @@ import type {
 
 const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
   bloqueado: "Bloqueados pelo Mercado Livre",
-  "capa-nao-quadrada": "Foto boa, só não é quadrada",
-  "capa-pequena": "Foto pequena demais",
+  // O ML falou. O rótulo diz de quem é a palavra — porque logo abaixo há dois
+  // grupos que são SUSPEITA nossa, e misturar os dois seria dar à nossa
+  // inferência (29% de acerto) a autoridade dele.
+  "infracao-do-ml": "O Mercado Livre apontou",
+  "capa-nao-quadrada": "Suspeita nossa: foto não é quadrada",
+  "capa-pequena": "Suspeita nossa: foto pequena",
   "sem-estoque": "Sem estoque",
   "em-revisao": "Aguardando correção",
   "sem-motivo": "Fora do ar sem motivo informado",
