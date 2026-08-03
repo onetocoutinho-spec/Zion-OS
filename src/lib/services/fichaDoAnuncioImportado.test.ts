@@ -210,7 +210,26 @@ test("anúncio sem atributo nenhum devolve ficha vazia, não linha inventada", a
 import { medirFichas } from "./importarAnunciosML.ts";
 import { readFileSync } from "node:fs";
 
-const FONTE = readFileSync(new URL("./importarAnunciosML.ts", import.meta.url), "utf8")
+/**
+ * Lê o fonte NORMALIZANDO as quebras de linha.
+ *
+ * Estes testes-sentinela cortam o fonte com marcadores de fim de função —
+ * uma linha com apenas `}`, cercada por quebras. No
+ * Windows o Git entrega o arquivo em CRLF, o marcador não casa, `indexOf`
+ * devolve -1 — e `slice(0, -1)` passa a pegar o ARQUIVO QUASE INTEIRO.
+ *
+ * O falso VERMELHO foi o que apareceu em 03/08/2026 ("passou a mandar token num
+ * endpoint público", sobre uma função que não tem token). O falso VERDE é pior e
+ * estava lá junto: com o arquivo inteiro no lugar do trecho, todo `assert.match`
+ * encontra o que procura em OUTRA função e aprova sem ter olhado a certa.
+ *
+ * Sentinela que lê texto tem que ler o mesmo texto nos dois sistemas.
+ */
+function lerFonte(url: URL, _codificacao?: string): string {
+  return readFileSync(url, "utf8").replace(/\r\n/g, "\n");
+}
+
+const FONTE = lerFonte(new URL("./importarAnunciosML.ts", import.meta.url), "utf8")
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/^\s*\/\/.*$/gm, "");
 
@@ -304,7 +323,7 @@ test("a tela nomeia o que a opção destrutiva destrói", () => {
   // Ela dizia "Apaga a importação anterior do ML... Use se algo ficou errado",
   // e omitia custo, peso, fotos e o vínculo com os anúncios publicados. Um
   // controle que não conta a consequência convida ao clique que não se desfaz.
-  const tela = readFileSync(
+  const tela = lerFonte(
     new URL("../../app/cliente/produtos/page.tsx", import.meta.url),
     "utf8"
   );
@@ -394,7 +413,7 @@ test("os TRÊS lugares usam a mesma função de recorte", () => {
     2,
     "a conferência ou a ficha do importado deixou de usar a função de recorte"
   );
-  const dominio = readFileSync(
+  const dominio = lerFonte(
     new URL("../../modules/integration/domain/enriquecimentoDaFicha.ts", import.meta.url),
     "utf8"
   );
@@ -409,7 +428,7 @@ test("o recorte vem do ML, por CATEGORIA — não de uma lista nossa", () => {
   // A lição que custou 260 falsos conflitos: quem decide o que é ficha é o
   // marketplace. `hidden` e `variation_attribute` são tags DELE, por categoria,
   // e vêm do endpoint público.
-  const ml = readFileSync(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
+  const ml = lerFonte(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
   const fn = ml.slice(ml.indexOf("export async function atributosForaDaFicha"));
   const corpo = fn.slice(0, fn.indexOf("\n}\n"));
   assert.match(corpo, /categories\/\$\{encodeURIComponent\(categoria\)\}\/attributes/);
@@ -421,7 +440,7 @@ test("o recorte vem do ML, por CATEGORIA — não de uma lista nossa", () => {
 test("se o ML não responder, o atributo PASSA — falha aberta", () => {
   // Esconder sem saber seria afirmar o que não se sabe (INC-009). O preço de
   // errar para o lado aberto é ruído na tela; para o outro lado, é dado sumido.
-  const ml = readFileSync(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
+  const ml = lerFonte(new URL("../marketplaces/mercadolivre.ts", import.meta.url), "utf8");
   const fn = ml.slice(ml.indexOf("export async function atributosForaDaFicha"));
   const corpo = fn.slice(0, fn.indexOf("\n}\n"));
   assert.equal(
@@ -437,7 +456,7 @@ test("`SIZE_GRID_ID` fica fora por decisão NOSSA — o ML não o esconde", () =
   // de tamanhos, não característica do produto — decisão do dono do produto.
   // Sem comentários: o doc do tipo cita `ITEM_CONDITION` como EXEMPLO do que o
   // ML devolve, e a busca crua acusaria a prosa. Quarta vez que caio nisso.
-  const dominio = readFileSync(
+  const dominio = lerFonte(
     new URL("../../modules/integration/domain/enriquecimentoDaFicha.ts", import.meta.url),
     "utf8"
   )
@@ -453,7 +472,7 @@ test("`SIZE_GRID_ID` fica fora por decisão NOSSA — o ML não o esconde", () =
 });
 
 test("`obrigatorio` nunca é gravado como true — quem exige é o marketplace", () => {
-  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
+  const servico = lerFonte(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
   assert.match(servico, /obrigatorio: false/);
@@ -476,7 +495,7 @@ test("a idempotência é o ESCOPO — e ele é por CLIENTE, em duas requisiçõe
   //
   // Só foi possível porque a 049 deu `cliente_id` à tabela. Antes não havia
   // por onde escopar — e é por isso que a primeira versão iterava.
-  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8");
+  const servico = lerFonte(new URL("./produtoAtributos.ts", import.meta.url), "utf8");
   const fn = servico.slice(servico.indexOf("export async function substituirAtributosDoMarketplace"));
   const corpo = fn.slice(0, fn.indexOf("\n}"));
   assert.match(corpo, /excluirPorFiltro\(/);
@@ -527,7 +546,7 @@ test("o enriquecimento NÃO itera produtos — a tempestade não volta", () => {
 // tabela ganhou escopo, igual às irmãs.
 
 test("o tenant é ESCRITO em cada atributo — sem ele o RLS barra, como deve", () => {
-  const servico = readFileSync(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
+  const servico = lerFonte(new URL("./produtoAtributos.ts", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
   const fn = servico.slice(servico.indexOf("export async function substituirAtributosDoMarketplace"));
@@ -550,7 +569,7 @@ test("o tenant vem da SESSÃO, não é derivado do produto", () => {
 });
 
 test("a 049 é aditiva e NÃO afrouxa nada", () => {
-  const sql = readFileSync(
+  const sql = lerFonte(
     new URL("../../../database/migrations/049-escopo-de-cliente-nos-atributos.sql", import.meta.url),
     "utf8"
   );
@@ -572,7 +591,7 @@ test("a 049 GRITA se um dia rodar numa base com linhas órfãs", () => {
   // O NOT NULL entrou direto porque a tabela estava vazia (0 linhas, conferido).
   // Numa base com dados, isso falharia de um jeito difícil de ler — a guarda
   // troca isso por uma mensagem que diz o que fazer.
-  const sql = readFileSync(
+  const sql = lerFonte(
     new URL("../../../database/migrations/049-escopo-de-cliente-nos-atributos.sql", import.meta.url),
     "utf8"
   );

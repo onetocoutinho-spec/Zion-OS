@@ -176,6 +176,51 @@ export function contaPodeAnunciar(usuario: unknown): boolean | null {
 }
 
 /**
+ * O `remedy` do ML vem em HTML — medido na conta real em 03/08/2026:
+ * `<div><strong>Pausamos o anúncio…</strong></div><div>Ajuste o título…</div>`.
+ *
+ * A tela mostrava as tags cruas. Renderizar o HTML dele seria pior (texto de
+ * terceiro injetado na nossa página), então o caminho é ARRANCAR as tags e
+ * ficar com a frase. As quebras viram espaço porque `</div><div>` cola duas
+ * frases sem separador nenhum.
+ */
+export function semHtml(bruto: string): string {
+  return bruto
+    .replace(/<\/(div|p|br|li)>/gi, " ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Quantos ANÚNCIOS distintos, não quantas infrações.
+ *
+ * A diferença não é detalhe: medido em 03/08/2026, o ML declarou **1.060
+ * infrações** nesta conta, e na primeira página o mesmo `MLB4820492395`
+ * aparecia cinco vezes seguidas. 1.060 infrações podem ser 1.060 anúncios ou
+ * oitenta, e as duas leituras pedem decisões opostas.
+ *
+ * Infração sem item relacionado não entra na contagem de itens — e é por isso
+ * que ela é devolvida à parte, em vez de somada como se fosse um item anônimo.
+ */
+export function itensDistintos(infracoes: readonly Infracao[]): {
+  itens: number;
+  semItem: number;
+} {
+  const vistos = new Set<string>();
+  let semItem = 0;
+  for (const i of infracoes) {
+    if (i.itemRelacionado) vistos.add(i.itemRelacionado);
+    else semItem++;
+  }
+  return { itens: vistos.size, semItem };
+}
+
+/**
  * Agrupa por motivo, do mais frequente — a ordem em que se resolve.
  *
  * A CONTAGEM E A LISTA DE ITENS SÃO SEPARADAS, e isso não é detalhe: uma
@@ -187,15 +232,22 @@ export function contaPodeAnunciar(usuario: unknown): boolean | null {
 export function contarPorMotivo(
   infracoes: readonly Infracao[]
 ): { motivo: string; infracoes: number; itens: string[] }[] {
-  const mapa = new Map<string, { total: number; itens: string[] }>();
+  const mapa = new Map<string, { total: number; itens: Set<string> }>();
   for (const i of infracoes) {
     const chave = i.motivo || "(o ML não informou o motivo)";
-    const atual = mapa.get(chave) ?? { total: 0, itens: [] };
+    const atual = mapa.get(chave) ?? { total: 0, itens: new Set<string>() };
     atual.total++;
-    if (i.itemRelacionado) atual.itens.push(i.itemRelacionado);
+    if (i.itemRelacionado) atual.itens.add(i.itemRelacionado);
     mapa.set(chave, atual);
   }
-  return [...mapa.entries()]
-    .map(([motivo, v]) => ({ motivo, infracoes: v.total, itens: v.itens }))
-    .sort((a, b) => b.infracoes - a.infracoes || a.motivo.localeCompare(b.motivo));
+  return (
+    [...mapa.entries()]
+      // A lista de itens é um CONJUNTO, não um acúmulo. Na primeira leitura da
+      // conta real, "13× título e/ou fotos" mostrou `MLB4820492395` cinco vezes
+      // seguidas — o mesmo anúncio punido repetidamente. Repetir o MLB na tela
+      // faz 13 infrações parecerem 13 anúncios, que é a leitura errada e a que
+      // muda a decisão.
+      .map(([motivo, v]) => ({ motivo, infracoes: v.total, itens: [...v.itens] }))
+      .sort((a, b) => b.infracoes - a.infracoes || a.motivo.localeCompare(b.motivo))
+  );
 }

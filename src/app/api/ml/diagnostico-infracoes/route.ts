@@ -30,11 +30,14 @@ import {
   lerInfracoes,
   contarPorMotivo,
   contaPodeAnunciar,
+  itensDistintos,
   referenciaDeModeracao,
 } from "@/modules/integration/domain/infracoesDaConta";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
-export const maxDuration = 60;
+// 300: o teto do Pro. A conta real declarou 1.060 infrações e o `limit` da rota
+// do ML é 20 — são 53 páginas. Com 60s isto não terminaria.
+export const maxDuration = 300;
 
 const API = "https://api.mercadolibre.com";
 
@@ -123,7 +126,7 @@ export async function GET(request: Request) {
       return Response.json({ erro: "seller_id não encontrado." }, { status: 422 });
     }
 
-    const query = `limit=${LIMITE_ML}&offset=0&language=PT&sort=date_created_desc`;
+    const query = `limit=${LIMITE_ML}&offset=0&language=PT&sort=date_created_asc`;
 
     // As três perguntas de uma vez. `/users/me` vem junto porque `status.list.allow`
     // é o que transforma "6 infrações" em "a conta está em risco" — e essa é a
@@ -138,13 +141,53 @@ export async function GET(request: Request) {
     // manda — é a que a documentação do Global Selling apresenta como caminho
     // único. Se nenhuma vier, isso é o resultado, e ele é dito.
     const vencedora = comPrefixo.status === 200 ? comPrefixo : semPrefixo.status === 200 ? semPrefixo : null;
-    const leitura = vencedora ? lerInfracoes(vencedora.corpo) : null;
+    const primeira = vencedora ? lerInfracoes(vencedora.corpo) : null;
+
+    // PAGINAR ATÉ O FIM — porque 20 não é a conta.
+    //
+    // Medido em 03/08/2026: a primeira página trouxe 20 e o ML declarou
+    // `paging.total = 1060`. Parar na primeira página e chamar aquilo de
+    // "as infrações da conta" seria a mesma afirmação de completude que a
+    // importação fazia quando parava nos 500 e ninguém sabia.
+    //
+    // `limit` é 1–20 por documentação, então são ~53 requisições. É diagnóstico
+    // rodado a pedido, não varredura periódica — e o teto existe para o caso de
+    // o `total` vir errado e a paginação não terminar nunca.
+    const TETO_DE_PAGINAS = 80; // 1.600 infrações: trava, não limite esperado
+    const todas = primeira ? [...primeira.infracoes] : [];
+    const paginasComFalha: { offset: number; status: number; erro?: string }[] = [];
+    let paginasLidas = primeira ? 1 : 0;
+
+    if (vencedora && primeira && !primeira.formatoInesperado) {
+      const base = vencedora.url.split("?")[0];
+      for (let pagina = 1; pagina < TETO_DE_PAGINAS; pagina++) {
+        const offset = pagina * LIMITE_ML;
+        if (primeira.total >= 0 && offset >= primeira.total) break;
+        const s = await sondar(
+          `${base}?limit=${LIMITE_ML}&offset=${offset}&language=PT&sort=date_created_asc`,
+          auth
+        );
+        if (s.status !== 200) {
+          // Página que falhou é DITA, não engolida. Sem isso, "li 900 de 1.060"
+          // se leria como "a conta tem 900".
+          paginasComFalha.push({ offset, status: s.status, erro: s.erro });
+          break;
+        }
+        const l = lerInfracoes(s.corpo);
+        paginasLidas++;
+        if (l.infracoes.length === 0) break; // o ML parou de devolver
+        todas.push(...l.infracoes);
+        if (primeira.total < 0 && l.infracoes.length < LIMITE_ML) break;
+      }
+    }
+
+    const distintos = itensDistintos(todas);
 
     // O detalhe do MOTIVO — a informação que faltou em 31/07. Uma chamada por
     // elemento, limitada: isto é diagnóstico, não varredura.
-    const detalhes = leitura
+    const detalhes = primeira
       ? await Promise.all(
-          leitura.infracoes
+          todas
             .slice(0, MAX_DETALHES)
             .map((i) => referenciaDeModeracao(i.elementoId, i.tipoElemento))
             .filter(Boolean)
@@ -165,13 +208,21 @@ export async function GET(request: Request) {
       // eu já achava que ia vir — e foi assim que afirmei três sucessos falsos
       // no mesmo recurso em 03/08.
       corpoCru: vencedora ? vencedora.corpo : null,
-      leitura: leitura
+      leitura: primeira
         ? {
-            infracoes: leitura.infracoes,
-            total: leitura.total,
-            nenhumaDeclarada: leitura.nenhumaDeclarada,
-            formatoInesperado: leitura.formatoInesperado,
-            porMotivo: contarPorMotivo(leitura.infracoes),
+            infracoes: todas,
+            /** O que o ML DIZ que a conta tem. */
+            total: primeira.total,
+            /** O que conseguimos ler de verdade. Separado de `total` de propósito. */
+            lidas: todas.length,
+            paginasLidas,
+            paginasComFalha,
+            /** A conta que muda a decisão: infrações ≠ anúncios. */
+            anunciosDistintos: distintos.itens,
+            infracoesSemAnuncio: distintos.semItem,
+            nenhumaDeclarada: primeira.nenhumaDeclarada,
+            formatoInesperado: primeira.formatoInesperado,
+            porMotivo: contarPorMotivo(todas),
           }
         : null,
       // `null` = o ML não disse. Nunca "pode anunciar".
