@@ -429,6 +429,60 @@ export async function definirEstadoDoItem(
   return { id: j.id, status: j.status };
 }
 
+/**
+ * Quais destes MLBs o Mercado Livre CANCELOU por infração.
+ *
+ * ===========================================================================
+ * POR QUE ISTO EXISTE
+ * ===========================================================================
+ *
+ * 31/07/2026: o ML cancelou 6 anúncios da Chinelaria por "infração de
+ * propriedade intelectual". Ela descobriu abrindo o painel; o Zion não sabia.
+ *
+ * E em 03/08 eu quase mandei republicar um deles — republicar o que foi
+ * cancelado por infração é REINCIDÊNCIA, e a política do ML fala em suspensão
+ * parcial, temporária ou permanente da conta.
+ *
+ * A trava não existe porque o Zion causou o problema; ele não causou. Existe
+ * porque o Zion é a ferramenta que republica, e ferramenta que repete infração
+ * sem avisar é pior que ferramenta nenhuma.
+ *
+ * ===========================================================================
+ * POR QUE `sub_status` E NÃO UM ENDPOINT DE INFRAÇÕES
+ * ===========================================================================
+ *
+ * O ML tem telas de infração no painel, e eu NÃO tenho a rota delas verificada.
+ * Chutar endpoint foi o que me custou uma tarde em 02/08, quando pedi 31 campos
+ * ao multiget sem confirmar.
+ *
+ * `sub_status: forbidden` é o sinal PROVADO: foi exatamente por ele que os 6
+ * apareceram na medição, antes de qualquer um saber que existiam.
+ *
+ * FALHA FECHADA, ao contrário do resto do arquivo: se a consulta falhar, quem
+ * chama decide — e no caso da publicação, decide não publicar. Um item a menos
+ * publicado é reversível; uma reincidência de propriedade intelectual não.
+ */
+export async function mlbsComInfracao(
+  accessToken: string,
+  mlbs: readonly string[]
+): Promise<string[]> {
+  const ids = [...new Set(mlbs.map((m) => (m ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return [];
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const bloqueados: string[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20).join(",");
+    const r = await fetch(`${API}/items?ids=${lote}&attributes=id,sub_status`, { headers });
+    if (!r.ok) throw new Error(`Não consegui conferir infrações no ML: ${await extrairErro(r)}`);
+    const arr = (await r.json()) as { code?: number; body?: { id?: string; sub_status?: string[] } }[];
+    for (const x of arr) {
+      if (x.code !== 200 || !x.body?.id) continue;
+      if ((x.body.sub_status ?? []).includes("forbidden")) bloqueados.push(x.body.id);
+    }
+  }
+  return bloqueados;
+}
+
 // ---- Fotos: ler a maior, subir a nova, trocar a capa ------------------------
 
 /**

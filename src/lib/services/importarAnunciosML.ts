@@ -371,7 +371,11 @@ export function medirFichas(
     exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
     categoriasComExigencias: Object.values(obrigatorios).filter((v) => v.length > 0).length,
     capas: resumirCapas(anuncios),
-    pendenciasDaConta: pendenciasDaConta(anuncios),
+    // `familia` liga o anúncio bloqueado aos irmãos do mesmo produto que
+    // continuam no ar — a conta que muda a decisão dela.
+    pendenciasDaConta: pendenciasDaConta(
+      anuncios.map((a) => ({ ...a, familia: a.familyName || a.titulo }))
+    ),
     retrato: retratarCatalogo(anuncios),
     anunciosForaDoArConferidos: anuncios.filter(
       (a) =>

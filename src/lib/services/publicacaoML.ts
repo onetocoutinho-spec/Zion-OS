@@ -13,6 +13,7 @@ import {
   atualizarAnuncioGerado,
   buscarAnuncioGerado,
   criarAnunciosGeradosBulk,
+  listarAnunciosGeradosDoCliente,
   marcarAnuncioPublicado,
 } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
@@ -233,6 +234,18 @@ async function executarPublicacao(
   const userProducts = bundleUP.ok ? bundleUP.bundle : undefined;
   const avisosDoBundle = bundleUP.ok ? bundleUP.avisos : undefined;
 
+  // Os MLBs que o Zion conhece DESTE produto. O servidor confere se algum foi
+  // cancelado por infração — republicar o que o ML cancelou é reincidência, e
+  // reincidência de propriedade intelectual custa a conta, não o anúncio.
+  //
+  // A lista sai daqui porque é o cliente quem sabe quais anúncios pertencem ao
+  // produto; o servidor só recebe MLBs e pergunta ao ML sobre eles.
+  const mlbsDoProduto = registro.produtoId
+    ? (await listarAnunciosGeradosDoCliente(registro.clienteId))
+        .filter((a) => a.produtoId === registro.produtoId && a.mlItemId)
+        .map((a) => a.mlItemId as string)
+    : [];
+
   const canal = await buscarCanal(registro.clienteId, registro.marketplace);
   if (!canal?.ativo) {
     throw new Error(
@@ -257,6 +270,10 @@ async function executarPublicacao(
       go: true,
       tituloParaCategoria: registro.anuncio?.tituloOtimizado,
       userProducts,
+      // Os MLBs deste produto que o Zion conhece. O servidor confere se algum
+      // foi cancelado por infração antes de publicar — republicar o que o ML
+      // cancelou é reincidência.
+      mlbsDoProduto,
     }),
   });
 
