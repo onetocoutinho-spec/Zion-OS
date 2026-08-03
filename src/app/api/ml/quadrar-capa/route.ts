@@ -107,8 +107,8 @@ export async function POST(request: Request) {
     // 2) A MAIOR variação da capa — pelo tamanho que o ML declara, nunca pelo
     //    sufixo da URL: medido em 02/08/2026, `-F` é a maior numa imagem e é
     //    492x245 em outra.
-    const variacoes = await variacoesDaFoto(tokens.accessToken, fotos[0]);
-    const maior = maiorVariacao(variacoes);
+    const { variations, maxSize } = await variacoesDaFoto(tokens.accessToken, fotos[0]);
+    const maior = maiorVariacao(variations);
     if (!maior) {
       return Response.json(
         { erro: "O Mercado Livre não informou o tamanho de nenhuma variação desta foto." },
@@ -126,7 +126,25 @@ export async function POST(request: Request) {
     //    foto não servindo para este conserto.
     const quadrada = await quadrarCapa(original);
     if (!quadrada.ok) {
-      return Response.json({ erro: quadrada.motivo, naoAplicavel: true }, { status: 422 });
+      // Se o ORIGINAL é maior que a maior variação servida, o remédio é outro:
+      // a foto boa existe e não está sendo entregue. Mandar refotografar nesse
+      // caso seria mandar refazer o que ela já tem.
+      const areaDe = (t: string) => {
+        const m = /^(\d+)x(\d+)$/.exec(t);
+        return m ? Number(m[1]) * Number(m[2]) : 0;
+      };
+      const originalMaior = areaDe(maxSize) > areaDe(maior.size);
+      return Response.json(
+        {
+          erro: originalMaior
+            ? `${quadrada.motivo} Obs.: o Mercado Livre diz que o original tem ${maxSize}, mas só entrega ${maior.size} — se você ainda tem o arquivo, reenviá-lo já resolve.`
+            : quadrada.motivo,
+          naoAplicavel: true,
+          servido: maior.size,
+          original: maxSize || null,
+        },
+        { status: 422 }
+      );
     }
 
     // 4) Sobe. Neste ponto nada mudou no anúncio ainda.

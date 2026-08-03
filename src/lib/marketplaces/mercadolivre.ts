@@ -431,17 +431,32 @@ export async function definirEstadoDoItem(
 
 // ---- Fotos: ler a maior, subir a nova, trocar a capa ------------------------
 
-/** As variações de UMA foto, com tamanho e URL de cada uma. */
+/**
+ * As variações de UMA foto — e o tamanho do ORIGINAL, que pode ser maior.
+ *
+ * `max_size` é o que o ML diz ser o original; `variations[]` é o que ele serve.
+ * Os dois podem divergir, e a diferença muda o remédio: se o original tem 1200
+ * e só há variação de 800, a foto boa existe e não está sendo entregue — o
+ * conserto é reenviar, não refotografar.
+ *
+ * Ler só as variações faria recusar foto que TEM pixel.
+ */
 export async function variacoesDaFoto(
   accessToken: string,
   fotoId: string
-): Promise<{ size?: string; url?: string; secure_url?: string }[]> {
+): Promise<{
+  variations: { size?: string; url?: string; secure_url?: string }[];
+  maxSize: string;
+}> {
   const r = await fetch(`${API}/pictures/${encodeURIComponent(fotoId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!r.ok) throw new Error(`ML recusou ler a foto ${fotoId}: ${await extrairErro(r)}`);
-  const j = (await r.json()) as { variations?: { size?: string; url?: string; secure_url?: string }[] };
-  return j.variations ?? [];
+  const j = (await r.json()) as {
+    variations?: { size?: string; url?: string; secure_url?: string }[];
+    max_size?: string;
+  };
+  return { variations: j.variations ?? [], maxSize: (j.max_size ?? "").trim() };
 }
 
 /**
