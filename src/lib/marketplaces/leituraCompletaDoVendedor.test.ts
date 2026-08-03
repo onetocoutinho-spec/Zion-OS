@@ -59,8 +59,10 @@ function mlFalso(
      * Quebrar por CONTEÚDO é o que o nome do teste sempre prometeu.
      */
     idsQuebrados?: string[];
-    /** O ML recusa o filtro `attributes`, mas aceita o pedido inteiro. */
+    /** O ML recusa a lista COMPLETA de campos, mas aceita a mínima. */
     recusaFiltro?: boolean;
+    /** O `fetch` LANÇA no pedido completo — sem status, sem corpo. */
+    lancaExcecao?: boolean;
   } = {}
 ) {
   const ids = Array.from({ length: total }, (_, i) => `MLB${1000 + i}`);
@@ -74,8 +76,15 @@ function mlFalso(
     }
     const params = new URL(url).searchParams;
     const pedidos = (params.get("ids") ?? "").split(",");
-    if (opcoes.recusaFiltro && params.has("attributes")) {
+    const campos = (params.get("attributes") ?? "").split(",");
+    // O ML recusa a lista COMPLETA (31 campos) e aceita a mínima (14).
+    if (opcoes.recusaFiltro && campos.length > 20) {
       return new Response('{"message":"invalid attribute"}', { status: 400 });
+    }
+    // O `fetch` LANÇANDO — foi o que aconteceu em 02/08/2026 e o `catch`
+    // externo apagou o motivo.
+    if (opcoes.lancaExcecao && campos.length > 20) {
+      throw Object.assign(new Error("fetch failed"), { cause: { code: "ECONNRESET" } });
     }
     if (pedidos.some((id) => opcoes.idsQuebrados?.includes(id))) {
       return new Response("erro do ML", { status: 500 });
@@ -169,6 +178,38 @@ test("filtro de campos recusado: a leitura REFAZ sem ele e traz tudo", async () 
   assert.equal(r.perdidos, 0);
   assert.equal(r.filtroDeCamposRecusado, true, "a recusa precisa ser DITA");
   assert.match(r.erroDoMultiget, /400/);
+});
+
+test("`fetch` que LANÇA também é registrado — foi o caso de 02/08/2026", async () => {
+  // Os 781 lotes falharam com `erroDoMultiget` VAZIO. Só é possível se a
+  // exceção veio de fora do caminho do `!r.ok` — e o `catch` externo devolvia
+  // `[]` apagando o motivo. Quarta vez no dia que um catch mudo vira silêncio.
+  mlFalso(60, { lancaExcecao: true });
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.anuncios.length, 60, "a exceção no pedido completo não pode zerar a leitura");
+  assert.match(r.erroDoMultiget, /exce[çc][ãa]o/i);
+  assert.match(r.erroDoMultiget, /ECONNRESET/, "a causa do undici precisa aparecer");
+  assert.equal(r.filtroDeCamposRecusado, true);
+});
+
+test("a degradação vai para a lista MÍNIMA, não para sem filtro", async () => {
+  // Sem filtro, o ML devolve o item inteiro — 781 itens inteiros é o caminho
+  // mais curto para estourar o `maxDuration` de novo.
+  const pedidos: string[] = [];
+  mlFalso(40, { recusaFiltro: true });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((entrada: unknown) => {
+    const url = typeof entrada === "string" ? entrada : String((entrada as { url?: string })?.url);
+    if (url.includes("/items?")) pedidos.push(url);
+    return originalFetch(entrada as never);
+  }) as unknown as typeof fetch;
+
+  await buscarAnunciosDoVendedor("tok", "123");
+  assert.ok(pedidos.length > 0, "nenhum multiget foi observado");
+  assert.ok(
+    pedidos.every((u) => u.includes("attributes=")),
+    "algum lote foi pedido SEM filtro — o item inteiro estoura o tempo"
+  );
 });
 
 test("sem recusa, o filtro NÃO é abandonado", async () => {

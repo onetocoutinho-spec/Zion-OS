@@ -996,6 +996,19 @@ export const CAMPOS_PEDIDOS_AO_ML = [
 ].join(",");
 
 /**
+ * A lista que funcionou o dia inteiro — o degrau seguro.
+ *
+ * Quando o pedido completo falha, a leitura NÃO cai para "sem filtro nenhum":
+ * cai para esta. Sem filtro, o ML devolve o item inteiro, e 781 itens inteiros
+ * é o caminho mais curto para estourar o `maxDuration` de novo — trocaríamos
+ * uma falha por outra.
+ *
+ * Estes 14 campos trouxeram 781 anúncios com sucesso em 01 e 02/08/2026.
+ */
+export const CAMPOS_MINIMOS_AO_ML =
+  "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
+
+/**
  * A parede que interrompeu a leitura, quando ela não leu tudo.
  *
  * `offset-1000` é do ML, não nossa: o `/items/search` clássico recusa
@@ -1100,7 +1113,6 @@ export async function buscarAnunciosDoVendedor(
   // pico que a API pode recusar, e aí trocaríamos tempo esgotado por lote
   // perdido.
   const anuncios: AnuncioML[] = [];
-  const campos = CAMPOS_PEDIDOS_AO_ML;
   const lotes: string[] = [];
   for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20).join(","));
 
@@ -1122,35 +1134,51 @@ export async function buscarAnunciosDoVendedor(
   let filtroRecusado = false;
   let erroDoMultiget = "";
 
-  async function buscarLote(lote: string, comFiltro: boolean): Promise<AnuncioML[] | "recusado"> {
-    const url = comFiltro
-      ? `${API}/items?ids=${lote}&attributes=${campos}`
-      : `${API}/items?ids=${lote}`;
-    const r = await fetch(url, { headers });
-    if (!r.ok) {
-      const detalhe = await extrairErro(r);
-      if (!erroDoMultiget) erroDoMultiget = `${r.status} — ${detalhe}`;
+  // NADA aqui pode falhar em silêncio. A tentativa anterior registrava só o
+  // `!r.ok` — e em 02/08/2026 os 781 lotes falharam com `erroDoMultiget` VAZIO,
+  // o que só é possível se a exceção veio de fora desse caminho: o `fetch`
+  // lançando, ou o `.json()` de uma resposta 200 que não era JSON. O `catch`
+  // externo devolvia `[]` e apagava o motivo. Quarta vez no mesmo dia que um
+  // `catch` mudo transforma uma resposta em silêncio.
+  function registrar(motivo: string) {
+    if (!erroDoMultiget) erroDoMultiget = motivo;
+  }
+
+  async function buscarLote(lote: string, campos: string): Promise<AnuncioML[] | "recusado"> {
+    try {
+      const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+      if (!r.ok) {
+        registrar(`HTTP ${r.status} — ${await extrairErro(r)}`);
+        return "recusado";
+      }
+      const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+      return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+    } catch (e) {
+      // `fetch failed` do undici traz o motivo real em `cause` — e é ele que
+      // diz se foi tempo, conexão ou DNS. Sem isso, "lote com falha" de novo.
+      const erro = e instanceof Error ? e.message : String(e);
+      const causa = (e as { cause?: { code?: string; message?: string } })?.cause;
+      const detalhe = causa?.code ?? causa?.message ?? "";
+      registrar(`exceção: ${erro}${detalhe ? ` (${detalhe})` : ""}`);
       return "recusado";
     }
-    const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
-    return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
   }
 
   const SIMULTANEOS = 6;
   for (let i = 0; i < lotes.length; i += SIMULTANEOS) {
     const rodada = await Promise.all(
       lotes.slice(i, i + SIMULTANEOS).map(async (lote) => {
-        try {
-          if (!filtroRecusado) {
-            const comFiltro = await buscarLote(lote, true);
-            if (comFiltro !== "recusado") return comFiltro;
-            filtroRecusado = true; // os próximos já nascem sem filtro
-          }
-          const semFiltro = await buscarLote(lote, false);
-          return semFiltro === "recusado" ? [] : semFiltro;
-        } catch {
-          return []; // rede caiu neste lote; os outros seguem
+        // Primeiro o pedido completo. Se ele falhar de QUALQUER forma, a
+        // leitura degrada para a lista de 14 campos que funcionou o dia
+        // inteiro — e não para "sem filtro", que devolveria 781 itens
+        // inteiros e estouraria o tempo da rota.
+        if (!filtroRecusado) {
+          const completo = await buscarLote(lote, CAMPOS_PEDIDOS_AO_ML);
+          if (completo !== "recusado") return completo;
+          filtroRecusado = true; // os próximos já nascem com a lista mínima
         }
+        const minimo = await buscarLote(lote, CAMPOS_MINIMOS_AO_ML);
+        return minimo === "recusado" ? [] : minimo;
       })
     );
     for (const doLote of rodada) anuncios.push(...doLote);
