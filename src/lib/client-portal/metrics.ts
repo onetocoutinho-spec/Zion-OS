@@ -70,6 +70,65 @@ export function mapaScorePorProduto(
   return mapa;
 }
 
+export type EstadoDeOtimizacao =
+  | "Otimizado"
+  | "No ar, sem otimização"
+  | "Em revisão"
+  | "Sem otimização";
+
+/**
+ * O estado de otimização por produto — e por que ele ganhou um terceiro valor.
+ *
+ * ATÉ 03/08/2026 a regra era `status === "aprovado" || "publicado"` →
+ * **"Otimizado"**. E `importarAnunciosDoCliente` grava todo anúncio importado
+ * como `publicado`, o que é verdade do ponto de vista da esteira (ele ESTÁ no
+ * ar) e vira mentira quando a palavra escolhida para dizer isso é "Otimizado".
+ *
+ * Medido no banco de produção naquele dia:
+ *
+ *     880  anúncios
+ *     791  apareciam como "Otimizado"
+ *       0  tinham sido avaliados pela IA
+ *     787  eram importados do Mercado Livre
+ *
+ * A tela mostrava "Otimizado" e "Score IA —" na MESMA LINHA. Um afirmava que a
+ * IA trabalhou; o outro dizia que não havia nota. A nota estava certa.
+ *
+ * É reincidência: "aprovado · nota 0/100" já foi corrigido aqui em 790 linhas —
+ * a correção tratou a nota e deixou o rótulo.
+ *
+ * O SINAL USADO É `notaDiagnostico > 0`, e ele é uma COLUNA MEDIDA, não uma
+ * inferência: o importador grava `avaliadoPelaIA: false` junto com nota 0, e a
+ * convenção deste repositório já diz que "zero aqui é ausência de medição, não
+ * medição ruim". A leitura estreita da lista não traz o JSONB (76,6% do peso da
+ * linha), e `nota_diagnostico` é coluna própria — o sinal certo está disponível
+ * pelo caminho barato.
+ *
+ * O terceiro estado não é só honestidade: "No ar, sem otimização" NOMEIA os 787
+ * que a esteira ainda tem para fazer, que é a informação útil que o rótulo
+ * antigo escondia.
+ */
+export function estadoDeOtimizacao(
+  anuncios: readonly Pick<
+    AnuncioGeradoRegistro,
+    "produtoId" | "status" | "notaDiagnostico" | "criadoEm"
+  >[]
+): Map<string, EstadoDeOtimizacao> {
+  const mapa = new Map<string, EstadoDeOtimizacao>();
+  [...anuncios]
+    .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1))
+    .forEach((a) => {
+      if (!a.produtoId || mapa.has(a.produtoId)) return;
+      const noAr = a.status === "aprovado" || a.status === "publicado";
+      const avaliado = Number(a.notaDiagnostico) > 0;
+      mapa.set(
+        a.produtoId,
+        noAr ? (avaliado ? "Otimizado" : "No ar, sem otimização") : "Em revisão"
+      );
+    });
+  return mapa;
+}
+
 /** Faixa de score → cor. */
 export function toneScore(score: number | null): Tone {
   if (score == null) return "gray";

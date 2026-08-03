@@ -87,6 +87,11 @@ const TONE_MAP: Record<string, Tone> = {
   Analisado: "blue",
   "Em otimização": "violet",
   Otimizado: "green",
+  // "No ar" NÃO é verde. Verde é a cor de "está feito", e este anúncio está
+  // publicado sem nunca ter passado pela esteira — é justamente o trabalho que
+  // falta. Medido em 03/08/2026: 791 anúncios contavam como "Otimizado" e ZERO
+  // tinham sido avaliados pela IA.
+  "No ar, sem otimização": "yellow",
   Ignorado: "gray",
   Crítica: "red",
   Aberto: "yellow",
