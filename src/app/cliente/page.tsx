@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader, ActionTile, Section, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
+import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
@@ -71,11 +72,39 @@ export default function ClienteHome() {
     const pends = (pendencias ?? []).filter((p) => !p.resolvida);
 
     const produtosComAnuncio = new Set(ans.map((a) => a.produtoId).filter(Boolean));
-    const ativos = ans.filter((a) => a.status === "aprovado" || a.status === "publicado").length;
+
+    // "ATIVOS" É A PALAVRA DO MERCADO LIVRE, NÃO A DA NOSSA ESTEIRA.
+    //
+    // Este card contava `status in (aprovado, publicado)` — o estado da esteira
+    // do Zion. Para uma lojista, "anúncios ativos" quer dizer NO AR. Medido em
+    // 03/08/2026: a esteira dizia 791; o Mercado Livre diz 491. Trezentos
+    // anúncios que ela pensava estarem vendendo.
+    //
+    // A coluna certa existe desde a migração 050 e esta tela a ignorava — mesmo
+    // defeito do "Otimizado", na PRIMEIRA tela e em verde.
+    //
+    // `null` não entra como ativo: significa "não sabemos", e contar
+    // desconhecido como no-ar é justamente o que a 050 veio corrigir.
+    const ativos = ans.filter((a) => a.statusMarketplace === "active").length;
+    const semEstadoConhecido = ans.filter(
+      (a) => a.mlItemId && !a.statusMarketplace
+    ).length;
     const comProblema = ans.filter(
       (a) => a.qtdPendencias > 0 || (a.status !== "aprovado" && a.status !== "publicado")
     ).length;
-    const semOtimizacao = prods.filter((p) => !produtosComAnuncio.has(p.id)).length;
+    // "SEM OTIMIZAÇÃO" É A TERCEIRA APARIÇÃO DO MESMO DEFEITO.
+    //
+    // Contava produtos sem NENHUM anúncio — que são zero, porque todos os 80
+    // têm anúncio importado. E dizia "sem otimização" enquanto 791 anúncios
+    // nunca passaram pela IA.
+    //
+    // Corrigido em Meus Produtos e em Relatórios hoje; estava aqui também. A
+    // regra vem da MESMA função das outras duas telas — é o que impede a quarta
+    // aparição.
+    const estados = estadoDeOtimizacao(ans);
+    const semOtimizacao = [...estados.values()].filter(
+      (e) => e === "No ar, sem otimização"
+    ).length;
 
     const notas = ans.map((a) => a.notaDiagnostico).filter((n) => n > 0);
     const scoreAnuncios = notas.length
@@ -89,6 +118,7 @@ export default function ClienteHome() {
     return {
       total: prods.length,
       ativos,
+      semEstadoConhecido,
       comProblema,
       semOtimizacao,
       score,
@@ -134,7 +164,14 @@ export default function ClienteHome() {
 
       {/* Cards de visão geral */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Anúncios ativos" value={m.ativos} icon={Megaphone} tone="green" />
+        {/* A ressalva anda junto do número: "não sabemos" nunca vira "no ar". */}
+        <StatCard
+          label="Anúncios no ar"
+          value={m.ativos}
+          icon={Megaphone}
+          tone="green"
+          hint={m.semEstadoConhecido > 0 ? `${m.semEstadoConhecido} sem estado conhecido` : undefined}
+        />
         <StatCard
           label="Anúncios com problemas"
           value={m.comProblema}
@@ -142,7 +179,7 @@ export default function ClienteHome() {
           tone={m.comProblema > 0 ? "yellow" : "gray"}
         />
         <StatCard
-          label="Produtos sem otimização"
+          label="Anúncios no ar, sem otimização"
           value={m.semOtimizacao}
           icon={Package}
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
