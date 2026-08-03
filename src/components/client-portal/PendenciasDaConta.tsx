@@ -245,39 +245,17 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                 <p className={`flex items-center gap-1.5 text-sm font-medium ${texto}`}>
                   <Icone size={15} /> {EXPLICACAO[g]}
                 </p>
-                {(() => {
-                  // O botão de lote só existe onde o conserto é mecânico, e
-                  // DIZ quantos vai tocar. "Ajustar todas" sobre uma lista
-                  // recortada prometeria 341 e faria 25.
-                  const ajustaveis = doGrupo
-                    .filter((p) => p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok)
-                    .map((p) => p.mlb);
-                  if (ajustaveis.length < 2) return null;
-                  return (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        className="px-2 py-1 text-xs"
-                        disabled={!!lote}
-                        onClick={() => ajustarEmLote(ajustaveis)}
-                      >
-                        <Crop size={12} />
-                        {lote
-                          ? `Ajustando ${lote.feitos} de ${lote.total}…`
-                          : `Ajustar as ${ajustaveis.length} desta lista`}
-                      </Button>
-                      {lote && (
-                        <Button
-                          variant="danger"
-                          className="px-2 py-1 text-xs"
-                          onClick={() => setLote((l) => (l ? { ...l, parar: true } : l))}
-                        >
-                          Parar
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* O LOTE FOI DESLIGADO em 03/08/2026.
+                    
+                    Ele rodava, trocava a capa, e o Mercado Livre reprocessava a
+                    imagem cortando a faixa branca: enviamos 1200x1200 e ele
+                    guardou 1062x1200. Cada rodada acrescentava uma foto ao
+                    anúncio e não consertava nada — em lote, 25 de uma vez.
+                    
+                    `ajustarEmLote` e a rota continuam no código: a medição está
+                    certa e a rota agora detecta o reprocessamento. O que falta é
+                    saber o que o ML realmente exige, e quem diz isso é o painel
+                    dele. Religar antes de saber seria repetir o estrago. */}
                 <ul className="mt-2 space-y-2">
                   {doGrupo.map((p) => (
                     <li key={`${p.tipo}-${p.mlb}`} className="text-sm">
@@ -300,7 +278,16 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                       {/* O botão só existe onde o conserto é MECÂNICO. Em
                           `capa-pequena` não há pixel para recuperar, e oferecer
                           o botão ali prometeria o que não se cumpre. */}
-                      {p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok && (
+                      {/* DESLIGADO em 03/08/2026. O ajuste rodava, trocava a
+                          capa, e o Mercado Livre reprocessava a imagem cortando
+                          a faixa branca — cada clique acrescentava uma foto ao
+                          anúncio sem consertar nada. Deixar o botão de pé seria
+                          oferecer um estrago.
+
+                          O código fica: a medição está certa e a rota agora sabe
+                          detectar o reprocessamento. O que falta é descobrir o
+                          que o ML realmente exige, e isso o painel dele diz. */}
+                      {false && p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok && (
                         <Button
                           variant="ghost"
                           className="mt-1 px-2 py-1 text-xs"

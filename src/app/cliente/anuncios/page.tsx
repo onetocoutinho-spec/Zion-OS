@@ -379,7 +379,10 @@ export default function ClienteAnuncios() {
                               Não depende de diagnóstico prévio: a rota lê a foto
                               do anúncio e RECUSA com motivo se já estiver no
                               padrão ou se não houver pixel para completar. */}
-                          {a.mlItemId && (
+                          {/* DESLIGADO em 03/08/2026 — ver PendenciasDaConta:
+                              o ML reprocessa a imagem e corta a faixa branca, e
+                              cada clique só acrescentava uma foto ao anúncio. */}
+                          {false && a.mlItemId && (
                             <Button
                               variant="ghost"
                               className="px-2 py-1 text-xs"

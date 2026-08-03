@@ -204,8 +204,10 @@ test("foto EM PÉ com lado grande: ajuste, não fotografia", () => {
   // refazer o que só precisa de faixa branca.
   const r = pendenciasDaConta([an("A", { estoque: 5, fotoCapaMaxSize: "993x1200" })]);
   assert.equal(r.itens[0].tipo, "capa-nao-quadrada");
-  assert.match(r.itens[0].oQueFazer, /fundo branco/i);
-  assert.match(r.itens[0].oQueFazer, /não precisa fotografar de novo/i);
+  // FALSIFICADO em 03/08/2026: "basta completar com fundo branco" era FALSO —
+  // o ML apara a faixa no upload. Enviamos 1200x1200, ele guardou 1062x1200.
+  assert.match(r.itens[0].oQueFazer, /Revisar fotos/i);
+  assert.match(r.itens[0].oQueFazer, /N[ÃA]O funciona/i);
 });
 
 test("foto pequena de verdade: foto nova, e diz por quê", () => {
@@ -213,7 +215,7 @@ test("foto pequena de verdade: foto nova, e diz por quê", () => {
   assert.equal(r.itens[0].tipo, "capa-pequena");
   assert.match(r.itens[0].oQueFazer, /foto nova/i);
   assert.match(r.itens[0].oQueFazer, /699/, "precisa dizer QUAL é o maior lado");
-  assert.doesNotMatch(r.itens[0].oQueFazer, /fundo branco/i);
+  assert.doesNotMatch(r.itens[0].oQueFazer, /Revisar fotos/i);
 });
 
 test("o corte é pelo MAIOR lado, não pelo menor", () => {
