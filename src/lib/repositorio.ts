@@ -216,27 +216,53 @@ export function criarRepositorio<T extends { id: string }, Row>(
       else grupos.set(chave, { dados, ids: [r.id] });
     }
 
+    // O AGRUPAMENTO NÃO SALVA QUANDO OS VALORES SÃO POR LINHA.
+    //
+    // Propagar um custo para 40 variações é UMA requisição, porque as 40 têm o
+    // mesmo payload. Mas gravar o tamanho da capa e o estoque de cada anúncio
+    // (migração 051) produz um payload ÚNICO por linha — e o agrupamento vira
+    // identidade.
+    //
+    // Medido em 03/08/2026: a gravação dos quatro fatos de 792 anúncios virou
+    // ~790 requisições SEQUENCIAIS. A lojista ficou minutos olhando a tela e a
+    // escrita empacou em 461.
+    //
+    // O teto de 6 é o mesmo do multiget: sem ele, centenas de requisições
+    // simultâneas viram o `TypeError: Failed to fetch` que já derrubou uma
+    // importação inteira nesta base.
+    const requisicoes: { dados: Record<string, unknown>; lote: string[] }[] = [];
     for (const { dados, ids } of grupos.values()) {
       if (Object.keys(dados).length === 0) continue; // nada a mudar
       for (let i = 0; i < ids.length; i += chunk) {
-        const lote = ids.slice(i, i + chunk);
-        for (let tentativa = 1; ; tentativa++) {
-          try {
-            const { error } = await getSupabase().from(tabela).update(dados).in("id", lote);
-            if (error) throw new Error(error.message);
-            break;
-          } catch (e) {
-            if (tentativa >= 5) {
-              erroSupabase(
-                `atualizar registros em ${tabela}`,
-                e instanceof Error ? e.message : String(e)
-              );
-            }
-            await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
-          }
-        }
+        requisicoes.push({ dados, lote: ids.slice(i, i + chunk) });
       }
     }
+
+    const SIMULTANEAS = 6;
+    for (let i = 0; i < requisicoes.length; i += SIMULTANEAS) {
+      await Promise.all(
+        requisicoes.slice(i, i + SIMULTANEAS).map(async ({ dados, lote }) => {
+          for (let tentativa = 1; ; tentativa++) {
+            try {
+              const { error } = await getSupabase().from(tabela).update(dados).in("id", lote);
+              if (error) throw new Error(error.message);
+              return;
+            } catch (e) {
+              if (tentativa >= 5) {
+                erroSupabase(
+                  `atualizar registros em ${tabela}`,
+                  e instanceof Error ? e.message : String(e)
+                );
+              }
+              await new Promise((r) => setTimeout(r, Math.min(700 * tentativa, 4000)));
+            }
+          }
+        })
+      );
+    }
+    // UMA notificação no fim, como sempre: uma por requisição faria as
+    // `useLiveQuery` desta tela recarregarem centenas de vezes, que foi o que
+    // derrubou o navegador com `TypeError: Failed to fetch` em 01/08.
     notificarMudanca();
   }
 
