@@ -429,6 +429,70 @@ export async function definirEstadoDoItem(
   return { id: j.id, status: j.status };
 }
 
+// ---- Fotos: ler a maior, subir a nova, trocar a capa ------------------------
+
+/** As variações de UMA foto, com tamanho e URL de cada uma. */
+export async function variacoesDaFoto(
+  accessToken: string,
+  fotoId: string
+): Promise<{ size?: string; url?: string; secure_url?: string }[]> {
+  const r = await fetch(`${API}/pictures/${encodeURIComponent(fotoId)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`ML recusou ler a foto ${fotoId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { variations?: { size?: string; url?: string; secure_url?: string }[] };
+  return j.variations ?? [];
+}
+
+/**
+ * Sobe uma imagem e devolve o id que o ML deu a ela.
+ *
+ * A foto entra no acervo do vendedor; ela ainda NÃO está em anúncio nenhum.
+ * Quem coloca no anúncio é `definirFotosDoItem`, e a separação é deliberada:
+ * subir é reversível (uma foto solta não incomoda ninguém), trocar a capa é
+ * que muda o que a compradora vê.
+ */
+export async function subirFoto(
+  accessToken: string,
+  imagem: Buffer,
+  nome = "capa.jpg"
+): Promise<string> {
+  const forma = new FormData();
+  forma.append("file", new Blob([new Uint8Array(imagem)], { type: "image/jpeg" }), nome);
+  const r = await fetch(`${API}/pictures/items/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: forma,
+  });
+  if (!r.ok) throw new Error(`ML recusou a foto: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id?: string };
+  if (!j.id) throw new Error("O ML aceitou a foto e não devolveu o id dela.");
+  return j.id;
+}
+
+/**
+ * Define a lista de fotos do anúncio. A PRIMEIRA é a capa.
+ *
+ * Quem chama monta a lista inteira, e monta com as antigas dentro: o ML
+ * SUBSTITUI o conjunto, então mandar só a nova apagaria as outras do anúncio.
+ * Aqui não se decide o que preservar — decidir isso longe de quem tem o
+ * contexto é como se perde foto.
+ */
+export async function definirFotosDoItem(
+  accessToken: string,
+  itemId: string,
+  fotoIds: readonly string[]
+): Promise<{ id: string; quantasFotos: number }> {
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ pictures: fotoIds.map((id) => ({ id })) }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar as fotos de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; pictures?: unknown[] };
+  return { id: j.id, quantasFotos: (j.pictures ?? []).length };
+}
+
 // ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
 
 export interface TarifaDeVenda {
