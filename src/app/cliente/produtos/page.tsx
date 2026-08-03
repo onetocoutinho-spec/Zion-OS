@@ -449,6 +449,9 @@ export default function ClienteProdutos() {
             // O RETRATO vem por último e é o que ordena o trabalho: a saúde é
             // a nota que o ML usa para decidir exposição, e as vendas separam
             // o que trabalha do que só ocupa espaço.
+            // "Não veio" e "é zero" precisam ser DITOS diferente. Antes, os
+            // dois viravam a mesma ausência de linha — e em 02/08 `health` foi
+            // pedido, veio vazio para os 781, e a tela não disse nada.
             (m.retrato.comSaude > 0
               ? ` Saúde média ${m.retrato.saudeMedia} (${m.retrato.comSaude} avaliados)` +
                 (m.retrato.piores.length > 0
@@ -458,13 +461,13 @@ export default function ClienteProdutos() {
                       .join(", ")}`
                   : "") +
                 "."
-              : "") +
+              : " O Mercado Livre não devolveu a nota de saúde de nenhum anúncio — não é nota zero, é dado que ele não deu.") +
             (m.retrato.vendidosTotal > 0 || m.retrato.noArSemVenda > 0
               ? ` Vendas: ${m.retrato.vendidosTotal} no total · ${m.retrato.noArSemVenda} no ar sem vender nenhuma.`
               : "") +
             (m.retrato.doCatalogo > 0
               ? ` ${m.retrato.doCatalogo} atrelados ao catálogo do ML.`
-              : "") +
+              : " Nenhum anúncio veio marcado como do catálogo do ML — pode não haver, ou ele não ter informado.") +
             (m.retrato.semDescricao > 0 ? ` ${m.retrato.semDescricao} sem descrição.` : "") +
             (m.retrato.porTipo.length > 0
               ? ` Tipo: ${m.retrato.porTipo.map((t) => `${t.anuncios} ${t.tipo}`).join(" · ")}.`
