@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  Crop,
   Wand2,
   Sparkles,
   Download,
@@ -29,6 +30,7 @@ import {
   filtrarPorTexto,
 } from "@/modules/portal/domain/anunciosPorProduto";
 import { notaExibivel, explicarVeredito } from "@/modules/portal/domain/notaExibivel";
+import { quadrarCapaNoML, explicarCapaQuadrada } from "@/lib/services/quadrarCapaML";
 import {
   PublicarAnuncio,
   AvisoPublicado,
@@ -72,6 +74,25 @@ export default function ClienteAnuncios() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msgEstado, setMsgEstado] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [ajustandoCapa, setAjustandoCapa] = useState<string | null>(null);
+
+  // "Esta foto não serve" é informação sobre o anúncio; "falhou" é problema
+  // nosso. Misturar as duas faria ela tentar de novo o que nunca vai funcionar.
+  async function quadrar(mlb: string) {
+    setAjustandoCapa(mlb);
+    setMsgEstado(null);
+    try {
+      const r = await quadrarCapaNoML(clienteId, mlb);
+      setMsgEstado({ tipo: "ok", texto: explicarCapaQuadrada(r) });
+    } catch (e) {
+      setMsgEstado({
+        tipo: "erro",
+        texto: e instanceof Error ? e.message : "Falha ao ajustar a foto de capa.",
+      });
+    } finally {
+      setAjustandoCapa(null);
+    }
+  }
   // Publicar é do lojista: ele aprova e ele coloca no ar. Não passa pela equipe.
   const [publicar, setPublicar] = useState<AnuncioGeradoRegistro | null>(null);
   const [publicado, setPublicado] = useState<ResultadoPublicado | null>(null);
@@ -350,6 +371,26 @@ export default function ClienteAnuncios() {
                               </span>
                             );
                           })()}
+                          {/* A ação mora onde o item está. A busca é aqui, e
+                              mandar a lojista para outra tela para consertar o
+                              que ela acabou de encontrar é fazer ela procurar
+                              duas vezes.
+                              
+                              Não depende de diagnóstico prévio: a rota lê a foto
+                              do anúncio e RECUSA com motivo se já estiver no
+                              padrão ou se não houver pixel para completar. */}
+                          {a.mlItemId && (
+                            <Button
+                              variant="ghost"
+                              className="px-2 py-1 text-xs"
+                              disabled={ajustandoCapa === a.mlItemId}
+                              onClick={() => quadrar(a.mlItemId as string)}
+                              title="Deixa a foto de capa quadrada completando as laterais com branco. As fotos atuais continuam no anúncio."
+                            >
+                              <Crop size={12} />
+                              {ajustandoCapa === a.mlItemId ? "Ajustando…" : "Ajustar capa"}
+                            </Button>
+                          )}
                           {a.mlItemId && a.statusMarketplace === "active" && (
                             <Button
                               variant="ghost"
