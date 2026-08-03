@@ -41,13 +41,13 @@ import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados"
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
 import { diagnosticarEGravar, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
 import { listarAuditorias } from "@/lib/services/auditorias";
-import { mapaScorePorProduto, toneScore } from "@/lib/client-portal/metrics";
+import { mapaScorePorProduto, toneScore, estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
 import { toneFor } from "@/lib/status";
 import type { Produto, KitComponente } from "@/lib/types";
 
 const MARKETPLACES = ["Mercado Livre", "TikTok Shop", "Shopee", "Amazon"] as const;
-const STATUS = ["Otimizado", "Em revisão", "Sem otimização"] as const;
+const STATUS = ["Otimizado", "No ar, sem otimização", "Em revisão", "Sem otimização"] as const;
 const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as const;
 
 export default function ClienteProdutos() {
@@ -605,19 +605,11 @@ export default function ClienteProdutos() {
   );
 
   // Estado de otimização por produto (a partir do anúncio mais recente).
-  const estadoPorProduto = useMemo(() => {
-    const mapa = new Map<string, "Otimizado" | "Em revisão" | "Sem otimização">();
-    [...(anuncios ?? [])]
-      .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1))
-      .forEach((a) => {
-        if (!a.produtoId || mapa.has(a.produtoId)) return;
-        mapa.set(
-          a.produtoId,
-          a.status === "aprovado" || a.status === "publicado" ? "Otimizado" : "Em revisão"
-        );
-      });
-    return mapa;
-  }, [anuncios]);
+  //
+  // A regra mora no domínio desde 03/08/2026, com teste: "publicado" NÃO é
+  // "otimizado", e chamar os dois pela mesma palavra fez 791 anúncios exibirem
+  // "Otimizado" sem nenhum ter passado pela IA.
+  const estadoPorProduto = useMemo(() => estadoDeOtimizacao(anuncios ?? []), [anuncios]);
 
   function statusDoProduto(p: Produto) {
     return estadoPorProduto.get(p.id) ?? "Sem otimização";
