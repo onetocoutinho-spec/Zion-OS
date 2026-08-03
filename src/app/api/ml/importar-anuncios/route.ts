@@ -96,6 +96,7 @@ export async function POST(request: Request) {
         parede: leitura.parede,
         erroDoMultiget: leitura.erroDoMultiget,
         filtroDeCamposRecusado: leitura.filtroDeCamposRecusado,
+        falhaDaLeituraFoiNossa: leitura.falhaDaLeituraFoiNossa,
       },
     });
   } catch (e) {

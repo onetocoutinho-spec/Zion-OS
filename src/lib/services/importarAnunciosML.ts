@@ -175,8 +175,10 @@ export interface LeituraRelatada {
   parede: "nenhuma" | "offset-1000" | "teto" | "paginacao-parou";
   /** O que o ML respondeu ao recusar um lote. */
   erroDoMultiget?: string;
-  /** O ML negou o filtro de campos; a leitura seguiu pedindo o item inteiro. */
+  /** A leitura completa falhou e seguiu com a lista mínima de campos. */
   filtroDeCamposRecusado?: boolean;
+  /** A falha foi NOSSA (exceção), não do ML (HTTP). Muda onde procurar. */
+  falhaDaLeituraFoiNossa?: boolean;
 }
 
 /**
@@ -205,9 +207,15 @@ export function avisoDaLeitura(l: LeituraRelatada | undefined): string | undefin
     // aparecia quando `perdidos > 0`, e aqui a degradação funcionou (perdidos
     // = 0). Resultado: a recusa foi anunciada sem dizer QUAL campo — que é a
     // única informação que faltava.
+    // QUEM falhou muda a frase. Acusar o ML por defeito nosso manda quem lê
+    // procurar no lugar errado — aconteceu em 02/08/2026, quando `family_id`
+    // veio como número, `.trim()` estourou no nosso mapeador, e a tela disse
+    // que o Mercado Livre tinha recusado a lista.
     partes.push(
-      "O Mercado Livre recusou a lista completa de campos; a leitura seguiu com a lista mínima." +
-        (l.erroDoMultiget ? ` Ele respondeu: ${l.erroDoMultiget}.` : "") +
+      (l.falhaDaLeituraFoiNossa
+        ? "A leitura completa falhou por um defeito NOSSO e seguiu com a lista mínima de campos."
+        : "O Mercado Livre recusou a lista completa de campos; a leitura seguiu com a lista mínima.") +
+        (l.erroDoMultiget ? ` ${l.erroDoMultiget}.` : "") +
         " Saúde, vendas, catálogo e descrição NÃO foram lidos nesta execução."
     );
   }

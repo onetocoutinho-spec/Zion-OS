@@ -227,3 +227,32 @@ test("`max` explícito ainda para, e se identifica como teto de quem chamou", as
   assert.equal(r.parede, "teto");
   assert.ok(r.ids <= 150, `leu ${r.ids} pedindo no máximo 100`);
 });
+
+// ---------------------------------------------------------------------------
+// A FALHA FOI DELE OU FOI NOSSA?
+// ---------------------------------------------------------------------------
+
+test("exceção NOSSA não é registrada como recusa do ML", async () => {
+  // 02/08/2026: `family_id` vem como NÚMERO e eu chamei `.trim()` nele. A
+  // exceção estourava no mapeador, era capturada como "lote recusado", e a tela
+  // disse que o Mercado Livre havia recusado a lista de campos. Ele nunca
+  // recusou. Culpar a fonte por defeito próprio manda procurar no lugar errado.
+  mlFalso(20, { lancaExcecao: true });
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.falhaDaLeituraFoiNossa, true);
+  assert.match(r.erroDoMultiget, /nosso c[óo]digo/i);
+});
+
+test("recusa do ML (HTTP) NÃO é atribuída a nós", async () => {
+  mlFalso(20, { recusaFiltro: true });
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.falhaDaLeituraFoiNossa, false);
+  assert.match(r.erroDoMultiget, /HTTP 400/);
+});
+
+test("leitura sem falha não acusa ninguém", async () => {
+  mlFalso(20);
+  const r = await buscarAnunciosDoVendedor("tok", "123");
+  assert.equal(r.falhaDaLeituraFoiNossa, false);
+  assert.equal(r.erroDoMultiget, "");
+});
