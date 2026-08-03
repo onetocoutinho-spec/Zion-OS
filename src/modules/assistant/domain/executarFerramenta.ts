@@ -486,13 +486,28 @@ export async function executarFerramenta(
         },
         ctx.pergunta
       );
-      // O modelo recebe o número e a frase pronta. A frase importa: ela carrega
-      // a distinção entre ausência total e parcial do peso (INC-001), que o
-      // número sozinho apagaria.
+      // O modelo recebe o número, o SIGNIFICADO dele e a frase pronta.
+      //
+      // A frase carrega a distinção entre ausência total e parcial do peso
+      // (INC-001), que o número sozinho apagaria. E o significado carrega o
+      // SENTIDO: `quantos` conta o que FALTA em peso/custo/foto/anúncio e o que
+      // ESTÁ em aprovação/publicação/precificação.
+      //
+      // Sem o rótulo, medido em 03/08/2026 na conta real: o modelo recebeu
+      // `{ quantos: 0, total: 80 }` do assunto "anuncio" e escreveu "0 dos seus
+      // 80 produtos têm anúncio gerado" — o oposto da verdade, com a frase
+      // certa disponível ao lado. Campo sem rótulo é convite à inversão.
       return {
         saida:
           r.tipo === "numero"
-            ? { quantos: r.quantos, total: r.total, frase: r.frase, onde: r.href ?? null }
+            ? {
+                quantos: r.quantos,
+                significado: r.significado,
+                total: r.total,
+                frase: r.frase,
+                comoResponder: "Use a `frase` como está. Os números só fazem sentido junto do `significado` — nunca inverta o sentido dele.",
+                onde: r.href ?? null,
+              }
             : { erro: "Não sei contar isso.", frase: r.frase },
       };
     }

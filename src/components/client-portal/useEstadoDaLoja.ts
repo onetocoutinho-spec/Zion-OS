@@ -20,6 +20,7 @@ import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDe
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
 import type { EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
@@ -36,7 +37,15 @@ export function montarEstadoDaLoja(
   produtos: readonly ProdutoComPeso[],
   anuncios: readonly AnuncioGeradoRegistro[],
   imagens: readonly { produtoId?: string | null }[],
-  conectado: boolean
+  conectado: boolean,
+  /**
+   * As infrações já lidas do Mercado Livre (migração 052).
+   *
+   * `null` = ainda não lemos, e é o padrão. Não vira `0`: dizer "nenhuma
+   * infração" sem ter olhado é a afirmação que a AUD-001 passou o dia
+   * arrancando das telas.
+   */
+  infracoes: { infracoes: number; anuncios: number } | null = null
 ): EstadoDaLoja {
   const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
   const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
@@ -59,6 +68,9 @@ export function montarEstadoDaLoja(
     aguardandoAprovacao: anuncios.filter((a) => a.status === "aguardando_aprovacao").length,
     aprovadosNaoPublicados: anuncios.filter((a) => a.status === "aprovado").length,
     conectadoAoMarketplace: conectado,
+    ...(infracoes
+      ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
+      : {}),
   } satisfies EstadoDaLoja;
 }
 
@@ -94,10 +106,22 @@ export function useContextoDaPergunta(
   );
   const { data: imagens } = useLiveQuery(listarTodasImagens);
   const { data: canal } = useLiveQuery(() => buscarCanal(clienteId, "Mercado Livre"), [clienteId]);
+  // O que o Mercado Livre já apontou (migração 052). `undefined` enquanto a
+  // consulta não volta — e `undefined` não vira zero lá dentro.
+  const { data: infracoes } = useLiveQuery(
+    () => retratoDasInfracoes(clienteId),
+    [clienteId]
+  );
 
   return useMemo((): ContextoDoChat => {
     if (!produtos || !anuncios) return { contexto: null, produtos: [] };
-    const loja = montarEstadoDaLoja(produtos, anuncios, imagens ?? [], Boolean(canal?.ativo));
+    const loja = montarEstadoDaLoja(
+      produtos,
+      anuncios,
+      imagens ?? [],
+      Boolean(canal?.ativo),
+      infracoes ?? null
+    );
 
     // O produto vem DESTA lista, não da que a tela já tinha: `Produto` não
     // carrega peso (ele vive nas variantes), e passar 0 faria o chat dizer
@@ -126,5 +150,5 @@ export function useContextoDaPergunta(
       },
     };
     return { contexto, produtos };
-  }, [produtos, anuncios, imagens, canal, produtoEmFoco]);
+  }, [produtos, anuncios, imagens, canal, infracoes, produtoEmFoco]);
 }

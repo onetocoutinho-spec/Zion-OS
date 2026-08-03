@@ -68,7 +68,8 @@ const INTENCOES: readonly TipoDeIntencao[] = [
   "fora_do_alcance",
 ];
 
-const ASSUNTOS: readonly AssuntoContavel[] = [
+/** Exportada para o teste cobrar TODO assunto novo, não só os que eu lembrei. */
+export const ASSUNTOS_CONTAVEIS_PARA_TESTE: readonly AssuntoContavel[] = [
   "peso",
   "custo",
   "foto",
@@ -76,6 +77,7 @@ const ASSUNTOS: readonly AssuntoContavel[] = [
   "aprovacao",
   "publicacao",
   "precificacao",
+  "infracao",
 ];
 
 const CAPACIDADES: readonly Capacidade[] = ["precificar", "anunciar", "publicar"];
@@ -85,7 +87,7 @@ function comoIntencao(x: string): TipoDeIntencao | null {
   return INTENCOES.find((i) => i === x) ?? null;
 }
 function comoAssunto(x: string): AssuntoContavel | null {
-  return ASSUNTOS.find((a) => a === x) ?? null;
+  return ASSUNTOS_CONTAVEIS_PARA_TESTE.find((a) => a === x) ?? null;
 }
 function comoCapacidade(x: string): Capacidade | null {
   return CAPACIDADES.find((c) => c === x) ?? null;
@@ -107,7 +109,8 @@ export type AssuntoContavel =
   | "anuncio"
   | "aprovacao"
   | "publicacao"
-  | "precificacao";
+  | "precificacao"
+  | "infracao";
 
 /** As coisas que a loja consegue (ou não) fazer hoje. */
 export type Capacidade = "precificar" | "anunciar" | "publicar";
@@ -125,7 +128,16 @@ export interface ContextoDaPergunta {
 }
 
 export type RespostaDaOperacao =
-  | { tipo: "numero"; frase: string; quantos: number; total: number; href?: string; cta?: string }
+  | {
+      tipo: "numero";
+      frase: string;
+      quantos: number;
+      total: number;
+      /** O que `quantos` conta, em palavras. Sem isto o número é invertível. */
+      significado: string;
+      href?: string;
+      cta?: string;
+    }
   | { tipo: "lista"; frase: string; itens: readonly Lacuna[] }
   | { tipo: "passo"; frase: string; lacuna: Lacuna }
   | { tipo: "produto"; frase: string; nome: string; itens: readonly LacunaProduto[] }
@@ -143,12 +155,33 @@ export const POSSO_RESPONDER: readonly string[] = [
   "Quantos produtos estão sem peso, sem custo, sem foto ou sem anúncio",
   "O que resolver primeiro para destravar o resto",
   "Por que a precificação, o anúncio ou a publicação ainda não andam",
+  "Quantas infrações o Mercado Livre registrou na sua conta",
   "Como está a loja hoje, no geral",
   "O que falta neste produto (nas telas de cadastro e otimização)",
 ];
 
-/** Quantos produtos estão na condição perguntada, e de quantos. Só do estado. */
-function contar(a: AssuntoContavel, e: EstadoDaLoja): { quantos: number; total: number; frase: string } {
+/**
+ * Quantos produtos estão na condição perguntada, e de quantos. Só do estado.
+ *
+ * `significado` NÃO é enfeite — é o conserto de uma mentira medida.
+ *
+ * `quantos` significa coisas DIFERENTES conforme o assunto: em peso, custo,
+ * foto e anúncio ele conta o que FALTA; em aprovação, publicação e
+ * precificação conta o que ESTÁ. O número sozinho é ambíguo por construção.
+ *
+ * Em 03/08/2026, conferindo o assistente na conta real, o modo conversa
+ * recebeu `{ quantos: 0, total: 80 }` para o assunto "anuncio" e escreveu:
+ *
+ *     "0 dos seus 80 produtos têm anúncio gerado"
+ *
+ * O verdadeiro é o oposto — 80 de 80 TÊM anúncio, e a `frase` ao lado dizia
+ * isso corretamente ("0 ainda não têm"). O modelo preferiu o número cru e
+ * inverteu o sentido. Não foi alucinação: foi campo sem rótulo.
+ */
+function contar(
+  a: AssuntoContavel,
+  e: EstadoDaLoja
+): { quantos: number; total: number; frase: string; significado: string } {
   const t = e.produtos;
   switch (a) {
     case "peso":
@@ -159,34 +192,67 @@ function contar(a: AssuntoContavel, e: EstadoDaLoja): { quantos: number; total: 
         quantos: t - e.comPeso,
         total: t,
         frase: frasePeso(e),
+        significado: "produtos a que FALTA o peso da caixa (total ou parcial)",
       };
     case "custo":
-      return { quantos: t - e.comCusto, total: t, frase: `${t - e.comCusto} de ${t} produto(s) estão sem custo.` };
+      return {
+        quantos: t - e.comCusto,
+        total: t,
+        frase: `${t - e.comCusto} de ${t} produto(s) estão sem custo.`,
+        significado: "produtos a que FALTA o custo",
+      };
     case "foto":
-      return { quantos: t - e.comFoto, total: t, frase: `${t - e.comFoto} de ${t} produto(s) estão sem foto.` };
+      return {
+        quantos: t - e.comFoto,
+        total: t,
+        frase: `${t - e.comFoto} de ${t} produto(s) estão sem foto.`,
+        significado: "produtos a que FALTA foto",
+      };
     case "anuncio":
       return {
         quantos: t - e.comAnuncio,
         total: t,
         frase: `${t - e.comAnuncio} de ${t} produto(s) ainda não têm anúncio gerado.`,
+        significado: "produtos que AINDA NÃO têm anúncio gerado — o resto JÁ TEM",
       };
     case "aprovacao":
       return {
         quantos: e.aguardandoAprovacao,
         total: t,
         frase: `${e.aguardandoAprovacao} anúncio(s) esperando o seu aval.`,
+        significado: "anúncios que ESTÃO esperando aprovação",
       };
     case "publicacao":
       return {
         quantos: e.aprovadosNaoPublicados,
         total: t,
         frase: `${e.aprovadosNaoPublicados} anúncio(s) aprovados e ainda não publicados.`,
+        significado: "anúncios que ESTÃO aprovados e ainda não publicados",
+      };
+    case "infracao":
+      // undefined NÃO vira zero: "não lemos" e "não há" são respostas
+      // diferentes, e só a segunda autoriza dizer que a conta está limpa.
+      if (e.infracoes === undefined || e.anunciosComInfracao === undefined) {
+        return {
+          quantos: -1,
+          total: t,
+          frase:
+            "Ainda não li as infrações desta conta. Abra Meus Produtos → Importar → \"Infrações da conta\" para eu passar a saber.",
+          significado: "NÃO SEI — a leitura de infrações ainda não foi feita",
+        };
+      }
+      return {
+        quantos: e.anunciosComInfracao,
+        total: t,
+        frase: `${e.infracoes} infração(ões) do Mercado Livre, em ${e.anunciosComInfracao} anúncio(s).`,
+        significado: "anúncios que TÊM ao menos uma infração registrada pelo Mercado Livre",
       };
     case "precificacao":
       return {
         quantos: e.prontosParaPrecificar,
         total: t,
         frase: `${e.prontosParaPrecificar} de ${t} produto(s) têm custo e peso — os únicos com preço mínimo calculado.`,
+        significado: "produtos que JÁ TÊM custo e peso",
       };
   }
 }
@@ -226,6 +292,10 @@ const LACUNA_DO_ASSUNTO: Record<AssuntoContavel, readonly TipoLacuna[]> = {
   // O link honesto é o do que falta preencher, e quem decide isso é a ordem da
   // lista — por isso os dois, na ordem em que `lacunasDaLoja` já os devolve.
   precificacao: ["sem_peso", "peso_incompleto", "sem_custo"],
+  // Infração não é lacuna do catálogo: o que falta não está na nossa base, está
+  // no painel do Mercado Livre. Sem link inventado — a lista de Pendências já
+  // leva a lojista ao trabalho, e apontar para outro lugar seria palpite.
+  infracao: [],
 };
 
 /** Qual lacuna impede esta capacidade hoje. `null` quando nada impede. */
@@ -302,12 +372,13 @@ export function responder(
       if (!assunto) {
         return { tipo: "nao_sei", frase: "Não sei contar isso.", posso: POSSO_RESPONDER };
       }
-      const { quantos, total, frase } = contar(assunto, ctx.loja);
+      const { quantos, total, frase, significado } = contar(assunto, ctx.loja);
       const lacuna = lista.find((l) => LACUNA_DO_ASSUNTO[assunto].includes(l.tipo));
       return {
         tipo: "numero",
         frase,
         quantos,
+        significado,
         total,
         ...(lacuna ? { href: lacuna.href, cta: lacuna.cta } : {}),
       };
