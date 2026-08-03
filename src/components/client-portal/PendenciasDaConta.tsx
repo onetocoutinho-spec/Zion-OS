@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { pendenciasDaConta } from "@/modules/integration/domain/pendenciasDaConta";
+import { infracoesPorAnuncioDoCliente } from "@/lib/services/infracoesMarketplace";
 import { useLiveQuery } from "@/lib/hooks";
 import type {
   PendenciaDaConta,
@@ -103,6 +104,22 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
     [clienteId]
   );
 
+  // O QUE O ML JÁ APONTOU (migração 052).
+  //
+  // Sem isto, a tela abre pela memória e chama `pendenciasDaConta` sem as
+  // infrações — então a lojista vê 333 SUSPEITAS NOSSAS e nenhuma das 129
+  // acusações reais, que são justamente as que têm remédio escrito pelo
+  // Mercado Livre. Medido em 03/08/2026: 129 anúncios em `waiting_for_patch`,
+  // 830 peças paradas, TODOS com remédio no nosso banco.
+  //
+  // O caminho do "Conferir agora" já recebia as infrações. Este não — e este é
+  // o que abre por padrão. Ligar um e não o outro deixou o conserto invisível
+  // para quem só abre a tela, que é o caso normal.
+  const { data: infracoes } = useLiveQuery(
+    () => infracoesPorAnuncioDoCliente(clienteId),
+    [clienteId]
+  );
+
   const daMemoria = useMemo(() => {
     const comLeitura = (gravados ?? []).filter((a) => a.mlItemId && a.statusMarketplace);
     if (comLeitura.length === 0) return null;
@@ -116,7 +133,9 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
         subStatus: a.subStatusMarketplace ?? [],
         fotoCapaMaxSize: a.fotoCapaMaxSize ?? "",
         familia: a.produto ?? "",
-      }))
+      })),
+      25,
+      infracoes ?? {}
     );
     // A DATA importa tanto quanto os números: um retrato de três dias atrás
     // apresentado como atual é a mesma mentira que o `status` fixo era.
@@ -126,7 +145,7 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
       .sort()
       .pop();
     return { ...p, lidos: comLeitura.length, lidoEm: lidoEm ?? null };
-  }, [gravados]);
+  }, [gravados, infracoes]);
 
   // O que veio agora manda; sem isso, a memória.
   const mostrando = resultado ?? daMemoria;
