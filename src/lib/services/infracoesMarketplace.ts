@@ -9,7 +9,7 @@
 // única frase que prova trabalho feito.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
-import type { Infracao } from "../../modules/integration/domain/infracoesDaConta";
+import { semHtml, type Infracao } from "../../modules/integration/domain/infracoesDaConta";
 
 export interface InfracaoRegistro extends Infracao {
   clienteId: string;
@@ -84,6 +84,43 @@ export async function gravarInfracoes(
     }
   }
   return { gravadas, falharam };
+}
+
+/**
+ * As infrações agrupadas por MLB — o formato que `pendenciasDaConta` consome.
+ *
+ * Só as linhas que TÊM anúncio: as de pergunta e review existem no banco e não
+ * pertencem a esta lista, porque a pendência é por anúncio. Elas não somem —
+ * ficam gravadas e esperam a tela que souber mostrá-las.
+ *
+ * A projeção é estreita de propósito (`related_item_id, motivo, remedio`): são
+ * mais de mil linhas por lojista, e trazer a linha inteira para montar um mapa
+ * de dois campos é o mesmo desperdício que o JSONB dos anúncios era.
+ */
+export async function infracoesPorAnuncioDoCliente(
+  clienteId: string
+): Promise<Record<string, { motivo: string; remedio: string }[]>> {
+  if (!supabaseConfigurado) return {};
+  const { data, error } = await getSupabase()
+    .from("infracoes_marketplace")
+    .select("related_item_id, motivo, remedio")
+    .eq("cliente_id", clienteId)
+    .not("related_item_id", "is", null);
+  if (error) return {};
+  const mapa: Record<string, { motivo: string; remedio: string }[]> = {};
+  for (const l of (data ?? []) as {
+    related_item_id: string;
+    motivo: string | null;
+    remedio: string | null;
+  }[]) {
+    (mapa[l.related_item_id] ??= []).push({
+      motivo: l.motivo ?? "",
+      // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
+      // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.
+      remedio: semHtml(l.remedio ?? ""),
+    });
+  }
+  return mapa;
 }
 
 /**

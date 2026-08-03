@@ -360,3 +360,61 @@ test("o grupo leva até 3 exemplos com link — para agir, não para listar tudo
   assert.equal(r.grupos[0].exemplos.length, 3);
   for (const e of r.grupos[0].exemplos) assert.match(e.permalink, /^https:\/\//);
 });
+
+// ---------------------------------------------------------------------------
+// A PALAVRA DO ML SUBSTITUI O NOSSO PALPITE (migração 052)
+// ---------------------------------------------------------------------------
+//
+// Conferida contra as 460 infrações reais em 03/08/2026, a regra de capa acerta
+// 29%: manda refotografar 373 anúncios que o ML nunca reclamou e aprova 166 que
+// ele pune. Onde ele falou, é ele que vale.
+
+const CAPA_RUIM = { estoque: 10, fotoCapaMaxSize: "900x1200" };
+
+test("onde o ML falou, o remédio DELE aparece — não o nosso texto", () => {
+  const r = pendenciasDaConta([an("MLB1", CAPA_RUIM)], 25, {
+    MLB1: [{ motivo: "A foto de capa não cumpre os requisitos.", remedio: "Corrija suas fotos: não mostra apenas uma unidade." }],
+  });
+  const p = r.itens.find((x) => x.tipo === "infracao-do-ml");
+  assert.ok(p, "a infração do ML não virou pendência");
+  assert.match(p!.oQueFazer, /não mostra apenas uma unidade/);
+  assert.match(p!.porque, /A foto de capa não cumpre os requisitos/);
+});
+
+test("onde o ML falou, a nossa regra de capa CALA — nada de cobrar duas vezes", () => {
+  const r = pendenciasDaConta([an("MLB1", CAPA_RUIM)], 25, {
+    MLB1: [{ motivo: "A foto de capa não cumpre os requisitos.", remedio: "Corrija suas fotos." }],
+  });
+  assert.equal(r.itens.filter((x) => x.tipo.startsWith("capa-")).length, 0);
+});
+
+test("onde o ML CALOU, a nossa regra fala — mas assumindo que é palpite", () => {
+  const r = pendenciasDaConta([an("MLB1", CAPA_RUIM)], 25, {});
+  const p = r.itens.find((x) => x.tipo.startsWith("capa-"));
+  assert.ok(p);
+  assert.match(p!.porque, /suspeita nossa/);
+  assert.match(p!.porque, /NÃO reclamou/);
+});
+
+test("anúncio cancelado mostra a ACUSAÇÃO, em vez de mandar procurar no painel", () => {
+  const r = pendenciasDaConta([an("MLB1", { subStatus: ["forbidden"], estoque: 5 })], 25, {
+    MLB1: [{ motivo: "Igual a outro cancelado por possível falsificação.", remedio: "" }],
+  });
+  const p = r.itens.find((x) => x.tipo === "bloqueado");
+  assert.match(p!.oQueFazer, /possível falsificação/);
+  assert.match(p!.oQueFazer, /NÃO republique/);
+});
+
+test("sem infração conhecida, o bloqueado mantém o texto antigo", () => {
+  const r = pendenciasDaConta([an("MLB1", { subStatus: ["forbidden"], estoque: 5 })], 25, {});
+  assert.match(r.itens.find((x) => x.tipo === "bloqueado")!.oQueFazer, /veja a acusação/);
+});
+
+test("infração sem remédio NÃO inventa instrução", () => {
+  const r = pendenciasDaConta([an("MLB1", { estoque: 3 })], 25, {
+    MLB1: [{ motivo: "", remedio: "" }],
+  });
+  const p = r.itens.find((x) => x.tipo === "infracao-do-ml");
+  assert.match(p!.oQueFazer, /não disse o que fazer/);
+  assert.match(p!.porque, /sem informar o motivo/);
+});
