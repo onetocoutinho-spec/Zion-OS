@@ -35,7 +35,8 @@ import type { PendenciaDaConta, Gravidade } from "@/modules/integration/domain/p
 
 const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
   bloqueado: "Bloqueados pelo Mercado Livre",
-  capa: "Foto de capa fora do padrão",
+  "capa-nao-quadrada": "Foto boa, só não é quadrada",
+  "capa-pequena": "Foto pequena demais",
   "sem-estoque": "Sem estoque",
   "em-revisao": "Aguardando correção",
   "sem-motivo": "Fora do ar sem motivo informado",
