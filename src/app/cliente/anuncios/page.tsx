@@ -28,6 +28,7 @@ import {
   agruparAnunciosPorProduto,
   filtrarPorTexto,
 } from "@/modules/portal/domain/anunciosPorProduto";
+import { notaExibivel, explicarVeredito } from "@/modules/portal/domain/notaExibivel";
 import {
   PublicarAnuncio,
   AvisoPublicado,
@@ -287,7 +288,15 @@ export default function ClienteAnuncios() {
                         {a.anuncio?.tituloOtimizado || a.produto || "Anúncio"}
                       </TdMain>
                       <Td>
-                        <Pill tone={toneScore(a.notaDiagnostico)}>{a.notaDiagnostico}/100</Pill>
+                        {/* `null` NUNCA vira 0 aqui: um traço diz "não medimos",
+                            e um `0/100` vermelho diz "medimos e é péssimo". */}
+                        {notaExibivel(a) === null ? (
+                          <span className="text-zinc-600" title="A IA não avaliou este anúncio">
+                            —
+                          </span>
+                        ) : (
+                          <Pill tone={toneScore(a.notaDiagnostico)}>{a.notaDiagnostico}/100</Pill>
+                        )}
                       </Td>
                       <Td className="max-w-56 truncate" >
                         {problema}
@@ -479,10 +488,10 @@ function DetalheAnuncio({ registro }: { registro: AnuncioGeradoRegistro }) {
           </ul>
         </div>
       )}
-      <p className="text-xs text-zinc-500">
-        Veredito da IA: <span className="text-zinc-300">{registro.vereditoA10}</span> · nota{" "}
-        {registro.notaDiagnostico}/100
-      </p>
+      {/* "aprovado · nota 0/100" era contradição: ninguém tira zero e é
+          aprovado. `nota_diagnostico` é NOT NULL default 0, então "não
+          avaliado" e "tirou zero" caíam no mesmo valor. */}
+      <p className="text-xs text-zinc-500">{explicarVeredito(registro)}</p>
     </div>
   );
 }

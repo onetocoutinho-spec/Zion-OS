@@ -218,6 +218,22 @@ export interface AnuncioGerado {
   sugestoes: string[];
   vereditoA10: "aprovado" | "reprovado";
   motivoVeredito: string;
+  /**
+   * A IA avaliou este anúncio?
+   *
+   * `false` nos anúncios IMPORTADOS do marketplace: eles já estavam no ar
+   * quando chegaram, e a esteira nunca os diagnosticou.
+   *
+   * Existe porque `nota_diagnostico` é `integer NOT NULL default 0` no banco,
+   * então "não avaliado" e "avaliado e tirou zero" caíam no MESMO valor — e a
+   * tela mostrava `0/100` em vermelho ao lado de "Veredito: aprovado", o que é
+   * uma contradição na cara de quem lê. Observado em 03/08/2026 em 790 dos 880
+   * anúncios da Chinelaria.
+   *
+   * Ausente nos registros antigos, e `undefined` NÃO significa avaliado — ver
+   * `foiAvaliadoPelaIA`.
+   */
+  avaliadoPelaIA?: boolean;
 }
 
 /**
