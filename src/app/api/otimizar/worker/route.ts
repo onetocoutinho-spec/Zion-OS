@@ -146,14 +146,25 @@ async function gerarAnuncio(
   );
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    const { json } = await chamarIAEstruturada({
+    const { json, uso } = await chamarIAEstruturada({
       system: montarSystemPromptEsteira(),
       mensagem,
       schema: ESQUEMA_ANUNCIO,
       maxTokens: 24000,
     });
     try {
-      return comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
+      const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
+      // O CUSTO VIAJA COM O ANÚNCIO.
+      //
+      // Vai no próprio JSONB porque é o único lugar em que ele sobrevive sem
+      // DDL — e sobreviver importa: em 03/08/2026 a pergunta "quanto custa um
+      // dia de operação" só tinha metade da resposta. A SAÍDA dava para medir
+      // no banco (4.198 bytes por anúncio); a ENTRADA era estimativa minha.
+      //
+      // `uso` é da TENTATIVA que deu certo. As tentativas que falharam no
+      // parse também custaram, e ficam de fora — a conta sai otimista, e isso
+      // está declarado aqui em vez de escondido.
+      return { ...gerado, uso: uso ?? null };
     } catch (e) {
       ultimoParse = e instanceof Error ? e.message : String(e);
     }
