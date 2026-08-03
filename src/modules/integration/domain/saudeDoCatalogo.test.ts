@@ -95,12 +95,20 @@ test("só `true` conta como do catálogo — `null` é não sei", () => {
 });
 
 test("só `false` conta como sem descrição — ausente é não sei", () => {
+  // OBSERVADO EM PRODUÇÃO em 02/08/2026: o ML recusou a lista de 31 campos, a
+  // leitura caiu para a lista mínima (que não pede `descriptions`), e a tela
+  // afirmou "781 sem descrição" sobre um campo que ninguém tinha lido.
+  //
+  // Este teste já existia e PASSAVA — o defeito não estava aqui, estava no
+  // mapeador, que transformava `undefined` em `[]` antes de chegar nesta conta.
+  // Contar certo não adianta quando o dado já chegou mentindo.
   const r = retratarCatalogo([
     a("A", { temDescricao: true }),
     a("B", { temDescricao: false }),
     a("C"),
+    a("D", { temDescricao: undefined }),
   ]);
-  assert.equal(r.semDescricao, 1);
+  assert.equal(r.semDescricao, 1, "ausência de leitura virou ausência de descrição");
 });
 
 test("o tipo de anúncio é contado — ele muda a comissão", () => {

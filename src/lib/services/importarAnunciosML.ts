@@ -201,8 +201,14 @@ export function avisoDaLeitura(l: LeituraRelatada | undefined): string | undefin
     );
   }
   if (l.filtroDeCamposRecusado) {
+    // O motivo do ML estava sendo guardado e NÃO mostrado: `erroDoMultiget` só
+    // aparecia quando `perdidos > 0`, e aqui a degradação funcionou (perdidos
+    // = 0). Resultado: a recusa foi anunciada sem dizer QUAL campo — que é a
+    // única informação que faltava.
     partes.push(
-      "O Mercado Livre recusou a lista de campos e a leitura seguiu pedindo o anúncio inteiro — os dados vieram, mas há um campo inválido no pedido."
+      "O Mercado Livre recusou a lista completa de campos; a leitura seguiu com a lista mínima." +
+        (l.erroDoMultiget ? ` Ele respondeu: ${l.erroDoMultiget}.` : "") +
+        " Saúde, vendas, catálogo e descrição NÃO foram lidos nesta execução."
     );
   }
   if (l.parede === "offset-1000") {
