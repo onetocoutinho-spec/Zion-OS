@@ -43,9 +43,17 @@ export function saudeMargem(
 /**
  * Score de IA por produto: usa a nota do anúncio gerado mais recente; se não
  * houver, cai para o score de qualidade da auditoria daquele produto.
+ *
+ * O parâmetro pede os TRÊS campos que ele lê, não o registro inteiro. Pedir o
+ * registro obrigava quem chama a carregar o JSONB da esteira — 76,6% do peso da
+ * linha — para calcular uma média de notas. Assinatura larga demais é o que faz
+ * uma tela de lista pagar o preço de uma tela de detalhe.
  */
 export function mapaScorePorProduto(
-  anuncios: AnuncioGeradoRegistro[],
+  anuncios: readonly Pick<
+    AnuncioGeradoRegistro,
+    "produtoId" | "notaDiagnostico" | "criadoEm"
+  >[],
   auditorias: AuditoriaAnuncio[]
 ): Map<string, number> {
   const mapa = new Map<string, number>();

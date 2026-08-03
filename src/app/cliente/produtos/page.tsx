@@ -37,7 +37,7 @@ import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
 import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
-import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
 import { diagnosticarInfracoes, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -55,8 +55,13 @@ export default function ClienteProdutos() {
   /** O que o chat desta tela pode responder e sobre quais produtos. */
   const chat = useContextoDaPergunta(clienteId);
   const { data: produtos, reload } = useLiveQuery(listarProdutos);
+  // O RESUMO, não o anúncio inteiro. Esta tela lê `mlItemId`, `produtoId`,
+  // `status`, `notaDiagnostico` e `criadoEm` — e nunca abre o JSONB da esteira,
+  // que é 76,6% do peso da linha (medido em 03/08/2026: 1.055 kB de 1.377 kB).
+  // Trazê-lo custava ~1 MB por carga e por `notificarMudanca()`, contra os 5 GB
+  // por mês do plano Free.
   const { data: anuncios } = useLiveQuery(
-    () => listarAnunciosGeradosDoCliente(clienteId),
+    () => listarResumoDeAnunciosDoCliente(clienteId),
     [clienteId]
   );
   const { data: auditorias } = useLiveQuery(listarAuditorias);

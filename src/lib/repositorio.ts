@@ -69,8 +69,30 @@ export function criarRepositorio<T extends { id: string }, Row>(
    * created_at, com registros importados no mesmo instante, deixa a ordem livre
    * entre páginas — a mesma linha podia vir duas vezes e outra, nenhuma.
    */
-  async function listar(filtro?: FiltroIgual<T>): Promise<T[]> {
+  /**
+   * `selecaoAlternativa` existe para NÃO trazer o que a tela não lê.
+   *
+   * Medido em 03/08/2026: em `anuncios_gerados`, a coluna `anuncio` (o JSONB da
+   * esteira) é **76,6% do peso da linha** — 1.055 kB de 1.377 kB nos 880
+   * anúncios desta base. A tela de Produtos lê `mlItemId`, `produtoId`,
+   * `status`, `notaDiagnostico` e `criadoEm`, e nunca abre o JSONB; mesmo assim
+   * ele atravessava a rede a cada carga e a cada `notificarMudanca()`.
+   *
+   * Isso não é gosto por otimização: o plano Free do Supabase dá 5 GB de
+   * tráfego por mês, e o desenho atual põe o NAVEGADOR como operário — cada
+   * clique em Importar puxa a tabela inteira. É o muro mais próximo dos seis
+   * que a análise de escala mapeou.
+   *
+   * Quem passa uma seleção estreita é obrigado a devolver um tipo que NÃO tem o
+   * campo omitido (ver `ResumoDoAnuncio`). O mapeador tolera coluna ausente por
+   * bom motivo, e essa tolerância transformaria um JSONB não pedido num objeto
+   * vazio silencioso — o defeito mudo de sempre, agora na leitura.
+   */
+  async function listar(filtro?: FiltroIgual<T>, selecaoAlternativa?: string): Promise<T[]> {
     if (!supabaseConfigurado) {
+      // No modo demo a seleção não se aplica: o armazenamento local guarda o
+      // objeto inteiro. Devolver a mais é seguro; o tipo de retorno de quem
+      // chamou é que restringe o uso.
       const itens = listAll<T>(colecao);
       return filtro ? itens.filter((i) => i[filtro.campoLocal] === filtro.valor) : itens;
     }
@@ -80,7 +102,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
     for (let pagina = 0; pagina < TETO_PAGINAS; pagina++) {
       let query = getSupabase()
         .from(tabela)
-        .select(selecao)
+        .select(selecaoAlternativa ?? selecao)
         .order(ordenarPor, { ascending: false })
         .order("id", { ascending: true })
         .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
