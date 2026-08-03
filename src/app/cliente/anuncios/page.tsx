@@ -7,6 +7,8 @@ import {
   ShieldCheck,
   XCircle,
   ChevronDown,
+  ChevronRight,
+  Search,
   Wand2,
   Sparkles,
   Download,
@@ -22,6 +24,10 @@ import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import {
+  agruparAnunciosPorProduto,
+  filtrarPorTexto,
+} from "@/modules/portal/domain/anunciosPorProduto";
 import {
   PublicarAnuncio,
   AvisoPublicado,
@@ -60,6 +66,8 @@ export default function ClienteAnuncios() {
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const [fStatus, setFStatus] = useState("Todos");
+  const [busca, setBusca] = useState("");
+  const [grupoAberto, setGrupoAberto] = useState<string | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msgEstado, setMsgEstado] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -85,10 +93,20 @@ export default function ClienteAnuncios() {
   }
 
   const filtrados = useMemo(() => {
-    return [...(anuncios ?? [])]
-      .filter((a) => fStatus === "Todos" || a.status === MAPA_FILTRO[fStatus])
-      .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1));
-  }, [anuncios, fStatus]);
+    return filtrarPorTexto(
+      [...(anuncios ?? [])]
+        .filter((a) => fStatus === "Todos" || a.status === MAPA_FILTRO[fStatus])
+        .sort((a, b) => (a.criadoEm < b.criadoEm ? 1 : -1)),
+      busca
+    );
+  }, [anuncios, fStatus, busca]);
+
+  // 880 linhas viram ~80. No modelo User Products do ML cada TAMANHO é um MLB
+  // próprio, e a importação grava um anúncio por MLB de propósito — é assim que
+  // o ERP casa SKU com anúncio. Mas a lojista pensa em "Babuche Molekinha
+  // 2591.103", um produto com vários tamanhos, que é como o painel do próprio
+  // ML mostra. A separação continua no banco; o agrupamento é de LEITURA.
+  const grupos = useMemo(() => agruparAnunciosPorProduto(filtrados), [filtrados]);
 
   // Pausar tira da vitrine e MANTÉM o histórico; encerrar é definitivo. São
   // ações de consequências muito diferentes, e por isso a mensagem diz o que
@@ -194,6 +212,22 @@ export default function ClienteAnuncios() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
+            {/* 880 linhas sem como achar uma. A busca casa nome do produto,
+                título e MLB — os três jeitos pelos quais ela procura: pelo
+                modelo ("2591.103"), pelo nome, ou colando o MLB do painel. */}
+            <div className="relative">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+              />
+              <input
+                type="search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por produto, título ou MLB…"
+                className="w-64 rounded-lg border border-white/10 bg-white/[0.03] py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500/40 focus:outline-none"
+              />
+            </div>
             <FilterSelect label="Status" value={fStatus} options={STATUS_FILTRO} onChange={setFStatus} />
             <span className="ml-auto text-xs text-zinc-500">
               {filtrados.length} de {total} anúncios
@@ -208,10 +242,41 @@ export default function ClienteAnuncios() {
             //                   não constância. Decisão do dono do produto.
             headers={["Anúncio", "Score", "Problema principal", "Status", "Ação"]}
           >
-            {filtrados.length === 0 ? (
+            {grupos.length === 0 ? (
               <EmptyRow colSpan={5} />
             ) : (
-              filtrados.map((a) => {
+              grupos.flatMap((g) => {
+                // Grupo de UM não vira linha-pai: seria um clique a mais para
+                // ver o que já cabia na tela.
+                const unico = g.anuncios.length === 1;
+                const abertoGrupo = grupoAberto === g.chave;
+                const cabecalho = unico ? null : (
+                  <tr
+                    key={`g-${g.chave}`}
+                    className="cursor-pointer bg-white/[0.02] hover:bg-white/[0.04]"
+                    onClick={() => setGrupoAberto(abertoGrupo ? null : g.chave)}
+                  >
+                    <TdMain sub={`${g.anuncios.length} anúncios`}>
+                      <span className="inline-flex items-center gap-1.5">
+                        {abertoGrupo ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {g.nome}
+                      </span>
+                    </TdMain>
+                    <Td>—</Td>
+                    <Td>—</Td>
+                    <Td>
+                      {/* O estado do GRUPO em uma linha: é o que ela quer saber
+                          antes de abrir. "12 no ar · 7 fora" decide se vale. */}
+                      <span className="flex flex-wrap gap-1">
+                        {g.noAr > 0 && <Pill tone="green">{g.noAr} no ar</Pill>}
+                        {g.foraDoAr > 0 && <Pill tone="yellow">{g.foraDoAr} fora do ar</Pill>}
+                        {g.semEstado > 0 && <Pill tone="gray">{g.semEstado} sem estado</Pill>}
+                      </span>
+                    </Td>
+                    <Td>—</Td>
+                  </tr>
+                );
+                const linhas = !unico && !abertoGrupo ? [] : g.anuncios.map((a) => {
                 const problema = a.anuncio?.pendencias?.[0] ?? "—";
                 const podeAprovar = a.vereditoA10 === "aprovado" && a.qtdPendencias === 0;
                 const expandido = aberto === a.id;
@@ -343,6 +408,8 @@ export default function ClienteAnuncios() {
                     )}
                   </Fragment>
                 );
+                });
+                return cabecalho ? [cabecalho, ...linhas] : linhas;
               })
             )}
           </Table>
