@@ -35,6 +35,10 @@ import {
   type RetratoDoCatalogo,
 } from "../../modules/integration/domain/saudeDoCatalogo";
 import {
+  pendenciasDaConta,
+  type ResumoDePendencias,
+} from "../../modules/integration/domain/pendenciasDaConta";
+import {
   abaDesatualizada,
   AVISO_ABA_DESATUALIZADA,
 } from "../../modules/integration/domain/abaDesatualizada";
@@ -154,6 +158,14 @@ export interface MedicaoDaFicha {
    * URL não funciona: `-F` é a maior variante numa imagem e não é em outra.
    */
   capas: ResumoDasCapas;
+  /**
+   * O que o Mercado Livre está cobrando, JÁ EM ORDEM DE FAZER.
+   *
+   * Os agregados (`capas`, `motivosDeNaoEstarNoAr`) dizem o tamanho do
+   * problema; estes dizem por onde começar. 535 fotos é trabalho de semanas;
+   * os vinte que concentram estoque são uma tarde.
+   */
+  pendenciasDaConta: ResumoDePendencias;
   /**
    * O que os campos novos do ML dizem sobre o catálogo.
    *
@@ -359,6 +371,7 @@ export function medirFichas(
     exigenciasNaoAtendidas: exigenciasNaoAtendidas(anuncios, obrigatorios),
     categoriasComExigencias: Object.values(obrigatorios).filter((v) => v.length > 0).length,
     capas: resumirCapas(anuncios),
+    pendenciasDaConta: pendenciasDaConta(anuncios),
     retrato: retratarCatalogo(anuncios),
     anunciosForaDoArConferidos: anuncios.filter(
       (a) =>

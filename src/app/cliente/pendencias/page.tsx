@@ -8,6 +8,7 @@ import { FilterSelect } from "@/components/ui/FilterSelect";
 import { StatCard } from "@/components/ui/StatCard";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { PendenciasDaConta } from "@/components/client-portal/PendenciasDaConta";
 import { useLiveQuery } from "@/lib/hooks";
 import { EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
@@ -20,7 +21,7 @@ function statusDe(p: Pendencia) {
 }
 
 export default function ClientePendencias() {
-  const { clienteId } = useClientPortal();
+  const { clienteId, nome } = useClientPortal();
   // `estado` e não `data ?? []`: esta tela mostrava "Nenhuma pendência 🎉 — Você
   // está em dia!" em TRÊS situações diferentes — sem pendências, carregando, e
   // quando a consulta falhava. As duas últimas são mentiras, e a última é uma
@@ -46,8 +47,15 @@ export default function ClientePendencias() {
     <>
       <PageHeader
         titulo="Pendências"
-        subtitulo="O que ainda falta para seus anúncios avançarem."
+        subtitulo="O que ainda falta — nos seus anúncios e na sua conta do Mercado Livre."
       />
+
+      {/* A conta do Mercado Livre vem PRIMEIRO, e fica acima da tabela.
+          A tabela abaixo lista o que a esteira do Zion ainda não fechou; esta
+          seção lista o que o próprio Mercado Livre está cobrando — e é a que
+          pode custar a conta dela. Para a lojista é tudo "o que precisa de
+          mim", então mora na mesma tela; a ordem é que diz o que dói mais. */}
+      <PendenciasDaConta clienteId={clienteId} cliente={nome} />
 
       {estado === "carregando" ? (
         // Esqueleto de tabela e não "está em dia": a geometria do que vem, sem
