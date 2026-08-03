@@ -55,6 +55,8 @@ export interface PendenciaDaConta {
   /** O fato medido que sustenta a linha. */
   porque: string;
   estoque: number;
+  /** O produto a que este anúncio pertence — é por ele que a tela agrupa. */
+  familia: string;
 }
 
 export interface AnuncioParaPendencia {
@@ -69,8 +71,32 @@ export interface AnuncioParaPendencia {
   familia?: string;
 }
 
+/**
+ * Uma pendência POR PRODUTO, não por variação.
+ *
+ * O painel do próprio Mercado Livre mostra assim — "Chinelo Havaianas Slim
+ * Liso · Perdendo exposição em 19 variações" — e a lojista disse que faz mais
+ * sentido. 237 linhas viram ~20.
+ *
+ * O estoque é SOMADO: são 19 anúncios do mesmo sapato, e o que decide a ordem
+ * é o total parado, não o de um tamanho.
+ */
+export interface GrupoDePendencia {
+  familia: string;
+  tipo: PendenciaDaConta["tipo"];
+  gravidade: Gravidade;
+  quantos: number;
+  estoque: number;
+  oQueFazer: string;
+  porque: string;
+  /** Alguns MLBs, para ela abrir e ver. Não todos: a lista é para agir. */
+  exemplos: { mlb: string; permalink: string }[];
+}
+
 export interface ResumoDePendencias {
   itens: PendenciaDaConta[];
+  /** As mesmas pendências, uma linha por produto. É o que a tela usa. */
+  grupos: GrupoDePendencia[];
   /** Quantas existem de cada tipo — a lista pode ser recortada, o total não. */
   totais: { tipo: PendenciaDaConta["tipo"]; quantas: number }[];
   /** Estoque parado atrás das pendências de receita. */
@@ -132,6 +158,7 @@ export function pendenciasDaConta(
       permalink: txt(a.permalink),
       titulo: txt(a.titulo) || txt(a.mlb) || "(anúncio sem título)",
       estoque: Number(a.estoque) || 0,
+      familia: txt(a.familia) || txt(a.titulo) || txt(a.mlb),
     };
 
     // 1) CONTA — bloqueio é política, e reincidência custa a conta inteira.
@@ -244,8 +271,37 @@ export function pendenciasDaConta(
     return n <= limitePorTipo;
   });
 
+  // O agrupamento sai de TODAS, não das 25 mostradas: um grupo que diz "19
+  // variações" tem que contar as 19, mesmo que a lista recortada mostre 3.
+  const porGrupo = new Map<string, GrupoDePendencia>();
+  for (const p of todas) {
+    const chave = `${p.tipo}|${p.familia}`;
+    const g = porGrupo.get(chave);
+    if (!g) {
+      porGrupo.set(chave, {
+        familia: p.familia,
+        tipo: p.tipo,
+        gravidade: p.gravidade,
+        quantos: 1,
+        estoque: p.estoque,
+        oQueFazer: p.oQueFazer,
+        porque: p.porque,
+        exemplos: [{ mlb: p.mlb, permalink: p.permalink }],
+      });
+      continue;
+    }
+    g.quantos++;
+    g.estoque += p.estoque;
+    if (g.exemplos.length < 3) g.exemplos.push({ mlb: p.mlb, permalink: p.permalink });
+  }
+  const grupos = [...porGrupo.values()].sort(
+    (x, y) => PESO[x.gravidade] - PESO[y.gravidade] || y.estoque - x.estoque ||
+      x.familia.localeCompare(y.familia)
+  );
+
   return {
     itens,
+    grupos,
     totais: [...contagem.entries()]
       .map(([tipo, quantas]) => ({ tipo, quantas }))
       .sort((a, b) => b.quantas - a.quantas),

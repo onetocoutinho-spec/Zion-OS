@@ -35,19 +35,17 @@ import {
   ShieldAlert,
   TrendingDown,
   Info,
-  Crop,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { pendenciasDaConta } from "@/modules/integration/domain/pendenciasDaConta";
 import { useLiveQuery } from "@/lib/hooks";
-import {
-  quadrarCapaNoML,
-  explicarCapaQuadrada,
-  CapaNaoAplicavelError,
-} from "@/lib/services/quadrarCapaML";
-import type { PendenciaDaConta, Gravidade } from "@/modules/integration/domain/pendenciasDaConta";
+import type {
+  PendenciaDaConta,
+  GrupoDePendencia,
+  Gravidade,
+} from "@/modules/integration/domain/pendenciasDaConta";
 
 const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
   bloqueado: "Bloqueados pelo Mercado Livre",
@@ -81,6 +79,7 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{
     itens: PendenciaDaConta[];
+    grupos: GrupoDePendencia[];
     totais: { tipo: PendenciaDaConta["tipo"]; quantas: number }[];
     estoqueTravado: number;
     lidos: number;
@@ -148,88 +147,16 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
 
   // Um anúncio por vez, e o resultado fica ao lado da linha que o produziu.
   // Uma mensagem no topo da tela, longe do item, não diz QUAL foi ajustado.
-  const [ajustando, setAjustando] = useState<string | null>(null);
-  const [ajustes, setAjustes] = useState<Record<string, { ok: boolean; texto: string }>>({});
-
-  async function quadrar(mlb: string) {
-    setAjustando(mlb);
-    try {
-      const r = await quadrarCapaNoML(clienteId, mlb);
-      setAjustes((a) => ({ ...a, [mlb]: { ok: r.capaTrocada, texto: explicarCapaQuadrada(r) } }));
-    } catch (e) {
-      // "Esta foto não serve" é informação sobre o anúncio; "falhou" é problema
-      // nosso. Misturar as duas faria ela tentar de novo o que nunca funciona.
-      const naoAplicavel = e instanceof CapaNaoAplicavelError;
-      setAjustes((a) => ({
-        ...a,
-        [mlb]: {
-          ok: false,
-          texto: e instanceof Error ? e.message : "Falha ao ajustar a foto.",
-        },
-      }));
-      if (!naoAplicavel) console.error("[quadrar-capa]", e);
-    } finally {
-      setAjustando(null);
-    }
-  }
-
-  // ===========================================================================
-  // O LOTE
-  // ===========================================================================
+  // O AJUSTE DE CAPA VIVIA AQUI, e foi desligado em 03/08/2026.
   //
-  // Provado num anúncio real em 03/08/2026: `960x1200 -> 1200x1200`, e as 12
-  // fotos originais continuaram no anúncio. Só DEPOIS disso o lote existe.
+  // Ele rodava, trocava a capa, e o Mercado Livre reprocessava a imagem
+  // cortando a faixa branca: enviamos 1200x1200 e ele guardou 1062x1200. Pior:
+  // a regra dele, lida no painel, é "tamanho mínimo, POSIÇÃO e PROPORÇÃO do
+  // produto na foto" — a faixa branca deixa o produto MENOR no quadro,
+  // piorando o critério cobrado. A premissa "o ML quer quadrada" era minha.
   //
-  // Quatro proteções, e nenhuma é zelo:
-  //
-  //  · SEQUENCIAL, com pausa entre um e outro. Paralelo aqui é um pico de
-  //    escrita na conta dela, e o ML recusa — trocaríamos foto ajustada por
-  //    lote recusado.
-  //  · PARA SOZINHO em 3 falhas seguidas. Uma falha é a foto; três seguidas é
-  //    outra coisa, e insistir 300 vezes contra um problema sistêmico é
-  //    estragar em escala.
-  //  · PARA quando ela manda. O botão fica disponível durante a execução.
-  //  · Só age no que está NA LISTA. A tela mostra 25 de 341; o lote ajusta
-  //    esses 25 — prometer "todos" e fazer 25 seria a mentira do recorte outra
-  //    vez, agora com escrita.
-  const [lote, setLote] = useState<{ feitos: number; total: number; parar: boolean } | null>(null);
-
-  async function ajustarEmLote(mlbs: string[]) {
-    setLote({ feitos: 0, total: mlbs.length, parar: false });
-    let seguidas = 0;
-    for (let i = 0; i < mlbs.length; i++) {
-      // `parar` é lido do estado a cada volta: o clique dela precisa valer no
-      // meio do laço, não só no fim.
-      let cancelado = false;
-      setLote((l) => {
-        cancelado = l?.parar ?? false;
-        return l;
-      });
-      await new Promise((r) => setTimeout(r, 0));
-      if (cancelado) break;
-
-      const mlb = mlbs[i];
-      setAjustando(mlb);
-      try {
-        const r = await quadrarCapaNoML(clienteId, mlb);
-        // `ok` segue a CAPA, não o fato de a chamada ter respondido. Verde
-        // para "enviei e não mudou nada" é a mentira que a lojista pegou.
-        setAjustes((a) => ({ ...a, [mlb]: { ok: r.capaTrocada, texto: explicarCapaQuadrada(r) } }));
-        seguidas = 0;
-      } catch (e) {
-        const texto = e instanceof Error ? e.message : "Falha ao ajustar a foto.";
-        setAjustes((a) => ({ ...a, [mlb]: { ok: false, texto } }));
-        // "Esta foto não serve" não conta como falha do lote: é resposta sobre
-        // o anúncio, não sintoma de problema sistêmico.
-        if (!(e instanceof CapaNaoAplicavelError)) seguidas++;
-      }
-      setLote((l) => (l ? { ...l, feitos: i + 1 } : l));
-      if (seguidas >= 3) break;
-      await new Promise((r) => setTimeout(r, 700));
-    }
-    setAjustando(null);
-    setLote(null);
-  }
+  // `quadrarCapa`, a rota e os 19 testes continuam no repositório: a medição
+  // está certa e a rota detecta o reprocessamento. O que falta não é código.
 
   const grupos: Gravidade[] = ["conta", "receita", "atencao"];
 
@@ -287,12 +214,12 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
           </p>
 
           {grupos.map((g) => {
-            const doGrupo = mostrando.itens.filter((p) => p.gravidade === g);
+            // UMA LINHA POR PRODUTO, como o painel do próprio ML mostra
+            // ("em 19 variações"). 237 linhas viram ~20, e o estoque somado é
+            // o que decide a ordem.
+            const doGrupo = mostrando.grupos.filter((p) => p.gravidade === g);
             if (doGrupo.length === 0) return null;
             const { caixa, icone: Icone, texto } = TOM[g];
-            const total = mostrando.totais
-              .filter((t) => doGrupo.some((p) => p.tipo === t.tipo))
-              .reduce((n, t) => n + t.quantas, 0);
             return (
               <div key={g} className={`rounded-lg border p-3 ${caixa}`}>
                 <p className={`flex items-center gap-1.5 text-sm font-medium ${texto}`}>
@@ -311,66 +238,33 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                     dele. Religar antes de saber seria repetir o estrago. */}
                 <ul className="mt-2 space-y-2">
                   {doGrupo.map((p) => (
-                    <li key={`${p.tipo}-${p.mlb}`} className="text-sm">
+                    <li key={`${p.tipo}-${p.familia}`} className="text-sm">
                       <div className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-medium text-zinc-200">{p.titulo}</span>
-                        {p.estoque > 0 && (
-                          <span className="text-xs text-zinc-500">{p.estoque} em estoque</span>
-                        )}
-                        <a
-                          href={p.permalink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-violet-300 underline hover:text-violet-200"
-                        >
-                          <ExternalLink size={11} /> abrir no ML
-                        </a>
+                        <span className="font-medium text-zinc-200">{p.familia}</span>
+                        <span className="text-xs text-zinc-500">
+                          {p.quantos > 1 ? `em ${p.quantos} variações` : "1 anúncio"}
+                          {p.estoque > 0 ? ` · ${p.estoque} em estoque` : ""}
+                        </span>
+                        {p.exemplos
+                          .filter((e) => e.permalink)
+                          .slice(0, 2)
+                          .map((e) => (
+                            <a
+                              key={e.mlb}
+                              href={e.permalink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-violet-300 underline hover:text-violet-200"
+                            >
+                              <ExternalLink size={11} /> {e.mlb}
+                            </a>
+                          ))}
                       </div>
                       <p className="text-xs text-zinc-400">{p.oQueFazer}</p>
                       <p className="text-xs text-zinc-600">{p.porque}</p>
-                      {/* O botão só existe onde o conserto é MECÂNICO. Em
-                          `capa-pequena` não há pixel para recuperar, e oferecer
-                          o botão ali prometeria o que não se cumpre. */}
-                      {/* DESLIGADO em 03/08/2026. O ajuste rodava, trocava a
-                          capa, e o Mercado Livre reprocessava a imagem cortando
-                          a faixa branca — cada clique acrescentava uma foto ao
-                          anúncio sem consertar nada. Deixar o botão de pé seria
-                          oferecer um estrago.
-
-                          O código fica: a medição está certa e a rota agora sabe
-                          detectar o reprocessamento. O que falta é descobrir o
-                          que o ML realmente exige, e isso o painel dele diz. */}
-                      {false && p.tipo === "capa-nao-quadrada" && !ajustes[p.mlb]?.ok && (
-                        <Button
-                          variant="ghost"
-                          className="mt-1 px-2 py-1 text-xs"
-                          disabled={ajustando === p.mlb}
-                          onClick={() => quadrar(p.mlb)}
-                          title="Sobe uma versão quadrada desta foto e a coloca como capa. As fotos atuais continuam no anúncio."
-                        >
-                          <Crop size={12} />
-                          {ajustando === p.mlb ? "Ajustando…" : "Deixar quadrada"}
-                        </Button>
-                      )}
-                      {ajustes[p.mlb] && (
-                        <p
-                          className={`mt-1 text-xs ${
-                            ajustes[p.mlb].ok ? "text-emerald-400" : "text-amber-400"
-                          }`}
-                        >
-                          {ajustes[p.mlb].texto}
-                        </p>
-                      )}
                     </li>
                   ))}
                 </ul>
-                {/* O recorte é DITO. Mostrar 25 de 535 é útil; deixar parecer
-                    que são 25 seria a mesma mentira do agregado sem ordem. */}
-                {total > doGrupo.length && (
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Mostrando {doGrupo.length} de {total}. Resolva estes e confira de novo.
-                  </p>
-                )}
               </div>
             );
           })}

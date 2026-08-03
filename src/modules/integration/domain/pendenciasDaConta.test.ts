@@ -298,3 +298,65 @@ test("irmão FORA do ar não entra na contagem — ele já não é risco", () =>
   ]);
   assert.doesNotMatch(r.itens.find((p) => p.tipo === "bloqueado")!.oQueFazer, /mesmo produto/i);
 });
+
+// ---------------------------------------------------------------------------
+// E1 — UMA LINHA POR PRODUTO, como o painel do ML mostra
+// ---------------------------------------------------------------------------
+
+test("variações do mesmo produto viram UM grupo, com o estoque SOMADO", () => {
+  // O painel do ML mostra "Chinelo Havaianas Slim Liso · em 19 variações", e a
+  // lojista disse que faz mais sentido. O que decide a ordem é o total parado,
+  // não o de um tamanho.
+  const r = pendenciasDaConta([
+    an("A", { estoque: 100, fotoCapaMaxSize: "165x93", familia: "Havaianas Slim" }),
+    an("B", { estoque: 72, fotoCapaMaxSize: "165x93", familia: "Havaianas Slim" }),
+  ]);
+  assert.equal(r.grupos.length, 1);
+  assert.equal(r.grupos[0].quantos, 2);
+  assert.equal(r.grupos[0].estoque, 172);
+});
+
+test("o grupo conta TODAS, mesmo quando a lista é recortada", () => {
+  // Um grupo que diz "40 variações" tem que contar as 40, mesmo que `itens`
+  // mostre 10. Contar só o recorte seria a mentira do agregado outra vez.
+  const muitos = Array.from({ length: 40 }, (_, i) =>
+    an(`MLB${i}`, { estoque: 1, fotoCapaMaxSize: "165x93", familia: "Mesmo Produto" })
+  );
+  const r = pendenciasDaConta(muitos, 10);
+  assert.equal(r.itens.length, 10);
+  assert.equal(r.grupos.length, 1);
+  assert.equal(r.grupos[0].quantos, 40);
+  assert.equal(r.grupos[0].estoque, 40);
+});
+
+test("problemas DIFERENTES do mesmo produto ficam em grupos separados", () => {
+  // "capa ruim" e "sem estoque" pedem ações diferentes — juntar num grupo só
+  // esconderia uma das duas.
+  const r = pendenciasDaConta([
+    an("A", { fotoCapaMaxSize: "165x93", familia: "X" }),
+    an("B", { subStatus: ["out_of_stock"], familia: "X" }),
+  ]);
+  assert.equal(r.grupos.length, 2);
+  assert.deepEqual(r.grupos.map((g) => g.tipo).sort(), ["capa-pequena", "sem-estoque"]);
+});
+
+test("os grupos herdam a ordem: conta antes de receita antes de atenção", () => {
+  const r = pendenciasDaConta([
+    an("REV", { estoque: 900, subStatus: ["waiting_for_patch"], familia: "A" }),
+    an("BLOQ", { estoque: 1, subStatus: ["forbidden"], familia: "B" }),
+    an("CAPA", { estoque: 50, fotoCapaMaxSize: "165x93", familia: "C" }),
+  ]);
+  assert.deepEqual(
+    r.grupos.map((g) => g.gravidade),
+    ["conta", "receita", "atencao"]
+  );
+});
+
+test("o grupo leva até 3 exemplos com link — para agir, não para listar tudo", () => {
+  const muitos = Array.from({ length: 10 }, (_, i) =>
+    an(`MLB${i}`, { fotoCapaMaxSize: "165x93", familia: "X" })
+  );
+  const r = pendenciasDaConta(muitos);
+  assert.equal(r.grupos[0].exemplos.length, 3);
+  for (const e of r.grupos[0].exemplos) assert.match(e.permalink, /^https:\/\//);
+});

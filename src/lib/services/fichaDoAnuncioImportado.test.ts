@@ -285,7 +285,7 @@ test("lista vazia não divide por zero", () => {
     categoriasComExigencias: 0,
     anunciosForaDoArConferidos: 0,
     capas: { medidas: 0, semTamanho: 0, noPadrao: 0, foraDoPadrao: 0, piores: [] },
-    pendenciasDaConta: { itens: [], totais: [], estoqueTravado: 0 },
+    pendenciasDaConta: { itens: [], grupos: [], totais: [], estoqueTravado: 0 },
     retrato: {
       comSaude: 0,
       saudeMedia: 0,
