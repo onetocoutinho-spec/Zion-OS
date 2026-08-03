@@ -268,14 +268,25 @@ export function ChatDaOperacao({
   /**
    * Modo conversa: o laço com ferramentas, que guarda o fio e conduz.
    *
-   * Fica DESLIGADO por padrão porque custa de 6 a 19 vezes mais que a rota de
-   * intenção (medido: ~2.600 tokens por conversa contra ~400 por pergunta), e a
-   * maioria das perguntas é uma só — "quantos sem custo?" não precisa de fio.
+   * Fica DESLIGADO por padrão porque custa várias vezes mais que a rota de
+   * intenção, e a maioria das perguntas é uma só — "quantos sem custo?" não
+   * precisa de fio.
+   *
+   * O NÚMERO DEIXOU DE SER ESCRITO AQUI, e o motivo é o defeito que a AUD-001
+   * caçou o dia inteiro: o custo estava documentado em DOIS lugares com valores
+   * diferentes ("~2.600 tokens" neste arquivo, "~1.800" na rota), e nenhum dos
+   * dois era conferível. Duas fontes para o mesmo fato é a forma exata do erro.
+   *
+   * O provedor já devolve `usageMetadata.totalTokenCount` a cada turno e nós
+   * jogávamos fora. Agora ele é somado e MOSTRADO — o custo do modo conversa
+   * passa a ser medido nesta conta, nesta conversa, em vez de afirmado.
    *
    * Os dois vivem lado a lado de propósito. Trocar um pelo outro deixaria a
    * operação sem base de comparação e sem saída se o custo doer.
    */
   const [conversando, setConversando] = useState(false);
+  /** Tokens gastos no fio atual — medidos, não estimados. Zera ao trocar de modo. */
+  const [tokensDoFio, setTokensDoFio] = useState(0);
   /** O fio. Vive aqui, não no servidor: fechar a aba encerra a conversa. */
   const [falas, setFalas] = useState<readonly Fala[]>([]);
   /**
@@ -426,6 +437,9 @@ export function ChatDaOperacao({
           // malformado ou de outro cliente, `garantirConversa` criou outro — e é
           // esse que vale daqui em diante.
           if (r.conversaId) guardarFio(r.conversaId);
+          // O custo REAL do turno, do provedor. Somado no fio porque é o fio
+          // que a lojista paga — um turno isolado não diz o que a conversa custa.
+          if (typeof r.tokens === "number") setTokensDoFio((t) => t + r.tokens);
           setFalas(r.falas);
           setTurnos((t) =>
             t.map((turno, i) =>
@@ -613,6 +627,7 @@ export function ChatDaOperacao({
         onClick={() => {
           setConversando((v) => !v);
           setFalas([]);
+          setTokensDoFio(0);
           // Trocar de modo encerra o fio dos DOIS lados: o histórico do modelo
           // e a conversa ativa no banco. Religar não cria nada — quem cria é o
           // primeiro turno seguinte, e aí o servidor devolve o id novo.
@@ -623,7 +638,9 @@ export function ChatDaOperacao({
       >
         <MessagesSquare size={12} />
         {conversando
-          ? "Modo conversa ligado — guarda o fio e conduz. Desligar"
+          ? `Modo conversa ligado — guarda o fio e conduz${
+              tokensDoFio > 0 ? ` · ${tokensDoFio.toLocaleString("pt-BR")} tokens neste fio` : ""
+            }. Desligar`
           : "Ligar modo conversa (mais capaz, mais caro)"}
       </button>
 

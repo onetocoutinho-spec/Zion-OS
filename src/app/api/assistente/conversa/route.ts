@@ -4,8 +4,15 @@
 // A diferença para `/api/assistente` (a rota de intenção) não é de tamanho, é
 // de natureza. Lá o modelo classifica UMA frase numa lista fechada. Aqui ele
 // conversa, guarda o fio e encadeia passos. As duas vivem lado a lado de
-// propósito: a de intenção custa ~400 tokens e resolve o caso comum; esta
-// custa ~1.800 e resolve o que a outra não alcança.
+// propósito: a de intenção resolve o caso comum; esta resolve o que a outra não
+// alcança, e custa várias vezes mais.
+//
+// O NÚMERO SAIU DAQUI. Ele estava escrito em dois lugares com valores
+// diferentes — "~1.800 tokens" nesta linha e "~2.600" no componente da tela —
+// e nenhum dos dois era conferível. Duas fontes para o mesmo fato é o defeito
+// que a AUD-001 caçou o dia inteiro; documentar o custo em prosa foi como ele
+// entrou aqui. O provedor devolve `usageMetadata.totalTokenCount` a cada turno,
+// esta rota já o soma, e agora a tela MOSTRA o total do fio.
 //
 // O QUE NÃO MUDA:
 //
