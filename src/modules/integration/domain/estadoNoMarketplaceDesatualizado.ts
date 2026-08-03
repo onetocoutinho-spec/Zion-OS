@@ -27,17 +27,29 @@ export interface AnuncioConhecido {
   id: string;
   mlItemId?: string | null;
   statusMarketplace?: string | null;
+  subStatusMarketplace?: string[] | null;
+  fotoCapaMaxSize?: string | null;
+  estoqueMarketplace?: number | null;
 }
 
 export interface EstadoLidoNoMarketplace {
   mlb: string;
   status: string;
+  /** POR QUE não está no ar. Migração 051 deu onde guardar. */
+  subStatus?: string[];
+  /** O tamanho real da capa, como o ML declara. */
+  fotoCapaMaxSize?: string;
+  /** O estoque NO MARKETPLACE — é ele que ordena o trabalho. */
+  estoque?: number;
 }
 
 export interface AtualizacaoDeEstado {
   id: string;
   statusMarketplace: string;
   statusMarketplaceEm: string;
+  subStatusMarketplace: string[];
+  fotoCapaMaxSize: string | null;
+  estoqueMarketplace: number | null;
 }
 
 /**
@@ -52,13 +64,13 @@ export function estadosDesatualizados(
   lidos: readonly EstadoLidoNoMarketplace[],
   lidoEm: string
 ): AtualizacaoDeEstado[] {
-  const porMlb = new Map<string, string>();
+  const porMlb = new Map<string, EstadoLidoNoMarketplace>();
   for (const l of lidos) {
     const mlb = (l.mlb ?? "").trim();
     const status = (l.status ?? "").trim();
     // Estado em branco não vira atualização: o ML não disse, e sobrescrever o
     // que sabíamos com "não sabemos" perderia informação.
-    if (mlb && status && !porMlb.has(mlb)) porMlb.set(mlb, status);
+    if (mlb && status && !porMlb.has(mlb)) porMlb.set(mlb, l);
   }
 
   const saida: AtualizacaoDeEstado[] = [];
@@ -67,8 +79,30 @@ export function estadosDesatualizados(
     if (!mlb) continue; // anúncio que nunca foi ao ar não tem estado lá
     const lido = porMlb.get(mlb);
     if (!lido) continue; // o ML não devolveu este anúncio nesta leitura
-    if ((a.statusMarketplace ?? "").trim() === lido) continue; // nada mudou
-    saida.push({ id: a.id, statusMarketplace: lido, statusMarketplaceEm: lidoEm });
+
+    // Agora são QUATRO fatos, não um. Qualquer um diferente do gravado é
+    // motivo de escrita — e os quatro vão juntos, porque saem da mesma leitura
+    // e a data (`status_marketplace_em`) descreve todos.
+    const status = (lido.status ?? "").trim();
+    const subStatus = [...(lido.subStatus ?? [])].sort();
+    const capa = (lido.fotoCapaMaxSize ?? "").trim();
+    const estoque = typeof lido.estoque === "number" ? lido.estoque : null;
+
+    const mesmoStatus = (a.statusMarketplace ?? "").trim() === status;
+    const mesmoSub =
+      JSON.stringify([...(a.subStatusMarketplace ?? [])].sort()) === JSON.stringify(subStatus);
+    const mesmaCapa = (a.fotoCapaMaxSize ?? "").trim() === capa;
+    const mesmoEstoque = (a.estoqueMarketplace ?? null) === estoque;
+    if (mesmoStatus && mesmoSub && mesmaCapa && mesmoEstoque) continue;
+
+    saida.push({
+      id: a.id,
+      statusMarketplace: status,
+      statusMarketplaceEm: lidoEm,
+      subStatusMarketplace: subStatus,
+      fotoCapaMaxSize: capa || null,
+      estoqueMarketplace: estoque,
+    });
   }
   return saida;
 }

@@ -157,7 +157,14 @@ export async function marcarAnuncioPublicado(
  * Zion) não é tocado.
  */
 export async function atualizarEstadoNoMarketplaceBulk(
-  atualizacoes: { id: string; statusMarketplace: string; statusMarketplaceEm: string }[]
+  atualizacoes: {
+    id: string;
+    statusMarketplace: string;
+    statusMarketplaceEm: string;
+    subStatusMarketplace?: string[];
+    fotoCapaMaxSize?: string | null;
+    estoqueMarketplace?: number | null;
+  }[]
 ): Promise<{ atualizados: number; falharam: number }> {
   if (atualizacoes.length === 0) return { atualizados: 0, falharam: 0 };
 
