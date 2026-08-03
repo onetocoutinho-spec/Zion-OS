@@ -180,6 +180,24 @@ export async function POST(request: Request) {
     const capaAgora = (depois?.pictures ?? [])[0]?.id?.trim() ?? "";
     const trocou = capaAgora === novaFotoId;
 
+    // 7) E O TAMANHO? Trocar a capa não basta: o Mercado Livre REPROCESSA a
+    //    imagem no upload, e apara borda branca uniforme. Observado em
+    //    03/08/2026: subimos 1200x1200 com faixa branca, a capa trocou (verde),
+    //    e a releitura seguinte mediu 995x1200 — a faixa tinha sido cortada.
+    //
+    //    Cada rodada acrescentava uma foto e não consertava nada. Verificar só
+    //    "trocou a capa" deixava isso invisível.
+    let tamanhoFinal = "";
+    if (trocou) {
+      try {
+        const { maxSize } = await variacoesDaFoto(tokens.accessToken, novaFotoId);
+        tamanhoFinal = maxSize;
+      } catch {
+        // Sem leitura, `tamanhoFinal` fica vazio — e vazio NÃO vira "deu certo".
+      }
+    }
+    const ficouQuadrada = tamanhoFinal === quadrada.para;
+
     return Response.json({
       itemId: r.id,
       de: quadrada.de,
@@ -192,6 +210,10 @@ export async function POST(request: Request) {
       // A verdade sobre a capa, lida do ML DEPOIS da escrita.
       capaTrocada: trocou,
       capaAgora: capaAgora || null,
+      // O tamanho que o ML GUARDOU, lido depois de tudo. Se não bater com o que
+      // enviamos, ele reprocessou — e o conserto não aconteceu.
+      tamanhoFinal: tamanhoFinal || null,
+      ficouQuadrada,
       // Em anúncio com variação, o ML controla as fotos por variação. Se a capa
       // não trocou E há variações, é quase certo que o caminho é outro — e
       // dizer isso é mais útil que repetir a tentativa.

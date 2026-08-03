@@ -18,6 +18,10 @@ export interface CapaQuadrada {
   fotosDepois: number;
   /** A capa MUDOU de fato? Lido do ML depois da escrita, não deduzido. */
   capaTrocada: boolean;
+  /** O tamanho que o ML GUARDOU. Vazio quando não deu para ler. */
+  tamanhoFinal: string;
+  /** O ML manteve o quadrado, ou reprocessou a imagem? */
+  ficouQuadrada: boolean;
   /** O anúncio tem variações — o ML controla as fotos por variação nesse caso. */
   temVariacoes: boolean;
 }
@@ -43,6 +47,8 @@ export async function quadrarCapaNoML(clienteId: string, itemId: string): Promis
     fotosAntes?: number;
     fotosDepois?: number;
     capaTrocada?: boolean;
+    tamanhoFinal?: string | null;
+    ficouQuadrada?: boolean;
     temVariacoes?: boolean;
     erro?: string;
     naoAplicavel?: boolean;
@@ -63,6 +69,9 @@ export async function quadrarCapaNoML(clienteId: string, itemId: string): Promis
     fotosDepois: dados.fotosDepois ?? 0,
     // `?? false` e não `?? true`: sem confirmação, NÃO se afirma que trocou.
     capaTrocada: dados.capaTrocada ?? false,
+    tamanhoFinal: dados.tamanhoFinal ?? "",
+    // `?? false` outra vez: sem confirmação do tamanho, NÃO se afirma sucesso.
+    ficouQuadrada: dados.ficouQuadrada ?? false,
     temVariacoes: dados.temVariacoes ?? false,
   };
 }
@@ -86,6 +95,14 @@ export function explicarCapaQuadrada(r: CapaQuadrada): string {
       ? " Este anúncio tem variações, e nesse caso o Mercado Livre controla as fotos por variação — o ajuste precisa ser feito por lá."
       : " O Mercado Livre aceitou o envio e manteve a capa anterior.";
     return `A foto quadrada foi enviada, mas a CAPA NÃO MUDOU.${porque} Nenhuma foto foi perdida.`;
+  }
+  // TROCAR A CAPA NÃO BASTA. O ML reprocessa a imagem no upload e apara borda
+  // branca uniforme: em 03/08/2026 subimos 1200x1200, a capa trocou, e a
+  // releitura mediu 995x1200 — a faixa branca tinha sido cortada. Cada rodada
+  // acrescentava uma foto e não consertava nada.
+  if (!r.ficouQuadrada) {
+    const medido = r.tamanhoFinal ? ` e guardou ${r.tamanhoFinal}` : "";
+    return `A capa foi trocada, mas o Mercado Livre REPROCESSOU a imagem${medido} — a faixa branca foi cortada e a foto continua fora do padrão. NÃO adianta repetir: cada tentativa só acrescenta uma foto ao anúncio.`;
   }
   const base = `Capa ajustada de ${r.de} para ${r.para}.`;
   if (r.fotosDepois < r.fotosAntes) {
