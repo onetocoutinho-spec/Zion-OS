@@ -131,7 +131,11 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
 // ---- Anthropic (Claude) ----
 
 async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
-  const modelo = process.env.ANTHROPIC_MODEL ?? "claude-opus-4-8";
+  // claude-opus-5 é o Opus atual. O padrão daqui estava em `claude-opus-4-8`,
+  // que é a geração anterior — padrão de modelo envelhece em silêncio, porque
+  // nada quebra: o modelo antigo responde normalmente e ninguém percebe que
+  // parou de ser o melhor disponível.
+  const modelo = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY as string });
 
   const resposta = await client.messages.create({
