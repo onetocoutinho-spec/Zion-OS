@@ -26,7 +26,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { executarTituloAtomico } from "./copilotPropostas.ts";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://exemplo.supabase.co";
@@ -107,7 +107,7 @@ test("erro de banco LANÇA — não vira desfecho de negócio", async () => {
 // FIAÇÃO — a rota
 // ---------------------------------------------------------------------------
 
-const ROTA = readFileSync(
+const ROTA = lerFonte(
   new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
   "utf8"
 );
@@ -149,7 +149,7 @@ test("CADASTRO é o último fora — e continua fora", () => {
 // GUARDA ESTRUTURAL — a migração 048
 // ---------------------------------------------------------------------------
 
-const SQL = readFileSync(
+const SQL = lerFonte(
   new URL("../../../database/migrations/048-execucao-atomica-do-titulo.sql", import.meta.url),
   "utf8"
 );

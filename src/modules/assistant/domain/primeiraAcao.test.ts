@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../../testing/lerFonte.ts";
 import {
   FERRAMENTAS,
   FERRAMENTAS_DE_LEITURA,
@@ -22,7 +22,7 @@ import {
 } from "./ferramentasDoAssistente.ts";
 
 const raiz = new URL("../../../", import.meta.url);
-const ler = (rel: string) => readFileSync(new URL(rel, raiz), "utf8");
+const ler = (rel: string) => lerFonte(new URL(rel, raiz), "utf8");
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 

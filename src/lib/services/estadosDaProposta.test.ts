@@ -23,7 +23,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { lerFonte } from "../../testing/lerFonte.ts";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
@@ -43,7 +44,7 @@ function fontes(dir: string, acc: string[] = []): string[] {
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-const PRODUCAO = fontes(SRC).map((p) => ({ p, txt: semComentarios(readFileSync(p, "utf8")) }));
+const PRODUCAO = fontes(SRC).map((p) => ({ p, txt: semComentarios(lerFonte(p, "utf8")) }));
 
 // ---------------------------------------------------------------------------
 // H.9 — `aprovada` e `rejeitada` são vocabulário, não estado alcançável
@@ -85,7 +86,7 @@ test("os dois mortos não morreram do mesmo jeito — e a diferença é do tipo"
   // `rejeitada` é escrever uma linha; usar `aprovada` é mexer no tipo, e isso
   // deve doer o suficiente para alguém perguntar por quê.
   const servico = semComentarios(
-    readFileSync(new URL("./copilotPropostas.ts", import.meta.url), "utf8")
+    lerFonte(new URL("./copilotPropostas.ts", import.meta.url), "utf8")
   );
   const assinatura = servico.slice(
     servico.indexOf("export async function marcarProposta"),
@@ -130,7 +131,7 @@ test("`chave_idempotencia` NUNCA é alimentada — a coluna é vestigial", () =>
 test("quem barra o duplo clique é o CAS de status, em dois lugares", () => {
   // 1) `cadastro` — compare-and-swap no PostgREST.
   const servico = semComentarios(
-    readFileSync(new URL("./copilotPropostas.ts", import.meta.url), "utf8")
+    lerFonte(new URL("./copilotPropostas.ts", import.meta.url), "utf8")
   );
   const reserva = servico.slice(servico.indexOf("export async function reservarParaExecucao"));
   const corpo = reserva.slice(0, reserva.indexOf("\n}"));
@@ -148,7 +149,7 @@ test("quem barra o duplo clique é o CAS de status, em dois lugares", () => {
     ["047", "preco"],
     ["048", "titulo"],
   ] as const) {
-    const sql = readFileSync(join(MIGRACOES, arquivoDaMigracao(n)), "utf8");
+    const sql = lerFonte(join(MIGRACOES, arquivoDaMigracao(n)), "utf8");
     const trava = sql.indexOf("for update");
     const guarda = sql.indexOf("'ja_executada'");
     assert.ok(trava > 0, `${n}: sumiu o FOR UPDATE`);
@@ -172,7 +173,7 @@ test("a autoridade sobre validade é `expiraEm`, NUNCA a coluna `status`", () =>
   // a data. Se `podeExecutar` passar a confiar no status, uma proposta parada
   // vira uma proposta executável, e aí um reaper deixa de ser opcional.
   const dominio = semComentarios(
-    readFileSync(
+    lerFonte(
       new URL("../../modules/assistant/domain/propostaPersistida.ts", import.meta.url),
       "utf8"
     )
@@ -209,7 +210,7 @@ test("o único caso de reconciliação que sobra é `cadastro`, e ele está decl
   // morte no meio deixa a proposta consumida sem nada criado. É o T1, dívida
   // deliberada do CICLO H.6 — não um esquecimento. Se `cadastro` entrar numa
   // primitiva atômica, este teste cai e o INC-002 precisa ser reaberto.
-  const rota = readFileSync(
+  const rota = lerFonte(
     new URL("../../app/api/assistente/proposta/route.ts", import.meta.url),
     "utf8"
   );

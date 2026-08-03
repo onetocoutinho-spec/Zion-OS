@@ -21,7 +21,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { lerFonte } from "../../../testing/lerFonte.ts";
 
 import { podeExecutar, type PropostaPersistida } from "./propostaPersistida.ts";
 import { pesoConhecidoDoProduto } from "../../catalog/domain/pendenciasDoCatalogo.ts";
@@ -137,7 +137,7 @@ test("a ordem das checagens não muda: expirada vence obsoleta", () => {
 const raiz = new URL("../../../", import.meta.url);
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-const ler = (rel: string) => semComentarios(readFileSync(new URL(rel, raiz), "utf8"));
+const ler = (rel: string) => semComentarios(lerFonte(new URL(rel, raiz), "utf8"));
 
 const FERRAMENTA = ler("modules/assistant/domain/executarFerramenta.ts");
 const CONVERSA = ler("app/api/assistente/conversa/route.ts");
