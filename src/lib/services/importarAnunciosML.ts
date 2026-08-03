@@ -753,9 +753,18 @@ export async function importarAnunciosDoCliente(
     // Grava só onde o valor MUDOU, e só as duas colunas do eixo do marketplace.
     // `status` (a esteira do Zion) não é tocado. Anúncio que o ML não devolveu
     // fica intocado: ausência não é encerramento.
+    // Os QUATRO fatos da leitura, não só o estado. A migração 051 deu onde
+    // guardar — antes dela, o `sub_status` que revelou 6 infrações, o tamanho
+    // da capa e o estoque do marketplace eram medidos e jogados fora.
     const desatualizados = estadosDesatualizados(
       existentes,
-      todos.map((a) => ({ mlb: a.mlb, status: a.status })),
+      todos.map((a) => ({
+        mlb: a.mlb,
+        status: a.status,
+        subStatus: a.subStatus ?? [],
+        fotoCapaMaxSize: a.fotoCapaMaxSize,
+        estoque: a.estoque,
+      })),
       new Date().toISOString()
     );
     if (desatualizados.length > 0) {
@@ -888,6 +897,10 @@ export async function importarAnunciosDoCliente(
       // significa NÃO SABEMOS.
       statusMarketplace: (a.status || "").trim() || null,
       statusMarketplaceEm: agora,
+      // A memória do marketplace nasce junto com o anúncio (051).
+      subStatusMarketplace: a.subStatus ?? [],
+      fotoCapaMaxSize: (a.fotoCapaMaxSize || "").trim() || null,
+      estoqueMarketplace: typeof a.estoque === "number" ? a.estoque : null,
       aprovadoPor: "Mercado Livre",
       aprovadoEm: agora,
       criadoEm: agora,

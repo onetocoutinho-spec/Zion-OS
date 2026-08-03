@@ -412,6 +412,10 @@ export interface AnuncioGeradoRow {
   /** Migração 050 — o estado no marketplace, eixo independente de `status`. */
   status_marketplace?: string | null;
   status_marketplace_em?: string | null;
+  /** Migração 051 — a memória do que o ML disse na última leitura. */
+  sub_status_marketplace?: string[] | null;
+  foto_capa_max_size?: string | null;
+  estoque_marketplace?: number | null;
   created_at?: string;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;

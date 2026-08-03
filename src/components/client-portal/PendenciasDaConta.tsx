@@ -27,7 +27,7 @@
 // a cada abertura de página gastaria a cota da conta dela para mostrar um
 // número que ela talvez não tenha vindo ver. O botão é o consentimento.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   ExternalLink,
@@ -39,6 +39,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
+import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { pendenciasDaConta } from "@/modules/integration/domain/pendenciasDaConta";
+import { useLiveQuery } from "@/lib/hooks";
 import {
   quadrarCapaNoML,
   explicarCapaQuadrada,
@@ -81,7 +84,49 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
     totais: { tipo: PendenciaDaConta["tipo"]; quantas: number }[];
     estoqueTravado: number;
     lidos: number;
+    lidoEm: string | null;
   } | null>(null);
+
+  // A MEMÓRIA (migração 051).
+  //
+  // Antes dela, a tela nascia vazia e só dizia algo depois de 781 anúncios
+  // lidos e ~40 requisições ao ML. A lojista não conseguia abrir de manhã e ver
+  // o que precisava dela — precisava PEDIR de novo, todo dia.
+  //
+  // Agora a última leitura está gravada, e a tela abre com ela. "Conferir
+  // agora" deixou de ser obrigatório e virou atualização.
+  const { data: gravados } = useLiveQuery(
+    () => listarAnunciosGeradosDoCliente(clienteId),
+    [clienteId]
+  );
+
+  const daMemoria = useMemo(() => {
+    const comLeitura = (gravados ?? []).filter((a) => a.mlItemId && a.statusMarketplace);
+    if (comLeitura.length === 0) return null;
+    const p = pendenciasDaConta(
+      comLeitura.map((a) => ({
+        mlb: a.mlItemId as string,
+        titulo: a.anuncio?.tituloOtimizado || a.produto || (a.mlItemId as string),
+        permalink: a.mlPermalink ?? "",
+        status: a.statusMarketplace as string,
+        estoque: a.estoqueMarketplace ?? 0,
+        subStatus: a.subStatusMarketplace ?? [],
+        fotoCapaMaxSize: a.fotoCapaMaxSize ?? "",
+        familia: a.produto ?? "",
+      }))
+    );
+    // A DATA importa tanto quanto os números: um retrato de três dias atrás
+    // apresentado como atual é a mesma mentira que o `status` fixo era.
+    const lidoEm = comLeitura
+      .map((a) => a.statusMarketplaceEm ?? "")
+      .filter(Boolean)
+      .sort()
+      .pop();
+    return { ...p, lidos: comLeitura.length, lidoEm: lidoEm ?? null };
+  }, [gravados]);
+
+  // O que veio agora manda; sem isso, a memória.
+  const mostrando = resultado ?? daMemoria;
 
   async function conferir() {
     setCarregando(true);
@@ -93,7 +138,7 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
         return;
       }
       const p = r.medicao.pendenciasDaConta;
-      setResultado({ ...p, lidos: r.medicao.anuncios });
+      setResultado({ ...p, lidos: r.medicao.anuncios, lidoEm: new Date().toISOString() });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao conferir a conta.");
     } finally {
@@ -210,34 +255,42 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
         </p>
       )}
 
-      {resultado && resultado.itens.length === 0 && !erro && (
+      {mostrando && mostrando.itens.length === 0 && !erro && (
         // "Nada pendente" só pode ser dito depois de ter lido. Antes disso a
         // seção não afirma coisa nenhuma — foi o defeito que esta mesma tela já
         // teve: dizer "você está em dia" enquanto carregava.
         <p className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
-          Li {resultado.lidos} anúncios e não encontrei nada que precise de você agora.
+          Li {mostrando.lidos} anúncios
+          {mostrando.lidoEm ? ` em ${new Date(mostrando.lidoEm).toLocaleString("pt-BR")}` : ""} e não
+          encontrei nada que precise de você agora.
         </p>
       )}
 
-      {resultado && resultado.itens.length > 0 && (
+      {mostrando && mostrando.itens.length > 0 && (
         <div className="mt-3 space-y-4">
           <p className="text-xs text-zinc-500">
-            {resultado.lidos} anúncios lidos ·{" "}
-            {resultado.totais.map((t) => `${t.quantas} ${ROTULO[t.tipo].toLowerCase()}`).join(" · ")}
-            {resultado.estoqueTravado > 0 && (
+            {/* A DATA vem antes dos números. Um retrato de três dias atrás
+                apresentado como atual é a mesma mentira que o `status` fixo
+                era — e o botão ao lado é o que o torna atual. */}
+            {mostrando.lidoEm
+              ? `Lido em ${new Date(mostrando.lidoEm).toLocaleString("pt-BR")} · `
+              : ""}
+            {mostrando.lidos} anúncios lidos ·{" "}
+            {mostrando.totais.map((t) => `${t.quantas} ${ROTULO[t.tipo].toLowerCase()}`).join(" · ")}
+            {mostrando.estoqueTravado > 0 && (
               <>
                 {" "}
-                · <strong className="text-amber-400">{resultado.estoqueTravado} peças</strong> paradas
+                · <strong className="text-amber-400">{mostrando.estoqueTravado} peças</strong> paradas
                 atrás disso
               </>
             )}
           </p>
 
           {grupos.map((g) => {
-            const doGrupo = resultado.itens.filter((p) => p.gravidade === g);
+            const doGrupo = mostrando.itens.filter((p) => p.gravidade === g);
             if (doGrupo.length === 0) return null;
             const { caixa, icone: Icone, texto } = TOM[g];
-            const total = resultado.totais
+            const total = mostrando.totais
               .filter((t) => doGrupo.some((p) => p.tipo === t.tipo))
               .reduce((n, t) => n + t.quantas, 0);
             return (

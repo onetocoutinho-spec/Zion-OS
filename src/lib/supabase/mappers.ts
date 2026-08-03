@@ -932,6 +932,13 @@ export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegist
     // `?? null` e não `?? "active"`: ausência continua significando ausência.
     statusMarketplace: row.status_marketplace ?? null,
     statusMarketplaceEm: row.status_marketplace_em ?? null,
+    // `?? null` em todos: ausência de leitura NÃO é lista vazia nem zero.
+    // Um `estoque_marketplace` virando 0 faria a ordem do trabalho sair errada
+    // em silêncio, e um `sub_status` virando [] afirmaria que o ML não apontou
+    // nada quando ninguém perguntou.
+    subStatusMarketplace: row.sub_status_marketplace ?? null,
+    fotoCapaMaxSize: row.foto_capa_max_size ?? null,
+    estoqueMarketplace: row.estoque_marketplace ?? null,
   };
 }
 
@@ -957,6 +964,9 @@ export function anuncioGeradoParaBanco(
   if (d.mlPermalink !== undefined) r.ml_permalink = d.mlPermalink;
   if (d.statusMarketplace !== undefined) r.status_marketplace = d.statusMarketplace;
   if (d.statusMarketplaceEm !== undefined) r.status_marketplace_em = d.statusMarketplaceEm;
+  if (d.subStatusMarketplace !== undefined) r.sub_status_marketplace = d.subStatusMarketplace;
+  if (d.fotoCapaMaxSize !== undefined) r.foto_capa_max_size = d.fotoCapaMaxSize;
+  if (d.estoqueMarketplace !== undefined) r.estoque_marketplace = d.estoqueMarketplace;
   // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }

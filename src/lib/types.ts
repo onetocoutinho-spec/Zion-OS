@@ -695,4 +695,24 @@ export interface AnuncioGeradoRegistro {
    * palpite vestido de fato.
    */
   statusMarketplaceEm?: string | null;
+  /**
+   * POR QUE o anúncio não está no ar — a palavra do ML (`forbidden`,
+   * `waiting_for_patch`, `out_of_stock`). Migração 051.
+   *
+   * Foi este campo que revelou 6 infrações de propriedade intelectual que
+   * ninguém sabia existirem. Até a 051 ele era medido a cada leitura e
+   * descartado — sumia num F5.
+   *
+   * `null` = não sabemos. Lista vazia = o ML leu e não apontou nada.
+   */
+  subStatusMarketplace?: string[] | null;
+  /** O tamanho REAL da capa, como o ML declara em `max_size`. */
+  fotoCapaMaxSize?: string | null;
+  /**
+   * O estoque NO MARKETPLACE — não o do ERP.
+   *
+   * É ele que ordena o trabalho: 802 peças paradas vêm antes de 3. O estoque
+   * do ERP não serve, porque o que interessa é o que está parado NA VITRINE.
+   */
+  estoqueMarketplace?: number | null;
 }
