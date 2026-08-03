@@ -249,3 +249,52 @@ test("os dois tipos de foto são contados SEPARADOS", () => {
   const tipos = r.totais.map((t) => t.tipo).sort();
   assert.deepEqual(tipos, ["capa-nao-quadrada", "capa-pequena"]);
 });
+
+// ---------------------------------------------------------------------------
+// A INFRAÇÃO E OS IRMÃOS AINDA NO AR
+// ---------------------------------------------------------------------------
+
+test("anúncio bloqueado conta os IRMÃOS do mesmo produto ainda no ar", () => {
+  // 31/07/2026: o ML cancelou 6 anúncios por infração de propriedade
+  // intelectual e deixou 12 dos MESMOS DOIS produtos no ar. Se o gatilho foi o
+  // produto, esses 12 são a próxima leva — e é essa conta que muda a decisão.
+  const r = pendenciasDaConta([
+    an("BLOQ", { subStatus: ["forbidden"], familia: "Babuche Yvate" }),
+    an("VIVO1", { familia: "Babuche Yvate", fotoCapaMaxSize: "1200x1200" }),
+    an("VIVO2", { familia: "Babuche Yvate", fotoCapaMaxSize: "1200x1200" }),
+  ]);
+  const bloqueado = r.itens.find((p) => p.tipo === "bloqueado")!;
+  assert.match(bloqueado.oQueFazer, /2 an[úu]ncio/);
+  assert.match(bloqueado.oQueFazer, /mesmo produto/i);
+});
+
+test("o bloqueado MANDA não republicar — eu quase mandei o contrário", () => {
+  // Em 03/08/2026 eu disse "o caminho é republicar, e isso o Zion faz".
+  // Republicar o que o ML cancelou é reincidência, e reincidência é o que leva
+  // à suspensão da conta.
+  const r = pendenciasDaConta([an("A", { subStatus: ["forbidden"] })]);
+  assert.match(r.itens[0].oQueFazer, /N[ÃA]O republique/);
+  assert.match(r.itens[0].oQueFazer, /reincid/i);
+});
+
+test("sem irmãos no ar, a frase não inventa uma contagem", () => {
+  // E o bloqueado NÃO conta a si mesmo: ele já caiu, não está em risco.
+  const r = pendenciasDaConta([an("A", { subStatus: ["forbidden"], familia: "Só Ele" })]);
+  assert.doesNotMatch(r.itens[0].oQueFazer, /mesmo produto/i);
+});
+
+test("dois bloqueados da mesma família não contam um ao outro", () => {
+  const r = pendenciasDaConta([
+    an("B1", { subStatus: ["forbidden"], familia: "X" }),
+    an("B2", { subStatus: ["forbidden"], familia: "X" }),
+  ]);
+  for (const p of r.itens) assert.doesNotMatch(p.oQueFazer, /mesmo produto/i);
+});
+
+test("irmão FORA do ar não entra na contagem — ele já não é risco", () => {
+  const r = pendenciasDaConta([
+    an("BLOQ", { subStatus: ["forbidden"], familia: "X" }),
+    an("PAUSADO", { status: "paused", familia: "X" }),
+  ]);
+  assert.doesNotMatch(r.itens.find((p) => p.tipo === "bloqueado")!.oQueFazer, /mesmo produto/i);
+});

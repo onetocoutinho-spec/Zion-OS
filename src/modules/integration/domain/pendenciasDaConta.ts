@@ -65,6 +65,8 @@ export interface AnuncioParaPendencia {
   estoque: number;
   subStatus?: string[];
   fotoCapaMaxSize?: string;
+  /** O agrupamento do ML — é ele que liga um anúncio bloqueado aos irmãos. */
+  familia?: string;
 }
 
 export interface ResumoDePendencias {
@@ -102,6 +104,28 @@ export function pendenciasDaConta(
 ): ResumoDePendencias {
   const todas: PendenciaDaConta[] = [];
 
+  // OS IRMÃOS AINDA NO AR.
+  //
+  // Em 03/08/2026 o Mercado Livre cancelou 6 anúncios por infração de
+  // propriedade intelectual — e deixou 12 dos MESMOS DOIS produtos no ar.
+  //
+  // Se o gatilho foi o produto (uma marca reivindicando o desenho), esses 12
+  // são a próxima leva, e mais 12 infrações sobre um histórico que já tem 6 é
+  // outro patamar — a política do ML fala em suspensão.
+  //
+  // Contar os irmãos transforma "este anúncio foi bloqueado" em "e há outros 8
+  // iguais expostos ao mesmo risco", que é a informação que muda a decisão.
+  const ativosPorFamilia = new Map<string, number>();
+  for (const a of anuncios) {
+    const f = txt(a.familia);
+    if (!f || !ativo(a)) continue;
+    // O já bloqueado NÃO conta como irmão em risco: ele já caiu. Sem esta
+    // linha, um anúncio bloqueado contava a si mesmo e a frase dizia "há 1
+    // anúncio do mesmo produto ainda no ar" apontando para ele próprio.
+    if (temSub(a, "forbidden")) continue;
+    ativosPorFamilia.set(f, (ativosPorFamilia.get(f) ?? 0) + 1);
+  }
+
   for (const a of anuncios) {
     const base = {
       mlb: txt(a.mlb),
@@ -112,12 +136,17 @@ export function pendenciasDaConta(
 
     // 1) CONTA — bloqueio é política, e reincidência custa a conta inteira.
     if (temSub(a, "forbidden")) {
+      const irmaos = ativosPorFamilia.get(txt(a.familia)) ?? 0;
       todas.push({
         ...base,
         gravidade: "conta",
         tipo: "bloqueado",
-        oQueFazer: "Abra no Mercado Livre e leia a acusação. Corrija ou encerre.",
-        porque: "O Mercado Livre bloqueou este anúncio por violação de política.",
+        oQueFazer:
+          "Abra no Mercado Livre, em Infrações, e veja a acusação. NÃO republique: republicar o que foi cancelado conta como reincidência, e reincidência é o que leva à suspensão da conta." +
+          (irmaos > 0
+            ? ` Há ${irmaos} anúncio(s) do mesmo produto ainda no ar — se a acusação for sobre o PRODUTO, eles são os próximos. Pausar é reversível.`
+            : ""),
+        porque: "O Mercado Livre cancelou este anúncio por descumprir uma política.",
       });
       continue; // bloqueio manda; não polui a lista com o resto
     }

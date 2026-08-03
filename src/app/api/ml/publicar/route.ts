@@ -11,6 +11,7 @@
 
 import {
   renovarToken,
+  mlbsComInfracao,
   preverCategoria,
   criarItem,
   criarGuiaTamanhos,
@@ -44,6 +45,14 @@ interface Corpo {
   marketplace?: string;
   /** Ingredientes do modelo User Products (calçado). Usado só se a categoria exigir. */
   userProducts?: BundleUserProducts;
+  /**
+   * Os MLBs que o Zion já conhece DESTE produto.
+   *
+   * Servem para a trava de infração: se algum deles foi cancelado pelo ML,
+   * publicar de novo é reincidência. Quem monta a lista é o cliente, que é
+   * quem sabe quais anúncios pertencem ao produto.
+   */
+  mlbsDoProduto?: string[];
 }
 
 export async function POST(request: Request) {
@@ -159,6 +168,46 @@ export async function POST(request: Request) {
     }
     // Persiste o refresh_token rotacionado imediatamente (mesmo se publicar falhar depois).
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+
+    // 2.5) TRAVA DE INFRAÇÃO.
+    //
+    // 31/07/2026: o ML cancelou 6 anúncios da lojista por infração de
+    // propriedade intelectual. Em 03/08 eu quase mandei republicar um deles —
+    // e republicar o que foi cancelado é REINCIDÊNCIA, que é o que leva à
+    // suspensão da conta.
+    //
+    // FALHA FECHADA, ao contrário do resto do sistema: se a consulta ao ML
+    // falhar, NÃO publica. Um item a menos no ar é reversível com um clique;
+    // uma reincidência de propriedade intelectual não é.
+    const mlbsDoProduto = (corpo.mlbsDoProduto ?? []).filter(Boolean);
+    if (corpo.go && mlbsDoProduto.length > 0) {
+      let bloqueados: string[];
+      try {
+        bloqueados = await mlbsComInfracao(tokens.accessToken, mlbsDoProduto);
+      } catch (e) {
+        log("error", "infracao", { status: "nao_conferido" });
+        return Response.json(
+          {
+            erro:
+              "Não consegui conferir no Mercado Livre se este produto tem anúncio cancelado por infração, e por isso não publiquei. " +
+              (e instanceof Error ? e.message : ""),
+            infracaoNaoConferida: true,
+          },
+          { status: 503 }
+        );
+      }
+      if (bloqueados.length > 0) {
+        log("warn", "infracao", { status: "bloqueado", itens: bloqueados });
+        return Response.json(
+          {
+            erro: `O Mercado Livre já cancelou ${bloqueados.length} anúncio(s) deste produto por infração (${bloqueados.join(", ")}). Publicar de novo conta como reincidência e pode custar a conta. Resolva a infração no painel do ML antes.`,
+            infracao: true,
+            itensComInfracao: bloqueados,
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     // 3) Categoria — Learning Loop (PR-006): SEMPRE prevê quando há título.
     //    A previsão é a PROPOSTA DO AMBIENTE, usada para comparação com a
