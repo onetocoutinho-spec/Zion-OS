@@ -197,12 +197,9 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
     setErro(null);
     try {
       for (let i = 0; i < files.length; i++) {
-        await uploadImagemProduto({
-          clienteId,
-          produtoId,
-          file: files[i],
-          tipo: i === 0 && (imagens ?? []).length === 0 ? "Principal" : "Secundária",
-        });
+        // Sem `tipo`: a regra da capa mora em `papelDaFotoNova`, e repeti-la
+        // aqui era uma das quatro cópias que discordavam entre si.
+        await uploadImagemProduto({ clienteId, produtoId, file: files[i] });
       }
       reload();
     } catch (err) {
@@ -415,10 +412,10 @@ function EstudioIA({
         mimeType: resultado.mimeType,
         tipo: resultado.tipo,
       });
-      // A capa melhorada assume o lugar; a foto real vira secundária.
-      if (resultado.tipo === "melhorar" && fonte.tipoImagem === "Principal") {
-        await atualizarImagem(fonte.id, { tipoImagem: "Secundária" });
-      }
+      // O rebaixamento da capa antiga saiu daqui: `salvarImagemGerada` faz a
+      // troca inteira, rebaixando ANTES de inserir e desfazendo se falhar. Aqui
+      // ele acontecia DEPOIS, e uma falha entre as duas chamadas deixava o
+      // produto com duas capas — silenciosamente, até a restrição existir.
       setResultado(null);
       onSalvo();
     } catch (e) {
@@ -552,12 +549,15 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     try {
       for (const g of validos) {
         for (let i = 0; i < g.arquivos.length; i++) {
+          // `i === 0 ? "Principal"` pedia uma capa por GRUPO DE COR, e um
+          // produto de três cores pedia três. A capa é do produto; a capa por
+          // cor é o DES-003, e ela mora em `variante_id`, não em repetir
+          // "Principal" na tabela toda.
           await uploadImagemProduto({
             clienteId,
             produtoId: g.produtoId!,
             file: g.arquivos[i],
             cor: g.cor || undefined,
-            tipo: i === 0 ? "Principal" : "Secundária",
           });
           feito++;
           setProgresso({ feito, total });
