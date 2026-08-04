@@ -88,3 +88,44 @@ test("campos ausentes não viram undefined explícito no JSON", () => {
   const bruto = JSON.stringify(g);
   assert.equal(bruto.includes("null"), false);
 });
+
+// ---------------------------------------------------------------------------
+// A RESPOSTA DO CAMINHO BARATO PRECISA SOBREVIVER AO DISCO
+// ---------------------------------------------------------------------------
+//
+// Conferido no print da conta real em 03/08/2026: quatro perguntas travadas em
+// "Lendo os seus dados…" para sempre. A causa não era rede — era `paraGuardar`
+// não persistir `resposta`. A rota de intenção devolve o cartão em `resposta`;
+// o modo conversa devolve texto em `texto`. Só o segundo era guardado, e é
+// exatamente o único que sobreviveu no print.
+
+test("a resposta do cartão é guardada, não só o texto da conversa", () => {
+  const g = paraGuardar(
+    [{ pergunta: "Quantos sem custo?", resposta: { tipo: "numero", quantos: 50 } }],
+    []
+  );
+  assert.deepEqual(g.turnos[0].resposta, { tipo: "numero", quantos: 50 });
+});
+
+test("turno sem resposta não inventa campo — ausência continua ausência", () => {
+  const g = paraGuardar([{ pergunta: "oi" }], []);
+  assert.equal("resposta" in g.turnos[0], false);
+  assert.equal("texto" in g.turnos[0], false);
+});
+
+test("resposta e texto convivem — os dois caminhos escrevem no mesmo turno", () => {
+  const g = paraGuardar(
+    [{ pergunta: "x", texto: "resposta em prosa", resposta: { tipo: "nada_travado" } }],
+    []
+  );
+  assert.equal(g.turnos[0].texto, "resposta em prosa");
+  assert.ok(g.turnos[0].resposta);
+});
+
+test("a volta do disco preserva a resposta", () => {
+  const bruto = JSON.stringify(
+    paraGuardar([{ pergunta: "p", resposta: { tipo: "numero", quantos: 7 } }], [])
+  );
+  const lido = lerGuardada(bruto);
+  assert.deepEqual(lido?.turnos[0].resposta, { tipo: "numero", quantos: 7 });
+});

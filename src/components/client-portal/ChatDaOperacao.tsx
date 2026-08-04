@@ -375,10 +375,17 @@ export function ChatDaOperacao({
     try {
       const g = lerGuardada(localStorage.getItem(chaveDaConversa(clienteId)));
       if (!g || g.turnos.length === 0) return;
-      setTurnos(g.turnos.map((t) => ({ ...t })));
+      // `resposta` volta do disco como `unknown` — o formato é do domínio do
+      // assistente e `conversaGuardada` só o transporta. A asserção fica AQUI,
+      // na borda de leitura, e não no módulo de armazenamento: validar lá
+      // duplicaria o contrato em dois lugares, que é o defeito do dia.
+      setTurnos(
+        g.turnos.map((t) => ({
+          ...t,
+          resposta: t.resposta as RespostaDaOperacao | undefined,
+        }))
+      );
       setFalas(g.falas as Fala[]);
-      // Só faz sentido retomar no modo que produziu aquele fio.
-      setConversando(true);
     } catch {
       // storage indisponível (aba anônima, cota): a conversa começa do zero
     }
@@ -407,7 +414,10 @@ export function ChatDaOperacao({
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
       try {
-        if (conversando) {
+        // O caminho de conversa vira FUNÇÃO porque agora tem dois chamadores: o
+        // modo explícito e a escalada automática de uma pergunta que a rota
+        // barata não entendeu.
+        const responderConversando = async (pergunta: string) => {
           // O texto e o rastro de ferramenta chegam ao vivo, no lugar do
           // "Lendo os seus dados…" parado. Com ferramentas, uma resposta leva
           // de 2 a 8 segundos — tempo demais para uma tela muda.
@@ -491,9 +501,39 @@ export function ChatDaOperacao({
                 : turno
             )
           );
+        };
+
+        if (conversando) {
+          await responderConversando(pergunta);
           return;
         }
+
         const criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
+
+        // ESCALADA AUTOMÁTICA — o interruptor vira roteamento.
+        //
+        // O classificador já dizia `entendeu: false` quando a pergunta não cabe
+        // na lista fechada de assuntos, e ninguém usava esse sinal: a rota
+        // barata devolvia "não sei" e a conversa ficava atrás de um botão que a
+        // lojista tinha que descobrir.
+        //
+        // Pedir a ela que escolha entre "barato e limitado" e "caro e capaz" é
+        // transferir uma decisão do SISTEMA para quem não tem como tomá-la —
+        // ela não sabe de antemão qual pergunta precisa de fio.
+        //
+        // E a escolha estava invertida: medido em 03/08/2026, o caminho CARO
+        // foi o honesto ("não tenho como saber") e o barato respondeu outra
+        // coisa afirmando ter entendido.
+        //
+        // Agora o barato é a via rápida, não o teto: resolve o caso comum
+        // (39/39 na extração de intenção, EXP-004) e, quando não entende,
+        // repassa em vez de inventar. O custo continua baixo porque a maioria
+        // das perguntas não escala — e o contador de tokens do fio mostra
+        // quando escala.
+        if (!criterio.entendeu) {
+          await responderConversando(pergunta);
+          return;
+        }
         // Ditar um valor não é perguntar. Vira PROPOSTA — nada é gravado até
         // alguém ler o cartão e clicar. Ver `propostaDeCorrecao`.
         const encerra =
@@ -617,11 +657,16 @@ export function ChatDaOperacao({
         Respondo com os seus números — e digo quando não sei.
       </p>
 
-      {/* O interruptor entre os dois modos.
-          Aparece porque a diferença é real e o lojista sente: o modo conversa
-          guarda o fio e conduz, e custa de 6 a 19 vezes mais. Esconder isso
-          faria a conta chegar sem explicação. Trocar de modo limpa o fio — o
-          histórico de um não serve ao outro. */}
+      {/* O QUE ESTE BOTÃO DEIXOU DE SER.
+          Ele escolhia entre "barato e limitado" e "caro e capaz" — uma decisão
+          do SISTEMA que a lojista não tem como tomar: ela não sabe de antemão
+          qual pergunta precisa de fio.
+          Agora o roteamento é automático (a rota barata repassa o que não
+          entende), e o que sobra aqui é outra coisa: manter ou não o FIO entre
+          as perguntas. Isso ela sabe responder — é sobre a conversa dela, não
+          sobre a nossa arquitetura.
+          Desligar continua limpando o fio: o histórico de um não serve ao
+          outro. */}
       <button
         type="button"
         onClick={() => {
@@ -638,10 +683,10 @@ export function ChatDaOperacao({
       >
         <MessagesSquare size={12} />
         {conversando
-          ? `Modo conversa ligado — guarda o fio e conduz${
-              tokensDoFio > 0 ? ` · ${tokensDoFio.toLocaleString("pt-BR")} tokens neste fio` : ""
+          ? `Conversa contínua ligada — guarda o fio entre as perguntas${
+              tokensDoFio > 0 ? ` · ${tokensDoFio.toLocaleString("pt-BR")} tokens` : ""
             }. Desligar`
-          : "Ligar modo conversa (mais capaz, mais caro)"}
+          : "Manter o fio entre as perguntas"}
       </button>
 
       {/* Em altura cheia o container existe SEMPRE, mesmo vazio: e ele que
@@ -734,9 +779,19 @@ export function ChatDaOperacao({
                 </div>
               ) : t.resposta ? (
                 <Resposta r={t.resposta} interpretacao={t.interpretacao} />
-              ) : (
+              ) : ocupado && i === turnos.length - 1 ? (
                 <p className="flex items-center gap-2 text-sm text-zinc-500">
                   <Loader2 size={14} className="animate-spin" /> Lendo os seus dados…
+                </p>
+              ) : (
+                /* SEM RESPOSTA E SEM VOO NÃO É CARREGAMENTO.
+                   O spinner aparecia em QUALQUER turno sem resposta, inclusive
+                   nos restaurados do disco — e ficava girando para sempre,
+                   afirmando um carregamento que não existia. Só o último turno,
+                   e só enquanto a requisição está de pé, pode dizer que está
+                   lendo. O resto diz a verdade: a resposta não voltou. */
+                <p className="text-sm text-zinc-500">
+                  A resposta desta pergunta não chegou. Pergunte de novo.
                 </p>
               )}
             </div>
