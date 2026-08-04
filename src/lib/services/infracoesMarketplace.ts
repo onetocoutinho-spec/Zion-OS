@@ -9,6 +9,7 @@
 // única frase que prova trabalho feito.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { registrarFalha } from "./eventos";
 import { semHtml, type Infracao } from "../../modules/integration/domain/infracoesDaConta";
 
 export interface InfracaoRegistro extends Infracao {
@@ -79,8 +80,9 @@ export async function gravarInfracoes(
         .upsert(lote, { onConflict: "cliente_id,infracao_id", ignoreDuplicates: true });
       if (error) throw new Error(error.message);
       gravadas += lote.length;
-    } catch {
+    } catch (e) {
       falharam += lote.length;
+      registrarFalha("lote_parcial", "gravarInfracoes", e, { linhas: lote.length });
     }
   }
   return { gravadas, falharam };

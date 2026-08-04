@@ -1,4 +1,5 @@
 import { criarRepositorio } from "../repositorio";
+import { registrarFalha } from "./eventos";
 import { anuncioGeradoParaApp, anuncioGeradoParaBanco } from "../supabase/mappers";
 import type { AnuncioGeradoRow } from "../supabase/database.types";
 import type { AnuncioGeradoRegistro, StatusAnuncioGerado } from "../types";
@@ -242,10 +243,17 @@ export async function atualizarEstadoNoMarketplaceBulk(
     try {
       await repo.atualizarVarios(lista);
       atualizados += lista.length;
-    } catch {
+    } catch (e) {
       // Engolir aqui é deliberado e tem preço: a contagem sobe em `falharam` e
       // a tela diz. Um `throw` custaria as gravações que já deram certo.
+      //
+      // O que NÃO era deliberado é a causa sumir junto. A tela dizia "14 de 767
+      // falharam" e o porquê não existia em lugar nenhum — nem no console, que
+      // era da lojista. A decisão de engolir continua; o silêncio, não.
       falharam += lista.length;
+      registrarFalha("lote_parcial", "atualizarEstadoNoMarketplaceBulk", e, {
+        linhas: lista.length,
+      });
     }
   }
   return { atualizados, falharam };

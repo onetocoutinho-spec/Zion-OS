@@ -7,6 +7,7 @@ import {
   comoErro,
   type EstadoAssincrono,
 } from "./estadoAssincrono";
+import { registrarFalha } from "./services/eventos";
 
 export type { EstadoAssincrono };
 
@@ -105,6 +106,11 @@ export function useLiveQuery<T>(
         // Erros do Supabase (rede, RLS, schema ausente) não podem travar a tela
         // em "carregando" — loga, e agora TAMBÉM entrega o erro a quem desenha.
         console.error("[Zion OS] Falha ao consultar dados:", bruto);
+        // E agora sai da máquina da lojista. Esta linha é a que o handoff de
+        // 04/08 estava pedindo quando escreveu "a evidência que falta está no
+        // console do navegador da lojista — peça o console antes de ler
+        // código": o console dela era o único lugar onde isto existia.
+        registrarFalha("consulta_falhou", "useLiveQuery", bruto);
         if (!ativo) return;
         jaRespondeu.current = true;
         setEstado({ data: null, carregando: false, erro: comoErro(bruto) });
