@@ -49,7 +49,7 @@ import {
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { definirEstadoDoItem, renovarToken } from "@/lib/marketplaces/mercadolivre";
+import { definirEstadoDoItem, mlbsComInfracao, renovarToken } from "@/lib/marketplaces/mercadolivre";
 import {
   atualizarRefreshTokenServidor,
   lerCanalServidor,
@@ -907,7 +907,33 @@ export async function POST(request: Request) {
             // 03/08 afirmando o passo seguinte no lugar do resultado.
             if (r.acao?.tipo === "reativar") {
               const mlb = r.acao.mlb;
+              const t0Acao = Date.now();
+              // O RASTRO DA ÚNICA AÇÃO QUE MUDA A LOJA SEM CLIQUE.
+              //
+              // Mesma forma do `ml.publicar`: uma linha JSON por evento, para
+              // `grep "chat.reativar"` nos Runtime Logs responder o que
+              // aconteceu sem depender do print da conversa. Todo o resto do
+              // sistema grava; esta ação não podia ser a exceção.
+              const logAcao = (
+                nivel: "info" | "warn" | "error",
+                evento: string,
+                extra: Record<string, unknown> = {}
+              ): void => {
+                console.log(
+                  JSON.stringify({
+                    src: "chat.reativar",
+                    clienteId: clienteDaSessao,
+                    mlb,
+                    nivel,
+                    evento,
+                    ...extra,
+                    ms: Date.now() - t0Acao,
+                    ts: new Date().toISOString(),
+                  })
+                );
+              };
               try {
+                logAcao("info", "pedido");
                 const admin = getSupabaseAdmin();
                 const canal = await lerCanalServidor(admin, clienteDaSessao, "Mercado Livre");
                 if (!canal?.refreshToken) throw new Error("Cliente não conectado ao Mercado Livre.");
@@ -922,22 +948,112 @@ export async function POST(request: Request) {
                   tk.refreshToken,
                   "Mercado Livre"
                 );
-                const { status: estado } = await definirEstadoDoItem(tk.accessToken, mlb, "active");
-                mandar({
-                  tipo: "ferramenta",
-                  nome: `reativou ${mlb}`,
-                });
-                (r as { saida: unknown }).saida = {
-                  // A PALAVRA DO ML, não a nossa. `active` confirmado é
-                  // diferente de "o PUT voltou 200" — a distinção que custou
-                  // três falsos sucessos em 03/08.
-                  estadoConfirmadoPeloML: estado,
-                  comoResponder:
-                    estado === "active"
-                      ? `Diga que ${mlb} voltou ao ar — o Mercado Livre confirmou.`
-                      : `Diga que o pedido foi feito mas o Mercado Livre respondeu "${estado}". NÃO afirme que está no ar.`,
-                };
+
+                // A TRAVA DE INFRAÇÃO — FALHA FECHADA, como em /api/ml/publicar.
+                //
+                // O ML cancelou 6 anúncios da Chinelaria em 31/07/2026 por
+                // propriedade intelectual. Recolocar no ar o que ele cancelou é
+                // REINCIDÊNCIA, e a política dele fala em suspensão da conta.
+                //
+                // Até aqui a proteção era a descrição da ferramenta mandando o
+                // modelo não fazer isso. A doutrina desta base já respondeu a
+                // esse tipo de proteção: o prompt já proibia, e proibir não
+                // impede. Agora é código.
+                //
+                // Se a CONSULTA falhar, não reativa. Um anúncio a menos no ar se
+                // resolve com um clique; uma reincidência, não.
+                let bloqueados: string[];
+                try {
+                  bloqueados = await mlbsComInfracao(tk.accessToken, [mlb]);
+                } catch (e) {
+                  logAcao("error", "infracao_nao_conferida");
+                  throw new Error(
+                    `Não consegui conferir no Mercado Livre se ${mlb} foi cancelado por infração, e por isso NÃO reativei. ` +
+                      (e instanceof Error ? e.message : "")
+                  );
+                }
+
+                if (bloqueados.length > 0) {
+                  logAcao("warn", "infracao_bloqueado");
+                  (r as { saida: unknown }).saida = {
+                    recusado: true,
+                    motivo: `O Mercado Livre cancelou ${mlb} por infração. Reativar conta como reincidência e pode custar a conta.`,
+                    comoResponder:
+                      "Diga que NÃO reativou, e por quê: o Mercado Livre cancelou este anúncio por infração, e recolocá-lo no ar conta como reincidência. Diga que a infração precisa ser resolvida no painel do Mercado Livre antes. NÃO ofereça tentar de novo.",
+                  };
+                } else {
+                  const { status: estado } = await definirEstadoDoItem(
+                    tk.accessToken,
+                    mlb,
+                    "active"
+                  );
+                  logAcao("info", "confirmado", { estado });
+                  mandar({
+                    tipo: "ferramenta",
+                    nome: `reativou ${mlb}`,
+                  });
+
+                  // O EIXO DO MARKETPLACE recebe a palavra do ML.
+                  //
+                  // Sem isto a tela continuaria dizendo `paused` com o anúncio
+                  // no ar — a tela afirmando o que não sabe, que é o AUD-001. E
+                  // pior: `/cliente/anuncios` condiciona os botões a esta
+                  // coluna, então o "Pausar" — o desfazer de um clique que
+                  // autorizou esta ferramenta a existir — sumiria da tela logo
+                  // depois da ação que ele deveria desfazer.
+                  //
+                  // Só grava se MUDOU: regravar `active` sobre `active` faria
+                  // `status_marketplace_em` mentir sobre quando aprendemos.
+                  try {
+                    const { data } = await admin
+                      .from("anuncios_gerados")
+                      .select("id, status_marketplace")
+                      .eq("cliente_id", clienteDaSessao)
+                      .eq("ml_item_id", mlb);
+                    const linhas = (data ?? []) as {
+                      id: string;
+                      status_marketplace: string | null;
+                    }[];
+                    const mudaram = linhas.filter((l) => l.status_marketplace !== estado);
+                    if (mudaram.length > 0) {
+                      const { error } = await admin
+                        .from("anuncios_gerados")
+                        .update({
+                          status_marketplace: estado,
+                          status_marketplace_em: new Date().toISOString(),
+                        })
+                        .in(
+                          "id",
+                          mudaram.map((l) => l.id)
+                        );
+                      if (error) throw new Error(error.message);
+                    }
+                    logAcao("info", "estado_gravado", { linhas: mudaram.length });
+                  } catch (e) {
+                    // Falhar AQUI não desfaz a reativação: o anúncio está no ar,
+                    // e dizer que não está seria mentir na direção oposta. O
+                    // que se perde é a tela ficar em dia — e é por isso que a
+                    // falha vai para o log em vez de virar erro do turno.
+                    logAcao("error", "estado_nao_gravado", {
+                      motivo: e instanceof Error ? e.message : "desconhecido",
+                    });
+                  }
+
+                  (r as { saida: unknown }).saida = {
+                    // A PALAVRA DO ML, não a nossa. `active` confirmado é
+                    // diferente de "o PUT voltou 200" — a distinção que custou
+                    // três falsos sucessos em 03/08.
+                    estadoConfirmadoPeloML: estado,
+                    comoResponder:
+                      estado === "active"
+                        ? `Diga que ${mlb} voltou ao ar — o Mercado Livre confirmou.`
+                        : `Diga que o pedido foi feito mas o Mercado Livre respondeu "${estado}". NÃO afirme que está no ar.`,
+                  };
+                }
               } catch (e) {
+                logAcao("error", "falhou", {
+                  motivo: e instanceof Error ? e.message : "desconhecido",
+                });
                 (r as { saida: unknown }).saida = {
                   erro: e instanceof Error ? e.message : "Falha ao reativar no Mercado Livre.",
                   comoResponder:

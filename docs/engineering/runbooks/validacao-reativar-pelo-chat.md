@@ -58,8 +58,12 @@ Se vier `null`, rodar a sincronização/importação antes — é ela que traz
 31/07/2026 **não entram neste roteiro em nenhuma hipótese**. Republicar o que o
 ML cancelou é reincidência, e a política dele fala em suspensão da conta.
 
-Isso não é só cuidado do operador — é uma **lacuna de código**, e está anotada
-na Fase 5 abaixo.
+Desde 03/08/2026 **o código também recusa**: a rota consulta `mlbsComInfracao`
+antes do PUT e falha fechado — se não consegue conferir, não reativa. Isso não
+transfere a responsabilidade de volta para o operador. A trava nunca foi
+exercida contra um `forbidden` real, e testar reincidência para ver se a
+proteção funciona é a única categoria de teste que custa mais caro quando
+**passa** do que quando falha.
 
 ---
 
@@ -162,54 +166,58 @@ from public.anuncios_gerados
 where ml_item_id = '<MLB>';
 ```
 
-### Divergência JÁ CONHECIDA — não é surpresa, é o achado
-
-O caminho do chat **não grava `status_marketplace`**. Ele fala com o ML, devolve
-a palavra do ML ao modelo, e para por aí. O caminho da tela grava
-(`definirEstadoNoML` → `atualizarAnuncioGerado`); o do chat, não.
-
-**Esperado nesta fase, com o código de hoje:**
+**Esperado:** as três fontes concordam.
 
 | fonte | valor |
 |---|---|
-| Mercado Livre | `active` |
-| `/cliente/anuncios` e `status_marketplace` | ainda **`paused`** |
+| Mercado Livre | `active` (ou `under_review`) |
+| `status_marketplace` no banco | **o mesmo**, com `status_marketplace_em` de agora |
+| `/cliente/anuncios` | o mesmo, e o botão **Pausar** de volta |
 
-Ou seja: o anúncio volta ao ar de verdade, e a tela continua dizendo que está
-pausado até a próxima sincronização. Pela migração 050, `status_marketplace` é
-*a palavra do ML sobre o anúncio* — e deixá-la velha é a tela afirmando o que não
-sabe, que é o defeito do AUD-001.
+> A primeira versão deste runbook previa aqui uma **divergência**: o caminho do
+> chat não gravava `status_marketplace`, e a tela continuaria dizendo `paused`
+> com o anúncio no ar. Isso foi consertado antes da validação, no commit que
+> fechou as lacunas. A previsão fica registrada porque é o que esta fase
+> continua caçando — se as três fontes divergirem, o conserto não pegou.
 
-**Confirmar a divergência é resultado válido do runbook.** Registrar no relatório
-com o horário; o conserto é decisão sua, e cabe em commit próprio.
+**Se `status_marketplace` continuar `paused`:** o PUT passou e a gravação não. O
+log tem a resposta — procurar `estado_nao_gravado` (ver Fase 5).
 
 ---
 
-## Fase 5 — O que este runbook NÃO prova, e as duas lacunas
+## Fase 5 — O log, e o que este runbook NÃO prova
 
-**Não prova:**
+### O rastro
+
+A ação emite uma linha JSON por evento. Nos Runtime Logs da Vercel:
+
+```
+grep "chat.reativar"
+```
+
+| evento | significa |
+|---|---|
+| `pedido` | o modelo chamou a ferramenta e a rota assumiu |
+| `infracao_nao_conferida` | a consulta ao ML falhou → **não reativou** (falha fechada) |
+| `infracao_bloqueado` | o anúncio tem `sub_status: forbidden` → **recusou** |
+| `confirmado` | o PUT passou; traz o `estado` que o ML devolveu |
+| `estado_gravado` | o eixo do marketplace foi atualizado, e em quantas linhas |
+| `estado_nao_gravado` | reativou e **não** conseguiu gravar — é a divergência da Fase 4 |
+| `falhou` | não reativou, com o motivo |
+
+`confirmado` sem `estado_gravado` é o par que explica a Fase 4 divergente sem
+precisar adivinhar.
+
+### O que NÃO prova
 
 - que o modelo escolhe `reativar_anuncio` de forma confiável em frases ambíguas
-  (isso é medição de comportamento, e pede um EXP com N conversas);
+  — isso é medição de comportamento, e pede um EXP com N conversas;
 - nada sobre anúncios que o **ML** pausou — só sobre os que a lojista pausou;
-- o `pausar` pelo chat, que **não existe**: a ferramenta só reativa.
-
-**Lacuna 1 — a trava de infração não cobre este caminho.**
-`/api/ml/publicar` consulta `mlbsComInfracao` e **falha fechado**: se não
-consegue conferir, não publica. O caminho do chat vai direto ao
-`definirEstadoDoItem`. A proteção que existe hoje é a descrição da ferramenta
-mandando o modelo não reativar o que o ML tirou do ar — e a doutrina deste repo
-já respondeu a isso: *o prompt já proibia; proibir não impede*.
-
-O risco é menor que o da publicação (reativar um `forbidden` provavelmente é
-recusado pelo próprio ML), mas "provavelmente" não é o padrão desta base para
-reincidência. **Fechar antes de ampliar a fronteira.**
-
-**Lacuna 2 — a ação não deixa rastro estruturado.**
-A rota emite o chip `reativou <MLB>` para a tela e nada para os logs. Uma ação
-que muda a loja e some do registro é a única do sistema com essa propriedade;
-todo o resto grava. Enquanto não gravar, a auditoria desta ação é o print do
-chat.
+- o `pausar` pelo chat, que **não existe**: a ferramenta só reativa;
+- a trava de infração **contra o ML real**. Ela está guardada por teste
+  estrutural (`acaoDeReativar.test.ts`: a consulta precede o PUT, e falhar na
+  consulta impede a reativação), e a recusa em si nunca foi exercida contra um
+  `forbidden` de verdade — **e não vai ser**, pelo motivo da Fase 0.
 
 ---
 
@@ -224,23 +232,18 @@ chat.
 - a divergência da Fase 4, confirmada ou não;
 - veredito: **valida** / **falsifica** / **inconclusivo**, e por quê.
 
-## Desfazer — e a surpresa que a Fase 4 cria
+## Desfazer
 
-A reversibilidade foi o argumento que autorizou `reativar_anuncio` a existir. Ela
-continua verdadeira **no Mercado Livre** — o anúncio se pausa de novo a qualquer
-momento. Mas a divergência da Fase 4 tem uma consequência que só aparece aqui:
+**Um clique: Pausar em `/cliente/anuncios`.** É a propriedade que autorizou a
+ferramenta a existir — se o desfazer exigisse mais que isso, `reativar_anuncio`
+não teria passado do tipo `Efeito`.
 
-Como o banco continua dizendo `paused`, `/cliente/anuncios` **mostra o botão
-Reativar, não o Pausar**. O desfazer de um clique some da tela justamente depois
-da ação que ele deveria desfazer.
+Isso **depende** da gravação da Fase 4: os botões da tela são condicionados a
+`status_marketplace`, e um banco parado em `paused` mostraria **Reativar** no
+lugar de **Pausar** — o desfazer sumindo justo depois da ação que ele deveria
+desfazer. Foi metade do motivo de fechar aquela lacuna antes de validar.
 
-Os caminhos que restam, em ordem de preferência:
-
-1. **painel do ML** — pausar direto na origem. Um passo, sem depender do Zion;
-2. **pela tela, em dois cliques** — Reativar (o ML confirma `active`, e é isso
-   que grava a coluna), depois Pausar, que agora aparece;
-3. o chat **não** desfaz: existe `reativar_anuncio`, não existe `pausar_anuncio`.
-
-> Isto reforça a Fase 4 em vez de contradizê-la: a ação é reversível, e ainda
-> assim a experiência de reverter piorou. É argumento para gravar
-> `status_marketplace` no caminho do chat, não para tirar a ferramenta.
+Se a gravação tiver falhado (Fase 4 divergente), o desfazer continua existindo,
+mais longe: **painel do ML**, ou dois cliques na tela (Reativar, que grava a
+coluna, e então Pausar). O chat não desfaz — existe `reativar_anuncio`, não
+existe `pausar_anuncio`.
