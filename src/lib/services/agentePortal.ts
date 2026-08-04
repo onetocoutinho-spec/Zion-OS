@@ -6,6 +6,7 @@
 // /api/agentes/executar (mesma infra dos Agentes IA da equipe).
 
 import { agentePorFerramenta, type FerramentaPortal } from "../agentes/catalogo";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 
 export interface ResultadoAgentePortal {
   markdown: string;
@@ -24,7 +25,9 @@ export async function rodarAgentePortal(
   const rotulo = `${agente.codigo} · ${agente.nome}`;
   const resposta = await fetch("/api/agentes/executar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // Mesma falta do Estudio de imagem: a rota exige sessao e a chamada ia sem.
+    // Toda ferramenta de /cliente/otimizar respondia "Nao autenticado".
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       agente: {
         nome: rotulo,
