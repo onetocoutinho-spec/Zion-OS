@@ -251,14 +251,62 @@ test("M2: a criação do produto resolve o Draft pela PROPOSTA, nunca pelo ativo
   assert.match(ate, /draftVisivelPara\(draft, p\.clienteId\)/);
 });
 
-test("M2: nenhuma ferramenta escreve — o teto que sustenta o argumento inteiro", () => {
-  // O argumento do INC-005 depende de não existir efeito `escreve`. São 16
-  // ferramentas; se alguma ganhar escrita direta, uma referência resolvida
-  // contra a lista da outra aba vira mutação, e M2 deixa de ser aceitável.
+test("M2: nenhuma ferramenta escreve NO CATÁLOGO — o teto que sustenta o argumento", () => {
+  // ===========================================================================
+  // O TETO BAIXOU EM 2026-08-03, E O ARGUMENTO DO M2 PRECISOU SER REFEITO
+  // ===========================================================================
+  //
+  // O INC-005 escreveu, em julho: "se qualquer das 16 ferramentas ganhar efeito
+  // fora de `le`/`propoe`/`rascunha`, o teto que sustenta o argumento inteiro
+  // cai". Em 03/08/2026 isso ACONTECEU — `reativar_anuncio`, efeito `executa`.
+  //
+  // Então o gatilho disparou, e a resposta honesta não é afrouxar a linha: é
+  // refazer a conta. M2 é a aba duplicada que compartilha `conversaId`; o dano
+  // que ele pode causar é RESOLUÇÃO DE REFERÊNCIA ERRADA — "reativa esse aí"
+  // resolvendo contra o que a OUTRA aba listou, já que as duas dividem o fio.
+  //
+  // O que esse dano custa agora, e por que M2 continua aceito:
+  //
+  //   · não atravessa cliente — a rota age com `clienteDaSessao`, e as duas abas
+  //     são do mesmo tenant por construção;
+  //   · não atravessa o catálogo — `executa` fala com o Mercado Livre; nada
+  //     chega a `produtos` nem a `produto_variantes` sem Proposal + clique;
+  //   · não é terminal — o pior caso é um anúncio que ela mesma pausou voltando
+  //     ao ar sem ela ter pedido, e um segundo pedido o pausa de novo.
+  //
+  // Isso NÃO é o mesmo argumento de julho, e trocar as palavras sem trocar a
+  // conta seria a fraude que este arquivo inteiro existe para impedir. O de
+  // julho era "não há caminho de escrita". O de hoje é "o caminho que existe é
+  // reversível, do mesmo tenant, e fora do catálogo".
+  //
+  // O QUE REABRE M2, a partir daqui: uma ferramenta `executa` cujo efeito não se
+  // desfaça com um clique. É por isso que a segunda metade deste teste não olha
+  // o efeito — olha o NOME.
   const efeitos = FERRAMENTAS.match(/efeito: "(\w+)"/g) ?? [];
-  assert.ok(efeitos.length >= 16, `esperava ao menos 16 ferramentas, achei ${efeitos.length}`);
-  const proibido = efeitos.filter((e) => !/"(le|propoe|rascunha)"/.test(e));
+  assert.ok(efeitos.length >= 17, `esperava ao menos 17 ferramentas, achei ${efeitos.length}`);
+  const proibido = efeitos.filter((e) => !/"(le|propoe|rascunha|executa)"/.test(e));
   assert.deepEqual(proibido, [], `efeito fora do teto declarado: ${proibido.join(", ")}`);
+
+  // A lista de ações autorizadas, lida da FONTE — é ela que decide se o dano do
+  // M2 continua reversível. Uma segunda entrada aqui obriga a refazer a conta
+  // acima antes de a build passar.
+  const autorizadas =
+    FERRAMENTAS.match(/EXECUCOES_REVERSIVEIS: readonly string\[\] = \[([^\]]*)\]/)?.[1] ?? "";
+  const nomes = autorizadas.match(/"([^"]+)"/g) ?? [];
+  assert.deepEqual(
+    nomes,
+    ['"reativar_anuncio"'],
+    "o conjunto de ações sem clique mudou: o argumento do M2 precisa ser refeito, não reescrito"
+  );
+  // E a lista tem que dar conta de TODAS as que agem. Sem esta linha, uma
+  // ferramenta `executa` nova passaria por aqui calada — a lista continuaria com
+  // um nome só, e o teste diria que está tudo bem enquanto o teto já teria caído.
+  const executam = efeitos.filter((e) => /"executa"/.test(e));
+  assert.equal(
+    executam.length,
+    nomes.length,
+    `${executam.length} ferramentas agem e ${nomes.length} estão autorizadas — o M2 perdeu a garantia de reversibilidade`
+  );
 });
 
 test("o id vive em sessionStorage, nunca em localStorage", () => {

@@ -113,7 +113,7 @@ export async function pedirTurnoEmFluxo(
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: historico.slice(-FALAS_MANTIDAS),
-      // As DECLARAÇÕES continuam sendo as 16 em todo passo. O que muda por passo
+      // As DECLARAÇÕES continuam sendo as 17 em todo passo. O que muda por passo
       // é a ESCOLHA — quais delas o modelo pode selecionar agora, e se ele tem
       // permissão de responder sem selecionar nenhuma.
       tools: [{ functionDeclarations: paraDeclaracoesGemini(ferramentas) }],

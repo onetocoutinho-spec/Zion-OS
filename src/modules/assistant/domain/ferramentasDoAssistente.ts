@@ -3,19 +3,39 @@
 //
 // A INVARIANTE, que vale mais que qualquer prompt:
 //
-//     o modelo pode PROPOR qualquer coisa · só o clique de um humano GRAVA
+//     o modelo pode PROPOR qualquer coisa · só o clique de um humano
+//     GRAVA NO CATÁLOGO
 //
-// Nenhuma ferramenta escreve. As de leitura devolvem dado medido; as de
-// proposta montam um cartão que alguém precisa confirmar. Um modelo pior, um
-// prompt vazado ou um turno estranho não conseguem tocar no banco, porque não
-// existe caminho — não porque foram instruídos a não fazer.
+// AS DUAS ÚLTIMAS PALAVRAS ENTRARAM EM 2026-08-03, e elas são a diferença entre
+// uma invariante e um slogan. Até aquele dia a frase era "nenhuma ferramenta
+// escreve", e ela era literalmente verdadeira. Deixou de ser quando o chat
+// ganhou `reativar_anuncio`: essa ferramenta ESCREVE — no Mercado Livre.
 //
-// A fronteira mora no tipo `Efeito`, e `ferramentasDoAssistente.test.ts` a
-// prende em tempo de COMPILAÇÃO: adicionar um terceiro efeito para o
-// `typecheck:test` reprovar a build antes de qualquer teste rodar. Provado
-// sabotando o tipo de propósito e vendo o portão fechar.
+// Manter a frase antiga teria sido a pior das saídas: uma invariante que o
+// código já não cumpre ensina a não acreditar nas outras. Então ela foi
+// reescrita para dizer exatamente o que continua absoluto:
 //
-// O teste existe porque proteção que mora só na cabeça de quem escreveu o
+//     NENHUMA ferramenta tem caminho até `produtos` nem `produto_variantes`
+//
+// O catálogo da lojista só muda por Proposal → clique humano → revalidação. Um
+// modelo pior, um prompt vazado ou um turno estranho não alcançam aquelas duas
+// tabelas porque não existe caminho — não porque foram instruídos a não ir.
+//
+// O QUE ABRIU NÃO ABRIU SOZINHO. Uma ferramenta só age no marketplace se
+// cumprir DUAS condições, e as duas são escritas à mão de propósito:
+//
+//   1. declarar `efeito: "executa"` — o tipo `Efeito` é a fronteira, e
+//      `ferramentasDoAssistente.test.ts` a prende em tempo de COMPILAÇÃO:
+//      um efeito novo reprova o `typecheck:test` antes de qualquer teste rodar;
+//   2. estar nomeada em `EXECUCOES_REVERSIVEIS` — a lista do que se desfaz com
+//      um clique. Uma segunda ferramenta `executa` reprova o portão até alguém
+//      escrever o nome dela ali e assinar a decisão.
+//
+// A condição 2 existe porque a 1, sozinha, teria virado uma porta aberta: com
+// `executa` já no tipo, toda ferramenta futura passaria calada. A exigência de
+// revisão humana não sumiu — mudou de lugar, do EFEITO para o NOME.
+//
+// Os testes existem porque proteção que mora só na cabeça de quem escreveu o
 // código não sobrevive ao segundo ano.
 //
 // Medido no EXP-006 contra a API real (gemini-2.5-flash, 8 conversas): 8/8,
@@ -55,7 +75,29 @@ export type Efeito =
   /** Acumula estado da CONVERSA. Não toca no catálogo do lojista. */
   | "rascunha"
   /** Monta uma proposta para um humano confirmar. Não muda nada. */
-  | "propoe";
+  | "propoe"
+  /**
+   * EXECUTA uma ação REVERSÍVEL no marketplace, sem esperar clique.
+   *
+   * Decisão do dono em 03/08/2026: "chat pode agir e propor". Se a lojista tem
+   * de resolver tudo pelo chat, exigir que ela saia dele para clicar um botão
+   * é devolver a ela o trabalho de roteamento que o software deveria fazer.
+   *
+   * A LINHA QUE FICA NÃO É agir-vs-propor — é REVERSIBILIDADE, e não fui eu que
+   * a inventei: o próprio código já a tinha. `/api/ml/estado-do-anuncio`
+   * (paused/active) é uma rota SEPARADA de `/api/ml/encerrar` (closed) porque
+   * "closed é terminal e paused é reversível", e juntá-las faria um erro de
+   * digitação destruir um anúncio.
+   *
+   * Então `executa` vale para o que se desfaz com um clique — reativar um
+   * anúncio que ela mesma pausou. Encerrar, publicar, gravar custo e gravar
+   * preço continuam em `propoe`: erro ali custa dinheiro ou histórico, e o
+   * clique humano é barato perto disso.
+   *
+   * Ampliar esta fronteira exige mudar a linha abaixo e ver a build reprovar —
+   * que é o desenho funcionando, não um obstáculo.
+   */
+  | "executa";
 
 export interface Ferramenta {
   nome: string;
@@ -416,23 +458,93 @@ export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
   },
 ];
 
+/**
+ * As ferramentas de AÇÃO — as únicas que mexem no mundo sem esperar clique.
+ *
+ * Elas moram numa lista própria por um motivo estrutural: `FERRAMENTAS_DE_ACAO`
+ * é a resposta à pergunta "o que este chat pode fazer sozinho?", e essa
+ * pergunta merece um lugar onde a resposta seja lida de uma vez, não garimpada
+ * campo a campo dentro da lista de leitura.
+ *
+ * Entrar aqui não basta para agir: o nome também precisa estar em
+ * `EXECUCOES_REVERSIVEIS`.
+ */
+export const FERRAMENTAS_DE_ACAO: readonly Ferramenta[] = [
+  {
+    nome: "reativar_anuncio",
+    efeito: "executa",
+    descricao:
+      "Reativa no Mercado Livre um anúncio que a lojista pausou. Use SOMENTE quando ela pedir para voltar ao ar, e SOMENTE para anúncios pausados por ela — nunca para anúncios que o Mercado Livre tirou do ar. A ação é reversível: se ela quiser, pausa de novo.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        mlb: { type: "STRING", description: "O código MLB do anúncio a reativar." },
+      },
+      required: ["mlb"],
+    },
+  },
+];
+
 export const FERRAMENTAS: readonly Ferramenta[] = [
   ...FERRAMENTAS_DE_LEITURA,
   ...FERRAMENTAS_DE_RASCUNHO,
   ...FERRAMENTAS_DE_PROPOSTA,
+  ...FERRAMENTAS_DE_ACAO,
 ];
 
 /**
- * Verdadeiro quando nenhuma ferramenta escreve NO CATÁLOGO DO LOJISTA.
+ * As ações que o chat pode executar sem clique — pelo NOME, escritas à mão.
+ *
+ * Esta lista é a segunda tranca, e a que passou a carregar o peso que o tipo
+ * `Efeito` carregava sozinho até 2026-08-03. Enquanto `executa` não existia,
+ * qualquer poder novo tinha de crescer o tipo, e crescer o tipo reprovava a
+ * build. Com `executa` já no tipo, uma ferramenta nova entraria calada — e é
+ * exatamente esse silêncio que esta lista impede.
+ *
+ * O CRITÉRIO PARA ENTRAR É REVERSIBILIDADE, e não fui eu que o inventei: o
+ * código já o tinha. `/api/ml/estado-do-anuncio` (paused/active) é uma rota
+ * SEPARADA de `/api/ml/encerrar` (closed) porque closed é terminal e paused se
+ * desfaz — juntá-las faria um erro de digitação destruir um anúncio.
+ *
+ * Encerrar, publicar, gravar custo e gravar preço NÃO entram: errar ali custa
+ * dinheiro ou histórico, e o clique humano é barato perto disso.
+ */
+export const EXECUCOES_REVERSIVEIS: readonly string[] = ["reativar_anuncio"];
+
+/**
+ * Verdadeiro quando nenhuma ferramenta escreve NO CATÁLOGO DO LOJISTA —
+ * `produtos` e `produto_variantes`.
  *
  * Existe como função, e não como comentário, para o teste poder chamá-la. A
  * lista de permitidos é escrita à mão de propósito: derivá-la do tipo faria o
- * quarto efeito passar sozinho, e é justamente o quarto efeito que precisa de
- * uma pessoa olhando.
+ * QUINTO efeito passar sozinho, e é justamente o efeito novo que precisa de uma
+ * pessoa olhando.
+ *
+ * `executa` está entre os permitidos porque ele age no MARKETPLACE, não no
+ * catálogo — a distinção inteira desta invariante. Quem guarda o que `executa`
+ * pode fazer é `todaExecucaoEReversivel`, não esta função.
  */
-export function nenhumaFerramentaEscreve(fs: readonly Ferramenta[] = FERRAMENTAS): boolean {
-  const permitidos: readonly Efeito[] = ["le", "rascunha", "propoe"];
+export function nenhumaFerramentaEscreveNoCatalogo(
+  fs: readonly Ferramenta[] = FERRAMENTAS
+): boolean {
+  const permitidos: readonly Efeito[] = ["le", "rascunha", "propoe", "executa"];
   return fs.every((f) => permitidos.includes(f.efeito));
+}
+
+/**
+ * Verdadeiro quando toda ferramenta que age está NOMEADA em
+ * `EXECUCOES_REVERSIVEIS`.
+ *
+ * É o portão que uma ferramenta `encerrar_anuncio` — ou qualquer ação que não
+ * se desfaça — encontra fechado. Ela não falha por ser irreversível: o código
+ * não tem como saber isso. Ela falha por ser DESCONHECIDA, e a única forma de
+ * ficar conhecida é alguém escrever o nome dela na lista, o que obriga a
+ * revisão que a mudança merece.
+ */
+export function todaExecucaoEReversivel(fs: readonly Ferramenta[] = FERRAMENTAS): boolean {
+  return fs
+    .filter((f) => f.efeito === "executa")
+    .every((f) => EXECUCOES_REVERSIVEIS.includes(f.nome));
 }
 
 /**
@@ -449,8 +561,12 @@ export function nenhumaFerramentaEscreve(fs: readonly Ferramenta[] = FERRAMENTAS
  *
  * A partir daqui o primeiro passo roda com `mode: "ANY"`, que obriga o modelo a
  * chamar uma função em vez de escrever texto. Só que ANY, sozinho, deixaria o
- * modelo escolher QUALQUER uma das 16 — inclusive `propor_preco`, e um
+ * modelo escolher QUALQUER uma das 17 — inclusive `propor_preco`, e um
  * "obrigado" poderia deixar um cartão de troca de preço na tela de alguém.
+ *
+ * Desde 2026-08-03 a aposta ficou mais cara: com `reativar_anuncio` no catálogo,
+ * um ANY irrestrito deixaria um "obrigado" colocar um anúncio no ar. A derivação
+ * abaixo já barra isso sozinha — mas o motivo agora é este, e não só o cartão.
  *
  * Daí `allowedFunctionNames`: no primeiro passo, só as que LEEM.
  *
@@ -462,9 +578,14 @@ export function nenhumaFerramentaEscreve(fs: readonly Ferramenta[] = FERRAMENTAS
  * dez strings copiadas aqui seriam uma segunda verdade, e uma ferramenta nova
  * classificada como `propoe` entraria na primeira ação por esquecimento.
  *
- * O oposto de `nenhumaFerramentaEscreve`, que é manual DE PROPÓSITO: lá o que
- * se quer é que um quarto efeito reprove e obrigue alguém a olhar. Aqui o que
- * se quer é que um efeito novo fique fora sozinho.
+ * A DERIVAÇÃO JÁ PAGOU. `reativar_anuncio` nasceu em 03/08/2026 e ficou fora
+ * desta lista sem que ninguém precisasse lembrar: ela não é `le`, e isso bastou.
+ * Uma lista copiada à mão teria precisado de alguém atento no dia certo.
+ *
+ * O oposto de `nenhumaFerramentaEscreveNoCatalogo` e de
+ * `EXECUCOES_REVERSIVEIS`, manuais DE PROPÓSITO: lá o que se quer é que um poder
+ * novo reprove e obrigue alguém a olhar. Aqui o que se quer é que um efeito novo
+ * fique fora sozinho.
  */
 export const PRIMEIRA_ACAO: readonly string[] = FERRAMENTAS.filter(
   (f) => f.efeito === "le"

@@ -21,6 +21,7 @@ import type { ProdutoAlvo } from "./propostaDeCorrecao.ts";
 import type { EstadoDaLoja } from "../../publication/domain/prontidaoDaLoja.ts";
 import {
   FERRAMENTAS,
+  FERRAMENTAS_DE_ACAO,
   FERRAMENTAS_DE_LEITURA,
   FERRAMENTAS_DE_PROPOSTA,
   FERRAMENTAS_DE_RASCUNHO,
@@ -292,13 +293,25 @@ test("T15: o functionResponse leva `r.saida` cru — sem stringify nem resumo", 
 // T16 · T17 — o que esta fase NÃO podia tocar
 // ---------------------------------------------------------------------------
 
-test("T16: nenhuma ferramenta de efeito foi alterada", () => {
-  assert.equal(FERRAMENTAS.length, 16);
+test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
+  // O que esta fase não podia tocar: a classificação de quem já existia. O
+  // catálogo pode CRESCER por decisão registrada — foi o que aconteceu em
+  // 03/08/2026, com `reativar_anuncio` — e não pode uma ferramenta de leitura
+  // virar proposta, nem uma proposta virar ação, sem alguém editar esta linha.
+  //
+  // Por isso a asserção sobre `reativar_anuncio` está aqui embaixo pelo NOME e
+  // pelo EFEITO: se um dia alguém reclassificá-la como `le` para fazer um teste
+  // parar de incomodar, ela entraria na primeira ação por derivação, e um
+  // "obrigado" poderia colocar anúncio no ar. É o caminho mais curto que existe
+  // entre um atalho e um estrago.
+  assert.equal(FERRAMENTAS.length, 17);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 10);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
+  assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.
   assert.equal(FERRAMENTAS.find((f) => f.nome === "o_que_falta_no_produto")?.efeito, "le");
+  assert.equal(FERRAMENTAS.find((f) => f.nome === "reativar_anuncio")?.efeito, "executa");
 });
 
 test("T17: o C1R continua intacto", () => {
