@@ -4,7 +4,7 @@
 // se o cliente aprovar, salva a imagem gerada no Storage como uma nova foto do
 // produto (reusa o upload existente).
 
-import { uploadImagemProduto } from "./storageImagens";
+import { trocarCapaDoProduto, uploadImagemProduto } from "./storageImagens";
 import type { ImagemProduto } from "../types";
 
 export type TipoGeracao = "melhorar" | "infografico";
@@ -67,11 +67,16 @@ export async function salvarImagemGerada(opcoes: {
   const ext = opcoes.mimeType.includes("png") ? "png" : "jpg";
   const nome = `ia-${opcoes.tipo}-${Date.now()}.${ext}`;
   const file = base64ParaFile(opcoes.base64, opcoes.mimeType, nome);
-  return uploadImagemProduto({
+  const comum = {
     clienteId: opcoes.clienteId,
     produtoId: opcoes.produtoId,
     file,
-    tipo: opcoes.tipo === "melhorar" ? "Principal" : "Infográfico",
     observacoes: "Gerada por IA (a partir da foto real).",
-  });
+  };
+  // "Melhorar" é uma TROCA de capa, e agora diz isso. Antes inseria a capa nova
+  // e deixava a tela rebaixar a antiga depois — uma ordem que exige um instante
+  // com duas capas, e que a restrição de uma capa por produto reprova.
+  return opcoes.tipo === "melhorar"
+    ? trocarCapaDoProduto(comum)
+    : uploadImagemProduto({ ...comum, tipo: "Infográfico" });
 }

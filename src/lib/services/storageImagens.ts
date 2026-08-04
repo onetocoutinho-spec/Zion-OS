@@ -5,7 +5,8 @@
 // publicação no ML consome (o ML não aceita prompts, só imagens por URL).
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
-import { criarImagem, listarImagensDoProduto } from "./imagensProduto";
+import { atualizarImagem, criarImagem, listarImagensDoProduto } from "./imagensProduto";
+import { capaAtual, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
 import type { ImagemProduto, TipoImagem } from "../types";
 
 const BUCKET = "produtos-imagens";
@@ -28,6 +29,14 @@ export interface OpcoesUpload {
   clienteId: string;
   produtoId: string;
   file: File;
+  /**
+   * O papel, quando o chamador tem opinião. Omitir é o caso comum — quem sobe
+   * uma foto quer acrescentar fotos, não decidir qual é a capa.
+   *
+   * Pedir "Principal" para um produto que já tem capa NÃO cria a segunda: a
+   * foto entra na galeria. Ver `papelDaFotoNova`. Para TROCAR a capa existe
+   * `trocarCapaDoProduto`.
+   */
   tipo?: TipoImagem;
   /** Cor da variação (vai para observações e ajuda a casar variante). */
   cor?: string;
@@ -52,16 +61,45 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
   const { data } = sb.storage.from(BUCKET).getPublicUrl(caminho);
   const url = data.publicUrl;
 
+  // O papel sai daqui, e de mais lugar nenhum. Era `opcoes.tipo ?? "Principal"`
+  // — o padrão invertido que fazia toda foto sem opinião virar capa.
+  const existentes = await listarImagensDoProduto(produtoId);
+
   return criarImagem({
     clienteId,
     produtoId,
     varianteId: null,
     anuncioId: null,
-    tipoImagem: opcoes.tipo ?? "Principal",
+    tipoImagem: papelDaFotoNova(existentes, opcoes.tipo),
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
   });
+}
+
+/**
+ * Troca a capa do produto por uma foto nova — rebaixando a antiga ANTES.
+ *
+ * A ordem é a correção inteira. O Estúdio IA fazia o contrário: inseria a capa
+ * nova e só depois rebaixava a antiga, o que exige que exista um instante com
+ * duas capas. Enquanto nada impedia, esse instante passava despercebido; com a
+ * restrição de uma capa por produto, ele é o defeito.
+ *
+ * Se a inserção falhar, a antiga VOLTA a ser capa. Sem esse desfazer, uma falha
+ * de rede deixaria o produto sem capa nenhuma — pior que o defeito original,
+ * porque produto sem capa não publica.
+ */
+export async function trocarCapaDoProduto(
+  opcoes: Omit<OpcoesUpload, "tipo">
+): Promise<ImagemProduto> {
+  const anterior = capaAtual(await listarImagensDoProduto(opcoes.produtoId));
+  if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Secundária" });
+  try {
+    return await uploadImagemProduto({ ...opcoes, tipo: "Principal" });
+  } catch (e) {
+    if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
+    throw e;
+  }
 }
 
 /**

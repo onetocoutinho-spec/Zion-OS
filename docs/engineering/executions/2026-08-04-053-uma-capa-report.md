@@ -3,9 +3,15 @@
 ```
 Operação:  create unique index parcial em imagens_produto
 Aplicada:  2026-08-04 03:22 UTC, projeto ouynursknlgtmewcdjzr (produção)
+DERRUBADA: 2026-08-04 — quebrou três caminhos de upload (§7)
 Artefatos: Plano = PR #192 + o cabeçalho da própria 053 · Snapshot = §1 · Relatório = este
 Risco:     aditivo e reversível — nenhum dado alterado
 ```
+
+> **LEIA A §7 ANTES DAS OUTRAS.** O índice foi aplicado, verificado com um DoD
+> que passou inteiro, e **quebrou produção mesmo assim**. O que as §§1–6 contam
+> continua verdadeiro e continua insuficiente — e é essa distância que vale mais
+> que o resto do documento.
 
 ## 1 · Snapshot (antes)
 
@@ -82,3 +88,65 @@ risco: nenhum código depende do índice. O incidente que ensinou a conferir
 migrações antes do deploy foi o inverso — código lendo `perfis.ativo` numa
 produção que nunca recebeu a coluna. Aqui o banco está à frente do repositório,
 que é o lado seguro da defasagem.
+
+---
+
+## 7 · O DoD passou inteiro e a produção quebrou
+
+Poucos minutos depois de fechar as §§1–6, fui ler os caminhos que **escrevem**
+em `imagens_produto`. Deviam ter sido lidos antes.
+
+`uploadImagemProduto` fazia insert puro com `tipo ?? "Principal"`. Quatro
+chamadores, quatro respostas diferentes para a mesma pergunta:
+
+| caminho | o que pedia | com o índice |
+|---|---|---|
+| `/cliente/anunciar` → `FotosDoProduto` | **nada** → herdava `"Principal"` | **quebrado** |
+| importar pasta (`imagens/page.tsx`) | `i === 0 ? "Principal"` **por grupo de cor** | **quebrado** |
+| Estúdio IA, "melhorar capa" | inseria a capa nova e rebaixava a antiga **depois** | **quebrado** |
+| upload avulso | `"Principal"` só se não houvesse nenhuma | ✅ correto |
+
+Os 80 produtos têm capa. Na prática: todo produto.
+
+### O que isso ensina, e não é "teste mais"
+
+O DoD tinha cinco linhas e **duas provas de comportamento** — a segunda capa
+recusada, a segunda secundária aceita. Ele estava certo, e nada nele podia ter
+pego isto, porque todas as cinco perguntam *o que o BANCO faz*. Nenhuma pergunta
+*o que o APP faz quando o banco responde assim*.
+
+> Uma restrição não muda só o banco. Ela muda todo caminho que escrevia contando
+> com a ausência dela — e esses caminhos não estão no schema.
+
+O próprio DES-003 tinha escrito o aviso, e eu o li como observação sobre geração
+em massa: *"`tipo: "melhorar"` salva como `tipo_imagem: "Principal"` … **não está
+lido se algo impede** — e isso é pré-requisito de qualquer geração em massa"*.
+Era pré-requisito da restrição, não da geração.
+
+### O que foi feito
+
+1. **Índice derrubado** assim que o defeito apareceu — produção liberada, 653
+   linhas intactas. Restrição que não pode ficar de pé sai na hora; discutir com
+   a lojista sem conseguir subir foto não é opção.
+2. **A regra da capa virou um lugar só** —
+   `modules/catalog/domain/papelDaImagem.ts`, puro e testado. Foto sem papel
+   declarado vai para a **galeria**; a exceção é o produto sem capa, em que a
+   primeira assume. O padrão estava invertido: ausência de opinião significava
+   "esta é a capa".
+3. **Pedir uma segunda capa não vira erro** — vira `Secundária`. Recusar o
+   upload puniria a lojista por um mecanismo nosso que não sabia da regra.
+4. **Trocar a capa virou explícito** — `trocarCapaDoProduto` rebaixa a antiga
+   **antes** de inserir a nova, e a **restaura se a inserção falhar**. Produto
+   sem capa nenhuma é pior que o defeito original: produto sem capa não publica.
+5. As três cópias da regra saíram das telas.
+
+### A ordem correta, que na primeira vez foi ao contrário
+
+```
+código em produção  →  índice
+```
+
+A §6 argumentava que o banco à frente do repositório era o lado seguro da
+defasagem, e isso vale para **coluna** — código velho ignora coluna nova. Não
+vale para **restrição**: restrição nova quebra código velho, e o lado seguro é o
+oposto. A reaplicação só acontece com o conserto já no ar.
