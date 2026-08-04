@@ -25,6 +25,22 @@
 export interface TurnoGuardado {
   pergunta: string;
   texto?: string;
+  /**
+   * A resposta do caminho barato (o cartão), serializada.
+   *
+   * FALTAVA, e o defeito era visível: `resposta` não era guardada, então toda
+   * resposta da rota de intenção sumia ao recarregar. A pergunta voltava sem
+   * resposta nenhuma e a tela renderizava "Lendo os seus dados…" PARA SEMPRE —
+   * um spinner afirmando um carregamento que não existe.
+   *
+   * Conferido no print da conta real em 03/08/2026: quatro perguntas travadas
+   * no spinner, e só a resposta do modo conversa (que vive em `texto`)
+   * sobreviveu.
+   *
+   * `unknown` porque o formato é da camada de domínio do assistente e este
+   * módulo só o transporta — validar aqui duplicaria o contrato.
+   */
+  resposta?: unknown;
   ferramentas?: readonly string[];
   /** O desfecho de uma proposta confirmada. A proposta em si NÃO é guardada. */
   desfecho?: { ok: boolean; mensagem: string };
@@ -92,6 +108,7 @@ export function paraGuardar(
     turnos: turnos.slice(-TURNOS_GUARDADOS).map((t) => ({
       pergunta: t.pergunta,
       ...(t.texto !== undefined ? { texto: t.texto } : {}),
+      ...(t.resposta !== undefined ? { resposta: t.resposta } : {}),
       ...(t.ferramentas ? { ferramentas: [...t.ferramentas] } : {}),
       ...(t.desfecho ? { desfecho: { ok: t.desfecho.ok, mensagem: t.desfecho.mensagem } } : {}),
     })),
