@@ -18,13 +18,16 @@ import {
  * esta linha para de compilar e o `typecheck:test` reprova a build — antes de
  * qualquer teste rodar, antes de qualquer revisão humana esquecer.
  *
- * ELA JÁ DISPAROU UMA VEZ, em 2026-07-29, quando `rascunha` entrou para o
+ * ELA JÁ DISPAROU DUAS VEZES. Em 2026-07-29, quando `rascunha` entrou para o
  * cadastro conversacional. Foi o desenho funcionando: a build reprovou, a
- * decisão foi tomada por gente e está escrita em `ferramentasDoAssistente`. A
- * lista abaixo é a fronteira de hoje — o QUARTO efeito reprova de novo.
+ * decisão foi tomada por gente e está escrita em `ferramentasDoAssistente`. E
+ * em 2026-08-03, quando `executa` entrou — o dono decidiu que o chat pode agir,
+ * e a build reprovou até alguém escrever aqui que decidiu.
+ *
+ * A lista abaixo é a fronteira de hoje — o QUINTO efeito reprova de novo.
  */
 type Igual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-const _aFronteiraNaoCresceu: Igual<Efeito, "le" | "rascunha" | "propoe"> = true;
+const _aFronteiraNaoCresceu: Igual<Efeito, "le" | "rascunha" | "propoe" | "executa"> = true;
 void _aFronteiraNaoCresceu;
 
 test("nenhuma ferramenta do assistente escreve no catálogo", () => {

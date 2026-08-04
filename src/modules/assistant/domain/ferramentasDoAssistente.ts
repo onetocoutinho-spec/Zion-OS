@@ -55,7 +55,29 @@ export type Efeito =
   /** Acumula estado da CONVERSA. Não toca no catálogo do lojista. */
   | "rascunha"
   /** Monta uma proposta para um humano confirmar. Não muda nada. */
-  | "propoe";
+  | "propoe"
+  /**
+   * EXECUTA uma ação REVERSÍVEL no marketplace, sem esperar clique.
+   *
+   * Decisão do dono em 03/08/2026: "chat pode agir e propor". Se a lojista tem
+   * de resolver tudo pelo chat, exigir que ela saia dele para clicar um botão
+   * é devolver a ela o trabalho de roteamento que o software deveria fazer.
+   *
+   * A LINHA QUE FICA NÃO É agir-vs-propor — é REVERSIBILIDADE, e não fui eu que
+   * a inventei: o próprio código já a tinha. `/api/ml/estado-do-anuncio`
+   * (paused/active) é uma rota SEPARADA de `/api/ml/encerrar` (closed) porque
+   * "closed é terminal e paused é reversível", e juntá-las faria um erro de
+   * digitação destruir um anúncio.
+   *
+   * Então `executa` vale para o que se desfaz com um clique — reativar um
+   * anúncio que ela mesma pausou. Encerrar, publicar, gravar custo e gravar
+   * preço continuam em `propoe`: erro ali custa dinheiro ou histórico, e o
+   * clique humano é barato perto disso.
+   *
+   * Ampliar esta fronteira exige mudar a linha abaixo e ver a build reprovar —
+   * que é o desenho funcionando, não um obstáculo.
+   */
+  | "executa";
 
 export interface Ferramenta {
   nome: string;
@@ -87,6 +109,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
         },
       },
       required: ["assunto"],
+    },
+  },
+  {
+    nome: "reativar_anuncio",
+    efeito: "executa",
+    descricao:
+      "Reativa no Mercado Livre um anúncio que a lojista pausou. Use SOMENTE quando ela pedir para voltar ao ar, e SOMENTE para anúncios pausados por ela — nunca para anúncios que o Mercado Livre tirou do ar. A ação é reversível: se ela quiser, pausa de novo.",
+    parametros: {
+      type: "OBJECT",
+      properties: {
+        mlb: { type: "STRING", description: "O código MLB do anúncio a reativar." },
+      },
+      required: ["mlb"],
     },
   },
   {

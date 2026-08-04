@@ -49,6 +49,11 @@ import {
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { definirEstadoDoItem, renovarToken } from "@/lib/marketplaces/mercadolivre";
+import {
+  atualizarRefreshTokenServidor,
+  lerCanalServidor,
+} from "@/modules/integration/infrastructure/canalServidor";
 import { rodarTentativa } from "@/lib/services/buscaNoCatalogo";
 import {
   draftAbertoDaConversa,
@@ -885,6 +890,61 @@ export async function POST(request: Request) {
             // ferramenta roda, no lugar do silêncio.
             mandar({ tipo: "ferramenta", nome: c.nome });
             const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+
+            // A AÇÃO ACONTECE AQUI, não no domínio.
+            //
+            // `executarFerramenta` devolve um PEDIDO e continua puro — sem
+            // token, sem rede. Quem age é a rota, com o tenant da sessão, do
+            // mesmo jeito que já persiste conversa e proposta.
+            //
+            // Decisão do dono em 03/08/2026: o chat pode agir. A linha que fica
+            // é REVERSIBILIDADE — reativar se desfaz com um clique; encerrar,
+            // publicar e gravar preço continuam exigindo confirmação humana.
+            //
+            // O resultado volta como SAÍDA DA FERRAMENTA para o modelo: se o ML
+            // recusar, ele lê a recusa e conta a verdade, em vez de anunciar um
+            // sucesso que não houve — que é o erro que eu cometi três vezes em
+            // 03/08 afirmando o passo seguinte no lugar do resultado.
+            if (r.acao?.tipo === "reativar") {
+              const mlb = r.acao.mlb;
+              try {
+                const admin = getSupabaseAdmin();
+                const canal = await lerCanalServidor(admin, clienteDaSessao, "Mercado Livre");
+                if (!canal?.refreshToken) throw new Error("Cliente não conectado ao Mercado Livre.");
+                const tk = await renovarToken({
+                  clientId: process.env.ML_CLIENT_ID as string,
+                  clientSecret: process.env.ML_CLIENT_SECRET as string,
+                  refreshToken: canal.refreshToken,
+                });
+                await atualizarRefreshTokenServidor(
+                  admin,
+                  clienteDaSessao,
+                  tk.refreshToken,
+                  "Mercado Livre"
+                );
+                const { status: estado } = await definirEstadoDoItem(tk.accessToken, mlb, "active");
+                mandar({
+                  tipo: "ferramenta",
+                  nome: `reativou ${mlb}`,
+                });
+                (r as { saida: unknown }).saida = {
+                  // A PALAVRA DO ML, não a nossa. `active` confirmado é
+                  // diferente de "o PUT voltou 200" — a distinção que custou
+                  // três falsos sucessos em 03/08.
+                  estadoConfirmadoPeloML: estado,
+                  comoResponder:
+                    estado === "active"
+                      ? `Diga que ${mlb} voltou ao ar — o Mercado Livre confirmou.`
+                      : `Diga que o pedido foi feito mas o Mercado Livre respondeu "${estado}". NÃO afirme que está no ar.`,
+                };
+              } catch (e) {
+                (r as { saida: unknown }).saida = {
+                  erro: e instanceof Error ? e.message : "Falha ao reativar no Mercado Livre.",
+                  comoResponder:
+                    "Diga que NÃO conseguiu reativar e repita o motivo. Não invente que deu certo.",
+                };
+              }
+            }
             // A última proposta vence. Duas no mesmo turno seria o modelo se
             // corrigindo, e é a corrigida que o lojista deve ver.
             if (r.proposta) proposta = r.proposta;

@@ -312,6 +312,18 @@ export interface EfeitoNoCadastro {
  */
 export interface ResultadoDaFerramenta {
   saida: unknown;
+  /**
+   * Uma ação REVERSÍVEL a executar — pedido, não execução.
+   *
+   * `executarFerramenta` continua PURO: ele não fala com o Mercado Livre, não
+   * tem token e não toca em rede. Quem executa é a rota, com o tenant da
+   * sessão — a mesma divisão que já vale para persistir conversa e proposta.
+   *
+   * Manter a pureza aqui não é elegância: é o que permite testar a decisão do
+   * modelo sem subir nada, e é o que impede que um turno estranho alcance o
+   * marketplace por um caminho que ninguém revisou.
+   */
+  acao?: { tipo: "reativar"; mlb: string };
   proposta?: Proposta;
   /**
    * O escopo de um LOTE, quando a proposta atinge mais de um alvo.
@@ -470,6 +482,28 @@ export async function executarFerramenta(
   const { nome, args } = pedido;
 
   switch (nome) {
+    case "reativar_anuncio": {
+      const mlb = texto(args, "mlb").trim().toUpperCase().replace(/-/g, "");
+      // Sem MLB não há ação. Devolver erro é melhor que reativar "o anúncio
+      // que der" — e o modelo lê a saída e pergunta de novo.
+      if (!/^MLB\d+$/.test(mlb)) {
+        return {
+          saida: {
+            erro: "Preciso do código MLB do anúncio para reativar.",
+            comoResponder: "Peça o MLB, ou liste os pausados e pergunte qual.",
+          },
+        };
+      }
+      return {
+        saida: {
+          pedido: `reativar ${mlb}`,
+          comoResponder:
+            "A reativação foi PEDIDA, não confirmada. Diga que pediu e que o resultado aparece a seguir — não afirme que o anúncio já está no ar.",
+        },
+        acao: { tipo: "reativar", mlb },
+      };
+    }
+
     case "contar": {
       const r = responder(
         {
