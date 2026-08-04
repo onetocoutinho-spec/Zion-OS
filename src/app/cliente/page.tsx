@@ -24,6 +24,8 @@ import { PageHeader, ActionTile, Section, Pill } from "@/components/client-porta
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
+import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
+import { infracoesPorAnuncioDoCliente } from "@/lib/services/infracoesMarketplace";
 import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
@@ -62,6 +64,15 @@ export default function ClienteHome() {
     () => buscarCanal(clienteId, "Mercado Livre"),
     [clienteId]
   );
+  // O QUE O MERCADO LIVRE ESTÁ COBRANDO — a mesma fonte da tela Pendências.
+  //
+  // O card abaixo lia a tabela `pendencias` (herança de agência, vazia) e
+  // mostrava "0" enquanto o menu "Pendências" listava dezenas. Duas coisas com
+  // o mesmo nome, e a lojista lê o card como resumo da tela.
+  const { data: infracoesDaConta } = useLiveQuery(
+    () => infracoesPorAnuncioDoCliente(clienteId),
+    [clienteId]
+  );
   const { data: proximas } = useLiveQuery(portalProximasAcoes);
   const { data: quota } = useLiveQuery(quotaEsteira);
 
@@ -69,7 +80,11 @@ export default function ClienteHome() {
     const prods = produtos ?? [];
     const ans = anuncios ?? [];
     const auds = auditorias ?? [];
-    const pends = (pendencias ?? []).filter((p) => !p.resolvida);
+    // As pendências INTERNAS (tabela `pendencias`) continuam existindo e sendo
+    // contadas — só deixam de ser o que o card chama de "pendências", porque
+    // não é isso que a lojista encontra ao clicar no menu de mesmo nome.
+    const pendsInternas = (pendencias ?? []).filter((p) => !p.resolvida);
+    const daConta = pendenciasDaMemoria(ans, infracoesDaConta ?? {});
 
     const produtosComAnuncio = new Set(ans.map((a) => a.produtoId).filter(Boolean));
 
@@ -122,11 +137,12 @@ export default function ClienteHome() {
       comProblema,
       semOtimizacao,
       score,
-      pendencias: pends.length,
+      pendencias: daConta ? daConta.grupos.length : pendsInternas.length,
+      pecasParadas: daConta?.estoqueTravado ?? 0,
       relatorios: (relatorios ?? []).length,
       auditados: auds.length,
     };
-  }, [produtos, anuncios, auditorias, pendencias, relatorios]);
+  }, [produtos, anuncios, auditorias, pendencias, relatorios, infracoesDaConta]);
 
   /**
    * O QUE FALTA — a lista honesta, na ordem em que resolver produz resultado.
@@ -191,11 +207,16 @@ export default function ClienteHome() {
           icon={Gauge}
           tone={m.score != null && m.score >= 70 ? "green" : m.score != null ? "yellow" : "gray"}
         />
+        {/* O QUE O MERCADO LIVRE COBRA — a mesma conta da tela Pendências.
+            Agrupado por produto, como a tela; e as peças paradas na dica,
+            porque "12 pendências" e "830 peças paradas" contam a mesma
+            história com urgências diferentes. */}
         <StatCard
           label="Pendências abertas"
           value={m.pendencias}
           icon={ListChecks}
           tone={m.pendencias > 0 ? "yellow" : "gray"}
+          hint={m.pecasParadas > 0 ? `${m.pecasParadas} peças paradas` : undefined}
         />
         <StatCard label="Relatórios" value={m.relatorios} icon={FileText} tone="blue" />
         <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />

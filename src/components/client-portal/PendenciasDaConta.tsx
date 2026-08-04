@@ -39,7 +39,7 @@ import {
 import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
-import { pendenciasDaConta } from "@/modules/integration/domain/pendenciasDaConta";
+import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
 import { infracoesPorAnuncioDoCliente } from "@/lib/services/infracoesMarketplace";
 import { useLiveQuery } from "@/lib/hooks";
 import type {
@@ -120,32 +120,18 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
     [clienteId]
   );
 
-  const daMemoria = useMemo(() => {
-    const comLeitura = (gravados ?? []).filter((a) => a.mlItemId && a.statusMarketplace);
-    if (comLeitura.length === 0) return null;
-    const p = pendenciasDaConta(
-      comLeitura.map((a) => ({
-        mlb: a.mlItemId as string,
-        titulo: a.anuncio?.tituloOtimizado || a.produto || (a.mlItemId as string),
-        permalink: a.mlPermalink ?? "",
-        status: a.statusMarketplace as string,
-        estoque: a.estoqueMarketplace ?? 0,
-        subStatus: a.subStatusMarketplace ?? [],
-        fotoCapaMaxSize: a.fotoCapaMaxSize ?? "",
-        familia: a.produto ?? "",
-      })),
-      25,
-      infracoes ?? {}
-    );
-    // A DATA importa tanto quanto os números: um retrato de três dias atrás
-    // apresentado como atual é a mesma mentira que o `status` fixo era.
-    const lidoEm = comLeitura
-      .map((a) => a.statusMarketplaceEm ?? "")
-      .filter(Boolean)
-      .sort()
-      .pop();
-    return { ...p, lidos: comLeitura.length, lidoEm: lidoEm ?? null };
-  }, [gravados, infracoes]);
+  // A MONTAGEM MORA EM `pendenciasDaMemoria`, não aqui.
+  //
+  // Esta tela e o card "Pendências abertas" da Visão geral liam fontes
+  // DIFERENTES com o mesmo nome — o card lia a tabela `pendencias` (vazia,
+  // herança de agência) e dizia "0" enquanto esta lista mostrava dezenas.
+  //
+  // Duplicar a montagem para consertar o card seria a QUARTA ocorrência do
+  // defeito do dia: regra em dois lugares, consertada num só.
+  const daMemoria = useMemo(
+    () => pendenciasDaMemoria(gravados ?? [], infracoes ?? {}),
+    [gravados, infracoes]
+  );
 
   // O que veio agora manda; sem isso, a memória.
   const mostrando = resultado ?? daMemoria;
