@@ -418,3 +418,49 @@ test("infração sem remédio NÃO inventa instrução", () => {
   assert.match(p!.oQueFazer, /não disse o que fazer/);
   assert.match(p!.porque, /sem informar o motivo/);
 });
+
+// ---------------------------------------------------------------------------
+// OS 51 QUE ELA PAUSOU — pergunta, não cobrança
+// ---------------------------------------------------------------------------
+//
+// Medido em 03/08/2026: 51 anúncios com `paused_by_seller` e 416 peças paradas.
+// Eram INVISÍVEIS na lista — não estão `active`, não têm `out_of_stock` nem
+// `waiting_for_patch`, e o balde "sem motivo" exige subStatus vazio, que não é
+// o caso porque o ML DISSE o motivo.
+
+test("pausado por ela aparece na lista — antes sumia", () => {
+  const r = pendenciasDaConta([
+    an("MLB1", { status: "paused", subStatus: ["paused_by_seller"], estoque: 40 }),
+  ]);
+  const p = r.itens.find((x) => x.tipo === "pausado-por-voce");
+  assert.ok(p, "o anúncio pausado por ela continua invisível");
+  assert.equal(p!.estoque, 40);
+});
+
+test("o texto PERGUNTA em vez de acusar — a decisão foi dela", () => {
+  const r = pendenciasDaConta([
+    an("MLB1", { status: "paused", subStatus: ["paused_by_seller"], estoque: 5 }),
+  ]);
+  const p = r.itens.find((x) => x.tipo === "pausado-por-voce")!;
+  assert.match(p.oQueFazer, /Se foi de propósito/);
+  assert.match(p.porque, /Você pausou/);
+  // Não pode dizer que o ML tirou do ar: foi ela.
+  assert.ok(!/Mercado Livre (tirou|cancelou)/.test(p.porque));
+});
+
+test("pausado PELO ML não vira 'pausado por você'", () => {
+  // `paused` sem `paused_by_seller` é outra história — e confundir as duas
+  // mandaria ela reativar algo que o ML derrubou.
+  const r = pendenciasDaConta([
+    an("MLB1", { status: "paused", subStatus: ["out_of_stock"], estoque: 0 }),
+  ]);
+  assert.equal(r.itens.filter((x) => x.tipo === "pausado-por-voce").length, 0);
+});
+
+test("entra em receita: 416 peças paradas não é 'bom saber'", () => {
+  const r = pendenciasDaConta([
+    an("MLB1", { status: "paused", subStatus: ["paused_by_seller"], estoque: 416 }),
+  ]);
+  assert.equal(r.itens.find((x) => x.tipo === "pausado-por-voce")!.gravidade, "receita");
+  assert.equal(r.estoqueTravado, 416);
+});
