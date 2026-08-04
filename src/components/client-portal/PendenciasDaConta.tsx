@@ -54,6 +54,8 @@ const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
   // grupos que são SUSPEITA nossa, e misturar os dois seria dar à nossa
   // inferência (29% de acerto) a autoridade dele.
   "infracao-do-ml": "O Mercado Livre apontou",
+  // Pergunta, não acusação: ela pode ter pausado de propósito.
+  "pausado-por-voce": "Pausados por você — foi de propósito?",
   "capa-nao-quadrada": "Suspeita nossa: foto não é quadrada",
   "capa-pequena": "Suspeita nossa: foto pequena",
   "sem-estoque": "Sem estoque",

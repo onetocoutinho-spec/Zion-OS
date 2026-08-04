@@ -78,6 +78,7 @@ export interface PendenciaDaConta {
   tipo:
     | "bloqueado"
     | "infracao-do-ml"
+    | "pausado-por-voce"
     | "capa-pequena"
     | "capa-nao-quadrada"
     | "sem-estoque"
@@ -303,6 +304,29 @@ export function pendenciasDaConta(
         porque:
           `A capa tem ${capa.largura}x${capa.altura}. O Mercado Livre NÃO reclamou deste anúncio — ` +
           "isto é uma suspeita nossa, baseada em tamanho, e ela acerta menos da metade das vezes.",
+      });
+    }
+
+    // VOCÊ PAUSOU — pergunta, não cobrança.
+    //
+    // Medido em 03/08/2026: 51 anúncios com `paused_by_seller` e 416 peças
+    // paradas atrás deles. Até aqui eles eram INVISÍVEIS na lista: não estão
+    // `active` (a regra de capa não olha), não têm `out_of_stock` nem
+    // `waiting_for_patch`, e o balde "sem motivo informado" exige `subStatus`
+    // vazio — que não é o caso, porque o ML disse o motivo.
+    //
+    // Não é defeito: foi decisão DELA. Mas decisão esquecida e decisão tomada
+    // são indistinguíveis para o sistema, e 416 peças é caro para um
+    // esquecimento. Então o texto PERGUNTA em vez de acusar — e o botão que
+    // resolve já existe na tela de Anúncios desde antes de hoje.
+    if (temSub(a, "paused_by_seller")) {
+      todas.push({
+        ...base,
+        gravidade: "receita",
+        tipo: "pausado-por-voce",
+        oQueFazer:
+          "Se foi de propósito, está tudo certo — ignore esta linha. Se esqueceu, o botão Reativar em Anúncios devolve ao ar na hora.",
+        porque: "Você pausou este anúncio no Mercado Livre — não foi ele que tirou do ar.",
       });
     }
 
