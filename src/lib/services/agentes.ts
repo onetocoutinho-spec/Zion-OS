@@ -1,4 +1,5 @@
 import { criarRepositorio } from "../repositorio";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import {
   agenteParaApp,
   agenteParaBanco,
@@ -127,7 +128,9 @@ export async function executarAgenteIA(
 
   const resposta = await fetch("/api/agentes/executar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // A terceira do mesmo defeito — o painel da equipe. `cadeiaEsteira.ts`
+    // chamava a MESMA rota com o cabecalho; tres caminhos, um so acertava.
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({ agente, entrada, contexto: opcoes.contexto }),
   });
 

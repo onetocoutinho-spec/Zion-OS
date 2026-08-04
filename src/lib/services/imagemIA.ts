@@ -5,6 +5,7 @@
 // produto (reusa o upload existente).
 
 import { trocarCapaDoProduto, uploadImagemProduto } from "./storageImagens";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import type { ImagemProduto } from "../types";
 
 export type TipoGeracao = "melhorar" | "infografico";
@@ -24,7 +25,11 @@ export async function gerarImagemProduto(opcoes: {
 }): Promise<ResultadoGeracao> {
   const resposta = await fetch("/api/imagens/gerar", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // A rota exige sessao (`exigirAutenticado`) e esta chamada nunca a mandava:
+    // o Estudio de imagem respondia "Nao autenticado" desde que a seguranca
+    // entrou, em 22/07/2026. E a explicacao do "infograficos: 0" do DES-003 —
+    // nao e que ninguem quis gerar, e que nao dava.
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify(opcoes),
   });
   const dados = (await resposta.json()) as {
