@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { lerFonte } from "../../../testing/lerFonte.ts";
 import {
   FERRAMENTAS,
+  FERRAMENTAS_DE_ACAO,
   FERRAMENTAS_DE_LEITURA,
   FERRAMENTAS_DE_PROPOSTA,
   FERRAMENTAS_DE_RASCUNHO,
@@ -29,16 +30,33 @@ const semComentarios = (s: string) =>
 const ROTA = semComentarios(ler("app/api/assistente/conversa/route.ts"));
 const CLIENTE = semComentarios(ler("lib/agentes/conversaComFerramentas.ts"));
 
-/** As seis que produzem efeito — proposta persistida ou rascunho gravado. */
-const COM_EFEITO = [...FERRAMENTAS_DE_PROPOSTA, ...FERRAMENTAS_DE_RASCUNHO].map((f) => f.nome);
+/**
+ * Tudo que produz efeito — proposta persistida, rascunho gravado ou AÇÃO no
+ * marketplace.
+ *
+ * DERIVADO de `efeito !== "le"`, e não somando listas à mão. A soma manual era
+ * `PROPOSTA + RASCUNHO` e continuaria compilando, verde e silenciosa depois de
+ * 03/08/2026 — deixando `reativar_anuncio`, a única ferramenta que age de
+ * verdade, fora justamente do teste que existe para mantê-la fora do passo 0.
+ *
+ * Uma guarda que precisa de alguém lembrar de atualizá-la não é uma guarda.
+ */
+const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nome);
 
 // ---------------------------------------------------------------------------
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
 test("T2: a primeira ação admite exatamente as 10 ferramentas de leitura", () => {
+  // As duas igualdades dizem coisas diferentes, e as duas importam: o número
+  // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
+  // IDENTIDADE — as dez são as que leem, não dez quaisquer.
+  //
+  // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
+  // dentro da lista de leitura. O conserto foi na fonte, não aqui.
   assert.equal(PRIMEIRA_ACAO.length, 10);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
+  assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
 test("T2: são exatamente estas dez — a matriz que autorizou a decisão", () => {
@@ -56,12 +74,19 @@ test("T2: são exatamente estas dez — a matriz que autorizou a decisão", () =
   ]);
 });
 
-test("T3: NENHUMA das seis com efeito pode ser a primeira ação", () => {
-  assert.equal(COM_EFEITO.length, 6);
+test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
+  // Eram seis até 03/08/2026, e todas paravam num cartão à espera de clique. A
+  // sétima é de outra natureza: `reativar_anuncio` não espera clique nenhum.
+  //
+  // O dano que o passo 0 passou a poder causar, portanto, subiu de nível. Antes,
+  // o pior caso de um "obrigado" era um cartão indevido na tela de alguém. Agora
+  // seria um ANÚNCIO NO AR sem ninguém ter pedido — reversível, sim, mas visível
+  // para quem compra antes de ser visível para quem vende.
+  assert.equal(COM_EFEITO.length, 7);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
-      `"${nome}" tem efeito e entrou na primeira ação — um "obrigado" poderia deixar um cartão na tela`
+      `"${nome}" tem efeito e entrou na primeira ação — um "obrigado" agiria sozinho`
     );
   }
 });
@@ -74,7 +99,7 @@ test("T3: a lista é DERIVADA de `efeito`, não copiada à mão", () => {
   }
 });
 
-test("PRIMEIRA_ACAO ⊂ nomes das 16", () => {
+test("PRIMEIRA_ACAO ⊂ nomes das 17", () => {
   const todas = new Set(FERRAMENTAS.map((f) => f.nome));
   for (const nome of PRIMEIRA_ACAO) assert.ok(todas.has(nome));
 });
@@ -100,7 +125,7 @@ test("T4: `livre` vira AUTO", () => {
   assert.match(CLIENTE, /mode:\s*"AUTO"/);
 });
 
-test("T5: as 16 DECLARAÇÕES continuam em todo passo — muda a escolha, não a oferta", () => {
+test("T5: as 17 DECLARAÇÕES continuam em todo passo — muda a escolha, não a oferta", () => {
   assert.match(CLIENTE, /functionDeclarations:\s*paraDeclaracoesGemini\(ferramentas\)/);
   assert.match(ROTA, /FERRAMENTAS,/);
 });
@@ -131,11 +156,22 @@ test("T10: o teto de passos continua 6", async () => {
   assert.equal(MAXIMO_DE_PASSOS, 6);
 });
 
-test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada", () => {
-  assert.equal(FERRAMENTAS.length, 16);
+test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem decisão", () => {
+  // Estes números são uma TRAVA, não uma descrição. Eles existem para que
+  // acrescentar uma ferramenta seja um ato — alguém edita esta linha e explica.
+  //
+  // A trava disparou em 03/08/2026, com `reativar_anuncio`. Ela mudou de 16 para
+  // 17 porque o dono decidiu que o chat pode agir, e a decisão está registrada
+  // no tipo `Efeito` e em `EXECUCOES_REVERSIVEIS` — não porque o teste incomodou.
+  //
+  // A contagem por LISTA é o que dá sentido ao total: 17 sozinho passaria com
+  // uma leitura virando proposta. As cinco linhas juntas dizem que o catálogo é
+  // o mesmo, com um poder novo declarado no lugar certo.
+  assert.equal(FERRAMENTAS.length, 17);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 10);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);
+  assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
 test("T12: modelo e temperatura intactos", () => {

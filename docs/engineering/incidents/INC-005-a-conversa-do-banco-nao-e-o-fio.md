@@ -260,6 +260,44 @@ Dois testes novos em `fioDaConversa.test.ts` guardam exatamente isso:
 O que continua verdadeiro do texto original: M2 **não foi testado**, e nada
 aqui o testa. O que mudou é que a razão de aceitá-lo passou a ser verificável.
 
+### Reexame em 2026-08-03 — o gatilho disparou
+
+A segunda condição escrita acima — *"se qualquer das 16 ferramentas ganhar
+efeito fora de `le`/`propoe`/`rascunha`, o teto que sustenta o argumento inteiro
+cai"* — **aconteceu**. `reativar_anuncio` entrou com efeito `executa`, por
+decisão do dono ("chat pode agir e propor", 03/08/2026).
+
+Então o teto caiu, e o argumento do M2 foi **refeito**, não reescrito. A
+diferença importa: reescrever seria trocar as palavras da invariante até ela
+voltar a ser verdadeira. Refazer é recalcular o dano com o poder novo na mesa.
+
+**O dano possível do M2, hoje.** M2 é a aba duplicada que compartilha
+`conversaId`; o dano é resolução de referência errada — "reativa esse aí"
+resolvendo contra o que a *outra* aba listou, já que as duas dividem o fio. Com
+`executa` no catálogo, esse erro deixou de ser inofensivo. O que o limita:
+
+| | |
+|---|---|
+| **não atravessa cliente** | a rota age com `clienteDaSessao`; as duas abas são do mesmo tenant por construção |
+| **não atravessa o catálogo** | `executa` fala com o Mercado Livre. Nada alcança `produtos` nem `produto_variantes` sem Proposal + clique — a invariante que não mudou |
+| **não é terminal** | o pior caso é um anúncio que ela mesma pausou voltando ao ar sem ela pedir; um segundo pedido o pausa de novo |
+
+**M2 continua limitação aceita**, agora por um argumento mais fraco que o de
+agosto e mais forte que o de julho: não é mais *"não há caminho de escrita"* — é
+*"o caminho que existe é reversível, do mesmo tenant, e fora do catálogo"*.
+
+**O que reabre M2 a partir daqui:** uma ferramenta `executa` cujo efeito **não
+se desfaça com um clique**. Por isso o teste em `fioDaConversa.test.ts` deixou
+de olhar só o efeito e passou a olhar o **nome**: ele lê
+`EXECUCOES_REVERSIVEIS` da fonte e exige que toda ferramenta que age esteja
+nomeada lá. Uma segunda ação sem clique reprova a build até esta seção ser
+recalculada.
+
+A invariante do módulo mudou de texto no mesmo dia, e pelo mesmo motivo:
+*"nenhuma ferramenta escreve"* virou *"nenhuma ferramenta escreve **no
+catálogo**"*. As duas palavras não afrouxam nada — elas param de prometer o que
+o código já não cumpria.
+
 ## A implementação (Fase 7D)
 
 Quatro arquivos, **só no cliente**. Backend, `garantirConversa`, schema,

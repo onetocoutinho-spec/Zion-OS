@@ -512,7 +512,7 @@ export async function POST(request: Request) {
           // Rasteira Vizzano — sem chamar nada — e prometeu um cartão que não
           // existia. O prompt já proibia; proibir não impede.
           //
-          // Do passo 1 em diante nada muda: AUTO, com as 16. A leitura já
+          // Do passo 1 em diante nada muda: AUTO, com as 17. A leitura já
           // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
             system(corpo.produtoAberto ?? ""),

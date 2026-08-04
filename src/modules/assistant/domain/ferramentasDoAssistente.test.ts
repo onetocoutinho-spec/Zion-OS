@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  EXECUCOES_REVERSIVEIS,
   FERRAMENTAS,
+  FERRAMENTAS_DE_ACAO,
   FERRAMENTAS_DE_LEITURA,
   FERRAMENTAS_DE_PROPOSTA,
   FERRAMENTAS_DE_RASCUNHO,
-  nenhumaFerramentaEscreve,
+  nenhumaFerramentaEscreveNoCatalogo,
+  todaExecucaoEReversivel,
   type Efeito,
   type Ferramenta,
 } from "./ferramentasDoAssistente";
@@ -30,12 +33,51 @@ type Igual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const _aFronteiraNaoCresceu: Igual<Efeito, "le" | "rascunha" | "propoe" | "executa"> = true;
 void _aFronteiraNaoCresceu;
 
-test("nenhuma ferramenta do assistente escreve no catálogo", () => {
-  // O modelo pode propor qualquer coisa; só o clique de um humano grava.
-  // Enquanto isso for verdade, um modelo pior, um prompt vazado ou um turno
-  // estranho não conseguem tocar no banco — não porque foram instruídos a não
-  // fazer, mas porque não existe caminho.
-  assert.ok(nenhumaFerramentaEscreve());
+test("nenhuma ferramenta do assistente escreve no CATÁLOGO", () => {
+  // O modelo pode propor qualquer coisa; só o clique de um humano grava em
+  // `produtos` e `produto_variantes`. Enquanto isso for verdade, um modelo pior,
+  // um prompt vazado ou um turno estranho não conseguem tocar no dado da
+  // lojista — não porque foram instruídos a não fazer, mas porque não existe
+  // caminho.
+  //
+  // A palavra CATÁLOGO entrou em 03/08/2026 e é uma correção de HONESTIDADE, não
+  // um afrouxamento: `reativar_anuncio` escreve, no Mercado Livre. O teto que
+  // caiu foi "nada é escrito em lugar nenhum"; o que este teste guarda — nada
+  // alcança as duas tabelas do catálogo — nunca esteve em jogo.
+  assert.ok(nenhumaFerramentaEscreveNoCatalogo());
+});
+
+test("o que age no marketplace está NOMEADO, uma a uma", () => {
+  // Esta é a tranca que substitui a que a abertura de `Efeito` gastou. Antes,
+  // qualquer poder novo tinha de crescer o tipo, e crescer o tipo reprovava o
+  // `typecheck:test`. Com `executa` já no tipo, uma ferramenta nova entraria
+  // calada — e é esse silêncio que a lista de nomes impede.
+  assert.ok(todaExecucaoEReversivel());
+  assert.deepEqual([...EXECUCOES_REVERSIVEIS], ["reativar_anuncio"]);
+  // E o inverso: quem está na lista existe mesmo. Um nome órfão aqui seria uma
+  // autorização sem ferramenta — pronta para ser colada num nome futuro.
+  for (const nome of EXECUCOES_REVERSIVEIS) {
+    const f = FERRAMENTAS.find((x) => x.nome === nome);
+    assert.ok(f, `"${nome}" está autorizada e não existe`);
+    assert.equal(f.efeito, "executa");
+  }
+});
+
+test("uma ação nova NÃO passa sozinha — nem com o efeito certo", () => {
+  // `encerrar_anuncio` é o caso concreto que o desenho recusa: closed é
+  // terminal, e a rota `/api/ml/encerrar` é separada por isso. Ela declara o
+  // efeito corretamente e ainda assim reprova, porque o portão não é o efeito —
+  // é o nome. Só uma pessoa coloca um nome ali.
+  const irreversivel = {
+    nome: "encerrar_anuncio",
+    descricao: "Encerra um anúncio no Mercado Livre.",
+    efeito: "executa",
+    parametros: { type: "OBJECT", properties: {} },
+  } as unknown as Ferramenta;
+  assert.equal(todaExecucaoEReversivel([irreversivel]), false);
+  // E o catálogo continua intacto aos olhos da outra guarda: o perigo desta
+  // intrusa nunca foi escrever em `produtos`. Duas guardas, dois perigos.
+  assert.equal(nenhumaFerramentaEscreveNoCatalogo([irreversivel]), true);
 });
 
 test("rascunhar não é escrever: nenhuma ferramenta declara efeito no catálogo", () => {
@@ -50,7 +92,7 @@ test("rascunhar não é escrever: nenhuma ferramenta declara efeito no catálogo
 test("a fronteira vale para qualquer lista, não só para a de hoje", () => {
   const intrusa = { nome: "gravar_direto", descricao: "", efeito: "escreve", parametros: {} };
   // O cast é o ponto: simula alguém contornando o tipo. A função ainda barra.
-  assert.equal(nenhumaFerramentaEscreve([intrusa as unknown as Ferramenta]), false);
+  assert.equal(nenhumaFerramentaEscreveNoCatalogo([intrusa as unknown as Ferramenta]), false);
 });
 
 test("nome de ferramenta não promete escrita", () => {
@@ -63,18 +105,36 @@ test("nome de ferramenta não promete escrita", () => {
   }
 });
 
-test("as três listas não se sobrepõem e formam o catálogo", () => {
+test("as quatro listas não se sobrepõem e formam o catálogo", () => {
+  // Cada lista é HOMOGÊNEA no efeito, e isso não é arrumação: é o que faz
+  // "está em FERRAMENTAS_DE_LEITURA" significar "não faz nada com o mundo".
+  //
+  // A quarta lista nasceu em 03/08/2026 porque a primeira versão de
+  // `reativar_anuncio` foi escrita DENTRO de FERRAMENTAS_DE_LEITURA. Nada
+  // quebrou em produção — mas este teste reprovou, que é exatamente o serviço
+  // que ele presta: a lista onde uma ferramenta mora passou a mentir sobre o que
+  // ela faz, e mentira de arrumação vira decisão errada seis meses depois.
   const nomes = FERRAMENTAS.map((f) => f.nome);
   assert.equal(new Set(nomes).size, nomes.length, "ferramenta duplicada");
   assert.equal(
     FERRAMENTAS.length,
     FERRAMENTAS_DE_LEITURA.length +
       FERRAMENTAS_DE_RASCUNHO.length +
-      FERRAMENTAS_DE_PROPOSTA.length
+      FERRAMENTAS_DE_PROPOSTA.length +
+      FERRAMENTAS_DE_ACAO.length
   );
   assert.ok(FERRAMENTAS_DE_LEITURA.every((f) => f.efeito === "le"));
   assert.ok(FERRAMENTAS_DE_RASCUNHO.every((f) => f.efeito === "rascunha"));
   assert.ok(FERRAMENTAS_DE_PROPOSTA.every((f) => f.efeito === "propoe"));
+  assert.ok(FERRAMENTAS_DE_ACAO.every((f) => f.efeito === "executa"));
+  // E o contrário também: um `executa` escondido numa das outras três listas é
+  // o defeito que originou esta quarta. Ele não escapa por estar bem escrito.
+  const foraDeLugar = [
+    ...FERRAMENTAS_DE_LEITURA,
+    ...FERRAMENTAS_DE_RASCUNHO,
+    ...FERRAMENTAS_DE_PROPOSTA,
+  ].filter((f) => f.efeito === "executa");
+  assert.deepEqual(foraDeLugar, [], "uma ferramenta que AGE está numa lista que promete não agir");
 });
 
 test("o cadastro é UMA ferramenta com operações, não vinte microferramentas", () => {
