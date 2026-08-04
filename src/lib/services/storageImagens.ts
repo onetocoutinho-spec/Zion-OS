@@ -5,8 +5,8 @@
 // publicação no ML consome (o ML não aceita prompts, só imagens por URL).
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
-import { atualizarImagem, criarImagem, listarImagensDoProduto } from "./imagensProduto";
-import { capaAtual, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
+import { comCapaRebaixada, criarImagem, listarImagensDoProduto } from "./imagensProduto";
+import { mesmoEscopoDeCapa, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
 import type { ImagemProduto, TipoImagem } from "../types";
 
 const BUCKET = "produtos-imagens";
@@ -70,7 +70,7 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     produtoId,
     varianteId: null,
     anuncioId: null,
-    tipoImagem: papelDaFotoNova(existentes, opcoes.tipo),
+    tipoImagem: papelDaFotoNova(mesmoEscopoDeCapa(existentes, null), opcoes.tipo),
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
@@ -92,14 +92,11 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
 export async function trocarCapaDoProduto(
   opcoes: Omit<OpcoesUpload, "tipo">
 ): Promise<ImagemProduto> {
-  const anterior = capaAtual(await listarImagensDoProduto(opcoes.produtoId));
-  if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Secundária" });
-  try {
-    return await uploadImagemProduto({ ...opcoes, tipo: "Principal" });
-  } catch (e) {
-    if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
-    throw e;
-  }
+  // `uploadImagemProduto` grava sempre com `varianteId: null`, então é esse o
+  // escopo cuja capa precisa sair da frente.
+  return comCapaRebaixada(opcoes.produtoId, null, () =>
+    uploadImagemProduto({ ...opcoes, tipo: "Principal" })
+  );
 }
 
 /**

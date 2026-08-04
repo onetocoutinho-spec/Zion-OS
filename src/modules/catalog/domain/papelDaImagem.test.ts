@@ -7,7 +7,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { capaAtual, papelDaFotoNova, type ImagemExistente } from "./papelDaImagem.ts";
+import {
+  capaAtual,
+  mesmoEscopoDeCapa,
+  papelDaFotoNova,
+  type ImagemExistente,
+} from "./papelDaImagem.ts";
 
 const capa: ImagemExistente = { tipoImagem: "Principal" };
 const galeria: ImagemExistente = { tipoImagem: "Secundária" };
@@ -61,6 +66,29 @@ test("a saída NUNCA é uma segunda capa — para qualquer entrada", () => {
       );
     }
   }
+});
+
+test("o escopo da capa é (produto, variante) — a mesma chave do índice 053", () => {
+  // O índice chaveia por `coalesce(variante_id, <uuid zero>)`: cada variante tem
+  // a sua capa, e as fotos sem variante formam um escopo próprio. Se o código
+  // olhasse "todas as fotos do produto", ele seria MAIS restritivo que o banco —
+  // e recusaria a capa da segunda cor sem que nada no schema pedisse isso.
+  const semVariante = { varianteId: null, id: "a" };
+  const marrom = { varianteId: "v-marrom", id: "b" };
+  const nude = { varianteId: "v-nude", id: "c" };
+  const acervo = [semVariante, marrom, nude];
+
+  assert.deepEqual(mesmoEscopoDeCapa(acervo, null), [semVariante]);
+  assert.deepEqual(mesmoEscopoDeCapa(acervo, "v-marrom"), [marrom]);
+  assert.deepEqual(mesmoEscopoDeCapa(acervo, "v-inexistente"), []);
+});
+
+test("hoje o escopo é indistinguível de 'todas as fotos' — e é esse o ponto", () => {
+  // `variante_id` está vazio nas 653 linhas de produção. A função existe para
+  // que o dia em que o DES-003 preencher a coluna NÃO seja o dia em que o
+  // código e o índice passam a discordar calados.
+  const producaoHoje = [{ varianteId: null, id: "a" }, { varianteId: null, id: "b" }];
+  assert.deepEqual(mesmoEscopoDeCapa(producaoHoje, null), producaoHoje);
 });
 
 test("capaAtual devolve o registro inteiro, para poder desfazer", () => {

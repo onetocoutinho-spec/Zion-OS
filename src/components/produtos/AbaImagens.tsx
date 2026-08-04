@@ -11,9 +11,9 @@ import { useLiveQuery } from "@/lib/hooks";
 import { resumoVariante } from "@/lib/variantes";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
-  criarImagem,
   excluirImagem,
   listarImagensDoProduto,
+  registrarImagemPorUrl,
 } from "@/lib/services/imagensProduto";
 import type { ImagemProduto, Produto } from "@/lib/types";
 
@@ -41,7 +41,12 @@ export function AbaImagens({ produto }: { produto: Produto }) {
   async function adicionar(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
-    await criarImagem({
+    // `registrarImagemPorUrl`, e não `criarImagem`: o Select abre em "Principal"
+    // (é o primeiro de TIPO_IMAGEM), então o caminho mais provável desta tela —
+    // colar a URL e clicar — pedia a capa sem que ninguém tivesse decidido isso.
+    // Era o quinto caminho capaz de criar a segunda capa calada, e o único que
+    // sobreviveu à correção de 04/08 por não passar por `uploadImagemProduto`.
+    await registrarImagemPorUrl({
       clienteId: produto.clienteId,
       produtoId: produto.id,
       varianteId: varianteId || null,

@@ -31,6 +31,7 @@ import {
   listarImagensDoProduto,
   atualizarImagem,
   excluirImagem,
+  promoverACapa,
 } from "@/lib/services/imagensProduto";
 import { uploadImagemProduto } from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
@@ -166,9 +167,11 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   async function tornarCapa(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
-      const atual = (imagens ?? []).find((i) => i.tipoImagem === "Principal");
-      if (atual && atual.id !== img.id) await atualizarImagem(atual.id, { tipoImagem: "Secundária" });
-      await atualizarImagem(img.id, { tipoImagem: "Principal", status: "Aprovada" });
+      // A troca de capa mora em `promoverACapa`. Esta tela tinha a sua própria
+      // versão, e ela lia a capa atual do estado do React em vez do banco — e
+      // não desfazia: se a promoção falhasse depois do rebaixamento, o produto
+      // ficava sem capa nenhuma, que é pior do que ter duas.
+      await promoverACapa(img);
       reload();
     } finally {
       setImgBusy(null);
