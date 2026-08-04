@@ -95,14 +95,100 @@ test("a fronteira vale para qualquer lista, não só para a de hoje", () => {
   assert.equal(nenhumaFerramentaEscreveNoCatalogo([intrusa as unknown as Ferramenta]), false);
 });
 
+// ---------------------------------------------------------------------------
+// O NOME COMO GUARDA
+// ---------------------------------------------------------------------------
+//
+// Guardas grosseiras e úteis. Elas não provam o que a ferramenta faz — provam
+// que o NOME e o EFEITO contam a mesma história. Falha aqui é para alguém parar
+// e pensar, não para passar batido.
+//
+// O nome importa duas vezes: é o que o modelo lê para escolher, e é a única
+// coisa que um revisor apressado enxerga numa lista de dezessete.
+
+/**
+ * Verbos que prometem ESCRITA. Nenhuma ferramenta pode se chamar assim —
+ * efeito nenhum torna isso aceitável, porque o catálogo não tem porta.
+ *
+ * `publicar` está aqui, e não entre os de ação, por decisão: publicar um
+ * anúncio expõe a loja ao comprador e não se desfaz com um clique. Ele mora em
+ * `propoe`. Mover este verbo de lista é mudar a fronteira, não arrumar o regex.
+ */
+const PROMETE_ESCRITA = /^(gravar|salvar|atualizar|apagar|deletar|publicar|remover|criar|enviar)/;
+
+/**
+ * Verbos que prometem AÇÃO no marketplace — o vocabulário que `executa` trouxe
+ * em 2026-08-03.
+ *
+ * Diferente dos de escrita, estes PODEM existir. Só que a passagem é estreita:
+ * quem se chama assim tem de declarar `executa` e estar em
+ * `EXECUCOES_REVERSIVEIS`. Um `pausar_anuncio` marcado `propoe` reprova aqui —
+ * ou o nome mente, ou o efeito mente, e as duas hipóteses querem revisão.
+ */
+const PROMETE_ACAO =
+  /^(reativar|ativar|desativar|pausar|despausar|encerrar|finalizar|suspender|republicar|cancelar|executar|aplicar|sincronizar)/;
+
+/** Os nomes que prometem mais poder do que o efeito declara. */
+function nomesQueMentem(fs: readonly Ferramenta[]): string[] {
+  return fs
+    .filter((f) => {
+      if (PROMETE_ESCRITA.test(f.nome)) return true;
+      if (!PROMETE_ACAO.test(f.nome)) return false;
+      return f.efeito !== "executa" || !EXECUCOES_REVERSIVEIS.includes(f.nome);
+    })
+    .map((f) => f.nome);
+}
+
+/** O contrário: as que AGEM e não dizem isso no nome. */
+function nomesQueEscondemAcao(fs: readonly Ferramenta[]): string[] {
+  return fs.filter((f) => f.efeito === "executa" && !PROMETE_ACAO.test(f.nome)).map((f) => f.nome);
+}
+
 test("nome de ferramenta não promete escrita", () => {
-  // Guarda grosseira e útil: uma ferramenta chamada "gravar" ou "publicar"
-  // quase certamente escreve, mesmo que alguém a marque como "propoe" por
-  // descuido. Falha aqui é para alguém parar e pensar, não para passar batido.
-  const suspeitos = /^(gravar|salvar|atualizar|apagar|deletar|publicar|remover|criar|enviar)/;
   for (const f of FERRAMENTAS) {
-    assert.doesNotMatch(f.nome, suspeitos, `"${f.nome}" tem nome de quem escreve`);
+    assert.doesNotMatch(f.nome, PROMETE_ESCRITA, `"${f.nome}" tem nome de quem escreve`);
   }
+});
+
+test("nome que promete AÇÃO só passa autorizado", () => {
+  // `reativar_anuncio` é o caso legítimo: o nome promete ação, o efeito
+  // confirma, e a lista autoriza. É assim que uma ação deve entrar.
+  assert.deepEqual(nomesQueMentem(FERRAMENTAS), []);
+  const reativar = FERRAMENTAS.find((f) => PROMETE_ACAO.test(f.nome));
+  assert.ok(reativar, "nenhuma ferramenta tem nome de ação — o vocabulário sumiu do catálogo");
+  assert.equal(reativar.nome, "reativar_anuncio");
+
+  // E o portão fecha para os três jeitos de errar:
+  const casos: Array<[string, Partial<Ferramenta>]> = [
+    // nome de ação com efeito manso — ou o nome mente, ou o efeito mente
+    ["pausar_anuncio", { efeito: "propoe" }],
+    // efeito certo, mas não autorizada — o portão continua sendo o NOME
+    ["encerrar_anuncio", { efeito: "executa" }],
+    // e nem o disfarce de leitura salva
+    ["cancelar_publicacao", { efeito: "le" }],
+  ];
+  for (const [nome, resto] of casos) {
+    const intrusa = { nome, descricao: "", parametros: {}, ...resto } as unknown as Ferramenta;
+    assert.deepEqual(nomesQueMentem([intrusa]), [nome], `"${nome}" passou`);
+  }
+});
+
+test("quem AGE tem nome de quem age — sem disfarce de leitura", () => {
+  // O contrário do teste acima, e o mais sutil dos dois. Uma ferramenta chamada
+  // `consultar_anuncio` que reativa passaria por todas as outras guardas: efeito
+  // declarado, nome na lista, lista homogênea. O que ela não passa é o olho de
+  // quem lê o catálogo procurando o que este chat faz sozinho.
+  //
+  // Nome honesto não é estilo. É a diferença entre uma revisão de trinta
+  // segundos que enxerga o poder e uma que não.
+  assert.deepEqual(nomesQueEscondemAcao(FERRAMENTAS), []);
+  const disfarcada = {
+    nome: "consultar_anuncio",
+    descricao: "",
+    efeito: "executa",
+    parametros: {},
+  } as unknown as Ferramenta;
+  assert.deepEqual(nomesQueEscondemAcao([disfarcada]), ["consultar_anuncio"]);
 });
 
 test("as quatro listas não se sobrepõem e formam o catálogo", () => {
