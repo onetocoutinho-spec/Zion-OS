@@ -19,7 +19,7 @@ import { listarProdutosComPeso, type ProdutoComPeso } from "@/lib/services/pesoD
 import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
-import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
+import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
 import type { EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
@@ -35,7 +35,14 @@ import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOp
  */
 export function montarEstadoDaLoja(
   produtos: readonly ProdutoComPeso[],
-  anuncios: readonly AnuncioGeradoRegistro[],
+  /**
+   * Só o que esta conta LÊ: o produto de cada anúncio e o status dele.
+   *
+   * O tipo era `AnuncioGeradoRegistro` — a linha inteira, com o JSONB da
+   * esteira. Estreitar aqui não é gosto: é o que permite ao chamador buscar a
+   * consulta leve, e o tipo passa a impedir que alguém volte a exigir o peso.
+   */
+  anuncios: readonly { produtoId?: string | null; status: string }[],
   imagens: readonly { produtoId?: string | null }[],
   conectado: boolean,
   /**
@@ -100,8 +107,19 @@ export function useContextoDaPergunta(
   produtoEmFoco?: string | null
 ): ContextoDoChat {
   const { data: produtos } = useLiveQuery(() => listarProdutosComPeso(clienteId), [clienteId]);
+  // A CONSULTA LEVE, e a troca não é otimização.
+  //
+  // Isto trazia a linha INTEIRA de 880 anúncios — com o JSONB da esteira, que
+  // são 1.055 kB dos 1.377 kB medidos em 03/08/2026 — para contar quantos
+  // produtos têm anúncio. O chat nunca abre esse JSONB.
+  //
+  // Em 04/08 o assistente afirmou "0 dos seus 80 produtos têm anúncio gerado"
+  // com os 80 tendo. A conta abaixo está certa; ela só devolve zero se a lista
+  // chegar VAZIA — e a lista pesada é a única desta tela que pode não chegar.
+  //
+  // A consulta estreita é a MESMA que a tela de Produtos usa e que funciona.
   const { data: anuncios } = useLiveQuery(
-    () => listarAnunciosGeradosDoCliente(clienteId),
+    () => listarResumoDeAnunciosDoCliente(clienteId),
     [clienteId]
   );
   const { data: imagens } = useLiveQuery(listarTodasImagens);
