@@ -49,6 +49,7 @@ import {
   resolverObrigatorios,
   type AtributoResolvido,
   type DadosDoProduto,
+  type ExigenciaDaCategoria,
 } from "./atributosDoMarketplace";
 import { gradePublicavel, montarVariacoes, type VarianteDaBase } from "./variacoesDoAnuncio";
 import { lacunasDoProduto, type EstadoDoProduto } from "../../catalog/domain/lacunasDoProduto";
@@ -182,6 +183,19 @@ const PORQUE: Record<EtapaDaPreparacao, string> = {
 export interface OpcoesDaPreparacao {
   margemMinima?: number;
   taxas?: ModeloTaxas;
+  /**
+   * O que a CATEGORIA deste produto exige. Omitido = calçado.
+   *
+   * A rede fica de fora daqui de propósito. `avaliarPreparacao` é
+   * determinística — "por que esse produto não foi preparado?" precisa ter a
+   * mesma resposta toda vez —, e uma consulta ao Mercado Livre dentro dela
+   * faria a resposta depender de quando alguém perguntou.
+   *
+   * Então quem tem a categoria resolve os obrigatórios ANTES (`/api/ml/categoria`)
+   * e passa a lista aqui. Quem não tem continua com o padrão de calçado, que é
+   * exatamente o comportamento de antes — nenhum produto que funciona hoje muda.
+   */
+  obrigatorios?: readonly ExigenciaDaCategoria[];
 }
 
 /**
@@ -196,10 +210,16 @@ export function avaliarPreparacao(
   anuncio: AnuncioJaGerado | null = null,
   opcoes: OpcoesDaPreparacao = {}
 ): Preparacao {
-  // `OBRIGATORIOS_CALCADO` explícito: este caminho supõe calçado. A suposição
-  // era invisível (morava dentro de `resolverObrigatorios`) até 05/08/2026.
-  // Quando houver id de categoria aqui, ele vira `atributosObrigatorios(id)`.
-  const identidade = resolverObrigatorios(dadosDoProduto(p), OBRIGATORIOS_CALCADO);
+  // A lista da CATEGORIA quando quem chamou a tem; calçado quando não tem.
+  //
+  // O padrão continua sendo calçado porque tirá-lo faria todo caminho que ainda
+  // não descobriu a categoria parar de exigir qualquer coisa — e "não exige
+  // nada" é pior que "exige o de calçado": o primeiro deixa publicar sem ficha,
+  // o segundo no máximo pede um campo a mais.
+  const identidade = resolverObrigatorios(
+    dadosDoProduto(p),
+    opcoes.obrigatorios ?? OBRIGATORIOS_CALCADO
+  );
   const ausentes = identidade.filter((a) => a.origem === "ausente");
 
   const etapaIdentidade: EtapaAvaliada = {
