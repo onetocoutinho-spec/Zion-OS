@@ -1,4 +1,4 @@
-// Um turno de conversa com ferramentas, contra o Gemini.
+// Um turno de conversa com ferramentas, contra o Claude.
 //
 // Fica separado de `provedorIA` de propósito: aquele arquivo faz saída
 // estruturada — uma pergunta, uma resposta em JSON. Aqui o modelo pede
@@ -10,12 +10,46 @@
 // A separação importa porque é ela que impede uma "ferramenta" de nascer aqui,
 // longe da invariante que `ferramentasDoAssistente` protege.
 //
-// Medido no EXP-006 (gemini-2.5-flash, 8 conversas, temperatura 0): 8/8, zero
-// escrita indevida, zero número inventado, ~1.800 tokens por conversa.
+// ===========================================================================
+// ERA GEMINI. POR QUE MUDOU, E O QUE MUDOU DE VERDADE
+// ===========================================================================
+//
+// O EXP-006 mediu este caminho no `gemini-2.5-flash` (8 conversas, 8/8, zero
+// escrita indevida) e ele funcionava. O que não funcionava era o sistema em
+// volta: desde a inversão do provedor, TODO o resto do projeto fala com o
+// Claude, e só o chat — a IA com quem a lojista de fato conversa — continuava
+// preso a outro provedor, com chave e modelo próprios. Pior: a rota barrava em
+// `GEMINI_API_KEY`, então num servidor só com a chave da Anthropic o chat
+// respondia "nenhum provedor configurado" com o Claude funcionando ao lado.
+//
+// O DIALETO NÃO MUDOU. `Fala`/`Parte` atravessa a rede, volta no SSE e fica
+// GRAVADO nas conversas do copiloto — trocá-lo quebraria toda conversa salva.
+// Ele virou o dialeto neutro do projeto, e a tradução mora em
+// `dialetoDaConversa`, pura e testada.
+//
+// ===========================================================================
+// A ÚNICA COISA QUE A MIGRAÇÃO NÃO CONSEGUIU PRESERVAR
+// ===========================================================================
+//
+// O Gemini aceitava `ANY` + `allowedFunctionNames`: "chame uma ferramenta, e
+// só pode ser uma DESTAS". A Anthropic não tem esse meio-termo — `tool_choice`
+// é `auto`, `any` (QUALQUER ferramenta) ou `tool` (UMA nomeada).
+//
+// Então a restrição do passo 0 mudou de lugar: em vez de declarar as 17 e
+// restringir a escolha, o passo 0 DECLARA só as leituras e usa `any`. O
+// efeito é o mesmo — o modelo é obrigado a chamar, e só alcança leitura — e a
+// garantia fica mais forte, não mais fraca: uma ferramenta de escrita não está
+// nem declarada no primeiro passo, então não há configuração para "cair" e
+// deixá-la alcançável.
+//
+// A sentinela do INC-003 foi reescrita junto, e passou a guardar o RESULTADO
+// (nenhuma escrita alcançável no passo 0) em vez do MECANISMO.
 
+import Anthropic from "@anthropic-ai/sdk";
 import type { Ferramenta } from "../../modules/assistant/domain/ferramentasDoAssistente";
+import { ferramentasDaAnthropic, mensagensDaConversa } from "./dialetoDaConversa";
 
-/** Uma fala no histórico, no dialeto do Gemini. */
+/** Uma fala no histórico, no dialeto do projeto. */
 export interface Parte {
   text?: string;
   functionCall?: { name: string; args?: Record<string, unknown> };
@@ -52,11 +86,123 @@ export const MAXIMO_DE_PASSOS = 6;
  * 5.000 tokens da conversa de três turnos no EXP-006. Cortar o começo é o que
  * mantém o custo linear em vez de quadrático — ao preço de o assistente
  * esquecer o início de uma conversa muito longa, que é o troco certo.
+ *
+ * O corte é por FALA, então ele pode cair ENTRE uma chamada e a resposta dela.
+ * Isso o Gemini engolia e a Anthropic recusa; quem limpa é `dialetoDaConversa`.
  */
 export const FALAS_MANTIDAS = 24;
 
 /**
- * O mesmo turno, em pedaços.
+ * Como o modelo escolhe entre falar e chamar ferramenta, NESTE passo.
+ *
+ * `livre` é o comportamento de sempre: ele decide.
+ *
+ * `obrigado` é a fronteira do INC-003: ele NÃO pode responder com texto, e só
+ * alcança as ferramentas listadas. O laço usa isso apenas no primeiro passo —
+ * ver `route.ts`.
+ */
+export type EscolhaDeFerramenta =
+  | { modo: "livre" }
+  | { modo: "obrigado"; permitidas: readonly string[] };
+
+/**
+ * O modelo do chat.
+ *
+ * `claude-opus-5` é o mesmo padrão de `provedorIA` — o chat deixou de ser o
+ * único lugar do projeto com modelo próprio.
+ */
+const MODELO = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-opus-5";
+
+/**
+ * Teto de saída do turno. Cobre PENSAMENTO + texto, não só o texto.
+ *
+ * O caminho Gemini não tinha teto nenhum. Este é folgado de propósito: apertá-lo
+ * trunca a resposta no meio, e uma resposta truncada PARECE completa para quem
+ * está lendo.
+ */
+const MAX_TOKENS = 32000;
+
+/**
+ * Esforço do raciocínio.
+ *
+ * Havia `temperature: 0` aqui, com o motivo certo: "a mesma frase deve levar à
+ * mesma ferramenta". Parâmetro de amostragem é recusado com 400 no Opus 5, e a
+ * substituição para determinismo é esforço BAIXO com prompt apertado — o prompt
+ * deste chat já é longo e específico.
+ *
+ * `medium`, e não `low`: a trajetória que mais importa aqui (achar → conferir
+ * que o alvo é único → propor) é de vários passos, e é exatamente onde esforço
+ * baixo arrisca raciocinar de menos.
+ */
+const ESFORCO = (process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
+  | "low"
+  | "medium"
+  | "high";
+
+function cliente(): Anthropic {
+  const chave = process.env.ANTHROPIC_API_KEY;
+  if (!chave) throw new Error("ANTHROPIC_API_KEY ausente.");
+  return new Anthropic({ apiKey: chave });
+}
+
+/**
+ * As ferramentas E a escolha deste passo.
+ *
+ * Os dois saem juntos porque no `obrigado` eles são a MESMA decisão: a
+ * restrição vive na lista declarada, e `any` só obriga a chamar. Devolvê-los
+ * separados deixaria possível mandar a lista inteira com `any` — que é
+ * justamente a escrita alcançável no passo 0.
+ */
+function ofertaDoPasso(
+  ferramentas: readonly Ferramenta[],
+  escolha: EscolhaDeFerramenta
+): { tools: Anthropic.Tool[]; tool_choice: Anthropic.ToolChoice } {
+  if (escolha.modo === "obrigado") {
+    const permitidas = new Set(escolha.permitidas);
+    return {
+      tools: ferramentasDaAnthropic(ferramentas.filter((f) => permitidas.has(f.nome))),
+      tool_choice: { type: "any" },
+    };
+  }
+  return {
+    tools: ferramentasDaAnthropic(ferramentas),
+    tool_choice: { type: "auto" },
+  };
+}
+
+/** O que sai de uma resposta pronta, seja ela transmitida ou não. */
+function turnoDaResposta(m: Anthropic.Message): TurnoDoModelo {
+  const texto = m.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+  const chamadas = m.content
+    .filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")
+    .map((b) => ({
+      nome: b.name,
+      args: (b.input ?? {}) as Record<string, unknown>,
+    }));
+  return {
+    texto,
+    chamadas,
+    tokens: (m.usage?.input_tokens ?? 0) + (m.usage?.output_tokens ?? 0),
+  };
+}
+
+/** Erro do provedor traduzido para quem digitou — ou relançado, se não ajuda. */
+function erroLegivel(e: unknown): Error {
+  if (e instanceof Anthropic.RateLimitError) {
+    return new Error("Muitas perguntas ao mesmo tempo. Tente de novo em instantes.");
+  }
+  if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503)) {
+    return new Error("O Claude está sobrecarregado no momento (tente de novo em instantes).");
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * O turno, em pedaços.
  *
  * O texto chega enquanto o modelo escreve, em vez de aparecer inteiro depois de
  * cinco segundos parados. É a diferença mais sentida entre "uma caixa que
@@ -70,31 +216,6 @@ export const FALAS_MANTIDAS = 24;
  * leitor, e recomeçar duplicaria o que ele já leu. Quem retenta é a chamada não
  * transmitida, que ainda não escreveu nada na tela.
  */
-/**
- * Como o modelo escolhe entre falar e chamar ferramenta, NESTE passo.
- *
- * `livre` é o comportamento de sempre (AUTO): ele decide.
- *
- * `obrigado` é a fronteira do INC-003 (ANY + `allowedFunctionNames`): ele NÃO
- * pode responder com texto, e só pode escolher entre as funções listadas. O
- * laço usa isso apenas no primeiro passo — ver `route.ts`.
- */
-export type EscolhaDeFerramenta =
-  | { modo: "livre" }
-  | { modo: "obrigado"; permitidas: readonly string[] };
-
-/** O contrato da API: `ANY` obriga functionCall; `allowedFunctionNames` restringe quais. */
-function toolConfig(escolha: EscolhaDeFerramenta) {
-  return escolha.modo === "obrigado"
-    ? {
-        functionCallingConfig: {
-          mode: "ANY",
-          allowedFunctionNames: [...escolha.permitidas],
-        },
-      }
-    : { functionCallingConfig: { mode: "AUTO" } };
-}
-
 export async function pedirTurnoEmFluxo(
   system: string,
   historico: readonly Fala[],
@@ -102,147 +223,71 @@ export async function pedirTurnoEmFluxo(
   aoTexto: (pedaco: string) => void,
   escolha: EscolhaDeFerramenta = { modo: "livre" }
 ): Promise<TurnoDoModelo> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY ausente.");
-  const modelo = process.env.GEMINI_MODELO_CONVERSA ?? "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:streamGenerateContent?alt=sse&key=${key}`;
+  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
+  try {
+    const fluxo = cliente().messages.stream({
+      model: MODELO,
+      max_tokens: MAX_TOKENS,
+      system,
+      messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
+      tools,
+      tool_choice,
+      // Pensamento LIGADO, e sem `display`. O padrão do Opus 5 não devolve o
+      // texto do raciocínio, que é o que se quer aqui: a lojista lê a resposta,
+      // não o caminho até ela. Desligar seria pior que inútil — com pensamento
+      // desligado o modelo às vezes ESCREVE a chamada de ferramenta como texto,
+      // e aí a ferramenta simplesmente não roda, sem erro nenhum.
+      thinking: { type: "adaptive" },
+      output_config: { effort: ESFORCO },
+    });
 
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents: historico.slice(-FALAS_MANTIDAS),
-      // As DECLARAÇÕES continuam sendo as 17 em todo passo. O que muda por passo
-      // é a ESCOLHA — quais delas o modelo pode selecionar agora, e se ele tem
-      // permissão de responder sem selecionar nenhuma.
-      tools: [{ functionDeclarations: paraDeclaracoesGemini(ferramentas) }],
-      toolConfig: toolConfig(escolha),
-      generationConfig: { temperature: 0 },
-    }),
-  });
+    // Só o texto vaza para a tela. Bloco de pensamento e argumento de
+    // ferramenta chegando pela metade não são coisas para alguém ler.
+    fluxo.on("text", (pedaco) => aoTexto(pedaco));
 
-  if (!resp.ok || !resp.body) {
-    if (resp.status === 503) {
-      throw new Error("O Gemini está sobrecarregado no momento (tente de novo em instantes).");
-    }
-    const detalhe = await resp.text().catch(() => "");
-    throw new Error(`Gemini ${resp.status}: ${detalhe.slice(0, 200)}`);
+    return turnoDaResposta(await fluxo.finalMessage());
+  } catch (e) {
+    throw erroLegivel(e);
   }
-
-  const leitor = resp.body.getReader();
-  const decodificador = new TextDecoder();
-  let sobra = "";
-  let texto = "";
-  const chamadas: { nome: string; args: Record<string, unknown> }[] = [];
-  let tokens = 0;
-
-  for (;;) {
-    const { done, value } = await leitor.read();
-    if (done) break;
-    // O corte da rede não respeita linha: o resto de uma linha pela metade fica
-    // em `sobra` até o pedaço seguinte completá-la. Sem isso, um JSON partido
-    // no meio derrubaria a resposta.
-    sobra += decodificador.decode(value, { stream: true });
-    const linhas = sobra.split("\n");
-    sobra = linhas.pop() ?? "";
-    for (const linha of linhas) {
-      if (!linha.startsWith("data:")) continue;
-      const cru = linha.slice(5).trim();
-      if (!cru || cru === "[DONE]") continue;
-      let evento: {
-        candidates?: { content?: { parts?: Parte[] }; finishReason?: string }[];
-        usageMetadata?: { totalTokenCount?: number };
-      };
-      try {
-        evento = JSON.parse(cru);
-      } catch {
-        continue; // pedaço inválido não derruba o fluxo inteiro
-      }
-      if (evento.usageMetadata?.totalTokenCount) tokens = evento.usageMetadata.totalTokenCount;
-      for (const p of evento.candidates?.[0]?.content?.parts ?? []) {
-        if (p.text) {
-          texto += p.text;
-          aoTexto(p.text);
-        }
-        if (p.functionCall) {
-          chamadas.push({ nome: p.functionCall.name, args: p.functionCall.args ?? {} });
-        }
-      }
-    }
-  }
-
-  return { texto: texto.trim(), chamadas, tokens };
 }
 
-export function paraDeclaracoesGemini(fs: readonly Ferramenta[]) {
-  return fs.map((f) => ({
-    name: f.nome,
-    description: f.descricao,
-    parameters: f.parametros,
-  }));
-}
-
+/**
+ * O mesmo turno, inteiro.
+ *
+ * Aqui a retentativa existe: nada foi escrito na tela ainda, então repetir não
+ * duplica nada para quem está lendo.
+ */
 export async function pedirTurno(
   system: string,
   historico: readonly Fala[],
-  ferramentas: readonly Ferramenta[]
+  ferramentas: readonly Ferramenta[],
+  escolha: EscolhaDeFerramenta = { modo: "livre" }
 ): Promise<TurnoDoModelo> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY ausente.");
-  const modelo = process.env.GEMINI_MODELO_CONVERSA ?? "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
-
-  const body = {
-    systemInstruction: { parts: [{ text: system }] },
-    contents: historico.slice(-FALAS_MANTIDAS),
-    tools: [{ functionDeclarations: paraDeclaracoesGemini(ferramentas) }],
-    // Temperatura 0: a mesma frase deve levar à mesma ferramenta. Criatividade
-    // aqui não é qualidade, é variação em cima de decisão que mexe em dado.
-    generationConfig: { temperature: 0 },
+  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
+  const corpo = {
+    model: MODELO,
+    max_tokens: MAX_TOKENS,
+    system,
+    messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
+    tools,
+    tool_choice,
+    thinking: { type: "adaptive" as const },
+    output_config: { effort: ESFORCO },
   };
 
-  let resp!: Response;
-  let data!: {
-    candidates?: { content?: { parts?: Parte[] }; finishReason?: string }[];
-    usageMetadata?: { totalTokenCount?: number };
-    error?: { message?: string };
-  };
   const MAX = 3;
+  let ultimo: unknown;
   for (let tentativa = 1; tentativa <= MAX; tentativa++) {
-    resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    data = (await resp.json().catch(() => ({}))) as typeof data;
-    if (resp.ok || (resp.status !== 503 && resp.status !== 429) || tentativa === MAX) break;
-    await new Promise((r) => setTimeout(r, 1200 * tentativa));
-  }
-
-  if (!resp.ok) {
-    // O 503 aconteceu de verdade durante os testes de hoje. A mensagem dele
-    // atravessa porque "sobrecarregado, tente de novo" é acionável para quem
-    // digitou — diferente de um erro de schema, que não é.
-    if (resp.status === 503) {
-      throw new Error("O Gemini está sobrecarregado no momento (tente de novo em instantes).");
+    try {
+      return turnoDaResposta(await cliente().messages.create(corpo));
+    } catch (e) {
+      ultimo = e;
+      const recuperavel =
+        e instanceof Anthropic.RateLimitError ||
+        (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503));
+      if (!recuperavel || tentativa === MAX) break;
+      await new Promise((r) => setTimeout(r, 1200 * tentativa));
     }
-    throw new Error(`Gemini ${resp.status}: ${data.error?.message ?? "falha"}`.slice(0, 300));
   }
-
-  const cand = data.candidates?.[0];
-  if (cand?.finishReason === "SAFETY") {
-    throw new Error("O Gemini bloqueou a resposta por política de conteúdo.");
-  }
-  const partes = cand?.content?.parts ?? [];
-  return {
-    texto: partes
-      .map((p) => p.text ?? "")
-      .join("")
-      .trim(),
-    chamadas: partes
-      .filter((p) => p.functionCall)
-      .map((p) => ({ nome: p.functionCall!.name, args: p.functionCall!.args ?? {} })),
-    tokens: data.usageMetadata?.totalTokenCount ?? 0,
-  };
+  throw erroLegivel(ultimo);
 }
