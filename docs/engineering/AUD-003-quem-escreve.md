@@ -11,9 +11,11 @@ A 053 foi aplicada, passou um DoD inteiro e quebrou três telas. O relatório de
 concluiu que a ordem certa é `código em produção → restrição`, e que a leitura
 que faltou era esta. Esta é ela.
 
-**O resultado que importa: a 053 ainda NÃO podia voltar.** Dois caminhos vivos
-criavam a segunda capa, e nenhum dos dois estava na tabela de quatro do
-relatório — porque nenhum dos dois passa por `uploadImagemProduto`.
+**O resultado que importa: um dos caminhos estava quebrado EM PRODUÇÃO.** A
+varredura foi feita acreditando que o índice tinha sido derrubado em 04/08 — é o
+que o relatório da 053 e o handoff afirmam. Medido em 05/08 antes de propor
+reaplicá-lo: **o índice está no ar** (§5). Então os dois caminhos que a #193 não
+alcançou não eram risco futuro; um deles falhava a cada uso.
 
 ---
 
@@ -86,9 +88,9 @@ A #193 tirou três cópias das telas e deixou a regra em `papelDaFotoNova`. Ela
 não alcançou duas, e a razão é a mesma nos dois casos: **a #193 consertou
 `uploadImagemProduto`, e estes não passam por lá.**
 
-| onde | o que dizia | com a 053 de volta |
+| onde | o que dizia | contra o índice, que está no ar |
 |---|---|---|
-| `AbaImagens.tsx` | seletor nascia em `"Principal"`, ia direto ao repositório | **`unique_violation`** — os 80 produtos têm capa |
+| `AbaImagens.tsx` | seletor nascia em `"Principal"`, ia direto ao repositório | **`unique_violation` a cada foto** — os 80 produtos têm capa |
 | `importarAnunciosML.ts` | `i === 0 ? "Principal" : "Secundária"` | passava por sorte: só grava em produto recém-criado |
 | `cliente/imagens` · `tornarCapa` | rebaixa e promove à mão | ordem certa, **sem desfazer** |
 
@@ -130,19 +132,32 @@ sentinela nomeou o arquivo, e o arquivo saiu.
 
 ---
 
-## 5 · Para reaplicar a 053
+## 5 · A 053 não precisa voltar — ela nunca saiu
 
-Os três caminhos que a quebravam estão fechados e há sentinela contra o quarto.
-Falta o que **só o dono faz**, e a ordem é essa:
+Esta seção existia para planejar a reaplicação. A medição desmontou o plano.
 
-1. Confirmar em produção que `imagens_produto` tem **zero** produtos com duas
-   `Principal` (a consulta do snapshot §1 do relatório da 053).
-2. Reaplicar o índice — o SQL da 053 está escrito e não mudou.
-3. Exercer os cinco caminhos com sessão real: subir foto no portal, importar
-   pasta, melhorar capa no Estúdio, tornar capa, e a aba Imagens do painel.
+```
+idx_imagens_produto_uma_capa   EXISTE, definição idêntica ao arquivo 053
+ledger 053                     2026-08-04 03:22:18 UTC (carimbo original)
+imagens_produto                651 linhas · 80 Principais · 0 com variante_id
+chaves (produto, variante) com duas capas   0
+```
 
-O passo 3 não é zelo: é a única coisa que teria pego o defeito de 04/08, e é a
-única que ainda não foi feita.
+Pelo banco não dá para distinguir "o `drop` nunca rodou" de "rodou e alguém
+recriou": o `if not exists` do índice e o `on conflict do nothing` do ledger
+produzem este mesmo estado nos dois casos. Rodar a 053 hoje é no-op.
+
+> O relatório da 053 afirmou o estado do banco a partir do que foi **mandado**
+> fazer, não do que foi **medido** depois. Um `drop index` escrito num documento
+> não é um índice derrubado.
+
+O que falta é o que **só o dono faz**, e é um passo só: **exercer os cinco
+caminhos com sessão real** — subir foto no portal, importar pasta, melhorar capa
+no Estúdio, tornar capa, e a aba Imagens do painel. Os quatro primeiros são o
+grupo de controle; o último é o que falhava.
+
+Não é zelo: é a única coisa que teria pego o defeito de 04/08, e continua sendo
+a única que ainda não foi feita.
 
 ---
 
@@ -151,7 +166,7 @@ O passo 3 não é zelo: é a única coisa que teria pego o defeito de 04/08, e �
 **O escopo da capa em relação à variação.** O índice da 053 tem a chave
 `(produto_id, coalesce(variante_id, …))` — ou seja, ele já trata a capa como
 sendo **por cor**. `papelDaFotoNova` olha o produto inteiro. Enquanto
-`variante_id` estiver vazio nas 653 linhas os dois concordam, e hoje concordam.
+`variante_id` estiver vazio nas 651 linhas os dois concordam, e hoje concordam.
 
 `AbaImagens` tem seletor de variação e **pode** gravar `variante_id`. Deixei a
 regra no escopo do produto — a escolha conservadora, que nunca cria uma segunda

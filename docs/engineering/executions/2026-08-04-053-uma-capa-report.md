@@ -4,6 +4,7 @@
 Operação:  create unique index parcial em imagens_produto
 Aplicada:  2026-08-04 03:22 UTC, projeto ouynursknlgtmewcdjzr (produção)
 DERRUBADA: 2026-08-04 — quebrou três caminhos de upload (§7)
+NO AR:     2026-08-05 — MEDIDO: o índice existe. Leia a §8 antes da §7.
 Artefatos: Plano = PR #192 + o cabeçalho da própria 053 · Snapshot = §1 · Relatório = este
 Risco:     aditivo e reversível — nenhum dado alterado
 ```
@@ -150,3 +151,42 @@ A §6 argumentava que o banco à frente do repositório era o lado seguro da
 defasagem, e isso vale para **coluna** — código velho ignora coluna nova. Não
 vale para **restrição**: restrição nova quebra código velho, e o lado seguro é o
 oposto. A reaplicação só acontece com o conserto já no ar.
+
+---
+
+## 8 · Correção de 05/08 — o índice NUNCA saiu do ar
+
+A §7 diz "índice derrubado assim que o defeito apareceu". **Medido em 05/08, ele
+está lá**, com a definição idêntica à do arquivo 053:
+
+```
+idx_imagens_produto_uma_capa   EXISTE em pg_indexes
+ledger 053                     2026-08-04 03:22:18 UTC (carimbo original)
+imagens_produto                651 linhas · 80 Principais · 0 com variante_id
+chaves (produto, variante) com duas capas   0
+```
+
+Não dá para distinguir, pelo banco, se o `drop` nunca rodou ou se rodou e alguém
+recriou depois: o `if not exists` do índice e o `on conflict do nothing` do
+ledger produzem exatamente este estado nos dois casos.
+
+E a distinção não muda o que fazer — muda o que **estava errado no documento**:
+
+> A §7 afirmou o estado do banco a partir do que foi **mandado** fazer, não do
+> que foi **medido** depois. Um `drop index` escrito num relatório não é um
+> índice derrubado.
+
+É a mesma família das outras três lições da semana. A §7 já dizia "confira o
+instrumento antes de acreditar no resultado" — e ela própria não conferiu.
+
+### O que isso significou em produção por um dia inteiro
+
+Com o índice vivo e a #193 mesclada, quatro dos cinco caminhos estavam certos. O
+quinto não passa por `uploadImagemProduto` e por isso a #193 não o alcançou:
+
+**a aba Imagens do painel (`AbaImagens.tsx`) falhava** — seletor nascendo em
+`"Principal"`, 80 produtos com capa, `unique_violation` a cada foto adicionada
+com a opção padrão.
+
+Encontrado pela varredura de quem escreve (`AUD-003`), que foi feita achando que
+o índice estava fora. O conserto não era preventivo: era um defeito no ar.
