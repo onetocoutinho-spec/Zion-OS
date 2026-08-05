@@ -121,7 +121,7 @@ export function ProdutoForm({ inicial, clientePadrao }: ProdutoFormProps) {
             <select
               value={form.tipoProduto}
               onChange={(e) => set("tipoProduto", e.target.value as (typeof form)["tipoProduto"])}
-              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/60"
+              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500"
             >
               {TIPOS_PRODUTO.map((t) => (
                 <option key={t.valor} value={t.valor}>{t.rotulo}</option>

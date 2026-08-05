@@ -260,7 +260,7 @@ export default function ClienteMedidas() {
                 value={rasc.nome}
                 onChange={(e) => setRasc({ ...rasc, nome: e.target.value })}
                 placeholder="Ex.: Havaianas / Camiseta P-M-G"
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               />
             </label>
             <label className="text-xs text-zinc-400">
@@ -269,7 +269,7 @@ export default function ClienteMedidas() {
                 value={rasc.marca}
                 onChange={(e) => setRasc({ ...rasc, marca: e.target.value })}
                 placeholder="Ex.: Havaianas (deixe vazio se for avulsa)"
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               />
             </label>
           </div>
@@ -280,7 +280,7 @@ export default function ClienteMedidas() {
               onChange={(e) => setRasc({ ...rasc, linhasTexto: e.target.value })}
               rows={8}
               placeholder={"37/38 = 24,5 cm\n39/40 = 25,8 cm\nP = 60cm de busto\nM = 64cm de busto"}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
             />
           </label>
           <label className="mt-3 block text-xs text-zinc-400">
@@ -290,7 +290,7 @@ export default function ClienteMedidas() {
               onChange={(e) => setRasc({ ...rasc, comoMedir: e.target.value })}
               rows={2}
               placeholder="Ex.: meça o pé descalço do calcanhar ao dedo maior…"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
             />
           </label>
           <div className="mt-3 flex items-center gap-2">

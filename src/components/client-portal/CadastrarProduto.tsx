@@ -157,7 +157,7 @@ export function CadastrarProduto({
               <select
                 value={r.marketplace}
                 onChange={(e) => set("marketplace", e.target.value as Marketplace)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500"
               >
                 {MARKETPLACES.map((m) => (
                   <option key={m} value={m}>
@@ -310,7 +310,7 @@ function Campo({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className={`mt-1 w-full rounded-lg border bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 ${
-          erro ? "border-red-500/50" : "border-white/10 focus:border-violet-500/50"
+          erro ? "border-red-500/50" : "border-white/10 focus:border-violet-500"
         }`}
       />
       {erro ? (

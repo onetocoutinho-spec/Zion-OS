@@ -172,7 +172,7 @@ export function CustoEditavel({ nome, custo, precoVenda, onGravar, focoInicial }
             if (!leitura && texto === paraEdicao(custo)) fechar();
           }}
           placeholder="0,00"
-          className="w-24 rounded-lg border border-white/10 bg-[#12121c] px-2 py-1 text-sm text-zinc-200 outline-none transition-colors focus:border-violet-500/60 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+          className="w-24 rounded-lg border border-white/10 bg-[#12121c] px-2 py-1 text-sm text-zinc-200 outline-none transition-colors focus:border-violet-500 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
         />
         {gravando && <Loader2 size={13} className="animate-spin text-violet-400" />}
       </div>

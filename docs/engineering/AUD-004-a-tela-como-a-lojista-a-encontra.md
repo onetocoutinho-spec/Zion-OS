@@ -220,13 +220,124 @@ A ordem é por dano, e o primeiro é o único que eu faria sem perguntar nada.
 
 ---
 
-## 7 · O que esta auditoria NÃO afirma
+## 7 · Passe pela régua do `ui-ux-pro-max` (05/08, tarde)
 
-- **Nada sobre o visual.** Não vi nenhuma tela renderizada. A rede deste
+O dono trouxe a skill `ui-ux-pro-max`. Veio **só o `SKILL.md`** — o motor
+(`scripts/search.py`), as `references/` e a base (84 estilos, 192 paletas, 98
+diretrizes) ficaram na máquina dele. A própria skill manda não fabricar:
+*"Never present a 0-result search as if it returned data."* **Nada abaixo veio
+da base.** Tudo veio da tabela de prioridades 1→10, que está no `SKILL.md`.
+
+Stack detectada como a skill pede (Passo 1, "never assume a stack"):
+**Next.js 16 · React 19 · Tailwind 4 · lucide-react**. Não é shadcn — há um `ui/`
+próprio, que já inclui `EmptyState.tsx` e `Skeleton.tsx`. **A §1 desta auditoria
+fica pior com esse dado: os componentes de estado existem e a Visão geral não os
+usa.**
+
+### 7.1 · Prioridade 1, resolvido: o indicador de foco não era visível
+
+Todo campo do sistema fazia `outline-none` e punha no lugar uma borda violeta
+**translúcida**. Parecia conserto. Medido sobre o fundo real (`#12121c`):
+
+| | contra o fundo |
+|---|---|
+| borda em repouso (`white/10`) | 1,30:1 |
+| borda em foco (`violet-500/60`) | **2,34:1** |
+| a MUDANÇA que a pessoa precisa perceber | **1,79:1** |
+
+A régua do WCAG 1.4.11 para indicador não-textual é **3:1**. Havia ainda um
+`violet-500/40` — **1,68:1** — e um `violet-400/50`.
+
+**Ninguém pega isso olhando**, e é o ponto: a borda realmente muda de cor, e o
+olho de quem já sabe onde clicou completa o resto. Quem depende do indicador é
+quem navega por teclado.
+
+**Consertado** para `violet-500` sólido (**4,39:1**) em 27 arquivos — mesma cor
+da marca, sem transparência, então a mudança visual é mínima.
+
+**E virou portão, não item de checklist.** Contraste é uma razão entre
+luminâncias, portanto é a única parte de um estudo de UI que se prova **sem ver
+a tela**: `modules/design/domain/contraste.ts` implementa a fórmula do WCAG e
+`focoVisivel.test.ts` **varre todos os arquivos de tela** e reprova qualquer foco
+abaixo de 3:1.
+
+> A primeira versão do teste usava uma lista à mão dos arquivos, e ela nasceu
+> incompleta — o `sed` do conserto só trocou `/50` e `/60`, e o `/40` de
+> `cliente/peso` não estava na lista. **O portão teria aprovado o pior caso.** É
+> por isso que ele varre. Mutante plantado nessa exata tela: mata 2 testes.
+
+**Nota de régua:** a skill escreve "contraste 4,5:1", que é a régua de **texto**
+(WCAG 1.4.3). Para foco, borda e ícone a régua é **3:1** (1.4.11). Aplicar 4,5 a
+tudo reprovaria bordas corretas, e reprovação em excesso ensina a ignorar o
+portão. As duas constantes existem, separadas, com teste.
+
+### 7.2 · Prioridade 2, NÃO resolvido: as fotos não têm como ser mexidas no celular
+
+O achado mais grave deste passe, e está parado esperando decisão porque **muda o
+visual**.
+
+Em `/cliente/imagens`, os três controles de cada foto — definir capa, tirar do
+envio, remover — vivem assim:
+
+```
+opacity-0 transition-opacity group-hover:opacity-100     ← só aparecem no hover
+flex h-6 w-6                                             ← 24px
+```
+
+A régua tem os dois como anti-padrão de prioridade 2, CRITICAL: *"Reliance on
+hover only"* e *"Min size 44×44px"*. **Num telefone não existe hover.** A tela
+cuja função é gerenciar fotos não tem, no celular, nenhum caminho para definir a
+capa — que é exatamente o trabalho que o `PLANO-001 §A2` diz ser o maior ganho de
+receita disponível.
+
+Os três botões têm `title` e **não têm `aria-label`**. A régua: *"Icon-only
+buttons without labels"*. `title` é dica de mouse, não nome acessível — e em
+toque não aparece.
+
+### 7.3 · Prioridade 4: emoji fazendo o papel de ícone
+
+`/cliente/imagens` explica os controles com **★ 👁 🗑** enquanto os botões usam
+`Star`, `Eye` e `Trash2` do lucide. A régua: *"SVG icons (no emoji)"*, *"Emoji as
+icons"* entre os anti-padrões. Também em `produtos` (`Kit ✓`) e no chat
+(`✓`/`!`/`·` como indicador de tom).
+
+Cosmético em comparação com 7.2, e é uma inconsistência real: a legenda descreve
+com emoji os ícones que a tela desenha em SVG.
+
+### 7.4 · Uma imagem de produto marcada como decorativa
+
+A galeria usa `alt=""`, que declara *"imagem decorativa, ignore"*. Numa tela cuja
+função é gerenciar fotos de produto, ela não é decorativa. As outras duas galerias
+usam `alt={\`Foto ${i+1}\`}` — presente, e fraco: "Foto 1" não diz qual produto
+nem qual cor, que é o mesmo vão de domínio do `B4` (a associação foto↔cor nunca
+existiu) reaparecendo na acessibilidade.
+
+### 7.5 · Onde eu errei neste passe, e o que isso ensina
+
+Três medidas minhas foram **falso positivo**, e todas a favor do projeto:
+
+| eu medi | a verdade |
+|---|---|
+| "47 focos removidos sem substituto" | tinham substituto (`focus:border-*`), meu padrão só procurava `ring` |
+| "3 `<img>` sem alt" | **todos os três têm** — em outra linha, e meu grep era por linha |
+| "66 alvos de toque pequenos" | existe `[@media(pointer:coarse)]:min-h-11` — **44px em ponteiro grosseiro, já implementado** |
+
+O único achado de prioridade 1 que sobreviveu à verificação foi o contraste do
+foco — e ele sobreviveu porque **não veio de grep, veio de cálculo**. É a lição
+do passe: numa auditoria de UI, o que se conta com padrão de texto erra; o que se
+computa, não.
+
+---
+
+## 8 · O que esta auditoria NÃO afirma
+
+- **Quase nada sobre o visual.** Não vi nenhuma tela renderizada: a rede deste
   ambiente não alcança o *preview* (medido: `http=000`) e não há banco para
-  popular um servidor local. Tipografia, contraste, espaçamento, hierarquia
-  visual e comportamento em telefone **não foram avaliados** — e são metade de
-  um estudo de UI. Isso precisa de olhos numa tela real.
+  popular um servidor local. Tipografia, espaçamento e hierarquia visual **não
+  foram avaliados** — e são metade de um estudo de UI. Isso precisa de olhos numa
+  tela real.
+  **A exceção é o contraste** (§7.1): ele é uma razão entre luminâncias, então se
+  calcula a partir das cores escritas no código. É a única parte que virou teste.
 - **Que as 17 telas são demais.** Pode ser; não medi. O que medi é que uma delas
   tem nome de ferramenta e três passam de 900 linhas.
 - **Que os números do grep da §4 valem.** Não valem — dois de três conferidos

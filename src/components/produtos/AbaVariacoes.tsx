@@ -18,7 +18,7 @@ import {
 import type { Produto, ProdutoVariante } from "@/lib/types";
 
 const inputCls =
-  "w-full rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/60";
+  "w-full rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500";
 const numeroCls = inputCls + " text-right";
 
 /** Linha editável de uma variante — salva no onBlur/onChange. */

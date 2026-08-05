@@ -19,7 +19,7 @@ import {
 import type { Anuncio, AnuncioVariante } from "@/lib/types";
 
 const inputCls =
-  "rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/60";
+  "rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500";
 
 export function VariantesDoAnuncio({ anuncio }: { anuncio: Anuncio }) {
   const { data: vinculadas, reload } = useLiveQuery(

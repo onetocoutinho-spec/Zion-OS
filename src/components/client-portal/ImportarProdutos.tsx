@@ -192,7 +192,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                             <select
                               value={sel}
                               onChange={(e) => setCampo(c.campo, e.target.value)}
-                              className={`w-full rounded-lg border bg-[#12121c] px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500/50 ${
+                              className={`w-full rounded-lg border bg-[#12121c] px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 ${
                                 semObrig ? "border-amber-500/50" : "border-white/10"
                               }`}
                             >

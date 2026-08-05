@@ -24,7 +24,7 @@ import { formatBRL } from "@/lib/format";
 import type { PedidoML } from "@/lib/marketplaces/mercadolivre";
 
 const SELECT =
-  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/50";
+  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 const PERIODOS = [7, 30, 90];
 

@@ -1055,7 +1055,7 @@ export default function ClienteProdutos() {
               onChange={(e) => setTextoMedida(e.target.value)}
               disabled={carregandoMedida}
               rows={10}
-              className="mt-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+              className="mt-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
             />
 
             <div className="mt-3 flex items-center gap-2">
@@ -1099,7 +1099,7 @@ export default function ClienteProdutos() {
               <select
                 value={kitTipo}
                 onChange={(e) => setKitTipo(e.target.value as "nenhum" | "kit" | "combo")}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               >
                 <option value="kit">Kit (várias unidades / itens)</option>
                 <option value="combo">Combo (produtos diferentes)</option>
@@ -1126,19 +1126,19 @@ export default function ClienteProdutos() {
                         min={1}
                         value={c.quantidade}
                         onChange={(e) => setItemKit(i, { quantidade: Math.max(1, Number(e.target.value) || 1) })}
-                        className="w-14 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                        className="w-14 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <input
                         value={c.nome}
                         onChange={(e) => setItemKit(i, { nome: e.target.value })}
                         placeholder="Item"
-                        className="min-w-[8rem] flex-1 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                        className="min-w-[8rem] flex-1 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <input
                         value={c.sku ?? ""}
                         onChange={(e) => setItemKit(i, { sku: e.target.value })}
                         placeholder="SKU"
-                        className="w-24 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
+                        className="w-24 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <button
                         onClick={() => setItemKit(i, { brinde: !c.brinde })}
@@ -1170,7 +1170,7 @@ export default function ClienteProdutos() {
                       if (p) addItemKit(p);
                       e.target.value = "";
                     }}
-                    className="rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500/50"
+                    className="rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500"
                   >
                     <option value="">+ item da base…</option>
                     {(produtos ?? []).slice(0, 300).map((p) => (

@@ -80,7 +80,7 @@ export function ConferirPlanilha({ planilha, onCancelar, onConfirmar, ocupado }:
               value={mapa[h] ?? "ignorar"}
               onChange={(e) => trocar(h, e.target.value as PapelColuna)}
               disabled={ocupado}
-              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500/40"
+              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
             >
               {PAPEIS.map((p) => (
                 <option key={p} value={p}>

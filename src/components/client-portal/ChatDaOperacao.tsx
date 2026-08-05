@@ -857,7 +857,7 @@ export function ChatDaOperacao({
           onChange={(e) => setFrase(e.target.value)}
           placeholder={contexto?.produto ? "O que falta neste produto?" : "O que eu resolvo primeiro?"}
           disabled={ocupado}
-          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400/50 focus:outline-none disabled:opacity-50"
+          className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none disabled:opacity-50"
         />
         <button
           type="submit"
