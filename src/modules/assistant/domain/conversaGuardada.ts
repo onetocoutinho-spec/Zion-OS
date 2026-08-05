@@ -44,6 +44,22 @@ export interface TurnoGuardado {
   ferramentas?: readonly string[];
   /** O desfecho de uma proposta confirmada. A proposta em si NÃO é guardada. */
   desfecho?: { ok: boolean; mensagem: string };
+  /**
+   * A falha do turno. TAMBÉM FALTAVA — o mesmo defeito de `resposta`, um campo
+   * ao lado, e visível no mesmo lugar: o print da conta real.
+   *
+   * Um turno que falha recebe uma mensagem que diz o que aconteceu ("A resposta
+   * foi interrompida no meio", ou o que o provedor devolveu). Ela vivia só em
+   * memória, então o primeiro recarregamento a trocava pela linha cinza "A
+   * resposta desta pergunta não chegou" — que não diz nada e manda a lojista
+   * digitar tudo de novo.
+   *
+   * Pior para quem conserta: a mensagem que explicava a falha era exatamente a
+   * que desaparecia. Em 05/08/2026 quatro perguntas apareceram com a linha
+   * cinza e o diagnóstico foi feito por eliminação, porque a evidência já tinha
+   * sido apagada pelo próprio cache.
+   */
+  erro?: string;
 }
 
 export interface ConversaGuardada {
@@ -111,6 +127,7 @@ export function paraGuardar(
       ...(t.resposta !== undefined ? { resposta: t.resposta } : {}),
       ...(t.ferramentas ? { ferramentas: [...t.ferramentas] } : {}),
       ...(t.desfecho ? { desfecho: { ok: t.desfecho.ok, mensagem: t.desfecho.mensagem } } : {}),
+      ...(t.erro ? { erro: t.erro } : {}),
     })),
     falas: falas.slice(-TURNOS_GUARDADOS * 3),
   };
@@ -138,8 +155,36 @@ export function lerGuardada(bruto: string | null): ConversaGuardada | null {
   if (!Array.isArray(c.turnos) || !Array.isArray(c.falas)) return null;
   // Cada turno precisa ao menos da pergunta: sem ela a bolha aparece vazia e
   // quem lê não sabe o que perguntou.
-  const turnos = c.turnos.filter(
-    (t): t is TurnoGuardado => Boolean(t) && typeof (t as TurnoGuardado).pergunta === "string"
-  );
+  const turnos = c.turnos
+    .filter(
+      (t): t is TurnoGuardado => Boolean(t) && typeof (t as TurnoGuardado).pergunta === "string"
+    )
+    .map(marcarInterrompido);
   return { versao: VERSAO_ATUAL, turnos, falas: c.falas };
+}
+
+/**
+ * O que dizer de um turno que o recarregamento pegou no meio do voo.
+ *
+ * A gravação roda a cada mudança, então a pergunta entra no disco ANTES de
+ * existir resposta. Se a aba fecha, recarrega ou navega naquele intervalo, o
+ * turno volta sem resposta e sem erro — e ficava com a linha cinza para sempre,
+ * culpando a PERGUNTA por algo que aconteceu com a PÁGINA.
+ */
+export const INTERROMPIDO =
+  "Esta pergunta ficou sem resposta: a página saiu do ar antes de a resposta chegar. Pergunte de novo.";
+
+/**
+ * Um turno lido do disco que não terminou.
+ *
+ * Na GRAVAÇÃO isto é indecidível — o turno pode completar um segundo depois. Na
+ * LEITURA é certo: um turno que terminou tem texto, resposta ou erro. Não ter
+ * nenhum dos três só acontece de um jeito.
+ *
+ * `texto: ""` conta como terminado (`!== undefined`), e é de propósito: o modelo
+ * que responde só com um cartão não deixou de responder.
+ */
+function marcarInterrompido(t: TurnoGuardado): TurnoGuardado {
+  const terminou = t.texto !== undefined || t.resposta !== undefined || Boolean(t.erro);
+  return terminou ? t : { ...t, erro: INTERROMPIDO };
 }
