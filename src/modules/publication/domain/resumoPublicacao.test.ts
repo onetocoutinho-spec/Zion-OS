@@ -123,3 +123,47 @@ test("payload vazio não explode — bloqueia por tudo o que falta", () => {
   assert.ok(imp.some((i) => i.campo === "titulo" && i.gravidade === "bloqueia"));
   assert.equal(podePublicar({}), false);
 });
+
+// ── Limites do Mercado Envios ────────────────────────────────────────────────
+
+/** A cama: maior lado 202 cm e soma 450 cm. Nenhum dos dois cabe no ME2. */
+const CAMA = { pesoGramas: 40_000, alturaCm: 202, larguraCm: 93, comprimentoCm: 155 };
+const CAIXA_DE_SAPATO = { pesoGramas: 800, alturaCm: 12, larguraCm: 20, comprimentoCm: 32 };
+
+test("embalagem grande demais para o ME2 BLOQUEIA, e diz por quê", () => {
+  const imp = impedimentosDaPublicacao(ok, CAMA);
+  const envio = imp.find((i) => i.campo === "envio");
+  assert.ok(envio, "a lojista precisa saber disso antes de clicar, não no primeiro pedido");
+  assert.equal(envio.gravidade, "bloqueia");
+  assert.match(envio.texto, /maior lado/);
+  assert.match(envio.texto, /somam/);
+  assert.equal(podePublicar(ok, CAMA), false);
+});
+
+test("embalagem que cabe não gera aviso nenhum", () => {
+  assert.deepEqual(impedimentosDaPublicacao(ok, CAIXA_DE_SAPATO), []);
+  assert.equal(podePublicar(ok, CAIXA_DE_SAPATO), true);
+});
+
+test("SEM medidas não bloqueia — ausência de prova não é prova de excesso", () => {
+  // O caminho de hoje: quem chama sem o pacote continua com o resultado de
+  // sempre. Se isto virar bloqueio, todo produto sem embalagem cadastrada para
+  // de publicar — um bloqueio novo em cima de gente que publica hoje.
+  assert.deepEqual(impedimentosDaPublicacao(ok), []);
+  assert.deepEqual(impedimentosDaPublicacao(ok, null), []);
+  assert.equal(podePublicar(ok), true);
+});
+
+test("fora do me2 os limites do ME2 não regem — e não são invocados", () => {
+  // Assustar com um limite que não se aplica é o mesmo defeito de "falta
+  // categoria": ruído vestido de cuidado.
+  const outroModo = { ...ok, shipping: { mode: "custom", free_shipping: false } };
+  assert.deepEqual(impedimentosDaPublicacao(outroModo, CAMA), []);
+  assert.equal(podePublicar(outroModo, CAMA), true);
+});
+
+test("o modo de envio aparece na leitura humana", () => {
+  assert.equal(resumirPublicacao(ok).modoEnvio, "me2");
+  assert.equal(resumirPublicacao({ ...ok, shipping: {} }).modoEnvio, null);
+  assert.equal(resumirPublicacao({}).modoEnvio, null);
+});
