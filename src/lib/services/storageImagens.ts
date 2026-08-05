@@ -103,6 +103,39 @@ export async function trocarCapaDoProduto(
 }
 
 /**
+ * Promove uma foto que JÁ EXISTE a capa do produto — rebaixando a antiga ANTES.
+ *
+ * Mesma ordem e mesmo desfazer de `trocarCapaDoProduto`, e pelos mesmos dois
+ * motivos: o instante com duas capas é o defeito, e produto sem capa nenhuma é
+ * pior que o defeito original. A única diferença é a origem da foto — aqui ela
+ * já está na tabela, então não há upload.
+ *
+ * A tela de imagens do portal fazia isto à mão e **sem o desfazer**: se a
+ * promoção falhasse depois do rebaixamento, o produto ficava sem capa e nada
+ * avisava. Era a quarta cópia da regra da capa, encontrada na varredura de
+ * quem escreve (AUD-003) depois que a #193 tirou as outras três das telas.
+ *
+ * Lê o estado atual do banco em vez de confiar na lista que a tela já tem:
+ * `useLiveQuery` pode estar defasado, e decidir capa a partir de cache é como a
+ * segunda capa entrava calada antes da 053.
+ */
+export async function promoverImagemACapa(produtoId: string, imagemId: string): Promise<void> {
+  const anterior = capaAtual(await listarImagensDoProduto(produtoId));
+  // Clicar na estrela da capa ATUAL continua reaprovando a foto — era o que a
+  // tela fazia, e é o que devolve ao envio uma capa que foi marcada "Pendente".
+  // O que não pode acontecer nesse caso é o rebaixamento: ele deixaria o
+  // produto sem capa por um instante, para promover a mesma foto de volta.
+  const jaEraACapa = anterior?.id === imagemId;
+  if (anterior && !jaEraACapa) await atualizarImagem(anterior.id, { tipoImagem: "Secundária" });
+  try {
+    await atualizarImagem(imagemId, { tipoImagem: "Principal", status: "Aprovada" });
+  } catch (e) {
+    if (anterior && !jaEraACapa) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
+    throw e;
+  }
+}
+
+/**
  * URLs das imagens de um produto que vão para o anúncio (ML).
  * TODAS entram por padrão — o cliente não precisa selecionar nada. Só fica de
  * fora a foto que ele explicitamente "tirar do envio" (status "Pendente").

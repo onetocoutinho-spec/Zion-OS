@@ -32,7 +32,7 @@ import {
   atualizarImagem,
   excluirImagem,
 } from "@/lib/services/imagensProduto";
-import { uploadImagemProduto } from "@/lib/services/storageImagens";
+import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
@@ -166,9 +166,10 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   async function tornarCapa(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
-      const atual = (imagens ?? []).find((i) => i.tipoImagem === "Principal");
-      if (atual && atual.id !== img.id) await atualizarImagem(atual.id, { tipoImagem: "Secundária" });
-      await atualizarImagem(img.id, { tipoImagem: "Principal", status: "Aprovada" });
+      // A regra da capa mora em `promoverImagemACapa`, e repeti-la aqui é como
+      // as quatro cópias que a 053 tornou audíveis. Esta era a que sobrou: a
+      // ordem estava certa, faltava o desfazer.
+      await promoverImagemACapa(img.produtoId, img.id);
       reload();
     } finally {
       setImgBusy(null);
