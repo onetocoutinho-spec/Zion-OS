@@ -23,7 +23,12 @@
 // que serve para todas as chamadas seguintes sobre o mesmo documento, o que
 // importa se a extração precisar de mais de uma passada.
 
-import { chamarIAEstruturada, enviarPdfParaIA, provedorConfigurado } from "@/lib/agentes/provedorIA";
+import {
+  chamarIAEstruturada,
+  contarTokensDaChamada,
+  enviarPdfParaIA,
+  provedorConfigurado,
+} from "@/lib/agentes/provedorIA";
 import { chamadaDoCatalogo } from "@/lib/agentes/catalogoEmPdf";
 import {
   linhasDoCatalogo,
@@ -58,11 +63,13 @@ export async function POST(request: Request) {
 
   let arquivo: File | null = null;
   let instrucao = "";
+  let apenasMedir = false;
   try {
     const form = await request.formData();
     const f = form.get("arquivo");
     arquivo = f instanceof File ? f : null;
     instrucao = String(form.get("instrucao") ?? "");
+    apenasMedir = form.get("medir") === "1";
   } catch {
     return Response.json({ erro: "Envio inválido." }, { status: 400 });
   }
@@ -80,7 +87,18 @@ export async function POST(request: Request) {
 
   try {
     const fileId = await enviarPdfParaIA(arquivo);
-    const { json, uso, modelo } = await chamarIAEstruturada(chamadaDoCatalogo(fileId, instrucao));
+    const chamada = chamadaDoCatalogo(fileId, instrucao);
+
+    // Modo medir: conta os tokens de entrada e para. Existe porque descobrir o
+    // custo de um catálogo TENTANDO é descobrir depois de pagar — e 90 páginas
+    // a ~3 MB cada são muita imagem. O `fileId` volta junto: o arquivo já está
+    // no ar, então a extração de verdade não precisa subi-lo de novo.
+    if (apenasMedir) {
+      const tokensEntrada = await contarTokensDaChamada(chamada);
+      return Response.json({ medicao: { tokensEntrada }, fileId });
+    }
+
+    const { json, uso, modelo } = await chamarIAEstruturada(chamada);
 
     const lidos = (JSON.parse(json)?.produtos ?? []) as ProdutoLidoDoCatalogo[];
     const linhas = linhasDoCatalogo(lidos);

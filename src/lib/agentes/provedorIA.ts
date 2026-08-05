@@ -312,6 +312,34 @@ export async function enviarPdfParaIA(arquivo: File): Promise<string> {
   return enviado.id;
 }
 
+/**
+ * Quanto uma chamada vai custar de ENTRADA, sem fazê-la.
+ *
+ * Existe porque o primeiro catálogo que chegou tem 272,6 MB em 90 páginas — uns
+ * 3 MB por página, resolução de impressão. Isso não estoura limite nenhum
+ * (a Files API vai até 500 MB), mas 90 páginas densas de imagem podem custar
+ * muito, e descobrir o custo TENTANDO é descobrir depois de pagar.
+ *
+ * O endpoint de contagem não gera nada: devolve o número de tokens de entrada
+ * do mesmo corpo que a chamada real mandaria. É a medição antes da construção
+ * que o plano pedia, e ela não depende de ninguém segurar o arquivo.
+ *
+ * Só Anthropic — é o único caminho que lê documento.
+ */
+export async function contarTokensDaChamada(c: ChamadaIA): Promise<number> {
+  const chave = process.env.ANTHROPIC_API_KEY;
+  if (!chave) throw new Error("ANTHROPIC_API_KEY não configurada no servidor.");
+  const client = new Anthropic({ apiKey: chave });
+  const usaFilesApi = (c.anexos ?? []).some((a) => a.tipo === "pdf-arquivo");
+  const r = await client.beta.messages.countTokens({
+    model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
+    system: c.system,
+    messages: [{ role: "user", content: blocosDaMensagem(c) }],
+    ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
+  });
+  return r.input_tokens;
+}
+
 async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   // claude-opus-5 é o Opus atual. O padrão daqui estava em `claude-opus-4-8`,
   // que é a geração anterior — padrão de modelo envelhece em silêncio, porque
