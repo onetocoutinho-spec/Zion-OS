@@ -242,7 +242,10 @@ test("o cadastro é UMA ferramenta com operações, não vinte microferramentas"
 test("toda ferramenta se descreve — é o que o modelo lê para decidir", () => {
   for (const f of FERRAMENTAS) {
     assert.ok(f.descricao.length > 20, `"${f.nome}" mal descrita`);
-    assert.ok(f.parametros.type === "OBJECT", `"${f.nome}" sem schema de objeto`);
+    // MINÚSCULO. Esta linha exigia "OBJECT" — o dialeto do Gemini — e por isso
+    // não pegou nada quando o chat migrou para o Claude: ela guardava a forma
+    // errada. JSON Schema é minúsculo, e é o que a Anthropic recebe.
+    assert.ok(f.parametros.type === "object", `"${f.nome}" sem schema de objeto`);
   }
 });
 

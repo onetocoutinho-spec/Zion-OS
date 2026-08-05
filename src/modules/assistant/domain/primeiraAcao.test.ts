@@ -187,8 +187,8 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
-test("T12: o chat fala com o Claude, no mesmo modelo do resto do projeto", () => {
-  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-opus-5"/);
+test("T12: o chat fala com o Claude", () => {
+  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
   assert.doesNotMatch(CLIENTE, /GEMINI_API_KEY|generativelanguage/);
 });
 

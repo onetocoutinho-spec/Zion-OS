@@ -108,10 +108,15 @@ export type EscolhaDeFerramenta =
 /**
  * O modelo do chat.
  *
- * `claude-opus-5` é o mesmo padrão de `provedorIA` — o chat deixou de ser o
- * único lugar do projeto com modelo próprio.
+ * Sonnet 5, e não Opus: aqui o que domina não é raciocínio difícil, é CUSTO POR
+ * INTERAÇÃO e latência. O laço reenvia o histórico a cada passo, até seis por
+ * fala do lojista, e cada fala é uma pessoa esperando na tela. O Sonnet 5 fica
+ * perto do Opus em trabalho com ferramenta por ~40% menos por token.
+ *
+ * O resto do projeto (esteira, extração do catálogo) continua no Opus, onde a
+ * chamada é rara e o erro entra no cadastro em escala.
  */
-const MODELO = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-opus-5";
+const MODELO = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5";
 
 /**
  * Teto de saída do turno. Cobre PENSAMENTO + texto, não só o texto.
