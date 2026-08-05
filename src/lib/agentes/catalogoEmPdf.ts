@@ -46,7 +46,12 @@ O QUE É UM PRODUTO: um item que o fornecedor vende. Cabeçalho de seção, índ
 
 VARIAÇÕES: quando a página lista cores ou medidas/tamanhos do MESMO item, elas são variações dele, não produtos separados. Quando são itens distintos, são produtos separados. Na dúvida entre os dois, prefira produtos separados: juntar errado esconde um item, separar errado só dá trabalho de mesclar.
 
-DESCRIÇÃO: copie da página o que descreve o produto — material, dimensões, montagem, capacidade, acabamento. Texto da página, não seu.
+MATERIAL: o que a página declarar ("100% Madeira Maciça de Angelim"). Vazio se não disser.
+
+DIMENSÕES: as medidas da peça, em CENTÍMETROS, em "dimensoes". Elas costumam estar num DESENHO TÉCNICO com setas — leia os números do desenho. Converta se a página usar outra unidade (mm → cm). Informe só o que a página mostra: uma medida que você não viu fica de fora, e não se deduz altura a partir de largura.
+NÃO confunda com medidas de PARTE do produto: "pés com 8 cm de largura" e "sarrafo de 45x45 mm" descrevem componentes, não a peça montada — esses vão na descrição, não em "dimensoes".
+
+DESCRIÇÃO: o resto do que a página diz sobre o produto — acabamento, montagem, capacidade, detalhes de componente. Texto da página, não seu.
 
 PÁGINA: informe em "paginaOrigem" o número da página do PDF onde leu cada produto. É por ele que a lojista confere.
 
@@ -65,6 +70,25 @@ export const ESQUEMA_CATALOGO_PDF: Record<string, unknown> = {
           nome: { type: "string", description: "Nome do produto como o catálogo o chama." },
           marca: { type: "string", description: "Vazio se a página não disser." },
           modelo: { type: "string", description: "Código/modelo do fornecedor. Vazio se não houver." },
+          material: { type: "string", description: "Material declarado na página. Vazio se não disser." },
+          dimensoes: {
+            type: "object",
+            description:
+              "Medidas da PEÇA MONTADA, em centímetros, geralmente lidas do desenho técnico. Omita o campo que a página não mostrar — não deduza.",
+            // `null` em vez de campo ausente: em saída estruturada estrita, o
+            // que fica fora de `required` é terreno incerto, e "a página não
+            // mostrou" precisa ser dizível sem ambiguidade. `null` diz isso;
+            // zero diria "mede zero centímetros", que é outra coisa — a mesma
+            // distinção que fez `margem` ser null neste projeto.
+            properties: {
+              alturaCm: { type: ["number", "null"] },
+              larguraCm: { type: ["number", "null"] },
+              comprimentoCm: { type: ["number", "null"] },
+              pesoKg: { type: ["number", "null"] },
+            },
+            required: ["alturaCm", "larguraCm", "comprimentoCm", "pesoKg"],
+            additionalProperties: false,
+          },
           paginaOrigem: { type: "integer", description: "Página do PDF onde este produto foi lido." },
           descricao: {
             type: "string",
@@ -85,7 +109,7 @@ export const ESQUEMA_CATALOGO_PDF: Record<string, unknown> = {
             },
           },
         },
-        required: ["nome", "marca", "modelo", "paginaOrigem", "descricao", "variacoes"],
+        required: ["nome", "marca", "modelo", "material", "dimensoes", "paginaOrigem", "descricao", "variacoes"],
         additionalProperties: false,
       },
     },

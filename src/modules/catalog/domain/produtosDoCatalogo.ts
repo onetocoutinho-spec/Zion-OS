@@ -49,11 +49,35 @@ export interface VariacaoLidaDoCatalogo {
   tamanho?: string;
 }
 
+/**
+ * As dimensões da peça, em centímetros.
+ *
+ * Elas ganharam campo próprio depois que uma página real do catálogo de móveis
+ * mostrou o buraco: o beliche traz 202 × 93 × 155 cm num DESENHO TÉCNICO, e o
+ * schema anterior só tinha `descricao` — os três números virariam prosa e
+ * seriam gravados como zero.
+ *
+ * Em móvel a dimensão é o produto: é ela que decide o frete (a maior linha de
+ * custo da categoria) e é por ela que o comprador filtra. Perdê-la para dentro
+ * de um texto livre seria perder o campo mais consequente da página.
+ */
+export interface DimensoesLidas {
+  /** `null` = a página não mostrou. Nunca zero: zero mediria zero. */
+  alturaCm?: number | null;
+  larguraCm?: number | null;
+  comprimentoCm?: number | null;
+  pesoKg?: number | null;
+}
+
 /** Um produto como uma página de catálogo consegue descrevê-lo. */
 export interface ProdutoLidoDoCatalogo {
   nome: string;
   marca?: string;
   modelo?: string;
+  /** "100% Madeira Maciça de Angelim" — atributo, não enfeite de descrição. */
+  material?: string;
+  /** Valem para o produto inteiro: as variações de cor compartilham a peça. */
+  dimensoes?: DimensoesLidas;
   /** Onde no PDF isto foi lido. É o que permite a lojista conferir. */
   paginaOrigem?: number;
   /** Texto livre que a página trouxe (material, dimensões, montagem…). */
@@ -62,6 +86,22 @@ export interface ProdutoLidoDoCatalogo {
 }
 
 const texto = (v: string | undefined): string => (v ?? "").trim();
+
+/**
+ * Só as medidas que a página realmente mostrou.
+ *
+ * `null` e zero chegam aqui querendo dizer a mesma coisa — "não sei" — e os
+ * dois são descartados. Deixar passar viraria um produto que afirma medir zero
+ * centímetros, e é uma afirmação que ninguém fez.
+ */
+function medidasUsaveis(d: DimensoesLidas | undefined): Partial<VariacaoImportada> {
+  const out: Partial<VariacaoImportada> = {};
+  for (const k of ["alturaCm", "larguraCm", "comprimentoCm", "pesoKg"] as const) {
+    const v = d?.[k];
+    if (typeof v === "number" && v > 0) out[k] = v;
+  }
+  return out;
+}
 
 /**
  * A observação que acompanha o produto até a tela de conferência.
@@ -73,6 +113,7 @@ const texto = (v: string | undefined): string => (v ?? "").trim();
 export function observacaoDaOrigem(p: ProdutoLidoDoCatalogo): string {
   const partes = [
     p.paginaOrigem ? `Importado do catálogo em PDF (página ${p.paginaOrigem}).` : "Importado do catálogo em PDF.",
+    texto(p.material) ? `Material: ${texto(p.material)}.` : null,
     texto(p.descricao) || null,
   ].filter(Boolean);
   return partes.join(" ");
@@ -107,6 +148,10 @@ export function linhasDoCatalogo(
         precoBase: 0,
         estoque: 0,
         idExterno: "",
+        // A peça é a mesma nas três cores — o beliche Castanho, Mogno e
+        // Cinamomo mede 202 × 93 × 155 nos três casos. A dimensão é do produto
+        // e desce para cada variação.
+        ...medidasUsaveis(p.dimensoes),
       }))
       // Uma variação que não diz nem cor nem tamanho não é uma variação — é
       // ruído de layout. Ela some aqui em vez de virar uma linha vazia que a

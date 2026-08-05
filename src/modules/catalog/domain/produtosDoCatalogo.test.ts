@@ -98,3 +98,64 @@ test("o resumo conta o que a lojista precisa saber antes de confirmar", () => {
   // parecer defeito na tela.
   assert.equal(r.semPreco, r.produtos);
 });
+
+// ---------------------------------------------------------------------------
+// A página real que reprovou o schema — Beliche VITORIA, catálogo de móveis.
+//
+// Ela chegou depois do schema pronto e mostrou dois campos que ele perdia:
+// MATERIAL ("100% Madeira Maciça de Angelim") e as DIMENSÕES da peça montada,
+// que na página estão num DESENHO TÉCNICO — 202 × 93 × 155 cm. Sem campo
+// próprio, os três números virariam prosa dentro de `descricao` e seriam
+// gravados como zero, porque `confirmarImportacaoProdutos` zerava altura,
+// largura e comprimento sem ninguém ter dito zero.
+//
+// Em móvel a dimensão é o produto: decide o frete, que é a maior linha de custo
+// da categoria, e é por ela que o comprador filtra.
+// ---------------------------------------------------------------------------
+
+const BELICHE: ProdutoLidoDoCatalogo = {
+  nome: "Beliche - VITORIA",
+  modelo: "VITORIA",
+  material: "100% Madeira Maciça de Angelim",
+  paginaOrigem: 12,
+  dimensoes: { alturaCm: 155, larguraCm: 93, comprimentoCm: 202, pesoKg: null },
+  descricao: "Pés com 8 cm de largura e 5 cm de profundidade. Sarrafo reforçado de 45x45 mm.",
+  variacoes: [{ cor: "Castanho" }, { cor: "Mogno" }, { cor: "Cinamomo" }],
+};
+
+test("as três cores herdam a MESMA peça — a dimensão é do produto", () => {
+  const [l] = linhasDoCatalogo([BELICHE]);
+  assert.equal(l.variacoes?.length, 3);
+  for (const v of l.variacoes ?? []) {
+    assert.equal(v.alturaCm, 155);
+    assert.equal(v.larguraCm, 93);
+    assert.equal(v.comprimentoCm, 202);
+  }
+  assert.deepEqual(l.variacoes?.map((v) => v.cor), ["Castanho", "Mogno", "Cinamomo"]);
+});
+
+test("a medida que a página não mostrou não vira zero — ela não vai", () => {
+  const [l] = linhasDoCatalogo([BELICHE]);
+  // O catálogo não declara peso. Zero seria "pesa zero quilos", e o frete de um
+  // beliche calculado sobre zero é o erro mais caro que esta categoria comporta.
+  for (const v of l.variacoes ?? []) {
+    assert.equal(v.pesoKg, undefined, "peso ausente virou um número");
+  }
+});
+
+test("medida zerada ou negativa é descartada como se não existisse", () => {
+  const [l] = linhasDoCatalogo([
+    { ...BELICHE, dimensoes: { alturaCm: 0, larguraCm: -5, comprimentoCm: 202, pesoKg: null } },
+  ]);
+  const v = l.variacoes?.[0];
+  assert.equal(v?.alturaCm, undefined);
+  assert.equal(v?.larguraCm, undefined);
+  assert.equal(v?.comprimentoCm, 202, "a medida boa foi descartada junto com as ruins");
+});
+
+test("o material vira atributo visível, não some dentro da prosa", () => {
+  const obs = observacaoDaOrigem(BELICHE);
+  assert.match(obs, /Material: 100% Madeira Maciça de Angelim/);
+  assert.match(obs, /página 12/);
+  assert.match(obs, /Sarrafo reforçado/);
+});

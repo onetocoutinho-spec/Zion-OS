@@ -106,6 +106,14 @@ export interface VariacaoImportada {
   precoBase: number;
   estoque: number;
   idExterno: string; // MLB / id do anúncio no marketplace
+  // Dimensões e peso da variação. Opcionais porque a planilha do ERP quase
+  // nunca os traz — mas um CATÁLOGO traz, e em móvel eles são o produto: é a
+  // dimensão que decide o frete e é por ela que o comprador filtra. Eram
+  // gravados como 0 sem ninguém ter dito zero.
+  alturaCm?: number;
+  larguraCm?: number;
+  comprimentoCm?: number;
+  pesoKg?: number;
 }
 
 export interface LinhaProduto {
@@ -436,10 +444,10 @@ export async function confirmarImportacaoProdutos(params: {
         custo: v.custo,
         precoBase: v.precoBase,
         estoque: v.estoque,
-        peso: 0,
-        altura: 0,
-        largura: 0,
-        comprimento: 0,
+        peso: v.pesoKg ?? 0,
+        altura: v.alturaCm ?? 0,
+        largura: v.larguraCm ?? 0,
+        comprimento: v.comprimentoCm ?? 0,
         status: "Ativa",
         observacoes: v.idExterno ? `MLB: ${v.idExterno}` : "",
       });
