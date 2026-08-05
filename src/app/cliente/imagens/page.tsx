@@ -31,9 +31,8 @@ import {
   listarImagensDoProduto,
   atualizarImagem,
   excluirImagem,
-  promoverACapa,
 } from "@/lib/services/imagensProduto";
-import { uploadImagemProduto } from "@/lib/services/storageImagens";
+import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
@@ -167,11 +166,10 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   async function tornarCapa(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
-      // A troca de capa mora em `promoverACapa`. Esta tela tinha a sua própria
-      // versão, e ela lia a capa atual do estado do React em vez do banco — e
-      // não desfazia: se a promoção falhasse depois do rebaixamento, o produto
-      // ficava sem capa nenhuma, que é pior do que ter duas.
-      await promoverACapa(img);
+      // A regra da capa mora em `promoverImagemACapa`, e repeti-la aqui é como
+      // as quatro cópias que a 053 tornou audíveis. Esta era a que sobrou: a
+      // ordem estava certa, faltava o desfazer.
+      await promoverImagemACapa(img.produtoId, img.id);
       reload();
     } finally {
       setImgBusy(null);

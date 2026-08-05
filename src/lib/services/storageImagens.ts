@@ -5,8 +5,8 @@
 // publicação no ML consome (o ML não aceita prompts, só imagens por URL).
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
-import { comCapaRebaixada, criarImagem, listarImagensDoProduto } from "./imagensProduto";
-import { mesmoEscopoDeCapa, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
+import { atualizarImagem, criarImagem, listarImagensDoProduto } from "./imagensProduto";
+import { capaAtual, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
 import type { ImagemProduto, TipoImagem } from "../types";
 
 const BUCKET = "produtos-imagens";
@@ -70,7 +70,7 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     produtoId,
     varianteId: null,
     anuncioId: null,
-    tipoImagem: papelDaFotoNova(mesmoEscopoDeCapa(existentes, null), opcoes.tipo),
+    tipoImagem: papelDaFotoNova(existentes, opcoes.tipo),
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
@@ -92,11 +92,47 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
 export async function trocarCapaDoProduto(
   opcoes: Omit<OpcoesUpload, "tipo">
 ): Promise<ImagemProduto> {
-  // `uploadImagemProduto` grava sempre com `varianteId: null`, então é esse o
-  // escopo cuja capa precisa sair da frente.
-  return comCapaRebaixada(opcoes.produtoId, null, () =>
-    uploadImagemProduto({ ...opcoes, tipo: "Principal" })
-  );
+  const anterior = capaAtual(await listarImagensDoProduto(opcoes.produtoId));
+  if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Secundária" });
+  try {
+    return await uploadImagemProduto({ ...opcoes, tipo: "Principal" });
+  } catch (e) {
+    if (anterior) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
+    throw e;
+  }
+}
+
+/**
+ * Promove uma foto que JÁ EXISTE a capa do produto — rebaixando a antiga ANTES.
+ *
+ * Mesma ordem e mesmo desfazer de `trocarCapaDoProduto`, e pelos mesmos dois
+ * motivos: o instante com duas capas é o defeito, e produto sem capa nenhuma é
+ * pior que o defeito original. A única diferença é a origem da foto — aqui ela
+ * já está na tabela, então não há upload.
+ *
+ * A tela de imagens do portal fazia isto à mão e **sem o desfazer**: se a
+ * promoção falhasse depois do rebaixamento, o produto ficava sem capa e nada
+ * avisava. Era a quarta cópia da regra da capa, encontrada na varredura de
+ * quem escreve (AUD-003) depois que a #193 tirou as outras três das telas.
+ *
+ * Lê o estado atual do banco em vez de confiar na lista que a tela já tem:
+ * `useLiveQuery` pode estar defasado, e decidir capa a partir de cache é como a
+ * segunda capa entrava calada antes da 053.
+ */
+export async function promoverImagemACapa(produtoId: string, imagemId: string): Promise<void> {
+  const anterior = capaAtual(await listarImagensDoProduto(produtoId));
+  // Clicar na estrela da capa ATUAL continua reaprovando a foto — era o que a
+  // tela fazia, e é o que devolve ao envio uma capa que foi marcada "Pendente".
+  // O que não pode acontecer nesse caso é o rebaixamento: ele deixaria o
+  // produto sem capa por um instante, para promover a mesma foto de volta.
+  const jaEraACapa = anterior?.id === imagemId;
+  if (anterior && !jaEraACapa) await atualizarImagem(anterior.id, { tipoImagem: "Secundária" });
+  try {
+    await atualizarImagem(imagemId, { tipoImagem: "Principal", status: "Aprovada" });
+  } catch (e) {
+    if (anterior && !jaEraACapa) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
+    throw e;
+  }
 }
 
 /**

@@ -40,34 +40,6 @@ export interface ImagemExistente {
   tipoImagem: TipoImagem;
 }
 
-/** O bastante para saber QUAIS fotos disputam a mesma capa. */
-export interface ImagemComEscopo {
-  varianteId: string | null;
-}
-
-/**
- * As fotos que disputam a MESMA capa que uma foto nova — e é isto que decide
- * quantas capas um produto pode ter.
- *
- * O índice da migração 053 chaveia por
- * `(produto_id, coalesce(variante_id, <uuid zero>))`: uma capa por VARIANTE, e
- * as fotos sem variante formam um escopo próprio. Esta função é essa chave
- * escrita em TypeScript, e existe para que os dois lados não possam divergir
- * calados — foi exatamente essa divergência que custou os três caminhos de
- * upload em 04/08.
- *
- * Hoje o resultado é indistinguível de "todas as fotos do produto", porque
- * `variante_id` está vazio nas 653 linhas. Isso é o ponto: quando o DES-003
- * preencher a coluna, o código já acompanha o índice em vez de passar a
- * discordar dele.
- */
-export function mesmoEscopoDeCapa<T extends ImagemComEscopo>(
-  existentes: readonly T[],
-  varianteId: string | null
-): T[] {
-  return existentes.filter((i) => (i.varianteId ?? null) === (varianteId ?? null));
-}
-
 /**
  * O papel de uma foto nova, dado o que o produto já tem.
  *

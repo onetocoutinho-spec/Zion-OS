@@ -24,6 +24,7 @@ import {
   listarResumoDeAnunciosDoCliente,
 } from "./anunciosGerados";
 import { criarImagensBulk } from "./imagensProduto";
+import { papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
 import { estadosDesatualizados } from "../../modules/integration/domain/estadoNoMarketplaceDesatualizado";
 import { exigenciasNaoAtendidas } from "../../modules/integration/domain/oQueOMlEstaPedindo";
 import {
@@ -944,9 +945,11 @@ export async function importarAnunciosDoCliente(
   //
   //    Em produto CASADO, NÃO. E é uma decisão, não um esquecimento:
   //
-  //      · `imagens_produto` não tem índice único em (produto_id, tipo_imagem).
-  //        Uma segunda "Principal" entraria calada, e o produto passaria a ter
-  //        duas capas sem nada reclamar.
+  //      · o casado já tem capa, e este caminho não sabia perguntar qual é. A
+  //        justificativa antiga era "não existe índice único, a segunda capa
+  //        entra calada" — que descreve o mundo de antes da 053 e argumenta
+  //        pela AUSÊNCIA de uma restrição. É o raciocínio invertido: a segunda
+  //        capa era defeito mesmo quando nada reclamava.
   //      · o produto casado já tem até MAX_FOTOS fotos. Acrescentar as do
   //        anúncio novo agrava o defeito de cor que está aberto — foi ele que
   //        pôs foto Nude num anúncio Marrom (DES-003).
@@ -957,18 +960,24 @@ export async function importarAnunciosDoCliente(
   criados.forEach((prod, gi) => {
     if (casados[gi]) return;
     const urls = [...new Set(grupos[gi].flatMap((a) => a.fotos))].slice(0, MAX_FOTOS);
-    urls.forEach((url, i) => {
-      imagens.push({
+    // `i === 0 ? "Principal" : "Secundária"` dizia a mesma coisa que a regra, e
+    // dizer a mesma coisa em outro lugar foi o que quebrou três telas em 04/08.
+    // O produto acabou de ser criado, então o lote é a verdade inteira sobre o
+    // que ele já tem — a regra decide olhando para o que já entrou nele.
+    const doProduto: Omit<ImagemProduto, "id">[] = [];
+    urls.forEach((url) => {
+      doProduto.push({
         clienteId,
         produtoId: prod.id,
         varianteId: null,
         anuncioId: null,
-        tipoImagem: i === 0 ? "Principal" : "Secundária",
+        tipoImagem: papelDaFotoNova(doProduto),
         url,
         status: "Aprovada", // é a foto real que já está no anúncio
         observacoes: "Importada do Mercado Livre.",
       });
     });
+    imagens.push(...doProduto);
   });
   let imagensOk = 0;
   try {

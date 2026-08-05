@@ -9,11 +9,12 @@ import { Field, FormGrid, Input, Select } from "@/components/ui/form";
 import { IMAGEM_STATUS, TIPO_IMAGEM } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { resumoVariante } from "@/lib/variantes";
+import { papelDaFotoNova } from "@/modules/catalog/domain/papelDaImagem";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
+  criarImagem,
   excluirImagem,
   listarImagensDoProduto,
-  registrarImagemPorUrl,
 } from "@/lib/services/imagensProduto";
 import type { ImagemProduto, Produto } from "@/lib/types";
 
@@ -27,7 +28,10 @@ export function AbaImagens({ produto }: { produto: Produto }) {
     [produto.id]
   );
 
-  const [tipo, setTipo] = useState<ImagemProduto["tipoImagem"]>("Principal");
+  // Era "Principal". Um seletor que já vem em "Principal" é o mesmo padrão
+  // invertido de `tipo ?? "Principal"`, só que desenhado na tela: quem não tem
+  // opinião sobre a capa aceita o que está ali. Quem quiser a capa escolhe.
+  const [tipo, setTipo] = useState<ImagemProduto["tipoImagem"]>("Secundária");
   const [url, setUrl] = useState("");
   const [varianteId, setVarianteId] = useState("");
   const [status, setStatus] = useState<ImagemProduto["status"]>("Pendente");
@@ -41,17 +45,21 @@ export function AbaImagens({ produto }: { produto: Produto }) {
   async function adicionar(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
-    // `registrarImagemPorUrl`, e não `criarImagem`: o Select abre em "Principal"
-    // (é o primeiro de TIPO_IMAGEM), então o caminho mais provável desta tela —
-    // colar a URL e clicar — pedia a capa sem que ninguém tivesse decidido isso.
-    // Era o quinto caminho capaz de criar a segunda capa calada, e o único que
-    // sobreviveu à correção de 04/08 por não passar por `uploadImagemProduto`.
-    await registrarImagemPorUrl({
+    // Esta aba grava direto no repositório — não passa por `uploadImagemProduto`,
+    // porque aqui a foto entra por URL e não há upload. Por isso a #193 não o
+    // alcançou — ela consertou `uploadImagemProduto` — e ele continuava sendo o
+    // caminho que de fato criava a segunda capa nos 80 produtos que já têm uma.
+    // O papel sai da regra, como em todos os outros.
+    //
+    // A lista vem do banco agora, não do `useLiveQuery` acima: decidir capa a
+    // partir de cache defasado é exatamente como a segunda capa entrava calada.
+    const existentes = await listarImagensDoProduto(produto.id);
+    await criarImagem({
       clienteId: produto.clienteId,
       produtoId: produto.id,
       varianteId: varianteId || null,
       anuncioId: null,
-      tipoImagem: tipo,
+      tipoImagem: papelDaFotoNova(existentes, tipo),
       url: url.trim(),
       status,
       observacoes: "",

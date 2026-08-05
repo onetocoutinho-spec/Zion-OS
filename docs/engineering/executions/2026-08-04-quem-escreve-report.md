@@ -8,9 +8,29 @@ Achado:    um QUINTO caminho capaz de criar a segunda capa — consertado aqui
 Gate:      typecheck · typecheck:test · eslint 0 erros · 2409 testes (eram 2398)
 ```
 
-> A pergunta que motivou a varredura tem resposta na §4: **a 053 ainda não pode
-> voltar** — mas por um motivo diferente do que a derrubou, e que estava
-> invisível até esta leitura.
+> ## ⚠️ CORREÇÃO DE 05/08 — LEIA ANTES DE TUDO
+>
+> **A premissa deste documento estava errada: o índice da 053 nunca saiu do ar.**
+> Medido no banco em 05/08 por outra sessão, `idx_imagens_produto_uma_capa`
+> existe, com a definição idêntica à do arquivo. O relatório da 053 §7 afirmou
+> o estado do banco a partir do que foi **mandado** fazer (`drop index` escrito
+> num documento), não do que foi **medido** depois — e eu repeti essa afirmação
+> como fato, sem ter acesso ao banco para conferir.
+>
+> Tudo que este documento diz sobre *quem escreve* continua valendo. O que muda
+> é a **classificação do achado**: o quinto caminho (`AbaImagens`) não era risco
+> de uma reaplicação futura — era **defeito ativo em produção**. Com o índice
+> vivo e 80 produtos com capa, a aba dava `unique_violation` a cada foto
+> adicionada com a opção padrão do seletor.
+>
+> A §4 abaixo ("a 053 pode voltar?") está inteira sobre uma pergunta que não
+> existia. A pergunta real era outra, e a resposta dela é a §8 do relatório da
+> 053. O conserto foi feito pela PR #198, não por este trabalho.
+>
+> **A lição é a mesma que este documento cobra dos outros:** não afirme o estado
+> do banco a partir do que alguém mandou fazer. Eu marquei como "SEM EVIDÊNCIA"
+> tudo que não pude medir — menos isto, que tratei como fato porque estava
+> escrito num relatório.
 
 ---
 
@@ -118,7 +138,17 @@ citado ali (o defeito de cor).
 
 ---
 
-## 4 · A 053 pode voltar? — ainda não, e o motivo mudou
+## 4 · A 053 pode voltar? — ⚠️ a pergunta estava errada
+
+> **Esta seção inteira responde a uma pergunta que não existia.** O índice nunca
+> saiu do ar (ver a correção no topo), então não havia o que "voltar". O que
+> segue abaixo foi escrito acreditando no contrário, e fica registrado porque o
+> raciocínio sobre *o que precisa ser verdade antes de uma restrição* continua
+> valendo — só não se aplicava a este caso.
+>
+> O item 1 abaixo, aliás, virou o oposto do que eu quis dizer: eu pedia remedir
+> antes de reaplicar. Como o índice já estava lá, **remedir era urgente e não
+> preparatório** — e teria mostrado o defeito no mesmo dia.
 
 A regra registrada é `código em produção → restrição`. O código agora está
 correto nos sete caminhos acima. **Mesmo assim a resposta é não**, por uma coisa
