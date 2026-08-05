@@ -194,6 +194,20 @@ export function observacaoDaOrigem(p: ProdutoLidoDoCatalogo): string {
 }
 
 /**
+ * Uma linha pronta para importar, com a página de onde ela saiu do lado.
+ *
+ * A página viaja SEPARADA porque `LinhaProduto` é a forma do cano de importação
+ * e não tem campo para ela — dentro da linha, ela só existe como prosa na
+ * observação. A tela de conferência precisa dela como NÚMERO, e reextraí-la da
+ * própria prosa casaria a tela com o texto que este módulo escreve.
+ */
+export interface LinhaComOrigem {
+  linha: LinhaProduto;
+  /** 0 quando o modelo não declarou a página. */
+  paginaOrigem: number;
+}
+
+/**
  * Converte o que o modelo leu em linhas que o cano de importação já aceita.
  *
  * Produto sem nome é descartado: nome é a única coisa sem a qual não há produto,
@@ -204,7 +218,22 @@ export function linhasDoCatalogo(
   lidos: readonly ProdutoLidoDoCatalogo[],
   marketplacePadrao: LinhaProduto["base"]["marketplace"] = "Mercado Livre"
 ): LinhaProduto[] {
-  const linhas: LinhaProduto[] = [];
+  return linhasComOrigem(lidos, marketplacePadrao).map((x) => x.linha);
+}
+
+/**
+ * O mesmo, com a página junto. É AQUI que o descarte de produto sem nome
+ * acontece — `linhasDoCatalogo` delega.
+ *
+ * Uma segunda travessia com o mesmo filtro escrito de novo é como as duas listas
+ * sairiam desalinhadas, e desalinhadas significa a página de um produto exibida
+ * ao lado de outro. O erro não pareceria erro: seria só um número.
+ */
+export function linhasComOrigem(
+  lidos: readonly ProdutoLidoDoCatalogo[],
+  marketplacePadrao: LinhaProduto["base"]["marketplace"] = "Mercado Livre"
+): LinhaComOrigem[] {
+  const linhas: LinhaComOrigem[] = [];
 
   for (const p of lidos) {
     const nome = texto(p.nome);
@@ -237,7 +266,7 @@ export function linhasDoCatalogo(
       // lojista teria de apagar à mão.
       .filter((v) => v.cor || v.tamanho);
 
-    linhas.push({
+    const linha: LinhaProduto = {
       base: {
         nome,
         marca: texto(p.marca),
@@ -264,6 +293,14 @@ export function linhasDoCatalogo(
       // uma margem que ninguém calculou.
       margem: null,
       ...(variacoes.length ? { variacoes } : {}),
+    };
+
+    // Página truncada e nunca negativa: ela vira rótulo na tela, e "página 3,7"
+    // ou "página -1" mandaria alguém procurar o que não existe. 0 = não disse.
+    const pagina = Number(p.paginaOrigem);
+    linhas.push({
+      linha,
+      paginaOrigem: Number.isFinite(pagina) ? Math.max(0, Math.trunc(pagina)) : 0,
     });
   }
 

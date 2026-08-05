@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight, Truck } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight, Truck, FileText } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
+import { ImportarCatalogoPdf } from "@/components/client-portal/ImportarCatalogoPdf";
 import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
@@ -113,6 +114,7 @@ export default function ClienteProdutos() {
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   const [mostrarImport, setMostrarImport] = useState(false);
+  const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
   // Cadastro do zero: quem está começando não monta planilha para um item só.
   const [cadastrando, setCadastrando] = useState(false);
   const [criado, setCriado] = useState<string | null>(null);
@@ -652,6 +654,14 @@ export default function ClienteProdutos() {
               {mostrarImport ? <X size={15} /> : <Upload size={15} />}{" "}
               {mostrarImport ? "Fechar" : "Planilha"}
             </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setMostrarCatalogo((v) => !v)}
+              title="Importar o catálogo em PDF do seu fornecedor. A IA transcreve os produtos e você confere antes de gravar."
+            >
+              {mostrarCatalogo ? <X size={15} /> : <FileText size={15} />}{" "}
+              {mostrarCatalogo ? "Fechar" : "Catálogo PDF"}
+            </Button>
             <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos (CSV/Excel) — colunas: custo + sku e/ou nome do produto">
               {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
               {importandoCusto ? "Importando…" : "Custos"}
@@ -813,6 +823,15 @@ export default function ClienteProdutos() {
 
       {(mostrarImport || total === 0) && (
         <ImportarProdutos onImportado={() => setMostrarImport(false)} />
+      )}
+
+      {mostrarCatalogo && (
+        <ImportarCatalogoPdf
+          onImportado={() => {
+            setMostrarCatalogo(false);
+            reload();
+          }}
+        />
       )}
 
       {total === 0 ? (
