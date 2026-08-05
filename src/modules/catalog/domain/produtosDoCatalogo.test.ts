@@ -11,6 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  linhasComOrigem,
   linhasDoCatalogo,
   observacaoDaOrigem,
   resumoDoCatalogo,
@@ -261,4 +262,46 @@ test("a mesma versão em três cores é dita UMA vez, não três", () => {
 test("produto de tamanho único diz a medida uma vez, sem rótulo de versão", () => {
   const [l] = linhasDoCatalogo([BELICHE]);
   assert.match(l.base.observacoes, /Produto montado: 93 cm de largura/);
+});
+
+// ── A página que viaja junto ────────────────────────────────────────────────
+
+test("a página acompanha o produto MESMO com descarte no meio da lista", () => {
+  // O caso que faz as duas listas se desalinharem: um item sem nome no meio.
+  // `linhasDoCatalogo` o derruba — se a página fosse coletada numa segunda
+  // travessia sem esse filtro, a página 99 apareceria colada na Cama.
+  const lidos: ProdutoLidoDoCatalogo[] = [
+    { nome: "Beliche VITORIA", paginaOrigem: 7 },
+    { nome: "   ", paginaOrigem: 99 }, // legenda sem nome — não é produto
+    { nome: "Cama BELLA", paginaOrigem: 12 },
+  ];
+  const itens = linhasComOrigem(lidos);
+  assert.equal(itens.length, 2);
+  assert.deepEqual(
+    itens.map((i) => [i.linha.base.nome, i.paginaOrigem]),
+    [
+      ["Beliche VITORIA", 7],
+      ["Cama BELLA", 12],
+    ]
+  );
+});
+
+test("linhasDoCatalogo é a mesma lista, sem a página — não uma segunda leitura", () => {
+  const lidos: ProdutoLidoDoCatalogo[] = [{ nome: "  " }, { nome: "Mesa MAXI", paginaOrigem: 55 }];
+  assert.deepEqual(
+    linhasDoCatalogo(lidos),
+    linhasComOrigem(lidos).map((i) => i.linha)
+  );
+});
+
+test("página ausente ou impossível vira 0 — nunca manda procurar onde não existe", () => {
+  const lidos = [
+    { nome: "Sem página" },
+    { nome: "Fracionada", paginaOrigem: 3.7 },
+    { nome: "Negativa", paginaOrigem: -1 },
+  ] as ProdutoLidoDoCatalogo[];
+  assert.deepEqual(
+    linhasComOrigem(lidos).map((i) => i.paginaOrigem),
+    [0, 3, 0]
+  );
 });

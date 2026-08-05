@@ -31,7 +31,7 @@ import {
 } from "@/lib/agentes/provedorIA";
 import { chamadaDoCatalogo } from "@/lib/agentes/catalogoEmPdf";
 import {
-  linhasDoCatalogo,
+  linhasComOrigem,
   resumoDoCatalogo,
   type ProdutoLidoDoCatalogo,
 } from "@/modules/catalog/domain/produtosDoCatalogo";
@@ -64,29 +64,39 @@ export async function POST(request: Request) {
   let arquivo: File | null = null;
   let instrucao = "";
   let apenasMedir = false;
+  // O id de um upload anterior. Medir e depois ler são DUAS chamadas sobre o
+  // mesmo documento, e sem isto o catálogo de 272,6 MB subiria duas vezes —
+  // o dobro da espera, na conexão de quem está do outro lado.
+  let fileIdExistente = "";
   try {
     const form = await request.formData();
     const f = form.get("arquivo");
     arquivo = f instanceof File ? f : null;
     instrucao = String(form.get("instrucao") ?? "");
     apenasMedir = form.get("medir") === "1";
+    fileIdExistente = String(form.get("fileId") ?? "").trim();
   } catch {
     return Response.json({ erro: "Envio inválido." }, { status: 400 });
   }
 
-  if (!arquivo) return Response.json({ erro: "Anexe o catálogo em PDF." }, { status: 400 });
-  if (arquivo.type && arquivo.type !== "application/pdf") {
-    return Response.json({ erro: "O catálogo precisa ser um PDF." }, { status: 400 });
+  // Com o id em mãos o arquivo não precisa vir de novo; sem ele, precisa.
+  if (!arquivo && !fileIdExistente) {
+    return Response.json({ erro: "Anexe o catálogo em PDF." }, { status: 400 });
   }
-  if (arquivo.size > TAMANHO_MAXIMO) {
-    return Response.json(
-      { erro: "PDF acima de 500 MB. Reduza a resolução das imagens ou divida o catálogo." },
-      { status: 413 }
-    );
+  if (arquivo) {
+    if (arquivo.type && arquivo.type !== "application/pdf") {
+      return Response.json({ erro: "O catálogo precisa ser um PDF." }, { status: 400 });
+    }
+    if (arquivo.size > TAMANHO_MAXIMO) {
+      return Response.json(
+        { erro: "PDF acima de 500 MB. Reduza a resolução das imagens ou divida o catálogo." },
+        { status: 413 }
+      );
+    }
   }
 
   try {
-    const fileId = await enviarPdfParaIA(arquivo);
+    const fileId = fileIdExistente || (await enviarPdfParaIA(arquivo as File));
     const chamada = chamadaDoCatalogo(fileId, instrucao);
 
     // Modo medir: conta os tokens de entrada e para. Existe porque descobrir o
@@ -101,11 +111,13 @@ export async function POST(request: Request) {
     const { json, uso, modelo } = await chamarIAEstruturada(chamada);
 
     const lidos = (JSON.parse(json)?.produtos ?? []) as ProdutoLidoDoCatalogo[];
-    const linhas = linhasDoCatalogo(lidos);
+    // Um array só, e não `linhas` + `paginas` lado a lado: a página pertence ao
+    // produto, e duas listas paralelas na rede é onde elas se desalinham.
+    const itens = linhasComOrigem(lidos);
 
     return Response.json({
-      linhas,
-      resumo: resumoDoCatalogo(lidos, linhas),
+      itens,
+      resumo: resumoDoCatalogo(lidos, itens.map((i) => i.linha)),
       // O uso viaja porque uma extração de catálogo é a chamada mais cara que
       // este sistema faz, e "quanto custou" precisou de resposta antes (a
       // mesma pergunta que fez `UsoDeTokens` existir).
