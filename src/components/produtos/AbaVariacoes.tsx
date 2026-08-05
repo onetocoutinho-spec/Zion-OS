@@ -76,7 +76,7 @@ function LinhaVariante({ v }: { v: ProdutoVariante }) {
         </select>
       </td>
       <td className="px-2 py-2">
-        <button onClick={excluir} title="Excluir variante"
+        <button onClick={excluir} title="Excluir variante" aria-label="Excluir esta variante"
           className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400">
           <Trash2 size={13} />
         </button>
