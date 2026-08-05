@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Calculator, Weight, Truck, FileText } from "lucide-react";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Truck } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -10,6 +10,7 @@ import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
 import { ImportarCatalogoPdf } from "@/components/client-portal/ImportarCatalogoPdf";
+import { EscolherImportacao } from "@/components/client-portal/EscolherImportacao";
 import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
@@ -113,6 +114,8 @@ export default function ClienteProdutos() {
   const [fStatus, setFStatus] = useState("Todos");
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
+  // O menu "o que você tem?" — uma porta para as cinco fontes de importação.
+  const [importando, setImportando] = useState(false);
   const [mostrarImport, setMostrarImport] = useState(false);
   const [mostrarCatalogo, setMostrarCatalogo] = useState(false);
   // Cadastro do zero: quem está começando não monta planilha para um item só.
@@ -636,6 +639,26 @@ export default function ClienteProdutos() {
 
   const total = (produtos ?? []).length;
 
+  /** Alguma importação rodando. Duas ao mesmo tempo se atropelam na base. */
+  const ocupadoImportando = importandoML || importandoCusto || importandoPeso;
+
+  /**
+   * O menu escolhe; quem importa continua sendo quem já importava.
+   *
+   * Cada fonte só ACENDE o caminho que já existia — não há lógica de importação
+   * nova aqui. Foi assim de propósito: trocar a porta de entrada de uma tela que
+   * está no ar com cliente usando não pode reescrever o que acontece depois
+   * dela.
+   */
+  function abrirFonte(id: string) {
+    setImportando(false);
+    setMostrarImport(id === "planilha");
+    setMostrarCatalogo(id === "catalogo");
+    setEscolhendoML(id === "ml");
+    if (id === "custos") custoInputRef.current?.click();
+    if (id === "peso") pesoInputRef.current?.click();
+  }
+
   return (
     <>
       <PageHeader
@@ -646,27 +669,28 @@ export default function ClienteProdutos() {
             <Button variant="ghost" onClick={() => setCadastrando(true)} title="Cadastrar um produto do zero, sem planilha">
               <Plus size={15} /> Novo produto
             </Button>
-            <Button variant="ghost" onClick={() => setEscolhendoML((v) => !v)} disabled={importandoML} title="Puxar os anúncios já cadastrados na sua conta do Mercado Livre">
-              {importandoML ? <Loader2 size={15} className="animate-spin" /> : <Store size={15} />}{" "}
-              {importandoML ? "Importando…" : "Importar do ML"}
-            </Button>
-            <Button variant="ghost" onClick={() => setMostrarImport((v) => !v)}>
-              {mostrarImport ? <X size={15} /> : <Upload size={15} />}{" "}
-              {mostrarImport ? "Fechar" : "Planilha"}
-            </Button>
+            {/* UMA porta, em vez de cinco. Os cinco botões que estavam aqui
+                tinham o nome do nosso recorte ("Planilha", "Custos", "Peso") e
+                o que aceitavam vivia num `title=`. Agora a pergunta é "o que
+                você tem?", que é a que dá para responder. Ver
+                `fontesDeImportacao`. */}
             <Button
               variant="ghost"
-              onClick={() => setMostrarCatalogo((v) => !v)}
-              title="Importar o catálogo em PDF do seu fornecedor. A IA transcreve os produtos e você confere antes de gravar."
+              onClick={() => setImportando((v) => !v)}
+              disabled={ocupadoImportando}
             >
-              {mostrarCatalogo ? <X size={15} /> : <FileText size={15} />}{" "}
-              {mostrarCatalogo ? "Fechar" : "Catálogo PDF"}
+              {ocupadoImportando ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : importando ? (
+                <X size={15} />
+              ) : (
+                <Upload size={15} />
+              )}{" "}
+              {ocupadoImportando ? "Importando…" : importando ? "Fechar" : "Importar"}
             </Button>
-            <Button variant="ghost" onClick={() => custoInputRef.current?.click()} disabled={importandoCusto} title="Importar custos (CSV/Excel) — colunas: custo + sku e/ou nome do produto">
-              {importandoCusto ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />}{" "}
-              {importandoCusto ? "Importando…" : "Custos"}
-              <input ref={custoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarCustos} />
-            </Button>
+            {/* Frete NÃO entrou no menu: ele não traz produto nem lê arquivo —
+                consulta o ML e preenche um campo. Estava no meio dos
+                importadores só por vizinhança visual. */}
             <Button
               variant="ghost"
               onClick={() => void aoAtualizarFrete()}
@@ -675,11 +699,6 @@ export default function ClienteProdutos() {
             >
               {atualizandoFrete ? <Loader2 size={15} className="animate-spin" /> : <Truck size={15} />}{" "}
               {atualizandoFrete ? "Buscando…" : "Frete"}
-            </Button>
-            <Button variant="ghost" onClick={() => pesoInputRef.current?.click()} disabled={importandoPeso} title="Importar peso e medidas (CSV/Excel) — colunas: sku (ou ean) + peso_kg (ou peso_g); altura, largura e comprimento em cm são opcionais">
-              {importandoPeso ? <Loader2 size={15} className="animate-spin" /> : <Weight size={15} />}{" "}
-              {importandoPeso ? "Importando…" : "Peso"}
-              <input ref={pesoInputRef} type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={aoImportarPeso} />
             </Button>
             <Link href="/cliente/anunciar">
               <Button>
@@ -690,6 +709,36 @@ export default function ClienteProdutos() {
         }
       />
 
+
+      {/* Os seletores de arquivo vivem aqui, soltos: antes moravam DENTRO dos
+          botões que sumiram, e o menu precisa acioná-los pela ref. */}
+      <input
+        ref={custoInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="hidden"
+        onChange={aoImportarCustos}
+      />
+      <input
+        ref={pesoInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        className="hidden"
+        onChange={aoImportarPeso}
+      />
+
+      {/* Base vazia abre o menu sozinha — mas só enquanto nenhuma porta foi
+          escolhida, senão escolher uma não fecharia o menu. Antes daqui, a base
+          vazia caía direto na planilha do ERP: uma das três, escolhida por nós,
+          para quem talvez só tenha o PDF do fornecedor. */}
+      {(importando || (total === 0 && !mostrarImport && !mostrarCatalogo && !escolhendoML)) && (
+        <EscolherImportacao
+          ocupado={ocupadoImportando}
+          baseVazia={total === 0}
+          onEscolher={(f) => abrirFonte(f.id)}
+          onFechar={() => setImportando(false)}
+        />
+      )}
 
       {escolhendoML && (
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4">
@@ -821,9 +870,7 @@ export default function ClienteProdutos() {
         </p>
       )}
 
-      {(mostrarImport || total === 0) && (
-        <ImportarProdutos onImportado={() => setMostrarImport(false)} />
-      )}
+      {mostrarImport && <ImportarProdutos onImportado={() => setMostrarImport(false)} />}
 
       {mostrarCatalogo && (
         <ImportarCatalogoPdf
@@ -837,7 +884,10 @@ export default function ClienteProdutos() {
       {total === 0 ? (
         <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
           <Package size={20} className="mx-auto mb-2 text-zinc-600" />
-          Sua base ainda está vazia. Importe sua planilha acima para começar.
+          {/* Não diz mais "importe sua planilha": a planilha do ERP é UMA das
+              três portas, e quem chegou com o catálogo do fornecedor em PDF
+              leria isso como "não é para você". */}
+          Sua base ainda está vazia. Escolha acima de onde seus produtos vêm.
         </p>
       ) : (
         <>
