@@ -46,7 +46,21 @@ import type { LinhaProduto, VariacaoImportada } from "../../../lib/services/impo
  */
 export interface VariacaoLidaDoCatalogo {
   cor?: string;
+  /** "Solteiro", "Casal", "2,80 x 0,85", "6 cadeiras" — o rótulo da versão. */
   tamanho?: string;
+  /**
+   * As medidas DESTA versão.
+   *
+   * Elas subiram para cá depois que quatro páginas reais do catálogo mostraram
+   * o erro do desenho anterior: a Cama BELLA é Solteiro (202 × 90 × 103) E
+   * Casal (202 × 143 × 103), cada uma nas mesmas três cores; a Mesa MAXI tem
+   * quatro tamanhos. Dimensão presa ao produto daria a mesma medida às duas
+   * camas — e o frete de uma cama de casal cobrado como solteiro.
+   *
+   * O beliche, que foi a primeira página que vi, tem um tamanho só. Ele passou
+   * no desenho errado por coincidência, e uma amostra de um caso é isso.
+   */
+  dimensoes?: DimensoesLidas;
 }
 
 /**
@@ -76,7 +90,11 @@ export interface ProdutoLidoDoCatalogo {
   modelo?: string;
   /** "100% Madeira Maciça de Angelim" — atributo, não enfeite de descrição. */
   material?: string;
-  /** Valem para o produto inteiro: as variações de cor compartilham a peça. */
+  /**
+   * Medidas do produto quando ele tem UM tamanho só (o beliche, a mesa
+   * dobrável). Quando as versões medem diferente, a medida é da variação e
+   * esta fica vazia — a da variação vence.
+   */
   dimensoes?: DimensoesLidas;
   /** Onde no PDF isto foi lido. É o que permite a lojista conferir. */
   paginaOrigem?: number;
@@ -148,10 +166,12 @@ export function linhasDoCatalogo(
         precoBase: 0,
         estoque: 0,
         idExterno: "",
-        // A peça é a mesma nas três cores — o beliche Castanho, Mogno e
-        // Cinamomo mede 202 × 93 × 155 nos três casos. A dimensão é do produto
-        // e desce para cada variação.
+        // A medida da VERSÃO vence a do produto. Uma cama de casal e uma de
+        // solteiro dividem cor e material, não tamanho — e é o tamanho que
+        // decide o frete. Quando a versão não diz nada (produto de tamanho
+        // único, como o beliche), a do produto desce para ela.
         ...medidasUsaveis(p.dimensoes),
+        ...medidasUsaveis(v.dimensoes),
       }))
       // Uma variação que não diz nem cor nem tamanho não é uma variação — é
       // ruído de layout. Ela some aqui em vez de virar uma linha vazia que a

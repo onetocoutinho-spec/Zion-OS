@@ -48,8 +48,17 @@ VARIAÇÕES: quando a página lista cores ou medidas/tamanhos do MESMO item, ela
 
 MATERIAL: o que a página declarar ("100% Madeira Maciça de Angelim"). Vazio se não disser.
 
-DIMENSÕES: as medidas da peça, em CENTÍMETROS, em "dimensoes". Elas costumam estar num DESENHO TÉCNICO com setas — leia os números do desenho. Converta se a página usar outra unidade (mm → cm). Informe só o que a página mostra: uma medida que você não viu fica de fora, e não se deduz altura a partir de largura.
-NÃO confunda com medidas de PARTE do produto: "pés com 8 cm de largura" e "sarrafo de 45x45 mm" descrevem componentes, não a peça montada — esses vão na descrição, não em "dimensoes".
+DIMENSÕES: as medidas da peça montada, sempre em CENTÍMETROS, lidas do DESENHO TÉCNICO com setas. A página pode usar outra unidade — converta (2,80 m = 280 cm; 45 mm = 4,5 cm). Informe só o que a página mostra: medida que você não viu fica de fora, e não se deduz uma a partir de outra.
+
+ONDE PÔR A MEDIDA — e este é o erro mais caro possível aqui:
+- Quando as VERSÕES do produto medem diferente (Solteiro e Casal; mesa de 1,20 e de 2,80), a medida é de CADA VARIAÇÃO. Ponha em "dimensoes" DENTRO da variação e deixe o "dimensoes" do produto vazio.
+- Só quando o produto tem um tamanho único a medida vai no "dimensoes" do produto.
+Uma cama de casal com a medida da solteira é frete cobrado errado.
+
+O QUE NÃO É MEDIDA DO PRODUTO:
+- COMPONENTES: "pés com 8 cm de largura", "sarrafo de 45x45 mm". Vão na descrição.
+- COMPATIBILIDADE: "Colchão 128 x 188 cm" é o colchão que SERVE na cama, não a cama. São números do mesmo tamanho da peça, então confira de onde o número saiu antes de usá-lo. Vai na descrição.
+- CAPACIDADE: "suporta 100 kg" é quanto aguenta, não quanto pesa nem quanto mede. Vai na descrição.
 
 DESCRIÇÃO: o resto do que a página diz sobre o produto — acabamento, montagem, capacidade, detalhes de componente. Texto da página, não seu.
 
@@ -102,9 +111,25 @@ export const ESQUEMA_CATALOGO_PDF: Record<string, unknown> = {
               type: "object",
               properties: {
                 cor: { type: "string" },
-                tamanho: { type: "string", description: "Tamanho, medida ou dimensão da variação." },
+                tamanho: {
+                  type: "string",
+                  description: 'Rótulo da versão: "Solteiro", "Casal", "2,80 x 0,85", "6 cadeiras".',
+                },
+                dimensoes: {
+                  type: "object",
+                  description:
+                    "Medidas DESTA versão, quando as versões medem diferente. Deixe tudo null quando a medida for do produto inteiro.",
+                  properties: {
+                    alturaCm: { type: ["number", "null"] },
+                    larguraCm: { type: ["number", "null"] },
+                    comprimentoCm: { type: ["number", "null"] },
+                    pesoKg: { type: ["number", "null"] },
+                  },
+                  required: ["alturaCm", "larguraCm", "comprimentoCm", "pesoKg"],
+                  additionalProperties: false,
+                },
               },
-              required: ["cor", "tamanho"],
+              required: ["cor", "tamanho", "dimensoes"],
               additionalProperties: false,
             },
           },
