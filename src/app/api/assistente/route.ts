@@ -56,6 +56,14 @@ const ESQUEMA = {
         "aprovacao",
         "publicacao",
         "precificacao",
+        // `infracao` ESTAVA FALTANDO AQUI, e o domínio inteiro já a atendia —
+        // com o cuidado de distinguir "não li" de "não há". Com saída
+        // estruturada o modelo não emite valor fora do enum, então o prompt
+        // pedia `infracao`, o card de recusa ANUNCIAVA a pergunta
+        // ("Quantas infrações o Mercado Livre registrou na sua conta") e ela era
+        // a única que não tinha como ser respondida. Guardado por
+        // `assuntoContavelAlcancavel.test.ts`.
+        "infracao",
         "nenhum",
       ],
     },
@@ -154,6 +162,10 @@ export async function POST(request: Request) {
       mensagem: frase,
       schema: ESQUEMA,
       maxTokens: 400,
+      // Classificar uma frase é a tarefa mais simples que este sistema pede a
+      // um modelo. Esforço alto aqui não melhorava a classificação e estourava
+      // o tempo da rota — ver `ChamadaIA.esforco`.
+      esforco: "low",
     });
     return Response.json({ criterio: JSON.parse(json) });
   } catch (e) {

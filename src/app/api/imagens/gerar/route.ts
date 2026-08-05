@@ -4,7 +4,7 @@
 // "infografico" (banner de benefícios) — sempre fiel ao produto. A chave do
 // Gemini fica só no servidor. Retorna a imagem gerada em base64.
 
-import { gerarImagemGemini, imagemIAConfigurada } from "@/lib/agentes/provedorImagem";
+import { gerarImagem, imagemIAConfigurada, motivoImagemIndisponivel } from "@/lib/agentes/provedorImagem";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export const maxDuration = 60;
@@ -45,8 +45,11 @@ export async function POST(request: Request) {
   }
 
   if (!imagemIAConfigurada()) {
+    // A mensagem vem do módulo, não daqui: "nenhum provedor" e "o provedor
+    // escolhido ainda não tem caminho" mandam a pessoa a lugares diferentes, e
+    // essa distinção não deve viver duplicada na rota.
     return Response.json(
-      { erro: "GEMINI_API_KEY não configurada no servidor.", configurado: false },
+      { erro: motivoImagemIndisponivel() ?? "Geração de imagem indisponível.", configurado: false },
       { status: 503 }
     );
   }
@@ -87,7 +90,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const out = await gerarImagemGemini({
+    const out = await gerarImagem({
       prompt: montarPrompt(corpo),
       imagemBase64,
       mimeType,

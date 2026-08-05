@@ -143,7 +143,11 @@ export type RespostaDaOperacao =
   | { tipo: "produto"; frase: string; nome: string; itens: readonly LacunaProduto[] }
   | { tipo: "nada_travado"; frase: string }
   | { tipo: "perguntar"; frase: string }
-  | { tipo: "nao_sei"; frase: string; posso: readonly string[] };
+  | { tipo: "nao_sei"; frase: string; posso: readonly string[] }
+  // Carrega a MESMA lista de `nao_sei`, e é um tipo diferente de propósito: a
+  // moldura muda tudo. "Não entendi, mas sei isto" e "Olá, eu sei isto" têm o
+  // mesmo conteúdo e ensinam coisas opostas sobre a ferramenta.
+  | { tipo: "saudacao"; frase: string; posso: readonly string[] };
 
 /**
  * O que este assistente sabe responder, em português de quem pergunta.

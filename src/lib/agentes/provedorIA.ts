@@ -64,6 +64,25 @@ export interface ChamadaIA {
   anexos?: AnexoIA[];
   /** JSON Schema (estilo Anthropic) da saída estruturada. */
   schema: Record<string, unknown>;
+  /**
+   * Quanto o modelo deve raciocinar nesta chamada. Omitido = o padrão da API.
+   *
+   * ===========================================================================
+   * POR QUE ISTO PRECISOU EXISTIR
+   * ===========================================================================
+   *
+   * TODA chamada estruturada do projeto rodava no padrão, que é esforço ALTO.
+   * Para a extração de um catálogo de 90 páginas isso é o certo. Para
+   * CLASSIFICAR UMA FRASE — "o lojista está perguntando sobre peso ou sobre
+   * preço?" — é raciocínio de sobra, e o custo não é só dinheiro: em 05/08/2026
+   * a classificação estourou os 30s da rota e a Vercel devolveu uma página HTML
+   * de erro, que o cliente tentou ler como JSON. O lojista viu
+   * `Unexpected token '<', "<!DOCTYPE "...` no lugar da resposta.
+   *
+   * Ou seja: esforço alto numa tarefa trivial não sai mais lento — sai QUEBRADO,
+   * e quebrado de um jeito que não diz o que aconteceu.
+   */
+  esforco?: "low" | "medium" | "high" | "xhigh" | "max";
   maxTokens?: number;
 }
 
@@ -363,7 +382,10 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
     max_tokens: c.maxTokens ?? 16000,
     thinking: { type: "adaptive" },
     system: c.system,
-    output_config: { format: { type: "json_schema", schema: c.schema } },
+    output_config: {
+      format: { type: "json_schema", schema: c.schema },
+      ...(c.esforco ? { effort: c.esforco } : {}),
+    },
     messages: [{ role: "user", content: blocosDaMensagem(c) }],
     ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
   });

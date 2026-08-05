@@ -85,9 +85,14 @@ import {
 } from "@/modules/assistant/domain/propostaDeCorrecao";
 import {
   responder,
+  POSSO_RESPONDER,
   type ContextoDaPergunta,
   type RespostaDaOperacao,
 } from "@/modules/assistant/domain/perguntaDaOperacao";
+import {
+  ehSaudacao,
+  RESPOSTA_DA_SAUDACAO,
+} from "@/modules/assistant/domain/saudacaoDaConversa";
 
 /** Um turno da conversa. A pergunta é do operador; a resposta é do domínio. */
 interface Turno {
@@ -505,6 +510,30 @@ export function ChatDaOperacao({
 
         if (conversando) {
           await responderConversando(pergunta);
+          return;
+        }
+
+        // CUMPRIMENTO NÃO É PERGUNTA, e não vale uma chamada de rede.
+        //
+        // "Olá" caía em `fora_do_alcance` e recebia "Não entendi a sua
+        // pergunta" — na PRIMEIRA frase que a lojista escreve. Ver
+        // `saudacaoDaConversa`: a decisão é da frase inteira, então "bom dia,
+        // quantos estão sem peso?" continua sendo a pergunta, não o "bom dia".
+        if (ehSaudacao(pergunta)) {
+          setTurnos((t) =>
+            t.map((turno, i) =>
+              i === t.length - 1
+                ? {
+                    ...turno,
+                    resposta: {
+                      tipo: "saudacao",
+                      frase: RESPOSTA_DA_SAUDACAO,
+                      posso: POSSO_RESPONDER,
+                    },
+                  }
+                : turno
+            )
+          );
           return;
         }
 
@@ -2048,6 +2077,27 @@ function Resposta({ r, interpretacao }: { r: RespostaDaOperacao; interpretacao?:
       return (
         <div className="space-y-1.5">
           <p className="text-sm text-zinc-200">{r.frase}</p>
+          {entendi}
+        </div>
+      );
+
+    case "saudacao":
+      return (
+        <div className="space-y-1.5">
+          <p className="text-sm text-zinc-200">{r.frase}</p>
+          <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+            {/* "Pode me perguntar" e não "O que eu consigo responder": a
+                segunda é a moldura da recusa, e num cumprimento ela lê como se
+                ele já tivesse desistido de entender. */}
+            <p className="text-xs font-medium text-zinc-400">Pode me perguntar:</p>
+            <ul className="mt-1.5 space-y-1">
+              {r.posso.map((p) => (
+                <li key={p} className="text-xs text-zinc-500">
+                  · {p}
+                </li>
+              ))}
+            </ul>
+          </div>
           {entendi}
         </div>
       );
