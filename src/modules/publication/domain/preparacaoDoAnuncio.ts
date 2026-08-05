@@ -45,6 +45,7 @@
 // dizer "o texto eu consigo, o preço não".
 
 import {
+  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
   type AtributoResolvido,
   type DadosDoProduto,
@@ -195,7 +196,10 @@ export function avaliarPreparacao(
   anuncio: AnuncioJaGerado | null = null,
   opcoes: OpcoesDaPreparacao = {}
 ): Preparacao {
-  const identidade = resolverObrigatorios(dadosDoProduto(p));
+  // `OBRIGATORIOS_CALCADO` explícito: este caminho supõe calçado. A suposição
+  // era invisível (morava dentro de `resolverObrigatorios`) até 05/08/2026.
+  // Quando houver id de categoria aqui, ele vira `atributosObrigatorios(id)`.
+  const identidade = resolverObrigatorios(dadosDoProduto(p), OBRIGATORIOS_CALCADO);
   const ausentes = identidade.filter((a) => a.origem === "ausente");
 
   const etapaIdentidade: EtapaAvaliada = {

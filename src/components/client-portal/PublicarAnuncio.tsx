@@ -37,7 +37,9 @@ import {
   impedimentosDaPublicacao,
   podePublicar,
 } from "@/modules/publication/domain/resumoPublicacao";
+import { embalagemDe } from "@/modules/pricing/domain/embalagemDoProduto";
 import { urlsDoProduto } from "@/lib/services/storageImagens";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { formatBRL } from "@/lib/format";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
@@ -69,6 +71,10 @@ export function PublicarAnuncio({
 }) {
   const [fotos, setFotos] = useState<string[] | null>(null);
   const [conectado, setConectado] = useState<boolean | null>(null);
+  // A embalagem, para conferir contra os limites do Mercado Envios.
+  // `undefined` = ainda carregando; `null` = carregou e não há medida nenhuma —
+  // que NÃO é bloqueio, é só ausência de prova (ver `cabeNoMercadoEnvios`).
+  const [pacote, setPacote] = useState<ReturnType<typeof embalagemDe> | undefined>(undefined);
   const [publicando, setPublicando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   // `conectado` responde "existe conexão?" (o flag `ativo`), que é uma coisa
@@ -88,16 +94,21 @@ export function PublicarAnuncio({
     buscarCanal(registro.clienteId, registro.marketplace)
       .then((c) => vivo && setConectado(Boolean(c?.ativo)))
       .catch(() => vivo && setConectado(false));
+    (registro.produtoId ? listarVariantesDoProduto(registro.produtoId) : Promise.resolve([]))
+      .then((vs) => vivo && setPacote(embalagemDe(vs)))
+      // Falhar em ler as variantes não pode virar bloqueio: sem medida, o
+      // veredito já é "não dá para afirmar", que é o mesmo que não perguntar.
+      .catch(() => vivo && setPacote(null));
     return () => {
       vivo = false;
     };
   }, [registro.produtoId, registro.clienteId, registro.marketplace]);
 
-  const carregando = fotos === null || conectado === null;
+  const carregando = fotos === null || conectado === null || pacote === undefined;
   const payload = montarPreviewML(registro, { pictures: fotos ?? [] });
   const resumo = resumirPublicacao(payload);
-  const impedimentos = impedimentosDaPublicacao(payload);
-  const liberado = podePublicar(payload) && conectado === true && !carregando;
+  const impedimentos = impedimentosDaPublicacao(payload, pacote ?? null);
+  const liberado = podePublicar(payload, pacote ?? null) && conectado === true && !carregando;
 
   async function iniciar() {
     if (!liberado || publicando) return;

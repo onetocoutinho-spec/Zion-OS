@@ -36,6 +36,10 @@ import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storage
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
+import {
+  casarPastaComProduto,
+  lerCaminhoDaFoto,
+} from "@/modules/catalog/domain/casarPastaComProduto";
 
 function norm(s: string): string {
   return s
@@ -44,25 +48,6 @@ function norm(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
-}
-
-/** Casa o nome da pasta com um produto da base (melhor sobreposição de palavras). */
-function casarProduto(pasta: string, produtos: Produto[]): string | null {
-  const alvo = new Set(norm(pasta).split(" ").filter((w) => w.length > 2));
-  if (alvo.size === 0) return null;
-  let melhor: string | null = null;
-  let melhorScore = 0;
-  for (const p of produtos) {
-    const palavras = new Set(norm(p.nome).split(" ").filter((w) => w.length > 2));
-    let comuns = 0;
-    for (const w of alvo) if (palavras.has(w)) comuns++;
-    const score = comuns / Math.max(alvo.size, palavras.size, 1);
-    if (score > melhorScore) {
-      melhorScore = score;
-      melhor = p.id;
-    }
-  }
-  return melhorScore >= 0.34 ? melhor : null;
 }
 
 /**
@@ -504,6 +489,9 @@ interface GrupoMassa {
   cor: string;
   arquivos: File[];
   produtoId: string | null;
+  /** 0 a 1. A tela mostra: um casamento de 35% não é igual a um de 100%. */
+  confianca: number;
+  via: "codigo" | "nome" | null;
 }
 
 function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produto[] }) {
@@ -517,9 +505,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
-      const partes = (f.webkitRelativePath || f.name).split("/");
-      const pastaProduto = partes.length >= 3 ? partes[partes.length - 3] : partes[0] || "(raiz)";
-      const cor = partes.length >= 3 ? partes[partes.length - 2] : "";
+      const { pastaProduto, cor } = lerCaminhoDaFoto(f.webkitRelativePath || f.name);
       const chave = `${pastaProduto}||${cor}`;
       if (!mapa.has(chave)) {
         mapa.set(chave, {
@@ -527,7 +513,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
           pastaProduto,
           cor,
           arquivos: [],
-          produtoId: casarProduto(pastaProduto, produtos),
+          ...casarPastaComProduto(pastaProduto, produtos),
         });
       }
       mapa.get(chave)!.arquivos.push(f);
@@ -619,7 +605,13 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                   value={g.produtoId ?? ""}
                   onChange={(e) =>
                     setGrupos((prev) =>
-                      prev.map((x, i) => (i === idx ? { ...x, produtoId: e.target.value || null } : x))
+                      prev.map((x, i) =>
+                        i === idx
+                          ? // Escolha humana não tem confiança de algoritmo: a
+                            // marca de palpite sai quando a pessoa decide.
+                            { ...x, produtoId: e.target.value || null, confianca: 1, via: null }
+                          : x
+                      )
                     )
                   }
                   className="max-w-56 rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500/50"
@@ -632,7 +624,18 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                   ))}
                 </select>
                 {g.produtoId ? (
-                  <Check size={15} className="text-emerald-400" />
+                  <span className="flex items-center gap-1.5">
+                    {g.via === "codigo" && <Pill tone="violet">código</Pill>}
+                    {g.via === "nome" && (
+                      // Casamento por nome é parecença, e parecença erra. O
+                      // número existe para a pessoa olhar duas vezes os fracos
+                      // em vez de confiar igual em todos.
+                      <Pill tone={g.confianca >= 0.6 ? "gray" : "yellow"}>
+                        {Math.round(g.confianca * 100)}%
+                      </Pill>
+                    )}
+                    <Check size={15} className="text-emerald-400" />
+                  </span>
                 ) : (
                   <X size={15} className="text-amber-400" />
                 )}

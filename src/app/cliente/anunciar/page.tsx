@@ -46,6 +46,7 @@ import { montarContexto } from "@/lib/contexto";
 import {
   atributosPorId,
   briefingDosAtributos,
+  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
 } from "@/modules/publication/domain/atributosDoMarketplace";
 import { listarAtributosDoProduto } from "@/lib/services/produtoAtributos";
@@ -370,6 +371,7 @@ function Jornada() {
             cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
             tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
           },
+          OBRIGATORIOS_CALCADO,
           atributosPorId(daFicha)
         )
       );

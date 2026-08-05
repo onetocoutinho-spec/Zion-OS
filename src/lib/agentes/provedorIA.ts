@@ -13,9 +13,55 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export type Provedor = "gemini" | "anthropic";
 
+/**
+ * Um documento ou imagem que o modelo vai LER.
+ *
+ * ===========================================================================
+ * POR QUE ISTO PASSOU A EXISTIR
+ * ===========================================================================
+ *
+ * Até 05/08/2026 esta interface carregava `mensagem: string` e nada mais. Os
+ * seis pontos que chamam a IA passavam por aqui, então o sistema inteiro só
+ * sabia raciocinar sobre TEXTO — e todo input de arquivo do app aceitava
+ * `.csv/.xlsx` ou `image/*`.
+ *
+ * O modelo lê PDF nativamente desde sempre. O que faltava era fio. Ficou
+ * visível quando apareceu um cliente cujo catálogo é um PDF de 90 páginas: não
+ * havia por onde ele entrar, e a causa não era capacidade do modelo — era uma
+ * assinatura de função.
+ *
+ * O mesmo buraco explica o infográfico genérico de 04/08: "o prompt recebe só
+ * texto livre" não era um defeito do infográfico, era ESTE defeito aparecendo
+ * num lugar.
+ *
+ * ===========================================================================
+ * QUAL VARIANTE USAR
+ * ===========================================================================
+ *
+ * A requisição inteira tem teto de **32 MB**, e é sobre ela que `base64` esbarra
+ * — não sobre o arquivo. Um catálogo de verdade passa disso fácil (o primeiro
+ * que chegou tem 272,6 MB). Para esses existe a Files API, com teto de 500 MB:
+ * sobe uma vez com `enviarPdfParaIA`, referencia pelo id em toda chamada.
+ */
+export type AnexoIA =
+  /** PDF pequeno, embutido na requisição. Conta para o teto de 32 MB. */
+  | { tipo: "pdf"; base64: string }
+  /** PDF já enviado pela Files API. É o caminho dos catálogos grandes. */
+  | { tipo: "pdf-arquivo"; fileId: string }
+  /** Imagem para o modelo LER. Gerar/editar imagem é outro módulo (`provedorImagem`). */
+  | { tipo: "imagem"; base64: string; mimeType: string };
+
 export interface ChamadaIA {
   system: string;
   mensagem: string;
+  /**
+   * Documentos e imagens que entram junto da pergunta.
+   *
+   * Vão ANTES do texto no conteúdo da mensagem, que é a ordem que a
+   * documentação da API pede — o modelo lê o material e depois a instrução
+   * sobre o que fazer com ele.
+   */
+  anexos?: AnexoIA[];
   /** JSON Schema (estilo Anthropic) da saída estruturada. */
   schema: Record<string, unknown>;
   maxTokens?: number;
@@ -55,8 +101,21 @@ export function provedorConfigurado(): Provedor | null {
   const temAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
   if (forcado === "gemini" && temGemini) return "gemini";
   if (forcado === "anthropic" && temAnthropic) return "anthropic";
-  if (temGemini) return "gemini"; // preferência: Gemini (free tier)
+  // A preferência era Gemini, com o comentário "free tier — custo zero para
+  // começar". O efeito, que ninguém escolheu explicitamente: qual inteligência
+  // atende a lojista passou a ser decidido pela PRESENÇA DE UMA VARIÁVEL DE
+  // AMBIENTE, em silêncio, e o caminho Anthropic — Opus 5, thinking adaptativo,
+  // saída validada por schema — só era alcançado quando a chave do Gemini
+  // faltava.
+  //
+  // Decisão do dono em 05/08/2026: o trabalho pesado é do Claude. Quem quiser o
+  // Gemini pede por nome (`IA_PROVEDOR=gemini`), que é o que uma escolha
+  // deliberada parece.
+  //
+  // Só o Anthropic lê anexo (ver `chamarGemini`), então esta ordem também é o
+  // que faz a fronteira do documento existir na prática.
   if (temAnthropic) return "anthropic";
+  if (temGemini) return "gemini";
   return null;
 }
 
@@ -97,6 +156,20 @@ export function paraSchemaGemini(s: unknown): unknown {
 // ---- Gemini ----
 
 async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
+  // Este caminho não monta anexo, e recusar é a única resposta honesta.
+  //
+  // Não é que o Gemini não saiba receber arquivo — `provedorImagem` manda
+  // `inline_data` para ele todo dia. É que ESTE caminho não foi construído nem
+  // medido, e a alternativa a lançar seria montar o corpo sem os anexos: o
+  // modelo responderia normalmente, sobre um documento que nunca viu, e a
+  // resposta pareceria boa. Falha em silêncio é a família de defeito que este
+  // repositório já perseguiu duas vezes (ver `escritasQueFalhamEmSilencio`).
+  if (c.anexos?.length) {
+    throw new Error(
+      "Anexos (PDF/imagem) só funcionam com o Claude. Configure ANTHROPIC_API_KEY " +
+        "ou remova IA_PROVEDOR=gemini."
+    );
+  }
   const key = process.env.GEMINI_API_KEY as string;
   const modelo = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`;
@@ -174,6 +247,99 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
 
 // ---- Anthropic (Claude) ----
 
+/** Os formatos de imagem que a API aceita. Fora desta lista, recusamos. */
+const MIMES_IMAGEM = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
+type MimeImagem = (typeof MIMES_IMAGEM)[number];
+
+function ehMimeDeImagem(m: string): m is MimeImagem {
+  return (MIMES_IMAGEM as readonly string[]).includes(m);
+}
+
+/**
+ * O conteúdo da mensagem: **anexos primeiro, texto depois**.
+ *
+ * A ordem não é estética. É o que a documentação da API pede, e faz sentido do
+ * lado do modelo: ele lê o material e só então a instrução sobre o que fazer
+ * com ele. Invertido, a instrução fala de algo que ainda não apareceu.
+ */
+export function blocosDaMensagem(c: ChamadaIA): Anthropic.Beta.BetaContentBlockParam[] {
+  const blocos: Anthropic.Beta.BetaContentBlockParam[] = [];
+  for (const a of c.anexos ?? []) {
+    if (a.tipo === "pdf") {
+      blocos.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: a.base64 },
+      });
+    } else if (a.tipo === "pdf-arquivo") {
+      blocos.push({ type: "document", source: { type: "file", file_id: a.fileId } });
+    } else {
+      // Recusar o formato desconhecido em vez de empurrar como JPEG: a API
+      // recusaria de qualquer jeito, e o erro dela não diria qual anexo era.
+      if (!ehMimeDeImagem(a.mimeType)) {
+        throw new Error(
+          `Formato de imagem não suportado: ${a.mimeType}. Aceitos: ${MIMES_IMAGEM.join(", ")}.`
+        );
+      }
+      blocos.push({
+        type: "image",
+        source: { type: "base64", media_type: a.mimeType, data: a.base64 },
+      });
+    }
+  }
+  blocos.push({ type: "text", text: c.mensagem });
+  return blocos;
+}
+
+/**
+ * Sobe um PDF para a Files API e devolve o id para usar em `AnexoIA`.
+ *
+ * É o caminho dos catálogos de verdade. O teto de 32 MB que derruba o base64 é
+ * da REQUISIÇÃO; aqui o teto é do arquivo, e são 500 MB. O primeiro catálogo que
+ * chegou tem 272,6 MB em 90 páginas — passa longe do primeiro limite e cabe
+ * neste com folga.
+ *
+ * Sobe UMA vez. O id serve para todas as chamadas seguintes sobre o mesmo
+ * documento, o que importa quando a extração precisar de mais de uma passada.
+ */
+export async function enviarPdfParaIA(arquivo: File): Promise<string> {
+  const chave = process.env.ANTHROPIC_API_KEY;
+  if (!chave) throw new Error("ANTHROPIC_API_KEY não configurada no servidor.");
+  const client = new Anthropic({ apiKey: chave });
+  const enviado = await client.beta.files.upload({
+    file: arquivo,
+    betas: ["files-api-2025-04-14"],
+  });
+  return enviado.id;
+}
+
+/**
+ * Quanto uma chamada vai custar de ENTRADA, sem fazê-la.
+ *
+ * Existe porque o primeiro catálogo que chegou tem 272,6 MB em 90 páginas — uns
+ * 3 MB por página, resolução de impressão. Isso não estoura limite nenhum
+ * (a Files API vai até 500 MB), mas 90 páginas densas de imagem podem custar
+ * muito, e descobrir o custo TENTANDO é descobrir depois de pagar.
+ *
+ * O endpoint de contagem não gera nada: devolve o número de tokens de entrada
+ * do mesmo corpo que a chamada real mandaria. É a medição antes da construção
+ * que o plano pedia, e ela não depende de ninguém segurar o arquivo.
+ *
+ * Só Anthropic — é o único caminho que lê documento.
+ */
+export async function contarTokensDaChamada(c: ChamadaIA): Promise<number> {
+  const chave = process.env.ANTHROPIC_API_KEY;
+  if (!chave) throw new Error("ANTHROPIC_API_KEY não configurada no servidor.");
+  const client = new Anthropic({ apiKey: chave });
+  const usaFilesApi = (c.anexos ?? []).some((a) => a.tipo === "pdf-arquivo");
+  const r = await client.beta.messages.countTokens({
+    model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5",
+    system: c.system,
+    messages: [{ role: "user", content: blocosDaMensagem(c) }],
+    ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
+  });
+  return r.input_tokens;
+}
+
 async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   // claude-opus-5 é o Opus atual. O padrão daqui estava em `claude-opus-4-8`,
   // que é a geração anterior — padrão de modelo envelhece em silêncio, porque
@@ -182,13 +348,24 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   const modelo = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY as string });
 
-  const resposta = await client.messages.create({
+  // O header beta da Files API vai na chamada de mensagem também, não só no
+  // upload — e só quando existe anexo que veio de lá. Mandar sempre ligaria uma
+  // beta em todas as chamadas do sistema por causa de uma minoria delas.
+  //
+  // A chamada é sempre pelo namespace `beta` porque o tipo de bloco de lá é
+  // superconjunto do comum (ele conhece `source: { type: "file" }`, o comum
+  // não). Sem `betas`, nenhum header extra é enviado e a requisição é a mesma
+  // de antes — um caminho só, em vez de dois iguais e um `as` para calar o
+  // compilador sobre a diferença que importa.
+  const usaFilesApi = (c.anexos ?? []).some((a) => a.tipo === "pdf-arquivo");
+  const resposta = await client.beta.messages.create({
     model: modelo,
     max_tokens: c.maxTokens ?? 16000,
     thinking: { type: "adaptive" },
     system: c.system,
     output_config: { format: { type: "json_schema", schema: c.schema } },
-    messages: [{ role: "user", content: c.mensagem }],
+    messages: [{ role: "user", content: blocosDaMensagem(c) }],
+    ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
   });
 
   const texto = resposta.content

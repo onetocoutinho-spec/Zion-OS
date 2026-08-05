@@ -35,8 +35,32 @@
 
 import { idDoAtributoML } from "../../integration/domain/mlPayload";
 
-/** Os 6 obrigatórios de MLB273770, medidos em 2026-07-29 na API pública. */
-export const OBRIGATORIOS_CALCADO = [
+/**
+ * O que UMA categoria exige. Mesma forma que `atributosObrigatorios` devolve.
+ *
+ * A fonte viva é `lib/marketplaces/mercadolivre.ts` → `atributosObrigatorios`,
+ * que lê `/categories/{id}/attributes` e filtra pela tag `required`. Este tipo
+ * existe para que a lista possa VIAJAR até aqui em vez de ser congelada aqui.
+ */
+export interface ExigenciaDaCategoria {
+  id: string;
+  nome: string;
+}
+
+/**
+ * Os 6 obrigatórios de MLB273770, medidos em 2026-07-29 na API pública.
+ *
+ * É um RETRATO de uma categoria — calçado —, não a regra do marketplace. Ficou
+ * escondido dentro de `resolverObrigatorios` até 05/08/2026, e o efeito só
+ * apareceu quando chegou um cliente que vende MÓVEIS: o sistema perguntaria a
+ * um sofá qual é o tipo de calçado, e a lista de obrigatórios seria a de outra
+ * categoria inteira.
+ *
+ * Continua exportado de propósito. Os caminhos de calçado passam ele À MÃO, e é
+ * essa a diferença que importa: a suposição não sumiu, ela saiu de dentro do
+ * módulo e virou visível em cada chamada.
+ */
+export const OBRIGATORIOS_CALCADO: readonly ExigenciaDaCategoria[] = [
   { id: "BRAND", nome: "Marca" },
   { id: "MODEL", nome: "Modelo" },
   { id: "GENDER", nome: "Gênero" },
@@ -156,8 +180,40 @@ export interface AtributoResolvido {
  * ganham por ali; gênero e tipo de calçado não têm, então o marketplace passa
  * na frente do chute pelo nome — sozinho, sem `if`.
  */
+/** Como um atributo é lido do que já se sabe. `null` = ninguém sabe. */
+type LeitorDeAtributo = (p: DadosDoProduto) => string | null;
+
+/**
+ * Atributos que saem de CAMPO DO CADASTRO. Valem em qualquer categoria —
+ * marca, modelo, cor e tamanho existem para sofá tanto quanto para chinelo.
+ */
+const DO_CADASTRO: Record<string, LeitorDeAtributo> = {
+  BRAND: (p) => p.marca,
+  MODEL: (p) => p.modelo,
+  COLOR: (p) => (p.cores.length ? p.cores.join(", ") : null),
+  SIZE: (p) => (p.tamanhos.length ? p.tamanhos.join(", ") : null),
+};
+
+/**
+ * Atributos LIDOS DO NOME. São de calçado, e por isso moram num mapa por id: só
+ * disparam quando a categoria pede aquele id.
+ *
+ * Uma categoria de móveis não pede `GENDER` nem `FOOTWEAR_TYPE`, então estes
+ * leitores simplesmente não são chamados — sem `if`, sem lista de exceção.
+ */
+const DO_NOME: Record<string, LeitorDeAtributo> = {
+  GENDER: (p) => generoDoNome(p.nome),
+  FOOTWEAR_TYPE: (p) => tipoDeCalcadoDoNome(p.nome),
+};
+
 export function resolverObrigatorios(
   p: DadosDoProduto,
+  /**
+   * O que ESTA categoria exige. Sem valor padrão de propósito: um padrão aqui
+   * seria a suposição de calçado voltando a morar escondida, que é o defeito
+   * que esta assinatura existe para desfazer.
+   */
+  obrigatorios: readonly ExigenciaDaCategoria[],
   doMarketplace: ReadonlyMap<string, string> = new Map()
 ): AtributoResolvido[] {
   const limpo = (v: string | null | undefined): string | null =>
@@ -178,14 +234,13 @@ export function resolverObrigatorios(
     return { id, nome, valor: null, origem: "ausente" };
   };
 
-  return [
-    resolver("BRAND", "Marca", p.marca),
-    resolver("MODEL", "Modelo", p.modelo),
-    resolver("GENDER", "Gênero", null, generoDoNome(p.nome)),
-    resolver("COLOR", "Cor", p.cores.length ? p.cores.join(", ") : null),
-    resolver("SIZE", "Tamanho", p.tamanhos.length ? p.tamanhos.join(", ") : null),
-    resolver("FOOTWEAR_TYPE", "Tipo de calçado", null, tipoDeCalcadoDoNome(p.nome)),
-  ];
+  // A lista deixou de ser escrita aqui e passou a ser percorrida. O atributo que
+  // nenhum leitor conhece cai em `ausente` sozinho — e `ausente` já quer dizer
+  // "vira pergunta, nunca chute", que é a resposta certa para um obrigatório de
+  // móvel que ninguém mediu ainda.
+  return obrigatorios.map(({ id, nome }) =>
+    resolver(id, nome, DO_CADASTRO[id]?.(p) ?? null, DO_NOME[id]?.(p) ?? null)
+  );
 }
 
 /**

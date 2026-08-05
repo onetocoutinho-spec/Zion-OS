@@ -335,7 +335,12 @@ export function montarTabelaMedidas(opts: {
 
   // Marca sem tabela ainda (ex.: Vizzano/Moleca/Actvitta): grade padrão BR.
   if (!ehCalcado(opts.tamanhos)) {
-    return { tabela: "", comoMedir: COMO_MEDIR, confiavel: false, oficial: false, fonte: "vazio" };
+    // `COMO_MEDIR` fala em pisar numa folha A4 e medir o pé descalço. Sair daqui
+    // com esse texto era mandar instrução de calçado para um produto que a
+    // linha de cima acabou de concluir que NÃO é calçado — e o caso vazio é
+    // justamente onde cai um móvel. Tabela vazia e instrução vazia dizem a
+    // mesma coisa, que é "não sei medir isto"; a instrução de pé dizia outra.
+    return { tabela: "", comoMedir: "", confiavel: false, oficial: false, fonte: "vazio" };
   }
   return {
     tabela: renderTabela(PADRAO_REFERENCIA),

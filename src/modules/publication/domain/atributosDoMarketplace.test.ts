@@ -39,7 +39,7 @@ test("o ML exige SEIS atributos — nem mais, nem menos", () => {
 });
 
 test("gênero e tipo saem do NOME, com a origem declarada", () => {
-  const r = resolverObrigatorios(produto());
+  const r = resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO);
   const por = (id: string) => r.find((a) => a.id === id)!;
   assert.equal(por("GENDER").valor, "Masculino");
   assert.equal(por("GENDER").origem, "nome");
@@ -52,7 +52,7 @@ test("nome sem gênero devolve null — ninguém supõe", () => {
   // produtos assim na base, e adivinhar ali é o que escreveu cor "Arco Iris"
   // num produto branco.
   assert.equal(generoDoNome("Chinelo Havaianas Slim Liso"), null);
-  const r = resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" }));
+  const r = resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" }), OBRIGATORIOS_CALCADO);
   const g = r.find((a) => a.id === "GENDER")!;
   assert.equal(g.valor, null);
   assert.equal(g.origem, "ausente");
@@ -90,13 +90,13 @@ test("menino e menina são valores DIFERENTES no ML", () => {
 });
 
 test("produto sem grade não tem cor nem tamanho", () => {
-  const r = resolverObrigatorios(produto({ cores: [], tamanhos: [] }));
+  const r = resolverObrigatorios(produto({ cores: [], tamanhos: [] }), OBRIGATORIOS_CALCADO);
   assert.equal(r.find((a) => a.id === "COLOR")!.valor, null);
   assert.equal(r.find((a) => a.id === "SIZE")!.valor, null);
 });
 
 test("o briefing PROÍBE as exigências que o A10 inventava", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto()));
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO));
   for (const inventado of ["antiderrapante", "vegano", "materiais reciclados", "altura do solado"]) {
     assert.ok(b.includes(inventado), `${inventado} deveria ser proibido explicitamente`);
   }
@@ -104,14 +104,14 @@ test("o briefing PROÍBE as exigências que o A10 inventava", () => {
 });
 
 test("o briefing diz o que JÁ está resolvido, para não ser recobrado", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto()));
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO));
   assert.match(b, /Marca: Havaianas \(já resolvido pelo cadastro\)/);
   assert.match(b, /Gênero: Masculino \(já resolvido pelo nome do produto\)/);
   assert.match(b, /Todos resolvidos/);
 });
 
 test("o que falta é nomeado, e só ele pode virar pendência", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" })));
+  const b = briefingDosAtributos(resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" }), OBRIGATORIOS_CALCADO));
   assert.match(b, /Gênero: FALTA/);
   assert.match(b, /Só Gênero pode\(m\) virar pendência/);
 });
@@ -131,7 +131,7 @@ test("o que falta é nomeado, e só ele pode virar pendência", () => {
 const SEM_NADA = { nome: "Produto", marca: "", modelo: "", cores: [], tamanhos: [] };
 
 test("D6: o marketplace resolve o que o nome não diz", () => {
-  const r = resolverObrigatorios(SEM_NADA, new Map([["GENDER", "Feminino"]]));
+  const r = resolverObrigatorios(SEM_NADA, OBRIGATORIOS_CALCADO, new Map([["GENDER", "Feminino"]]));
   const genero = r.find((a) => a.id === "GENDER");
   assert.equal(genero?.valor, "Feminino");
   assert.equal(genero?.origem, "marketplace");
@@ -142,6 +142,7 @@ test("D6: o marketplace VENCE o chute pelo nome", () => {
   // lojista preencheu — e um valor medido vale mais que um lido de string.
   const r = resolverObrigatorios(
     { ...SEM_NADA, nome: "Chinelo Masculino Confort" },
+    OBRIGATORIOS_CALCADO,
     new Map([["GENDER", "Feminino"]])
   );
   const genero = r.find((a) => a.id === "GENDER");
@@ -152,6 +153,7 @@ test("D6: o marketplace VENCE o chute pelo nome", () => {
 test("D6: o CADASTRO vence o marketplace — é o dado da casa", () => {
   const r = resolverObrigatorios(
     { ...SEM_NADA, marca: "Modare" },
+    OBRIGATORIOS_CALCADO,
     new Map([["BRAND", "Outra Marca"]])
   );
   const marca = r.find((a) => a.id === "BRAND");
@@ -161,8 +163,8 @@ test("D6: o CADASTRO vence o marketplace — é o dado da casa", () => {
 
 test("D6: sem marketplace, o comportamento é EXATAMENTE o de antes", () => {
   // A garantia de que o D6 não mudou nada para quem não enriqueceu.
-  const antes = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" });
-  const comMapaVazio = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" }, new Map());
+  const antes = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" }, OBRIGATORIOS_CALCADO);
+  const comMapaVazio = resolverObrigatorios({ ...SEM_NADA, nome: "Chinelo Feminino" }, OBRIGATORIOS_CALCADO, new Map());
   assert.deepEqual(antes, comMapaVazio);
   assert.equal(antes.find((a) => a.id === "GENDER")?.origem, "nome");
 });
@@ -170,6 +172,7 @@ test("D6: sem marketplace, o comportamento é EXATAMENTE o de antes", () => {
 test("D6: valor vazio no marketplace NÃO conta — cai para o nome", () => {
   const r = resolverObrigatorios(
     { ...SEM_NADA, nome: "Chinelo Feminino" },
+    OBRIGATORIOS_CALCADO,
     new Map([["GENDER", "   "]])
   );
   assert.equal(r.find((a) => a.id === "GENDER")?.origem, "nome");
@@ -179,7 +182,7 @@ test("D6: o briefing DIZ de onde veio — a origem muda o que o modelo faz", () 
   // O que veio do ML é o que a própria lojista informou lá, e não se questiona.
   // O que veio do nome é leitura nossa, e pode estar errada.
   const texto = briefingDosAtributos(
-    resolverObrigatorios(SEM_NADA, new Map([["FOOTWEAR_TYPE", "Papetes"]]))
+    resolverObrigatorios(SEM_NADA, OBRIGATORIOS_CALCADO, new Map([["FOOTWEAR_TYPE", "Papetes"]]))
   );
   assert.match(texto, /Tipo de calçado: Papetes \(já resolvido pelo Mercado Livre\)/);
 });
