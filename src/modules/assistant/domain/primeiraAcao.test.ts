@@ -116,17 +116,30 @@ test("T4: os passos seguintes são `livre`", () => {
   assert.match(ROTA, /:\s*\{\s*modo:\s*"livre"\s*\}/);
 });
 
-test("T1: `obrigado` vira ANY + allowedFunctionNames no corpo da requisição", () => {
-  assert.match(CLIENTE, /mode:\s*"ANY"/);
-  assert.match(CLIENTE, /allowedFunctionNames:/);
+test("T1: `obrigado` FILTRA as ferramentas declaradas e obriga a chamar", () => {
+  // MUDOU DE MECANISMO na migração para o Claude, e a mudança é deliberada.
+  // O Gemini aceitava ANY + allowedFunctionNames ("chame, e só pode ser uma
+  // DESTAS"). A Anthropic não tem esse meio-termo: `tool_choice` é auto, any
+  // (QUALQUER uma) ou tool (UMA nomeada). Então a restrição saiu da escolha e
+  // foi para a LISTA — o passo 0 declara só as leituras.
+  //
+  // A garantia fica mais forte: uma ferramenta de escrita não está sequer
+  // declarada no primeiro passo, então não há configuração para "cair" e
+  // deixá-la alcançável.
+  assert.match(CLIENTE, /permitidas\.has\(f\.nome\)/);
+  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"any"\s*\}/);
 });
 
-test("T4: `livre` vira AUTO", () => {
-  assert.match(CLIENTE, /mode:\s*"AUTO"/);
+test("T4: `livre` oferece todas e deixa o modelo decidir", () => {
+  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"auto"\s*\}/);
 });
 
-test("T5: as 17 DECLARAÇÕES continuam em todo passo — muda a escolha, não a oferta", () => {
-  assert.match(CLIENTE, /functionDeclarations:\s*paraDeclaracoesGemini\(ferramentas\)/);
+test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo com `any`", () => {
+  // Este é o teste que substitui o antigo "as 17 declarações em todo passo".
+  // Agora que a restrição vive na lista, separar os dois deixaria possível
+  // mandar a lista inteira com `any` — que é escrita alcançável no passo 0.
+  assert.match(CLIENTE, /function ofertaDoPasso\(/);
+  assert.match(CLIENTE, /\{\s*tools,\s*tool_choice\s*\}\s*=\s*ofertaDoPasso\(/);
   assert.match(ROTA, /FERRAMENTAS,/);
 });
 
@@ -174,9 +187,28 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
-test("T12: modelo e temperatura intactos", () => {
-  assert.match(CLIENTE, /GEMINI_MODELO_CONVERSA\s*\?\?\s*"gemini-2\.5-flash"/);
-  assert.match(CLIENTE, /temperature:\s*0/);
+test("T12: o chat fala com o Claude", () => {
+  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
+  assert.doesNotMatch(CLIENTE, /GEMINI_API_KEY|generativelanguage/);
+});
+
+test("T12: NENHUM parâmetro de amostragem — eles são 400 no Opus 5", () => {
+  // Havia `temperature: 0` aqui, com o motivo certo ("a mesma frase deve levar
+  // à mesma ferramenta"). No Opus 5 esse parâmetro é recusado com 400, então
+  // reintroduzi-lo — inclusive tentando "restaurar o determinismo" — derruba
+  // TODA requisição do chat, não uma. O substituto é `effort`.
+  assert.doesNotMatch(CLIENTE, /\btemperature\s*:/);
+  assert.doesNotMatch(CLIENTE, /\btop_p\s*:|\btop_k\s*:/);
+  assert.match(CLIENTE, /effort:\s*ESFORCO/);
+});
+
+test("T12: o pensamento fica LIGADO — desligá-lo faz a ferramenta não rodar", () => {
+  // Com pensamento desligado o Opus 5 às vezes escreve a chamada de ferramenta
+  // como TEXTO em vez de emitir o bloco. O turno termina normalmente, a
+  // ferramenta nunca roda, e não há erro nenhum para alguém ver — num chat que
+  // só sabe responder a partir de ferramenta, isso é a falha mais cara possível.
+  assert.match(CLIENTE, /thinking:\s*\{\s*type:\s*"adaptive"/);
+  assert.doesNotMatch(CLIENTE, /type:\s*"disabled"/);
 });
 
 // ---------------------------------------------------------------------------

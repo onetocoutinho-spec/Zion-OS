@@ -298,8 +298,14 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Sessao sem cliente associado." }, { status: 403 });
   }
   const usuarioId = ctxAuth.usuario?.id ?? null;
-  if (!process.env.GEMINI_API_KEY) {
-    return Response.json({ erro: "Nenhum provedor de IA configurado." }, { status: 503 });
+  // Era `if (!process.env.GEMINI_API_KEY)`. Num servidor só com a chave da
+  // Anthropic, isso respondia "nenhum provedor configurado" com o Claude
+  // funcionando em todo o resto do projeto.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return Response.json(
+      { erro: "Nenhum provedor de IA configurado. Configure ANTHROPIC_API_KEY no servidor." },
+      { status: 503 }
+    );
   }
 
   let corpo: {

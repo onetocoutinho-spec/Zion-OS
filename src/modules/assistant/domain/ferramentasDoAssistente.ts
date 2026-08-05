@@ -104,7 +104,14 @@ export interface Ferramenta {
   /** O que ela faz, na voz de quem instrui o modelo. */
   descricao: string;
   efeito: Efeito;
-  /** Schema dos argumentos, no dialeto do provedor. */
+  /**
+   * Schema dos argumentos, em JSON Schema.
+   *
+   * MINÚSCULO. Este campo já esteve no dialeto do Gemini (`type: "OBJECT"`), que
+   * a Anthropic recusa — JSON Schema é minúsculo. O erro não aparecia em teste
+   * nenhum porque o campo era repassado sem olhar, e só a API reclamaria.
+   * `naoSobrouDialetoDoGemini` guarda isso agora.
+   */
   parametros: Record<string, unknown>;
 }
 
@@ -121,10 +128,10 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     descricao:
       "Quantos produtos estão em alguma condição. Use SEMPRE que precisar de um número — você não tem acesso aos dados e qualquer número seu seria inventado.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         assunto: {
-          type: "STRING",
+          type: "string",
           enum: ["peso", "custo", "foto", "anuncio", "aprovacao", "publicacao", "precificacao"],
         },
       },
@@ -135,22 +142,22 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "proximo_passo",
     efeito: "le",
     descricao:
-      "O que resolver primeiro para destravar o resto, na ordem em que resolver produz resultado.",
-    parametros: { type: "OBJECT", properties: {} },
+      "O que resolver primeiro para destravar o resto, na ordem em que resolver produz resultado. Use para \"por onde eu começo?\", \"o que eu faço agora?\" e \"o que rende mais?\".",
+    parametros: { type: "object", properties: {} },
   },
   {
     nome: "estado_da_loja",
     efeito: "le",
     descricao: "Todos os pontos a resolver na loja, em ordem. Use para dar um panorama.",
-    parametros: { type: "OBJECT", properties: {} },
+    parametros: { type: "object", properties: {} },
   },
   {
     nome: "o_que_impede",
     efeito: "le",
-    descricao: "O que impede a loja de precificar, anunciar ou publicar hoje.",
+    descricao: "O que impede a loja de precificar, anunciar ou publicar hoje. Use para \"por que não consigo publicar?\" e \"o que está travando?\".",
     parametros: {
-      type: "OBJECT",
-      properties: { capacidade: { type: "STRING", enum: ["precificar", "anunciar", "publicar"] } },
+      type: "object",
+      properties: { capacidade: { type: "string", enum: ["precificar", "anunciar", "publicar"] } },
       required: ["capacidade"],
     },
   },
@@ -160,15 +167,15 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     descricao:
       "Acha produtos e variantes do catálogo. Aceita nome, marca, SKU, referência (o modelo, ex. 7178.102) e EAN. Use SEMPRE antes de propor qualquer coisa sobre um produto — é assim que você descobre se o alvo é único. IMPORTANTE: achar por identificador exato NÃO garante um só resultado; nesta base há SKUs e EANs repetidos. Se o desfecho vier \"ambiguo\", PERGUNTE ao lojista qual — nunca escolha. O campo \"casamento\" diz COMO foi achado: \"candidato_textual\" é semelhança de nome e não identifica ninguém.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        termo: { type: "STRING", description: "O que o lojista disse: nome, SKU, referência ou EAN." },
+        termo: { type: "string", description: "O que o lojista disse: nome, SKU, referência ou EAN." },
         tipo: {
-          type: "STRING",
+          type: "string",
           enum: ["auto", "nome", "sku", "referencia", "ean"],
           description: "Onde procurar. Use \"auto\" quando não tiver certeza do que o termo é.",
         },
-        termos: { type: "STRING", description: "Compatibilidade: o mesmo que termo." },
+        termos: { type: "string", description: "Compatibilidade: o mesmo que termo." },
       },
       required: ["termo"],
     },
@@ -177,10 +184,10 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "o_que_falta_no_produto",
     efeito: "le",
     descricao:
-      "O que falta preencher num produto específico. Precisa de um produtoId vindo de achar_produto.",
+      "O que falta preencher num produto específico. Use quando o lojista perguntar sobre UM produto — \"o que falta nesse aí?\". Precisa de um produtoId vindo de achar_produto.",
     parametros: {
-      type: "OBJECT",
-      properties: { produtoId: { type: "STRING" } },
+      type: "object",
+      properties: { produtoId: { type: "string" } },
       required: ["produtoId"],
     },
   },
@@ -190,10 +197,10 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     descricao:
       "O panorama do que está travado no catálogo, já ANALISADO: quantas pendências existem, quantas eu consigo tratar sem pedir dado novo, quantas dependem de decisão do lojista, e quantas estão em conflito. Use para \"o que precisa de mim?\", \"quais produtos estão com problema?\" e \"o que eu resolvo primeiro?\". Com produtoId, explica por que AQUELE produto está travado, descendo até a variante. Os números vêm daqui — nunca escreva um que esta ferramenta não devolveu.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         produtoId: {
-          type: "STRING",
+          type: "string",
           description:
             "Vazio para o panorama da loja. Preenchido para explicar um produto — id vindo de achar_produto.",
         },
@@ -206,10 +213,10 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     descricao:
       "O estado REAL da preparação de anúncio. Sem produtoId: quantos produtos já podem virar anúncio, quantos estão travados e por quê — use para \"quais produtos já podem virar anúncio?\" e antes de \"prepare todos que estiverem prontos\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         produtoId: {
-          type: "STRING",
+          type: "string",
           description: "Vazio para o panorama da loja. Preenchido para um produto — id de achar_produto.",
         },
       },
@@ -219,22 +226,22 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "pricing",
     efeito: "le",
     descricao:
-      "Preço, margem e lucro de um produto, calculados pelo motor financeiro do Zion. VOCÊ NÃO FAZ CONTA DE DINHEIRO — pergunte a esta ferramenta e leia o resultado. Sem produtoId: a triagem do catálogo (quantos em prejuízo, quantos abaixo da margem, quantos bloqueados). Com produtoId: a situação do preço de hoje, o menor preço sem prejuízo, o menor preço na margem do lojista, e a decomposição (custo, comissão, frete, imposto, lucro). Com \"precos\": simula os cenários que ele pediu. Com \"margemAlvo\": o preço que entrega aquela margem. MARGEM aqui é sempre MARGEM LÍQUIDA sobre o preço de venda — nunca markup.",
+      "Preço, margem e lucro de um produto, calculados pelo motor financeiro do Zion. VOCÊ NÃO FAZ CONTA DE DINHEIRO — pergunte a esta ferramenta e leia o resultado. Sem produtoId: a triagem do catálogo (quantos em prejuízo, quantos abaixo da margem, quantos bloqueados). Com produtoId: a situação do preço de hoje, o menor preço sem prejuízo, o menor preço na margem do lojista, e a decomposição (custo, comissão, frete, imposto, lucro). Com \"precos\": simula os cenários que ele pediu. Com \"margemAlvo\": o preço que entrega aquela margem. MARGEM aqui é sempre MARGEM LÍQUIDA sobre o preço de venda — nunca markup. Use SEMPRE que a conversa envolver preço, margem, lucro ou \"quanto sobra\".",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         produtoId: {
-          type: "STRING",
+          type: "string",
           description: "Vazio para a triagem do catálogo. Preenchido para um produto — id de achar_produto.",
         },
         precos: {
-          type: "ARRAY",
-          items: { type: "STRING" },
+          type: "array",
+          items: { type: "string" },
           description:
             "Cenários a simular, como o lojista escreveu: \"79,90\", \"R$ 84,90\". Copie a vírgula decimal.",
         },
         margemAlvo: {
-          type: "STRING",
+          type: "string",
           description:
             "A margem líquida que ele quer, em % — \"10\", \"12,5\". Só quando ele disser um número.",
         },
@@ -247,12 +254,12 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     descricao:
       "De onde veio o valor de um campo: quem informou, por qual caminho, quando, e se existe valor anterior registrado. Use para \"de onde veio esse custo?\", \"quem colocou esse peso?\", \"esse SKU veio da planilha?\". IMPORTANTE: quando a origem não foi registrada, diga exatamente isso — a maior parte desta base é anterior ao registro de procedência, e inventar uma origem provável é pior que admitir que não se sabe.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        produtoId: { type: "STRING" },
-        campo: { type: "STRING", enum: ["custo", "preco", "peso", "sku", "ean", "estoque"] },
+        produtoId: { type: "string" },
+        campo: { type: "string", enum: ["custo", "preco", "peso", "sku", "ean", "estoque"] },
         varianteId: {
-          type: "STRING",
+          type: "string",
           description: "Quando a pergunta é sobre uma variante específica. Vazio para o produto.",
         },
       },
@@ -274,22 +281,22 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     descricao:
       "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        produtoId: { type: "STRING", description: "Um produto só. Use este OU produtoIds." },
+        produtoId: { type: "string", description: "Um produto só. Use este OU produtoIds." },
         produtoIds: {
-          type: "ARRAY",
-          items: { type: "STRING" },
+          type: "array",
+          items: { type: "string" },
           description: "Vários produtos, para aplicar peso em lote. Todos vindos de achar_produto.",
         },
-        campo: { type: "STRING", enum: ["peso", "custo"] },
+        campo: { type: "string", enum: ["peso", "custo"] },
         valor: {
-          type: "STRING",
+          type: "string",
           description:
             "O número EXATAMENTE como o lojista disse, com a vírgula decimal. \"0,3\" é \"0,3\", nunca \"0.3\" nem \"3\".",
         },
         unidade: {
-          type: "STRING",
+          type: "string",
           description: "A unidade que ele disse: g, kg, reais. Vazio se ele não disse nenhuma.",
         },
       },
@@ -302,10 +309,10 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     descricao:
       "Monta a correção de UMA pendência que eu consigo preparar sem te perguntar o valor — hoje: variantes sem peso num produto cujas outras variantes já foram pesadas com o MESMO valor. NÃO grava: monta o cartão que o lojista confirma clicando. Use o `alvo` que veio de `pendencias` (o produtoId da preparação). \"Preparar sem perguntar\" NÃO é \"aplicar sem confirmar\": o lojista continua clicando.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         alvo: {
-          type: "STRING",
+          type: "string",
           description: "O produtoId da preparação, exatamente como `pendencias` devolveu.",
         },
       },
@@ -316,17 +323,17 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_preco",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de TROCAR O PREÇO de um produto no catálogo do Zion. Passe \"preco\" (o valor que o lojista disse) OU \"margemAlvo\" (a margem líquida que ele quer, e eu calculo o preço). NÃO grava e NÃO publica no Mercado Livre: monta o cartão que ele confirma clicando, e a troca acontece no catálogo do Zion. Se o custo, o peso ou a configuração de imposto mudarem entre a proposta e o clique, a proposta fica obsoleta e nada é gravado.",
+      "Monta uma proposta de TROCAR O PREÇO de um produto no catálogo do Zion. Passe \"preco\" (o valor que o lojista disse) OU \"margemAlvo\" (a margem líquida que ele quer, e eu calculo o preço). NÃO grava e NÃO publica no Mercado Livre: monta o cartão que ele confirma clicando, e a troca acontece no catálogo do Zion. Se o custo, o peso ou a configuração de imposto mudarem entre a proposta e o clique, a proposta fica obsoleta e nada é gravado. Use quando o lojista disser um preço novo ou a margem que quer atingir.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        produtoId: { type: "STRING" },
+        produtoId: { type: "string" },
         preco: {
-          type: "STRING",
+          type: "string",
           description: "O preço EXATAMENTE como ele disse, com a vírgula: \"89,90\".",
         },
         margemAlvo: {
-          type: "STRING",
+          type: "string",
           description: "A margem líquida desejada em %, quando ele pediu por margem em vez de preço.",
         },
       },
@@ -337,10 +344,10 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio.",
+      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio.",
     parametros: {
-      type: "OBJECT",
-      properties: { produtoId: { type: "STRING" } },
+      type: "object",
+      properties: { produtoId: { type: "string" } },
       required: ["produtoId"],
     },
   },
@@ -350,8 +357,8 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     descricao:
       "Monta uma proposta de GERAR O ANÚNCIO de um produto — título, descrição e ficha técnica. NÃO gera nada: quem dispara é o lojista, clicando, e leva alguns minutos. Antes de propor, ela confere se o produto tem tudo que o anúncio precisa; se faltar algo, devolve o que falta em vez de propor. Use com um produtoId que veio de achar_produto.",
     parametros: {
-      type: "OBJECT",
-      properties: { produtoId: { type: "STRING" } },
+      type: "object",
+      properties: { produtoId: { type: "string" } },
       required: ["produtoId"],
     },
   },
@@ -374,10 +381,10 @@ export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
     descricao:
       "O cadastro de um produto NOVO, em conversa. Acumula o que o lojista já disse e diz o que ainda falta. NÃO cria nada: a criação só acontece depois que ele lê o resumo e clica. Operações: \"iniciar\" abre um cadastro; \"informar\" registra dados que ele DISSE (nunca deduza custo, preço, SKU, EAN ou peso — se ele não disser, pergunte); \"variantes\" monta a grade a partir das cores e tamanhos; \"identificador\" associa um SKU ou EAN a UMA variante (diga a cor e o tamanho; se não souber qual, pergunte); \"resumo\" mostra o estado; \"retomar\" continua um cadastro anterior; \"escolher\" resolve qual, quando eu mostrei uma lista; \"resolver_conflito\" decide entre dois valores que ele deu para o mesmo campo; \"cancelar\" desiste; \"propor_criacao\" monta a autorização para ele confirmar. Use \"propor_criacao\" só quando o resumo disser que está pronto.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
         operacao: {
-          type: "STRING",
+          type: "string",
           enum: [
             "iniciar",
             "informar",
@@ -392,7 +399,7 @@ export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
           ],
         },
         campo: {
-          type: "STRING",
+          type: "string",
           enum: [
             "nome",
             "marca",
@@ -414,41 +421,41 @@ export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
             "Para \"informar\" e \"resolver_conflito\". \"modelo\" é o que o lojista chama de referência (ex. 7178.102).",
         },
         valor: {
-          type: "STRING",
+          type: "string",
           description:
             "O que ele disse, EXATAMENTE como disse — com a vírgula decimal e com os zeros à esquerda. \"47,80\" é \"47,80\"; \"01040533\" é \"01040533\", nunca 1040533.",
         },
         unidade: {
-          type: "STRING",
+          type: "string",
           description: "Só para peso: g, kg. Vazio se ele não disse nenhuma.",
         },
         cores: {
-          type: "ARRAY",
-          items: { type: "STRING" },
+          type: "array",
+          items: { type: "string" },
           description: "Para \"variantes\": as cores ditas, uma por item.",
         },
         tamanhos: {
-          type: "ARRAY",
-          items: { type: "STRING" },
+          type: "array",
+          items: { type: "string" },
           description: "Para \"variantes\": os tamanhos ditos, um por item.",
         },
-        cor: { type: "STRING", description: "Para \"identificador\": a cor da variante alvo." },
+        cor: { type: "string", description: "Para \"identificador\": a cor da variante alvo." },
         tamanho: {
-          type: "STRING",
+          type: "string",
           description: "Para \"identificador\": o tamanho da variante alvo.",
         },
         escolha: {
-          type: "STRING",
+          type: "string",
           description:
             "Para \"escolher\": o que ele disse — \"o segundo\", \"2\", ou o id, se ele deu o id. Não invente um id.",
         },
         conflito: {
-          type: "STRING",
+          type: "string",
           enum: ["atual", "novo"],
           description: "Para \"resolver_conflito\": qual dos dois valores vale.",
         },
         dica: {
-          type: "STRING",
+          type: "string",
           description:
             "Para \"retomar\": o que ele disse sobre qual cadastro (\"o da Modare\"). Vazio se ele não disse.",
         },
@@ -476,9 +483,9 @@ export const FERRAMENTAS_DE_ACAO: readonly Ferramenta[] = [
     descricao:
       "Reativa no Mercado Livre um anúncio que a lojista pausou. Use SOMENTE quando ela pedir para voltar ao ar, e SOMENTE para anúncios pausados por ela — nunca para anúncios que o Mercado Livre tirou do ar. A ação é reversível: se ela quiser, pausa de novo.",
     parametros: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        mlb: { type: "STRING", description: "O código MLB do anúncio a reativar." },
+        mlb: { type: "string", description: "O código MLB do anúncio a reativar." },
       },
       required: ["mlb"],
     },
