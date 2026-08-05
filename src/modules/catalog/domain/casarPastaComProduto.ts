@@ -107,3 +107,40 @@ export function casarPastaComProduto(
     ? { produtoId: melhor, confianca: melhorScore, via: "nome" }
     : { produtoId: null, confianca: melhorScore, via: null };
 }
+
+/** O que uma pasta de fotos diz sobre um arquivo: de que produto e de que cor. */
+export interface CaminhoDaFoto {
+  pastaProduto: string;
+  cor: string;
+}
+
+/**
+ * Lê produto e cor do caminho relativo de um arquivo escolhido por pasta.
+ *
+ * ===========================================================================
+ * O DEFEITO QUE ISTO CONSERTA
+ * ===========================================================================
+ *
+ * A leitura anterior contava segmentos A PARTIR DO FIM: o antepenúltimo era o
+ * produto e o penúltimo era a cor. Com três níveis funciona; com DOIS, inverte
+ * tudo — porque `webkitRelativePath` inclui a pasta escolhida como primeiro
+ * segmento:
+ *
+ *   Fotos/CAMA BELLA/Castanho/01.jpg   produto CAMA BELLA · cor Castanho  ✅
+ *   Fotos/CAMA BELLA/01.jpg            produto FOTOS · cor CAMA BELLA     ❌
+ *
+ * No segundo caso o nome da pasta escolhida virava o produto, o produto virava
+ * a cor, e o lote inteiro colapsava num grupo só. Móvel cai justamente aí:
+ * nem todo produto tem cor, então a subpasta de cor muitas vezes não existe.
+ *
+ * A leitura passa a ser a partir do COMEÇO, depois de tirar as duas pontas que
+ * nunca são produto nem cor — a raiz escolhida e o nome do arquivo. O que
+ * sobrar é: nada (fotos soltas na raiz), o produto, ou produto e cor.
+ */
+export function lerCaminhoDaFoto(caminho: string): CaminhoDaFoto {
+  const partes = (caminho || "").split("/").filter(Boolean);
+  // Sem barra nenhuma, é só um nome de arquivo: não há pasta que diga produto.
+  if (partes.length < 2) return { pastaProduto: "(raiz)", cor: "" };
+  const meio = partes.slice(1, -1);
+  return { pastaProduto: meio[0] || "(raiz)", cor: meio[1] || "" };
+}

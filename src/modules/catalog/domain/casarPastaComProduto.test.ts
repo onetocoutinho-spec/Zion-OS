@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import {
   CORTE_DE_PARECENCA,
   casarPastaComProduto,
+  lerCaminhoDaFoto,
   type ProdutoParaCasar,
 } from "./casarPastaComProduto.ts";
 
@@ -75,4 +76,48 @@ test("pasta sem palavra útil não casa com nada", () => {
 test("acento e caixa não atrapalham", () => {
   assert.equal(casarPastaComProduto("cama nazare", CATALOGO).produtoId, "p2");
   assert.equal(casarPastaComProduto("CAMA NAZARÉ", CATALOGO).produtoId, "p2");
+});
+
+// ---------------------------------------------------------------------------
+// A leitura do caminho — o defeito que aparecia só com DOIS níveis.
+//
+// `webkitRelativePath` inclui a pasta escolhida como primeiro segmento. Contar
+// a partir do FIM funcionava com três níveis e invertia tudo com dois: o nome
+// da pasta escolhida virava o produto, o produto virava a cor, e o lote inteiro
+// colapsava num grupo só.
+//
+// Móvel cai justamente aí — nem todo produto tem cor, então a subpasta de cor
+// muitas vezes não existe.
+// ---------------------------------------------------------------------------
+
+test("três níveis: produto e cor, como sempre foi", () => {
+  assert.deepEqual(lerCaminhoDaFoto("Fotos/CAMA BELLA/Castanho/01.jpg"), {
+    pastaProduto: "CAMA BELLA",
+    cor: "Castanho",
+  });
+});
+
+test("DOIS níveis: o produto é o produto — não a pasta que a pessoa escolheu", () => {
+  assert.deepEqual(lerCaminhoDaFoto("Fotos/CAMA BELLA/01.jpg"), {
+    pastaProduto: "CAMA BELLA",
+    cor: "",
+  });
+});
+
+test("dois produtos com dois níveis não colapsam num grupo só", () => {
+  const a = lerCaminhoDaFoto("Fotos/CAMA BELLA/01.jpg");
+  const b = lerCaminhoDaFoto("Fotos/BELICHE VITORIA/01.jpg");
+  assert.notEqual(a.pastaProduto, b.pastaProduto, "os dois produtos viraram o mesmo grupo");
+});
+
+test("mais fundo que três: o primeiro nível ainda é o produto", () => {
+  assert.deepEqual(lerCaminhoDaFoto("Fotos/CAMA BELLA/Castanho/detalhe/01.jpg"), {
+    pastaProduto: "CAMA BELLA",
+    cor: "Castanho",
+  });
+});
+
+test("foto solta na raiz não inventa produto", () => {
+  assert.equal(lerCaminhoDaFoto("Fotos/01.jpg").pastaProduto, "(raiz)");
+  assert.equal(lerCaminhoDaFoto("01.jpg").pastaProduto, "(raiz)");
 });

@@ -36,7 +36,10 @@ import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storage
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
-import { casarPastaComProduto } from "@/modules/catalog/domain/casarPastaComProduto";
+import {
+  casarPastaComProduto,
+  lerCaminhoDaFoto,
+} from "@/modules/catalog/domain/casarPastaComProduto";
 
 function norm(s: string): string {
   return s
@@ -502,9 +505,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
-      const partes = (f.webkitRelativePath || f.name).split("/");
-      const pastaProduto = partes.length >= 3 ? partes[partes.length - 3] : partes[0] || "(raiz)";
-      const cor = partes.length >= 3 ? partes[partes.length - 2] : "";
+      const { pastaProduto, cor } = lerCaminhoDaFoto(f.webkitRelativePath || f.name);
       const chave = `${pastaProduto}||${cor}`;
       if (!mapa.has(chave)) {
         mapa.set(chave, {
