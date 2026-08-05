@@ -106,20 +106,74 @@ export interface ProdutoLidoDoCatalogo {
 
 const texto = (v: string | undefined): string => (v ?? "").trim();
 
-/**
- * Só as medidas que a página realmente mostrou.
- *
- * `null` e zero chegam aqui querendo dizer a mesma coisa — "não sei" — e os
- * dois são descartados. Deixar passar viraria um produto que afirma medir zero
- * centímetros, e é uma afirmação que ninguém fez.
- */
-function medidasUsaveis(d: DimensoesLidas | undefined): Partial<VariacaoImportada> {
-  const out: Partial<VariacaoImportada> = {};
+/** Só as medidas que a página realmente mostrou. `null` e zero são "não sei". */
+function medidasUsaveis(d: DimensoesLidas | undefined): DimensoesLidas {
+  const out: DimensoesLidas = {};
   for (const k of ["alturaCm", "larguraCm", "comprimentoCm", "pesoKg"] as const) {
     const v = d?.[k];
     if (typeof v === "number" && v > 0) out[k] = v;
   }
   return out;
+}
+
+/**
+ * A medida da PEÇA vira texto na observação — e NÃO vai para os campos de
+ * dimensão da variante.
+ *
+ * ===========================================================================
+ * POR QUE NÃO PODE IR
+ * ===========================================================================
+ *
+ * `altura`, `largura` e `comprimento` da variante são a EMBALAGEM: é deles que
+ * `pesoCobravelGramas` tira a cubagem, e é a cubagem que define o frete quando o
+ * volume pesa mais que a balança.
+ *
+ * O catálogo dá a medida da peça MONTADA. Um beliche de 202 × 93 × 155 viaja
+ * desmontado, em caixas planas de volume muito menor. Herdar a peça como
+ * embalagem infla a cubagem, sobe o preço mínimo e tira a loja do jogo — o erro
+ * é para o outro lado do que eu temia, e custa igual.
+ *
+ * Então a embalagem fica VAZIA e vira pendência, que é o estado honesto: quem
+ * sabe como aquilo viaja é a lojista ou o fornecedor, não o desenho da página.
+ *
+ * A medida não se perde — vai para a observação, escrita como o que é. Falta um
+ * lugar ESTRUTURADO para "dimensão do produto" separado de "dimensão da caixa";
+ * hoje ele não existe no modelo, e inventá-lo aqui seria decidir sozinho uma
+ * mudança de schema que não é minha.
+ */
+function cotasDe(d: DimensoesLidas | undefined): string {
+  const m = medidasUsaveis(d);
+  const cotas = [
+    m.larguraCm ? `${m.larguraCm} cm de largura` : null,
+    m.alturaCm ? `${m.alturaCm} cm de altura` : null,
+    m.comprimentoCm ? `${m.comprimentoCm} cm de comprimento` : null,
+    m.pesoKg ? `${m.pesoKg} kg` : null,
+  ].filter(Boolean);
+  return cotas.join(" × ");
+}
+
+/**
+ * As medidas da peça, do produto e de cada versão que meça diferente.
+ *
+ * A Cama BELLA é Solteiro E Casal com larguras distintas, e essa diferença é a
+ * informação mais útil da página para quem vai comprar. Ela não cabe em campo
+ * nenhum da variação hoje, então vira texto — mas texto que diz de QUAL versão
+ * está falando, em vez de uma medida solta que não se sabe a quem pertence.
+ */
+function textoDaPeca(p: ProdutoLidoDoCatalogo): string | null {
+  const doProduto = cotasDe(p.dimensoes);
+  const porVersao = (p.variacoes ?? [])
+    .map((v) => ({ rotulo: texto(v.tamanho), cotas: cotasDe(v.dimensoes) }))
+    .filter((x) => x.cotas)
+    // A mesma versão aparece uma vez por cor — Solteiro em três cores mede
+    // igual nas três, e repetir isso três vezes é ruído, não informação.
+    .filter((x, i, todas) => todas.findIndex((o) => o.rotulo === x.rotulo && o.cotas === x.cotas) === i);
+
+  if (porVersao.length) {
+    const lista = porVersao.map((x) => (x.rotulo ? `${x.rotulo} ${x.cotas}` : x.cotas)).join("; ");
+    return `Produto montado: ${lista}.`;
+  }
+  return doProduto ? `Produto montado: ${doProduto}.` : null;
 }
 
 /**
@@ -133,6 +187,7 @@ export function observacaoDaOrigem(p: ProdutoLidoDoCatalogo): string {
   const partes = [
     p.paginaOrigem ? `Importado do catálogo em PDF (página ${p.paginaOrigem}).` : "Importado do catálogo em PDF.",
     texto(p.material) ? `Material: ${texto(p.material)}.` : null,
+    textoDaPeca(p),
     texto(p.descricao) || null,
   ].filter(Boolean);
   return partes.join(" ");
@@ -174,12 +229,8 @@ export function linhasDoCatalogo(
         precoBase: 0,
         estoque: 0,
         idExterno: "",
-        // A medida da VERSÃO vence a do produto. Uma cama de casal e uma de
-        // solteiro dividem cor e material, não tamanho — e é o tamanho que
-        // decide o frete. Quando a versão não diz nada (produto de tamanho
-        // único, como o beliche), a do produto desce para ela.
-        ...medidasUsaveis(p.dimensoes),
-        ...medidasUsaveis(v.dimensoes),
+        // Sem dimensão nenhuma aqui, de propósito: estes campos são a
+        // EMBALAGEM, e o catálogo mede a peça montada. Ver `textoDaPeca`.
       }))
       // Uma variação que não diz nem cor nem tamanho não é uma variação — é
       // ruído de layout. Ela some aqui em vez de virar uma linha vazia que a

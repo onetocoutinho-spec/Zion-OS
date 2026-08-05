@@ -151,34 +151,46 @@ const BELICHE: ProdutoLidoDoCatalogo = {
   variacoes: [{ cor: "Castanho" }, { cor: "Mogno" }, { cor: "Cinamomo" }],
 };
 
-test("as três cores herdam a MESMA peça — a dimensão é do produto", () => {
+test("a medida da PEÇA não vai para os campos de EMBALAGEM da variante", () => {
+  // `altura`, `largura` e `comprimento` da variante são a caixa: é deles que
+  // `pesoCobravelGramas` tira a cubagem. O beliche de 202 × 93 × 155 viaja
+  // desmontado, em caixas planas. Herdar a peça como embalagem inflaria a
+  // cubagem, subiria o preço mínimo e tiraria a loja do jogo.
   const [l] = linhasDoCatalogo([BELICHE]);
   assert.equal(l.variacoes?.length, 3);
   for (const v of l.variacoes ?? []) {
-    assert.equal(v.alturaCm, 155);
-    assert.equal(v.larguraCm, 93);
-    assert.equal(v.comprimentoCm, 202);
+    assert.equal(v.alturaCm, undefined, "a peça virou embalagem — a cubagem vai mentir");
+    assert.equal(v.larguraCm, undefined);
+    assert.equal(v.comprimentoCm, undefined);
   }
   assert.deepEqual(l.variacoes?.map((v) => v.cor), ["Castanho", "Mogno", "Cinamomo"]);
 });
 
-test("a medida que a página não mostrou não vira zero — ela não vai", () => {
+test("mas a medida não se perde — ela vira texto, dita como o que é", () => {
   const [l] = linhasDoCatalogo([BELICHE]);
-  // O catálogo não declara peso. Zero seria "pesa zero quilos", e o frete de um
-  // beliche calculado sobre zero é o erro mais caro que esta categoria comporta.
-  for (const v of l.variacoes ?? []) {
-    assert.equal(v.pesoKg, undefined, "peso ausente virou um número");
-  }
+  assert.match(l.base.observacoes, /Produto montado:/);
+  assert.match(l.base.observacoes, /93 cm de largura/);
+  assert.match(l.base.observacoes, /155 cm de altura/);
+});
+
+test("a medida que a página não mostrou não aparece — nem como zero", () => {
+  const [l] = linhasDoCatalogo([BELICHE]);
+  // O catálogo não declara peso do beliche.
+  assert.ok(!/kg/.test(l.base.observacoes), "peso ausente virou um número");
+  for (const v of l.variacoes ?? []) assert.equal(v.pesoKg, undefined);
 });
 
 test("medida zerada ou negativa é descartada como se não existisse", () => {
   const [l] = linhasDoCatalogo([
     { ...BELICHE, dimensoes: { alturaCm: 0, larguraCm: -5, comprimentoCm: 202, pesoKg: null } },
   ]);
-  const v = l.variacoes?.[0];
-  assert.equal(v?.alturaCm, undefined);
-  assert.equal(v?.larguraCm, undefined);
-  assert.equal(v?.comprimentoCm, 202, "a medida boa foi descartada junto com as ruins");
+  // Só o trecho da peça: a DESCRIÇÃO do beliche fala em "pés com 8 cm de
+  // largura", e casar com ela seria o termo de busca definindo a conclusão —
+  // o defeito que já pegou dois testes meus nesta semana.
+  const peca = l.base.observacoes.match(/Produto montado:[^.]*\./)?.[0] ?? "";
+  assert.ok(!/altura/.test(peca), `altura zerada apareceu: ${peca}`);
+  assert.ok(!/largura/.test(peca), `largura negativa apareceu: ${peca}`);
+  assert.match(peca, /202 cm de comprimento/, "a medida boa foi descartada junto com as ruins");
 });
 
 test("o material vira atributo visível, não some dentro da prosa", () => {
@@ -213,15 +225,11 @@ const BELLA: ProdutoLidoDoCatalogo = {
   ],
 };
 
-test("cada versão fica com a MEDIDA DELA — solteiro não vira casal", () => {
+test("cada versão é dita com a MEDIDA DELA — solteiro não vira casal", () => {
   const [l] = linhasDoCatalogo([BELLA]);
-  const solteiro = l.variacoes?.find((v) => v.tamanho === "Solteiro");
-  const casal = l.variacoes?.find((v) => v.tamanho === "Casal");
-  assert.equal(solteiro?.larguraCm, 90);
-  assert.equal(casal?.larguraCm, 143, "a cama de casal herdou a largura da solteira");
-  // O que as duas compartilham, compartilham mesmo.
-  assert.equal(solteiro?.comprimentoCm, 202);
-  assert.equal(casal?.comprimentoCm, 202);
+  const obs = l.base.observacoes;
+  assert.match(obs, /Solteiro 90 cm de largura/);
+  assert.match(obs, /Casal 143 cm de largura/, "a cama de casal ficou com a largura da solteira");
 });
 
 test("a medida da versão VENCE a do produto quando as duas existem", () => {
@@ -232,14 +240,25 @@ test("a medida da versão VENCE a do produto quando as duas existem", () => {
       variacoes: [{ cor: "Mogno", tamanho: "Casal", dimensoes: { larguraCm: 143 } }],
     },
   ]);
-  const v = l.variacoes?.[0];
-  assert.equal(v?.larguraCm, 143, "a medida do produto sobrepôs a da versão");
-  // E o que a versão não diz continua vindo do produto — não se perde.
-  assert.equal(v?.comprimentoCm, 202);
-  assert.equal(v?.alturaCm, 103);
+  assert.match(l.base.observacoes, /Casal 143 cm de largura/);
+  assert.ok(!/90 cm de largura/.test(l.base.observacoes), "a medida do produto sobrepôs a da versão");
 });
 
-test("produto de tamanho único continua descendo a medida para as cores", () => {
+test("a mesma versão em três cores é dita UMA vez, não três", () => {
+  const [l] = linhasDoCatalogo([
+    {
+      nome: "Cama - X",
+      variacoes: ["Cinamomo", "Castanho", "Mogno"].map((cor) => ({
+        cor,
+        tamanho: "Casal",
+        dimensoes: { larguraCm: 143 },
+      })),
+    },
+  ]);
+  assert.equal((l.base.observacoes.match(/Casal/g) ?? []).length, 1, "repetiu a mesma medida por cor");
+});
+
+test("produto de tamanho único diz a medida uma vez, sem rótulo de versão", () => {
   const [l] = linhasDoCatalogo([BELICHE]);
-  assert.equal(l.variacoes?.every((v) => v.larguraCm === 93), true);
+  assert.match(l.base.observacoes, /Produto montado: 93 cm de largura/);
 });
