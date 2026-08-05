@@ -16,6 +16,7 @@ import {
   resumoDoCatalogo,
   type ProdutoLidoDoCatalogo,
 } from "./produtosDoCatalogo.ts";
+import { ehSkuGerado } from "./skuDoCatalogo.ts";
 
 const SOFA: ProdutoLidoDoCatalogo = {
   nome: "Sofá Retrátil 3 Lugares",
@@ -41,13 +42,40 @@ test("margem é null, não zero — sem custo não existe conta", () => {
   assert.equal(l.margem, null, "zero afirmaria uma margem que ninguém calculou");
 });
 
-test("SKU e EAN saem vazios — código plausível e falso vira pedido sem dono", () => {
+test("o EAN sai vazio — um código GS1 inventado é fraude, não conveniência", () => {
+  // O EAN é emitido por um órgão externo e identifica o produto no mundo
+  // inteiro. Inventar um é afirmar algo sobre o mundo, e a afirmação é falsa.
+  // O SKU não: ele é o código do VENDEDOR, e o ML só exige que seja único.
+  // A regra "não invente código" continua valendo — ela nunca foi sobre o SKU.
   const [l] = linhasDoCatalogo([SOFA]);
-  assert.equal(l.base.sku, "");
   for (const v of l.variacoes ?? []) {
-    assert.equal(v.sku, "");
-    assert.equal(v.ean, "");
+    assert.equal(v.ean, "", "um EAN apareceu sem a GS1 ter emitido nenhum");
   }
+});
+
+test("o SKU é NOSSO, marcado como nosso, e derivado do que a página diz", () => {
+  const [l] = linhasDoCatalogo([SOFA]);
+  const skus = (l.variacoes ?? []).map((v) => v.sku);
+  assert.deepEqual(skus, ["CAT-SOFA-RETRATIL-3-LUGARES-2-10-M-CINZA", "CAT-SOFA-RETRATIL-3-LUGARES-2-10-M-BEGE"]);
+  for (const s of skus) assert.ok(ehSkuGerado(s), "a origem sumiu do próprio código");
+});
+
+test("reimportar o mesmo catálogo devolve os MESMOS códigos", () => {
+  // É a propriedade que impede o segundo lote de virar gêmeo do primeiro — o
+  // defeito que `casarComProdutoExistente` mediu em 117 de 170 anúncios.
+  const a = linhasDoCatalogo([SOFA, BELLA]).flatMap((l) => l.variacoes ?? []).map((v) => v.sku);
+  const b = linhasDoCatalogo([SOFA, BELLA]).flatMap((l) => l.variacoes ?? []).map((v) => v.sku);
+  assert.deepEqual(a, b);
+});
+
+test("versões que colidem no texto ganham códigos distintos mesmo assim", () => {
+  const [l] = linhasDoCatalogo([
+    { nome: "Mesa X", variacoes: [{ cor: "Preto" }, { cor: "Prêto" }, { cor: "Branco" }] },
+  ]);
+  const skus = (l.variacoes ?? []).map((v) => v.sku);
+  assert.equal(new Set(skus).size, 3, "duas versões saíram com o mesmo código");
+  assert.equal(skus[0], "CAT-MESA-X-PRETO");
+  assert.equal(skus[1], "CAT-MESA-X-PRETO-2", "a colisão não foi desempatada");
 });
 
 test("produto sem nome não entra — é cabeçalho ou rodapé lido como item", () => {

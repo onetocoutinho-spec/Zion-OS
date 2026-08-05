@@ -36,6 +36,7 @@
 // é zero, e essa distinção já foi aprendida aqui.
 
 import type { LinhaProduto, VariacaoImportada } from "../../../lib/services/importacaoProdutos";
+import { skuDoCatalogo, skusDoLote } from "./skuDoCatalogo";
 
 /**
  * Uma variação como uma PÁGINA de catálogo consegue descrevê-la.
@@ -154,9 +155,16 @@ export function linhasDoCatalogo(
     const nome = texto(p.nome);
     if (!nome) continue;
 
+    // O fornecedor não deu código, então damos o nosso — marcado como nosso e
+    // derivado do nome, para reimportar não duplicar. Ver `skuDoCatalogo`: isto
+    // é criar, não inventar, e a diferença é sobre quem o código afirma ser.
+    const codigos = skusDoLote(
+      (p.variacoes ?? []).map((v) => ({ nome, tamanho: v.tamanho, cor: v.cor }))
+    );
+
     const variacoes: VariacaoImportada[] = (p.variacoes ?? [])
-      .map((v) => ({
-        sku: "",
+      .map((v, i) => ({
+        sku: codigos[i] ?? "",
         cor: texto(v.cor),
         tamanho: texto(v.tamanho),
         ean: "",
@@ -184,7 +192,9 @@ export function linhasDoCatalogo(
         marca: texto(p.marca),
         modelo: texto(p.modelo),
         categoria: "",
-        sku: "",
+        // O produto pai leva o código da primeira versão como raiz; sem
+        // variação nenhuma, o dele próprio.
+        sku: variacoes[0]?.sku ?? skuDoCatalogo(nome),
         cor: variacoes[0]?.cor ?? "",
         tamanho: variacoes[0]?.tamanho ?? "",
         custo: 0,
