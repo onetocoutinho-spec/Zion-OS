@@ -154,6 +154,10 @@ export async function POST(request: Request) {
       mensagem: frase,
       schema: ESQUEMA,
       maxTokens: 400,
+      // Classificar uma frase é a tarefa mais simples que este sistema pede a
+      // um modelo. Esforço alto aqui não melhorava a classificação e estourava
+      // o tempo da rota — ver `ChamadaIA.esforco`.
+      esforco: "low",
     });
     return Response.json({ criterio: JSON.parse(json) });
   } catch (e) {
