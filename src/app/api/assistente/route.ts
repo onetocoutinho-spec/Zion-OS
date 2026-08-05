@@ -56,6 +56,14 @@ const ESQUEMA = {
         "aprovacao",
         "publicacao",
         "precificacao",
+        // `infracao` ESTAVA FALTANDO AQUI, e o domínio inteiro já a atendia —
+        // com o cuidado de distinguir "não li" de "não há". Com saída
+        // estruturada o modelo não emite valor fora do enum, então o prompt
+        // pedia `infracao`, o card de recusa ANUNCIAVA a pergunta
+        // ("Quantas infrações o Mercado Livre registrou na sua conta") e ela era
+        // a única que não tinha como ser respondida. Guardado por
+        // `assuntoContavelAlcancavel.test.ts`.
+        "infracao",
         "nenhum",
       ],
     },
