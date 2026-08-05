@@ -101,3 +101,44 @@ test("lista vazia não é 'não exige nada' — é o padrão de calçado", () =>
   const omitida = avaliarPreparacao(CAMA, null, {}).identidade;
   assert.equal(omitida.length, OBRIGATORIOS_CALCADO.length, "omitir cai no padrão");
 });
+
+// ── Frete fora do Mercado Envios ────────────────────────────────────────────
+
+test("pacote grande demais NÃO vira 'margem impossível' na tela", () => {
+  // Este texto errado existiu: `fora_do_me2` nasceu caindo no `else` genérico,
+  // e a tela mandava a lojista mexer na MARGEM para consertar o TAMANHO da
+  // caixa. Um motivo novo sem ramo próprio é pior que motivo nenhum.
+  const cama: ProdutoParaPreparar = {
+    ...CAMA,
+    custo: 800,
+    // 202 × 93 × 155: maior lado e soma acima do que o ME2 carrega.
+    pesoGramas: 40_000,
+    alturaCm: 202,
+    larguraCm: 93,
+    comprimentoCm: 155,
+  };
+  const pricing = avaliarPreparacao(cama, null, {}).etapas.find((e) => e.etapa === "pricing");
+  assert.ok(pricing);
+  assert.equal(pricing.situacao, "bloqueada");
+  const texto = pricing.faltando.join(" ");
+  assert.match(texto, /Mercado Envios/);
+  assert.ok(!/margem/i.test(texto), "disse margem para um problema de tamanho");
+  assert.ok(!/peso da embalagem/.test(texto), "disse falta peso para um pacote já medido");
+});
+
+test("pacote que CABE continua tendo preço mínimo calculado", () => {
+  const caixa: ProdutoParaPreparar = {
+    ...CAMA,
+    custo: 50,
+    pesoGramas: 800,
+    alturaCm: 12,
+    larguraCm: 20,
+    comprimentoCm: 32,
+  };
+  const pricing = avaliarPreparacao(caixa, null, {}).etapas.find((e) => e.etapa === "pricing");
+  assert.ok(pricing);
+  assert.ok(
+    !pricing.faltando.some((f) => /Mercado Envios/.test(f)),
+    "caixa de sapato foi reprovada por tamanho"
+  );
+});

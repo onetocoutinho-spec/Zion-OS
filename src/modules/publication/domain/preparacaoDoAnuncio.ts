@@ -329,7 +329,12 @@ function avaliarPricing(p: ProdutoParaPreparar, opcoes: OpcoesDaPreparacao): Eta
   // quando o peso é dispensável e quando a margem é impossível.
   const r = precoMinimo(p.custo, opcoes.margemMinima ?? MARGEM_MINIMA_PADRAO, taxas);
   if (!r.ok) {
+    // Um ramo por motivo, e nenhum `else` genérico: quando `fora_do_me2` nasceu
+    // ele caía no `else` e a tela dizia "margem impossível" para um pacote
+    // grande demais. Errado, e mais caro que silêncio — a lojista iria mexer na
+    // margem para consertar o tamanho da caixa.
     if (r.motivo === "sem_peso") faltando.push("peso da embalagem");
+    else if (r.motivo === "fora_do_me2") faltando.push("o modo de envio (a embalagem não cabe no Mercado Envios)");
     else faltando.push("uma margem possível (comissão + margem passam de 100%)");
   }
 

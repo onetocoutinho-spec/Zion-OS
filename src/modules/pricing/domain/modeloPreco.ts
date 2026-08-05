@@ -30,6 +30,7 @@ import {
   type Embalagem,
   type ReputacaoEnvio,
 } from "./custosML.ts";
+import { cabeNoMercadoEnvios } from "../../integration/domain/limitesDoMercadoEnvios";
 import {
   custoPercentualEmReais,
   fixosDoLojista,
@@ -112,6 +113,21 @@ export const MARGEM_MAXIMA_PERMITIDA = 60;
 const SEM_PESO =
   "Falta o peso e as medidas da embalagem para calcular o envio deste produto.";
 
+/**
+ * A embalagem foi medida, e não cabe no Mercado Envios.
+ *
+ * Isto é diferente de "falta peso", e a diferença muda o que a lojista faz: no
+ * primeiro caso ela vai medir; aqui ela já mediu, e o que falta é combinar
+ * outro modo de envio com o Mercado Livre.
+ *
+ * Devolver um número aqui seria pior que devolver nada. A tabela de
+ * `custoDeEnvio` é a tabela do ME2, e cotar por ela um pacote que o ME2 não
+ * carrega é um preço mínimo calculado sobre um frete que nunca vai acontecer —
+ * suposição vestida de fato, na casa decimal que decide se a loja lucra.
+ */
+const FORA_DO_ME2 =
+  "Esta embalagem não cabe no Mercado Envios, então o frete dele não se aplica. Combine o modo de envio com o Mercado Livre para o Zion calcular o preço mínimo.";
+
 function arredondar(v: number): number {
   return Math.round(v * 100) / 100;
 }
@@ -145,7 +161,20 @@ export function envioDoModelo(
   // sem custo de envio, não faltar peso não é pendência nenhuma.
   if (taxas.vendedorPagaFrete === false) return 0;
   if (!taxas.embalagem) return null;
+  // Medido e grande demais: a tabela abaixo é a do ME2 e não rege este pacote.
+  // Só reprova o que está PROVADO fora — medida faltando cai no ramo de cima.
+  if (cabeNoMercadoEnvios(taxas.embalagem).situacao === "nao_cabe") return null;
   return custoDeEnvio(pesoCobravelGramas(taxas.embalagem), preco, taxas.reputacao);
+}
+
+/** Por que o envio não é estimável: falta medida, ou a medida não cabe no ME2. */
+export function motivoDoEnvioIndisponivel(
+  taxas: ModeloTaxas
+): { motivo: "sem_peso" | "fora_do_me2"; pendencia: string } {
+  if (taxas.embalagem && cabeNoMercadoEnvios(taxas.embalagem).situacao === "nao_cabe") {
+    return { motivo: "fora_do_me2", pendencia: FORA_DO_ME2 };
+  }
+  return { motivo: "sem_peso", pendencia: SEM_PESO };
 }
 
 export interface CustoDaVenda {
@@ -171,7 +200,7 @@ export function custoDaVenda(
   const taxaFixa = taxaFixaVenda(taxas);
   const envio = envioDoModelo(preco, taxas);
   if (envio === null) {
-    return { comissao, taxaFixa, envio: null, total: null, pendencia: SEM_PESO };
+    return { comissao, taxaFixa, envio: null, total: null, pendencia: motivoDoEnvioIndisponivel(taxas).pendencia };
   }
   // Imposto, comissões internas, embalagem, etiqueta e informativos. Sem eles o
   // "custo da venda" era só a parte que o marketplace cobra, e a margem saía
@@ -244,8 +273,12 @@ export type ResultadoPrecoMinimo =
   | { ok: true; preco: number }
   /** comissão + margem ≥ 100%: não existe preço que satisfaça. */
   | { ok: false; motivo: "margem_impossivel" }
-  /** Falta o peso da embalagem — o envio não é estimável. */
-  | { ok: false; motivo: "sem_peso"; pendencia: string };
+  /**
+   * O envio não é estimável. `sem_peso` = ninguém mediu; `fora_do_me2` = mediu,
+   * e o pacote não cabe no Mercado Envios. As duas mandam a lojista a lugares
+   * diferentes, e por isso são motivos diferentes.
+   */
+  | { ok: false; motivo: "sem_peso" | "fora_do_me2"; pendencia: string };
 
 /**
  * O menor preço que ainda entrega a margem escolhida pelo lojista.
@@ -271,7 +304,7 @@ export function precoMinimo(
   // comprador pagando, o peso não entra em conta nenhuma — e cobrar esse dado
   // seria um "falta frete" eterno em produto que nunca vai precisar dele.
   if (taxas.vendedorPagaFrete !== false && !taxas.embalagem) {
-    return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
+    return { ok: false, ...motivoDoEnvioIndisponivel(taxas) };
   }
 
   let anterior = 0;
@@ -280,7 +313,7 @@ export function precoMinimo(
     // dela — dentro da faixa o valor é constante.
     const amostra = Number.isFinite(teto) ? teto : anterior + 1;
     const envio = envioDoModelo(amostra, taxas);
-    if (envio === null) return { ok: false, motivo: "sem_peso", pendencia: SEM_PESO };
+    if (envio === null) return { ok: false, ...motivoDoEnvioIndisponivel(taxas) };
 
     const candidato = (custo + taxaFixaVenda(taxas) + envio + fixosDoLojista(c)) / divisor;
     if (candidato <= teto) {
