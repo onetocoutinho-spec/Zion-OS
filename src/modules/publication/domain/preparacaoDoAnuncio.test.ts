@@ -15,7 +15,7 @@ import {
   type EtapaDaPreparacao,
   type ProdutoParaPreparar,
 } from "./preparacaoDoAnuncio";
-import { resolverObrigatorios } from "./atributosDoMarketplace";
+import { OBRIGATORIOS_CALCADO, resolverObrigatorios } from "./atributosDoMarketplace";
 import type { VarianteDaBase } from "./variacoesDoAnuncio";
 
 function variante(extra: Partial<VarianteDaBase> = {}): VarianteDaBase {
@@ -243,7 +243,7 @@ test("a política de gerar é UMA — a mesma função dos dois lados", () => {
       modelo: p.modelo,
       cores: ["Preto"],
       tamanhos: ["37", "38"],
-    })
+    }, OBRIGATORIOS_CALCADO)
   );
   assert.deepEqual(daPreparacao, direto);
 });

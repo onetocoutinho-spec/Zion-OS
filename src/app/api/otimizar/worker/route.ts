@@ -21,6 +21,7 @@ import {
 import {
   atributosPorId,
   briefingDosAtributos,
+  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
 } from "@/modules/publication/domain/atributosDoMarketplace";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
@@ -134,6 +135,7 @@ async function gerarAnuncio(
         cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
         tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
       },
+      OBRIGATORIOS_CALCADO,
       atributosPorId(atributosDoProduto)
     )
   );

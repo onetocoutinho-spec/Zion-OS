@@ -163,5 +163,9 @@ test("montarTabelaMedidas: numeração que não é de calçado devolve tabela va
   assert.equal(r.tabela, "");
   assert.equal(r.confiavel, false);
   assert.equal(r.oficial, false);
-  assert.equal(r.comoMedir, COMO_MEDIR);
+  // Era `COMO_MEDIR` — e `COMO_MEDIR` manda pisar numa folha A4 e medir o pé
+  // descalço. Este ramo é exatamente o "não é calçado": mandar instrução de pé
+  // para um P/M/G (ou para um móvel, que é o caso que apareceu em 05/08/2026)
+  // é afirmar sobre o produto uma coisa que a linha acima acabou de negar.
+  assert.equal(r.comoMedir, "", "instrução de medir o pé vazou para não-calçado");
 });

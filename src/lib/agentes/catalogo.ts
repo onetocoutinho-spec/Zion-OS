@@ -11,11 +11,12 @@
 
 export const REGRAS_MAE = `Regras-mãe da Zion Company (valem para TODAS as etapas):
 - NUNCA inventar dado de produto. Quando faltar, registrar exatamente "⚠️ informação necessária: <campo>" e listar em "pendencias".
-- Sempre respeitar a CATEGORIA do produto (calçado, bolsa, etc.) e seus atributos obrigatórios.
+- Sempre respeitar a CATEGORIA do produto e os atributos que ELA exige. A lista de obrigatórios é do Mercado Livre e muda por categoria — nunca a suponha a partir de outra.
 - Título ML: no MÁXIMO 60 caracteres, com a keyword principal na frente, SEM cor nem tamanho (isso é variação/atributo), mantendo palavras que vendem.
 - Atributos/ficha técnica são os FILTROS DE BUSCA do ML (o comprador filtra por atributo, não por título) — preencher o máximo possível.
 - Preço: NÃO calcule margem nem julgue se o preço está bom. Isso é feito pelo sistema, que conhece a comissão real da categoria (consultada na API do Mercado Livre), o custo de envio pelo peso cobrável, a reputação da conta e a margem mínima que O LOJISTA escolheu. Você não tem esses dados. Sinalize apenas o que dá para ver: preço ausente ou zerado é pendência; custo ausente impede o cálculo e também é pendência.
-- Defaults Zion (usar automático, NÃO é pendência): garantia = 90 dias (fornecedor); conteúdo da embalagem = 1 par (calçado); frete grátis embutido no preço.
+- Defaults Zion (usar automático, NÃO é pendência): garantia = 90 dias (fornecedor); frete grátis embutido no preço.
+- Conteúdo da embalagem: em CALÇADO o padrão é "1 par". Em qualquer outra categoria, use o que o briefing informar — e se não vier, é pendência. Não herde o padrão de calçado para um produto que não é calçado.
 - O anúncio só está pronto se o cliente COMPRA sem precisar perguntar nada.`;
 
 // ---- Checklist de qualidade (o A10 usa como trava) ----
@@ -24,11 +25,11 @@ export const CHECKLIST_QUALIDADE = [
   "Título ≤60 caracteres, keyword principal na frente, sem cor/tamanho.",
   "Categoria correta.",
   "Atributos obrigatórios da categoria 100% preenchidos (são os filtros de busca).",
-  "Cor principal, material, gênero e tipo preenchidos.",
+  "Cor principal e material preenchidos, mais os atributos que a CATEGORIA exigir (gênero e tipo são exigência de calçado, não de toda categoria).",
   "Descrição com benefícios, material/uso, cuidados, envio, garantia e conteúdo da embalagem.",
   "Descrição curta presente.",
   "Tabela de medidas com dados reais + 'como medir' + observação de forma.",
-  "Variações completas: todas as numerações da grade, SKU único, EAN por variação, tudo no MESMO anúncio.",
+  "Variações completas: toda a grade cadastrada (numeração em calçado; a dimensão ou o modelo que a categoria usar), SKU único, EAN por variação, tudo no MESMO anúncio.",
   "Preço de venda presente e maior que zero.",
   "Capa 1:1 com produto em destaque; imagens de detalhe e medidas presentes.",
   "Português correto e coerência entre blocos (cor/medida citada = a que existe).",
@@ -43,7 +44,7 @@ Nome do produto:
 Marca:
 Modelo (código):
 Categoria ML:
-Material (externo / interno / solado):
+Material (em calçado: externo / interno / solado):
 Cor(es):
 Tamanho(s) / grade:
 SKU (Cód. do ERP):
@@ -51,7 +52,7 @@ Código interno:
 Preço de custo:
 Preço de venda (aprovado):
 Estoque (por variação):
-Medidas (comprimento palmilha por número / dimensões):
+Medidas (em calçado: comprimento da palmilha por número; nas demais categorias: dimensões — largura × altura × profundidade):
 Peso:
 Conteúdo da embalagem:
 Diferenciais:
@@ -101,13 +102,13 @@ export const AGENTES: Record<string, AgenteDef> = {
     camada: "A",
     fase: "Entrada",
     objetivo:
-      "Preencher sozinho os dados que faltam no briefing (material, palmilha, solado, fechamento, medidas, garantia, atributos) — sem depender do operador.",
+      "Preencher sozinho os dados que faltam no briefing (material, medidas, garantia, atributos e o que mais a categoria pedir) — sem depender do operador.",
     quandoUsar: "Logo no começo, antes do A1 — sempre que houver campo vazio.",
     entradaNecessaria: "Briefing com lacunas, link do anúncio atual, nome/modelo do produto.",
     saidaEsperada: "Briefing enriquecido, com a fonte de cada dado; o que não achar segue como pendência.",
     promptSistema: `Você é o Agente Pesquisador/Enriquecedor da Zion Company. Sua função é PREENCHER os dados que faltam no briefing do produto pesquisando fontes reais — para não depender do operador.
 
-Para cada campo vazio (material externo/interno/solado, palmilha, fechamento, medidas por número, altura do solado, garantia, atributos), pesquise NESTA ORDEM e registre a fonte:
+Para cada campo vazio (material, medidas, garantia, atributos, e os campos próprios da categoria do produto — em calçado, por exemplo: palmilha, solado, fechamento, altura do solado), pesquise NESTA ORDEM e registre a fonte:
 1) Nosso cadastro/site do cliente e o anúncio atual no ML (link).
 2) Fabricante (ex.: Modare / Grupo Beira Rio) — specs oficiais.
 3) Mesmo modelo em outros varejos/ML (Renner, Amazon, concorrentes) + conhecimento geral.
@@ -250,15 +251,15 @@ Entregue:
     camada: "A",
     fase: "Construção",
     objetivo:
-      "Tabela de medidas clara (crítico em calçado/roupa) com orientação de forma e como medir.",
+      "Tabela de medidas clara (crítico em calçado e roupa; em móvel e afins são as dimensões) com orientação e como medir.",
     quandoUsar: "Sempre que o produto tem numeração/tamanho.",
     entradaNecessaria: "Grade de tamanhos, medidas reais por número, tipo de forma, categoria.",
     saidaEsperada: "Tabela de medidas + orientação + nota de forma.",
     ferramentaPortal: "tabela_medidas",
-    promptSistema: `Você é o Agente de Tabela de Medidas da Zion Company, especialista em calçados, roupas e acessórios. Crie uma tabela de medidas clara que reduza dúvida e devolução.
+    promptSistema: `Você é o Agente de Tabela de Medidas da Zion Company. Crie uma tabela de medidas clara que reduza dúvida e devolução, usando o eixo que a CATEGORIA do produto pede — numeração em calçado, tamanho em roupa, dimensões (largura × altura × profundidade) em móvel e afins.
 
 Inclua:
-1) Tabela por tamanho (ex.: Número | Comprimento da palmilha (cm) | Equivalência, se aplicável).
+1) Tabela pelo eixo da categoria (calçado: Número | Comprimento da palmilha (cm) | Equivalência; móvel: Peça | Largura | Altura | Profundidade).
 2) "Como medir" (passo a passo simples — ex.: meça o pé do calcanhar ao dedão).
 3) Recomendação de escolha (entre números, qual pegar).
 4) Observação de forma: calça PEQUENO, NORMAL ou GRANDE.

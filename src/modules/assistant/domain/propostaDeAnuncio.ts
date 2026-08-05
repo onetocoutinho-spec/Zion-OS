@@ -21,6 +21,7 @@
 
 import type { EstadoDoProduto } from "../../catalog/domain/lacunasDoProduto";
 import {
+  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
   type AtributoResolvido,
   type DadosDoProduto,
@@ -79,7 +80,7 @@ export function oQueFaltaParaAnunciar(p: ProdutoParaAnunciar): string[] {
   // Duas cópias dela existiriam para divergir no dia em que uma mudasse — e a
   // divergência apareceria como o Copilot propondo geração para um produto que
   // o painel de preparação diz estar travado.
-  return calcularBloqueiosParaGerar(p.estado, p.id, resolverObrigatorios(p.dados));
+  return calcularBloqueiosParaGerar(p.estado, p.id, resolverObrigatorios(p.dados, OBRIGATORIOS_CALCADO));
 }
 
 /**
@@ -115,7 +116,7 @@ export function montarPropostaDeAnuncio(p: ProdutoParaAnunciar | null): Proposta
     produtoId: p.id,
     nome: p.nome,
     refazendo: p.jaTemAnuncio,
-    atributos: resolverObrigatorios(p.dados),
+    atributos: resolverObrigatorios(p.dados, OBRIGATORIOS_CALCADO),
     // O custo aparece na frase porque é o que a pessoa deve pesar antes de
     // confirmar: minutos de espera e uma otimização da cota mensal.
     resumo: p.jaTemAnuncio
