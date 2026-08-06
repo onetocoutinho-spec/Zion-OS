@@ -40,9 +40,15 @@ export interface RetratoDoProvedor {
   /**
    * O caminho está ESCRITO?
    *
-   * Separado de `temChave` de propósito: a OpenAI tem chave e não tem caminho, e
-   * colapsar os dois faria a tela prometer uma capacidade que lança ao ser usada
-   * — o mesmo defeito que `provedorImagem` documenta na queda silenciosa.
+   * Separado de `temChave` de propósito. A distinção nasceu de um caso real: a
+   * OpenAI passou um dia com chave aceita e caminho inexistente, porque o formato
+   * da API não podia ser verificado deste ambiente. Em 06/08/2026 o caminho foi
+   * escrito e o campo virou `true`.
+   *
+   * Continua separado porque colapsar os dois faria a tela prometer uma
+   * capacidade que lança ao ser usada — o defeito que `provedorImagem` documenta
+   * na queda silenciosa. O próximo provedor que entrar no tipo sem código escrito
+   * cai exatamente aqui.
    */
   implementado: boolean;
   /** O modelo que este caminho usa, quando há um fixado. */
@@ -156,7 +162,8 @@ export function retratoDaIA(env: AmbienteDaIA): SaudeDaIA {
       nome: "OpenAI",
       temChave: Boolean(env.OPENAI_API_KEY),
       ativo: ativoImagem === "openai",
-      // Falso hoje, e é o ponto: a chave existe e o caminho não.
+      // Lido da lista, não fixado: foi `false` por um dia (chave sem caminho) e
+      // virou `true` quando a chamada foi escrita com o formato medido.
       implementado: IMAGEM_IMPLEMENTADA.has("openai"),
     },
   ];
