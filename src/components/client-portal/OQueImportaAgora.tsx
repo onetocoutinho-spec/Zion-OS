@@ -19,12 +19,35 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Lightbulb } from "lucide-react
 import { aberturaDoHoje } from "@/modules/portal/domain/oQueImportaAgora";
 import type { EstadoDaLoja, Lacuna } from "@/modules/publication/domain/prontidaoDaLoja";
 
+/**
+ * A saudação fica PEQUENA, e isso é a metade do conserto.
+ *
+ * Medido na tela em 06/08, depois de subir a resposta para o topo: "Olá,
+ * Leilane 👋" saía em **24px** e "4 coisas estão travando sua loja" em **18px**.
+ * Eu tinha movido a resposta para o primeiro lugar e a deixado visualmente
+ * subordinada a um cumprimento — o mesmo defeito que este trabalho diagnostica
+ * ("nada tem peso diferente de nada"), reproduzido pelo próprio conserto.
+ *
+ * A saudação continua: calor não custa hierarquia quando é uma linha pequena
+ * acima do que importa. O que saiu foi o subtítulo genérico ("Este é o seu
+ * painel. Aqui você acompanha a saúde da sua loja…") — quatorze pixels de texto
+ * que não diz nada, entre o nome dela e o fato.
+ */
+function Saudacao({ nome }: { nome: string }) {
+  return <p className="text-sm text-zinc-400">Olá, {nome} 👋</p>;
+}
+
 export function OQueImportaAgora({
   lacunas,
   estado,
+  nome,
+  acao,
 }: {
   lacunas: Lacuna[];
   estado: EstadoDaLoja;
+  nome: string;
+  /** A pílula de quota. Fica na mesma linha do fato, não numa faixa própria. */
+  acao?: React.ReactNode;
 }) {
   const { frase, visiveis, restantes, emDia } = aberturaDoHoje(lacunas);
 
@@ -34,10 +57,19 @@ export function OQueImportaAgora({
         aria-labelledby="o-que-importa"
         className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] p-5"
       >
-        <h2 id="o-que-importa" className="flex items-center gap-2 text-base font-medium text-emerald-200">
-          <CheckCircle2 size={18} className="shrink-0" />
-          {frase}
-        </h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <Saudacao nome={nome} />
+            <h1
+              id="o-que-importa"
+              className="mt-1 flex items-center gap-2 text-xl font-semibold tracking-tight text-emerald-200 sm:text-2xl"
+            >
+              <CheckCircle2 size={20} className="shrink-0" />
+              {frase}
+            </h1>
+          </div>
+          {acao}
+        </div>
       </section>
     );
   }
@@ -54,15 +86,23 @@ export function OQueImportaAgora({
         parede ? "border-red-500/25 bg-red-500/[0.06]" : "border-white/10 bg-[#0e0e16]"
       }`}
     >
-      {/* A FRASE é o elemento primário da tela inteira. Ela é maior que os
-          títulos das seções abaixo de propósito: numa tela onde tudo tinha o
-          mesmo peso, dar peso a uma coisa é o conserto. */}
-      <h2
-        id="o-que-importa"
-        className={`text-lg font-semibold tracking-tight ${parede ? "text-red-200" : "text-white"}`}
-      >
-        {frase}
-      </h2>
+      {/* A FRASE é o elemento primário da tela inteira, e o tamanho diz isso.
+          Ela é o `h1`: numa tela onde tudo tinha o mesmo peso, dar peso a uma
+          coisa é o conserto — e o cumprimento não pode ser essa coisa. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Saudacao nome={nome} />
+          <h1
+            id="o-que-importa"
+            className={`mt-1 text-xl font-semibold tracking-tight sm:text-2xl ${
+              parede ? "text-red-200" : "text-white"
+            }`}
+          >
+            {frase}
+          </h1>
+        </div>
+        {acao}
+      </div>
 
       <ul className="mt-4 space-y-3">
         {visiveis.map((l) => (

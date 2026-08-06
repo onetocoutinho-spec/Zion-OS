@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
-import { PageHeader, ActionTile, Section, Pill } from "@/components/client-portal/ui";
+import { ActionTile, Section, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
@@ -159,17 +159,18 @@ export default function ClienteHome() {
 
   return (
     <>
-      <PageHeader
-        titulo={`Olá, ${nome} 👋`}
-        subtitulo="Este é o seu painel. Aqui você acompanha a saúde da sua loja e otimiza seus anúncios com a ajuda da IA."
-        acao={
-          quota ? (
-            <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
-              <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
-            </Pill>
-          ) : undefined
-        }
-      />
+      {/* SEM `PageHeader` aqui, e é de propósito.
+       *
+       * Ele punha "Olá, Leilane 👋" em 24px e um subtítulo genérico em 14px
+       * ACIMA do fato. Medido depois da primeira versão deste conserto: a
+       * saudação saía maior (24px) que "4 coisas estão travando sua loja"
+       * (18px) — a resposta em primeiro lugar e em segundo plano ao mesmo
+       * tempo.
+       *
+       * A saudação e a quota mudaram de casa: agora moram DENTRO do bloco do
+       * fato, pequenas, ao lado dele. É a única tela do portal sem PageHeader,
+       * porque é a única cuja pergunta ("o que importa agora?") tem uma
+       * resposta que muda todo dia — as outras têm um nome fixo. */}
 
       {/* ======================================================================
        * A RESPOSTA VEM PRIMEIRO — e ela já existia, três posições abaixo.
@@ -190,7 +191,18 @@ export default function ClienteHome() {
        * destrava, não por quantidade. Não faltava lógica. Faltava ela ser a
        * primeira coisa. (PLANO-004, item A.)
        */}
-      <OQueImportaAgora lacunas={lacunas.lista} estado={lacunas.estado} />
+      <OQueImportaAgora
+        lacunas={lacunas.lista}
+        estado={lacunas.estado}
+        nome={nome}
+        acao={
+          quota ? (
+            <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
+              <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
+            </Pill>
+          ) : undefined
+        }
+      />
 
       {/* TRÊS números, não oito.
        *
