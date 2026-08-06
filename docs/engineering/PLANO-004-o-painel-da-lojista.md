@@ -141,11 +141,73 @@ que prova que ela ENXERGA o defeito — a primeira versão do recorte JSX só ac
 `>texto<` e passava por cima de `<Pill>Veredito: {x}</Pill>`, que é justamente a
 forma do defeito que motivou o item.
 
-### D — Ação em lote no lugar de botão por linha
+### D — Ação em lote no lugar de botão por linha — FEITO (06/08)
 
 A única regra que a base de UX confirmou: *"editar um por um é tedioso — use
 seleção múltipla; evite ações repetidas por linha"*. Os 240 botões viram uma
 barra de ação sobre a seleção.
+
+**O que a base disse antes de eu desenhar** (produção, 06/08):
+
+| | |
+|---|---|
+| produtos | 80 |
+| kits/combos cadastrados | **0** |
+| tabelas de medidas salvas | **0** |
+| produtos que já passaram pela fila | **72** |
+
+Os dois zeros dizem que **160 dos 240 botões são de funções que esta lojista
+nunca usou uma única vez** — e pesavam igual à que ela usa. Os 72 dizem a outra
+metade: ela JÁ otimiza em lote; a única granularidade era "tudo" ou "os que
+faltam", nunca "esses doze".
+
+E os 80 botões restantes tinham um defeito próprio: apontavam todos para
+`/cliente/anunciar` **sem `?produto=`**. A linha sabia qual produto era e o
+clique jogava fora essa informação — a lojista caía numa lista de 80 para
+escolher de novo o que já tinha escolhido. A tela de destino sempre soube ler o
+parâmetro (`params.get("produto")`, linha 179).
+
+**O que existe agora.** Coluna de marcação, caixa mestre com estado
+indeterminado, e uma barra `sticky` logo abaixo do cabeçalho com **"Otimizar N
+com IA"** (a fila do servidor, a mesma de Ferramentas avulsas) e "Limpar
+seleção". As três ações por linha viraram uma nomeada — Otimizar, agora com o
+id — mais dois ícones com nome acessível. Nenhuma função sumiu: o que se
+corrigiu foi o **peso**, não a existência.
+
+**As três armadilhas, em `selecaoEmLote.ts` (19 testes).**
+
+1. **Marcar todos marca todos de quê.** Da lista FILTRADA, não da base. Caixa
+   mestre que marca 80 quando a tela mostra 3 age fora do que ela vê.
+2. **O filtro esconde o que está marcado.** A seleção sobrevive ao filtro de
+   propósito — perder doze marcas ao digitar uma letra dá mais raiva que
+   mantê-las — e o preço de manter é ter que DIZER: *"3 produtos selecionados —
+   2 deles estão fora do filtro atual"*. Desmarcar todos remove só os visíveis;
+   o que o filtro escondeu sobrevive.
+3. **A cota corta.** `enfileirar` fazia `slice(0, restante)` e avisava DEPOIS —
+   ela escolhia 30, entravam 10, e as outras 20 sumiam sem que ela soubesse
+   quais. Agora o corte é dito ANTES, no lugar onde ela decide. E `restante`
+   negativo é tratado como zero: `slice(0, -3)` devolveria o FIM da lista.
+
+**A coluna nova quase quebrou o celular, em silêncio.** O modo cartão casa
+rótulo com célula por POSIÇÃO (`td:nth-child(N)` → `--col-N`) e a caixa de
+marcação empurra tudo uma casa: sem o deslocamento, "Falta" apareceria rotulado
+`PRODUTO`, "Estoque" rotulado `FALTA`, e o título do cartão seria um checkbox.
+Typecheck, lint e build passam nas duas versões — só abaixo de 640px, que é
+onde ninguém olha. Dois testes novos em `celular.test.ts` seguram isso, e a
+medição a 375px confirmou: rótulo certo nas oito células, zero rolagem
+horizontal.
+
+**Duas sentinelas antigas reprovaram a mudança, e uma delas estava certa.**
+`celular.test.ts` exigia `rotulosDasColunas(headers)` — pegou de fato a
+alteração da assinatura. `tabelaCabeNaTela.test.ts` mirava "o primeiro `<th>`"
+para provar que o cabeçalho não quebra linha, e o primeiro `<th>` passou a ser
+o da caixa de marcação, que não tem texto: **sentinela ancorada em posição
+envelhece com o layout**. Agora ela parte do `headers.map`.
+
+**O que NÃO virou lote, e por quê.** *Kit* não agrupa: um kit é composto de
+componentes de um produto específico. *Medidas* agruparia — mas seria gravar
+conteúdo gerado nos produtos dela sem que ela leia, e o modal por produto existe
+justamente para ela conferir antes de salvar.
 
 ---
 

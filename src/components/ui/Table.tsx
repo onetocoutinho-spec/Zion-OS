@@ -27,9 +27,20 @@ interface TableProps {
    * diferentes. O esqueleto diz o primeiro.
    */
   carregando?: boolean;
+  /**
+   * A caixa mestre — presente só nas tabelas que agem em lote.
+   *
+   * A <Table> desenha o CABEÇALHO da coluna de seleção; a célula de cada linha
+   * é do chamador (`<TdSelecao>`), porque só ele sabe o id da linha.
+   */
+  marcaMestre?: {
+    estado: "nenhum" | "parcial" | "todos";
+    aoAlternar: () => void;
+    rotulo: string;
+  };
 }
 
-export function Table({ headers, children, carregando = false }: TableProps) {
+export function Table({ headers, children, carregando = false, marcaMestre }: TableProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/5 bg-[#0e0e16]">
       {/* `aria-busy`: as linhas fantasma são `aria-hidden` (leitor de tela não
@@ -43,10 +54,20 @@ export function Table({ headers, children, carregando = false }: TableProps) {
         className="w-full text-left text-sm"
         aria-busy={carregando || undefined}
         data-cartao=""
-        style={rotulosDasColunas(headers)}
+        style={rotulosDasColunas(headers, Boolean(marcaMestre))}
       >
         <thead>
           <tr className="border-b border-white/5">
+            {marcaMestre && (
+              <th scope="col" className="w-10 px-4 py-3">
+                <CaixaDeMarca
+                  marcado={marcaMestre.estado === "todos"}
+                  parcial={marcaMestre.estado === "parcial"}
+                  aoAlternar={marcaMestre.aoAlternar}
+                  rotulo={marcaMestre.rotulo}
+                />
+              </th>
+            )}
             {headers.map((h) => (
               <th
                 key={h}
@@ -58,7 +79,11 @@ export function Table({ headers, children, carregando = false }: TableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.04]">
-          {carregando ? <LinhasFantasma colunas={headers.length} /> : children}
+          {carregando ? (
+            <LinhasFantasma colunas={headers.length + (marcaMestre ? 1 : 0)} />
+          ) : (
+            children
+          )}
         </tbody>
       </table>
     </div>
@@ -73,10 +98,75 @@ export function Table({ headers, children, carregando = false }: TableProps) {
  * declaração inteira em silêncio — a célula perderia o rótulo e ninguém saberia
  * por quê. O `JSON.stringify` escapa isso pela mesma regra que o CSS usa.
  */
-function rotulosDasColunas(headers: string[]): React.CSSProperties {
+function rotulosDasColunas(headers: string[], comSelecao: boolean): React.CSSProperties {
+  // O DESLOCAMENTO É O PONTO. O CSS do modo cartão casa rótulo com célula por
+  // POSIÇÃO (`td:nth-child(N)` → `--col-N`). Uma coluna de seleção na frente
+  // empurra todas as outras uma casa, e sem este `+1` cada célula do celular
+  // passaria a exibir o rótulo da coluna ANTERIOR — errado em silêncio, e só
+  // abaixo de 640px, que é onde ninguém olha.
+  const desloca = comSelecao ? 1 : 0;
   return Object.fromEntries(
-    headers.map((h, i) => [`--col-${i + 1}`, JSON.stringify(h)])
+    headers.map((h, i) => [`--col-${i + 1 + desloca}`, JSON.stringify(h)])
   ) as React.CSSProperties;
+}
+
+/**
+ * A caixa de marcação, com aparência própria.
+ *
+ * `appearance-none` e não o checkbox do sistema: o nativo pinta um quadrado
+ * branco de sistema operacional dentro de uma tabela escura, e o `accent-color`
+ * resolve só o preenchimento — a borda continua clara.
+ *
+ * `indeterminate` não é atributo de HTML, é propriedade do elemento: só dá para
+ * ligar por referência. Sem ela, "meio marcado" apareceria como "desmarcado" e
+ * a caixa mestre mentiria sobre o estado da lista.
+ */
+function CaixaDeMarca({
+  marcado,
+  parcial = false,
+  aoAlternar,
+  rotulo,
+}: {
+  marcado: boolean;
+  parcial?: boolean;
+  aoAlternar: () => void;
+  rotulo: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={marcado}
+      ref={(el) => {
+        if (el) el.indeterminate = parcial;
+      }}
+      onChange={aoAlternar}
+      aria-label={rotulo}
+      title={rotulo}
+      className="size-4 cursor-pointer appearance-none rounded border border-white/25 bg-white/[0.04] transition-colors checked:border-violet-500 checked:bg-violet-500 indeterminate:border-violet-500 indeterminate:bg-violet-500/40 hover:border-white/45"
+    />
+  );
+}
+
+/**
+ * A célula de marcação de uma linha.
+ *
+ * `data-selecao` não é enfeite: é por ele que o CSS do modo cartão sabe que a
+ * IDENTIDADE do cartão passou a ser a segunda célula, e não a primeira.
+ */
+export function TdSelecao({
+  marcado,
+  aoAlternar,
+  rotulo,
+}: {
+  marcado: boolean;
+  aoAlternar: () => void;
+  rotulo: string;
+}) {
+  return (
+    <td className="px-4 py-3 align-top" data-selecao="">
+      <CaixaDeMarca marcado={marcado} aoAlternar={aoAlternar} rotulo={rotulo} />
+    </td>
+  );
 }
 
 /**

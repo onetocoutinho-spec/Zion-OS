@@ -295,6 +295,24 @@ body {
     content: none;
   }
 
+  /* COM SELEÇÃO, A IDENTIDADE É A SEGUNDA CÉLULA.
+   *
+   * A regra acima casa por POSIÇÃO, e a coluna de marcação empurra o nome do
+   * produto uma casa. Sem estas duas linhas o cartão do celular ficaria com uma
+   * caixa de marcação como título e o nome do produto rotulado "PRODUTO:" logo
+   * abaixo — o óbvio ocupando a linha mais nobre, que é justamente o que o
+   * `td:first-child` existe para evitar.
+   *
+   * A própria célula de marcação é alcançada pelo `:first-child` acima: vira
+   * bloco e perde o rótulo, que é o que se quer dela. */
+  table[data-cartao] td[data-selecao] + td {
+    display: block;
+    padding-bottom: 0.375rem;
+  }
+  table[data-cartao] td[data-selecao] + td::before {
+    content: none;
+  }
+
   /* O `headers` da <Table> chega aqui. Dez posições cobrem a maior tabela do
      app (precificação, 8 colunas) com folga; uma 11ª coluna cairia no `""` do
      `var(--rotulo, "")` acima — fica sem rótulo, nunca com o rótulo errado. */

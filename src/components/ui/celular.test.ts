@@ -96,11 +96,50 @@ test("o rótulo do cartão é o próprio cabeçalho da tabela", () => {
   // do cartão de divergir do cabeçalho: são o mesmo dado.
   const tabela = fonte("./Table.tsx");
   assert.match(tabela, /data-cartao/, "a tabela não entra em modo cartão");
-  assert.match(tabela, /rotulosDasColunas\(headers\)/, "os rótulos não vêm do `headers`");
+  assert.match(tabela, /rotulosDasColunas\(headers/, "os rótulos não vêm do `headers`");
   assert.match(
     tabela,
     /JSON\.stringify\(h\)/,
     "sem escapar, um cabeçalho com aspas quebra a declaração `content` inteira e a célula perde o rótulo em silêncio"
+  );
+});
+
+test("a coluna de seleção desloca os rótulos, senão cada célula usa o da anterior", () => {
+  // O DEFEITO QUE ESTE TESTE EXISTE PARA MATAR (PLANO-004, item D).
+  //
+  // O casamento rótulo↔célula é POSICIONAL (`td:nth-child(N)` → `--col-N`).
+  // A caixa de marcação entra na frente de todas e empurra a lista uma casa:
+  // sem o `+1`, "Falta" apareceria rotulado "PRODUTO", "Estoque" rotulado
+  // "FALTA", e assim por diante — errado em silêncio, e SÓ abaixo de 640px.
+  //
+  // Este teste é a única coisa que separa a versão certa da errada, porque
+  // typecheck, lint e build passam nas duas.
+  const tabela = fonte("./Table.tsx");
+  assert.match(
+    tabela,
+    /--col-\$\{i \+ 1 \+ desloca\}/,
+    "os rótulos voltaram a ser publicados sem deslocamento"
+  );
+  assert.match(
+    tabela,
+    /const desloca = comSelecao \? 1 : 0/,
+    "o deslocamento deixou de depender da coluna de seleção"
+  );
+});
+
+test("com seleção, a identidade do cartão continua sendo o nome — não a caixa", () => {
+  // A regra do título casa por posição (`td:first-child`), e com a coluna de
+  // marcação na frente ela passa a acertar a CAIXA. Sem o par abaixo, o cartão
+  // do celular teria um checkbox como título e "PRODUTO: Babuche…" embaixo.
+  assert.match(
+    CSS,
+    /td\[data-selecao\] \+ td \{[^}]*display: block/,
+    "a segunda célula não vira título quando há coluna de seleção"
+  );
+  assert.match(
+    CSS,
+    /td\[data-selecao\] \+ td::before \{\s*content: none/,
+    "o nome do produto voltou a ganhar o rótulo 'PRODUTO' dentro do cartão"
   );
 });
 
