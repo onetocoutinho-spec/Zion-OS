@@ -524,19 +524,30 @@ diretamente porque as rotas exigem sessão e eu não tenho login em produção. 
 teste de dez segundos é abrir `/cliente/vendas` no site publicado: se a tela
 mostrar vendas, está confirmado.
 
-### A decisão que sobra para o dono
+### A decisão — tomada em 06/08: **o local fica sem ML**
 
-Não é só "copiar o client_id". Local e produção compartilham **a mesma linha**
+Não era só "copiar o client_id". Local e produção compartilham **a mesma linha**
 de `canais_marketplace` no banco de produção, e o ML **rotaciona** o
 refresh_token a cada renovação.
 
-- **Alinhar `.env.local` com o app do servidor** — o local volta a falar com o
-  ML, e a partir daí cada carregamento de tela em desenvolvimento **rotaciona a
-  credencial viva da lojista**. Duas rotações concorrentes derrubam uma delas.
-- **Deixar como está** — o local não fala com o ML, e agora diz isso em
-  português com um caminho, em vez da prosa em inglês. Produção não muda.
+- ~~Alinhar `.env.local` com o app do servidor~~ — o local voltaria a falar com
+  o ML, e a partir daí cada carregamento de tela em desenvolvimento
+  **rotacionaria a credencial viva da lojista**. Duas rotações concorrentes
+  (uma daqui, uma de produção) derrubam uma delas: a loja dela sai do ar por
+  causa de um F5 de quem está desenvolvendo.
+- **ESCOLHIDA — deixar como está.** O local não fala com o ML e diz isso em
+  português, com o caminho de reconexão. Produção não muda, e nenhuma outra
+  parte do app depende disso.
 
-A segunda é a mais segura enquanto houver uma lojista real na base.
+A decisão está gravada onde alguém iria desfazê-la: no `.env.example`, ao lado
+das próprias variáveis. Preencher `ML_CLIENT_ID` em desenvolvimento **parece um
+conserto e é um risco à conta da lojista** — é exatamente o tipo de gentileza
+que a próxima pessoa faria sem saber o que está tocando.
+
+**O pré-requisito para reabrir isto não é a chave, é o banco.** Enquanto
+desenvolvimento e produção compartilharem a mesma linha de canal, qualquer par
+de credenciais válido no local produz a corrida. Ambiente local com banco
+próprio remove a causa; copiar a chave só troca de sintoma.
 
 ---
 
