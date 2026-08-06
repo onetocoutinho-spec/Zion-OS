@@ -27,6 +27,7 @@ import { meuPerfil } from "@/lib/services/perfil";
 import { listarProdutos } from "@/lib/services/produtos";
 import { ClientPortalProvider } from "./context";
 import { AREAS, areaDaRota, telaAtiva, type ContextoPortal } from "@/modules/portal/domain/navegacao";
+import { useTituloDaAba } from "@/components/layout/tituloDaAba";
 import { chaveDaConversa, chaveDoFio } from "@/modules/assistant/domain/conversaGuardada";
 
 /** Um ícone por ÁREA. As telas de dentro não têm ícone: são texto, e texto lê-se mais rápido. */
@@ -155,6 +156,17 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
     areaAtual?.telas.find((t) => telaAtiva(pathname, t.href))?.label ??
     areaAtual?.titulo ??
     "Hoje";
+
+  // A ABA GANHA O NOME DA TELA — do MESMO valor que o cabeçalho usa.
+  //
+  // Medido: `export const metadata` aparece ZERO vezes em 68 rotas, e o HTML
+  // servido devolve `<title>Zion OS — Zion Company</title>` em todas. Quem
+  // trabalha com produtos numa aba e preços em outra tem duas abas idênticas.
+  //
+  // Sai daqui e não de 17 `layout.tsx` porque o comentário três linhas acima
+  // já explica o motivo: "duas fontes de verdade para o mesmo título envelhecem
+  // em direções diferentes".
+  useTituloDaAba(tituloAtual);
 
   async function sair() {
     // O fio do Copilot é daquele lojista naquele navegador: sair encerra os

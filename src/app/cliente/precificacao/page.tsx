@@ -39,9 +39,17 @@ import { formatBRL } from "@/lib/format";
 
 const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas à mão divergem, e
+ * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
+ * ele existe para evitar.
+ */
+const COLUNAS_DA_LISTA = ["Produto", "Custo", "Preço", "Taxas", "Lucro", "Margem", "Preço ideal", "Status"];
+
 function Precificacao() {
   const { clienteId, marketplace } = useClientPortal();
-  const { data: produtos, reload } = useLiveQuery(listarProdutos);
+  const { data: produtos, reload, estado } = useLiveQuery(listarProdutos);
   const { data: variantes } = useLiveQuery(listarTodasVariantes);
 
   // Chegou por um chip "falta custo" na lista de produtos. O id vem no endereço
@@ -202,6 +210,23 @@ function Precificacao() {
 
   const total = (produtos ?? []).length;
 
+  // O RETURN ANTECIPADO VEM ANTES DA TABELA, e é por isso que o `carregando`
+  // dela não bastava. Com a busca no ar, `produtos` é `null`, `total` é 0 pelo
+  // `?? []`, e a tela SAI aqui dizendo "Sem produtos para precificar" — para
+  // quem tem 80. A `<Table carregando>` vive lá embaixo e nunca renderiza.
+  //
+  // É o mesmo erro que já cometi uma vez neste arquivo: consertar a tabela e
+  // deixar a afirmação um nível acima dela. Quem pegou desta vez foi a
+  // sentinela que compara a POSIÇÃO das duas condições.
+  if (estado === "carregando") {
+    return (
+      <>
+        <PageHeader titulo="Precificação" subtitulo="Veja o lucro real e o preço ideal de cada produto." />
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      </>
+    );
+  }
+
   if (total === 0) {
     return (
       <>
@@ -278,9 +303,15 @@ function Precificacao() {
         </span>
       </div>
 
-      <Table
-        headers={["Produto", "Custo", "Preço", "Taxas", "Lucro", "Margem", "Preço ideal", "Status"]}
-      >
+      {/* CARREGANDO ANTES DE VAZIO. `filtradas` sai de `produtos ?? []`, e o
+          `?? []` faz "ainda não sei" virar "não há": a tabela pintava "Nenhum
+          registro encontrado com os filtros atuais" — culpando os filtros de
+          quem só estava esperando. */}
+      {/* SEM `carregando` AQUI, e o compilador é quem provou.
+          O return antecipado lá em cima já saiu quando o estado é "carregando",
+          então nesta altura `estado` só pode ser sucesso/vazio/erro — a prop
+          seria uma condição que nunca é verdadeira. */}
+      <Table headers={COLUNAS_DA_LISTA}>
         {filtradas.length === 0 ? (
           <EmptyRow colSpan={8} />
         ) : (

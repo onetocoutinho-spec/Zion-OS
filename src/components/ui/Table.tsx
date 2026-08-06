@@ -5,9 +5,31 @@ import { Children, cloneElement, isValidElement, type ReactElement } from "react
 
 import { EmptyState } from "./EmptyState";
 
+import { largurasDaLinhaDaTabela, linhasParaMostrar } from "./geometriaDoSkeleton";
+
 interface TableProps {
   headers: string[];
   children: React.ReactNode;
+  /**
+   * A busca ainda não voltou.
+   *
+   * ===========================================================================
+   * O DEFEITO QUE ESTA PROP EXISTE PARA MATAR
+   * ===========================================================================
+   *
+   * `useLiveQuery` devolve `data: null` enquanto carrega, e as telas escrevem
+   * `(anuncios ?? [])`. Enquanto a busca está no ar, a tabela recebe uma lista
+   * VAZIA e desenha o estado vazio: **"Nenhum registro encontrado com os
+   * filtros atuais."**
+   *
+   * Isso não é um espaço em branco — é uma AFIRMAÇÃO, e ela é falsa. A lojista
+   * com 400 anúncios lê que não tem nenhum, e a frase ainda culpa os filtros
+   * dela. Medido em 13 das 17 telas do portal.
+   *
+   * "Não sei ainda" e "não há" são estados diferentes e precisam de desenhos
+   * diferentes. O esqueleto diz o primeiro.
+   */
+  carregando?: boolean;
 }
 
 /**
@@ -47,10 +69,13 @@ function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNo
   });
 }
 
-export function Table({ headers, children }: TableProps) {
+export function Table({ headers, children, carregando = false }: TableProps) {
   return (
     <div className="tabela-cartao rounded-xl border border-white/5 bg-[#0e0e16] sm:overflow-x-auto">
-      <table className="w-full text-left text-sm">
+      {/* `aria-busy`: as linhas fantasma são `aria-hidden` (o leitor de tela não
+          lê cinco linhas vazias), e sem este sinal a tabela pareceria vazia na
+          leitura — a mesma mentira, só que em voz alta. */}
+      <table className="w-full text-left text-sm" aria-busy={carregando || undefined}>
         <thead>
           <tr className="border-b border-white/5">
             {headers.map((h) => (
@@ -64,10 +89,42 @@ export function Table({ headers, children }: TableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.04] max-sm:divide-y-0">
-          {comRotulos(children, headers)}
+          {carregando ? <LinhasFantasma colunas={headers.length} /> : comRotulos(children, headers)}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * As linhas cinza do carregamento.
+ *
+ * Vive aqui e não no `Skeleton.tsx` por uma razão de HTML: aquele componente
+ * desenha com `<div>`, e um `<div>` dentro de `<tbody>` é markup inválido — o
+ * navegador o EXPULSA para fora da tabela, e o esqueleto aparece flutuando
+ * acima dela. As proporções, essas sim, vêm de lá (`geometriaDoSkeleton`, com
+ * teste): é a mesma geometria, pintada em `<tr>`/`<td>`.
+ *
+ * Não passa por `comRotulos` de propósito: as linhas são `aria-hidden` e não
+ * têm valor nenhum, então rótulo de coluna aqui seria enfeite invisível.
+ */
+function LinhasFantasma({ colunas }: { colunas: number }) {
+  const larguras = largurasDaLinhaDaTabela(colunas);
+  return (
+    <>
+      {Array.from({ length: linhasParaMostrar() }, (_, linha) => (
+        <tr key={linha} aria-hidden="true" data-fantasma="">
+          {larguras.map((largura, coluna) => (
+            <td key={coluna} className="px-4 py-3" style={{ width: `${largura}%` }}>
+              <div
+                className="h-3 rounded bg-white/[0.06] motion-safe:animate-pulse"
+                style={{ width: coluna === 0 ? "88%" : "54%" }}
+              />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
   );
 }
 

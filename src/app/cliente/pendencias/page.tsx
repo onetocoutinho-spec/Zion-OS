@@ -110,7 +110,7 @@ export default function ClientePendencias() {
             </span>
           </div>
 
-          <Table headers={["Pendência", "Origem", "Status", "Ação"]}>
+          <Table carregando={consulta.estado === "carregando"} headers={["Pendência", "Origem", "Status", "Ação"]}>
             {filtradas.length === 0 ? (
               <EmptyRow colSpan={4} />
             ) : (

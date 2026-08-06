@@ -30,6 +30,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { useLiveQuery } from "@/lib/hooks";
 import { montarContexto } from "@/lib/contexto";
 import { listarProdutos } from "@/lib/services/produtos";
@@ -113,7 +114,7 @@ const FERRAMENTAS: Ferramenta[] = [
 
 export default function ClienteOtimizar() {
   const { clienteId, nome } = useClientPortal();
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  const { data: produtos, estado: estadoDosProdutos } = useLiveQuery(listarProdutos);
   const { data: anuncios, reload: recarregarAnuncios } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
@@ -266,6 +267,20 @@ export default function ClienteOtimizar() {
       (p) => !q || `${p.nome} ${p.sku}`.toLowerCase().includes(q)
     );
   }, [produtos, buscaProd]);
+
+  // "IMPORTE SEUS PRODUTOS" A QUEM TEM OITENTA.
+  //
+  // O ramo abaixo faz `(produtos ?? []).length === 0` e RETORNA. O `?? []`
+  // transforma "ainda não sei" em "não há", e enquanto a busca está no ar a
+  // tela inteira vira um convite para importar uma base que já existe.
+  if (estadoDosProdutos === "carregando") {
+    return (
+      <>
+        <PageHeader titulo="Otimizar com IA" subtitulo="As ferramentas de IA da Zion trabalham a partir dos seus produtos." />
+        <EsqueletoDeBloco altura="h-40" />
+      </>
+    );
+  }
 
   if ((produtos ?? []).length === 0) {
     return (

@@ -60,9 +60,17 @@ const MAPA_FILTRO: Record<string, string> = {
   Publicado: "publicado",
 };
 
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas à mão divergem, e
+ * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
+ * ele existe para evitar.
+ */
+const COLUNAS_DA_LISTA = ["Anúncio", "Score", "Problema principal", "Status", "Ação"];
+
 export default function ClienteAnuncios() {
   const { clienteId, nome } = useClientPortal();
-  const { data: anuncios } = useLiveQuery(
+  const { data: anuncios, estado } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
   );
@@ -223,7 +231,12 @@ export default function ClienteAnuncios() {
         </p>
       )}
 
-      {total === 0 ? (
+      {/* CARREGANDO ANTES DE VAZIO — o `?? []` faz "ainda não sei" virar
+          "não há", e o ramo de cima ganha. A <Table carregando> vivia no ramo
+          de baixo e nunca chegava a renderizar. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : total === 0 ? (
         <VazioAmigavel
           icon={Megaphone}
           titulo="Você ainda não tem anúncios gerados"

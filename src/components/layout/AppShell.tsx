@@ -7,6 +7,7 @@ import { LogOut, Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
+import { useTituloDaAba } from "./tituloDaAba";
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -81,7 +82,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // sem a casca da equipe.
   // /z (ENG-003) é a superfície do Shell da Zion — moldura própria, tela cheia;
   // o app apenas hospeda a rota (o Shell não conhece este app).
-  if (pathname === "/definir-senha" || pathname === "/z" || estaNoPortalCliente(pathname)) return <>{children}</>;
+  const foraDestaCasca =
+    pathname === "/definir-senha" || pathname === "/z" || estaNoPortalCliente(pathname);
+
+  // `null` SIGNIFICA "NÃO MEXA", e não "sem título".
+  //
+  // As duas cascas se aninham: esta envolve TODAS as rotas, inclusive
+  // `/cliente/*`, onde ela devolve os filhos crus e quem manda é a
+  // `ClientPortalShell`. Como efeito de filho roda ANTES do de pai, escrever
+  // um título aqui nesse caso apagaria o "Produtos — Zion OS" que o portal
+  // acabou de pôr — e a aba voltaria a ter um nome só, agora com mais código.
+  //
+  // O hook fica ANTES da saída porque hook não pode ficar depois dela, e o
+  // `current` subiu junto para poder alimentá-lo.
+  const current =
+    NAV_ITEMS.find((i) =>
+      i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
+    ) ?? NAV_ITEMS[0];
+  useTituloDaAba(foraDestaCasca ? null : current.label);
+
+  if (foraDestaCasca) return <>{children}</>;
 
   async function sair() {
     await getSupabase().auth.signOut();
@@ -93,10 +113,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (busca.trim().length < 2) return;
     router.push(`/busca?q=${encodeURIComponent(busca.trim())}`);
   }
-  const current =
-    NAV_ITEMS.find((i) =>
-      i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
-    ) ?? NAV_ITEMS[0];
 
   return (
     <div className="flex min-h-screen">

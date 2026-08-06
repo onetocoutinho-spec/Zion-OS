@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { StatCard } from "@/components/ui/StatCard";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
@@ -23,7 +24,7 @@ import type { Relatorio } from "@/lib/types";
 
 export default function ClienteRelatorios() {
   const { clienteId } = useClientPortal();
-  const { data: relatorios } = useLiveQuery(
+  const { data: relatorios, estado } = useLiveQuery(
     () => listarRelatoriosDoCliente(clienteId),
     [clienteId]
   );
@@ -90,7 +91,15 @@ export default function ClienteRelatorios() {
         />
       </div>
 
-      {lista.length === 0 ? (
+      {/* O resumo acima é calculado ao vivo e não depende desta busca; a LISTA
+          depende. `lista` é `relatorios ?? []`, e sem esta guarda a tela
+          afirmava "Nenhum relatório publicado ainda" antes de ter perguntado. */}
+      {estado === "carregando" ? (
+        <div className="space-y-3">
+          <EsqueletoDeBloco altura="h-20" />
+          <EsqueletoDeBloco altura="h-20" />
+        </div>
+      ) : lista.length === 0 ? (
         <VazioAmigavel
           icon={FileText}
           titulo="Nenhum relatório publicado ainda"

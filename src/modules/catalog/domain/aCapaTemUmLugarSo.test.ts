@@ -38,9 +38,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { lerFonte } from "../../../testing/lerFonte.ts";
 
-const RAIZ = new URL("../../../", import.meta.url).pathname;
+// `fileURLToPath` e NÃO `.pathname`: no Windows o `pathname` de uma file URL
+// vem com barra na frente da letra do drive (`/C:/Users/…`), e o `readdirSync`
+// resolve isso como caminho RELATIVO — o erro que aparece é
+// `ENOENT: scandir 'C:\C:\Users\…'`, com o drive duplicado.
+//
+// O teste então quebra em qualquer máquina Windows e passa nas outras, que é a
+// pior forma de quebrar: quem vê o vermelho não é quem escreveu. Mesma família
+// do CRLF que `lerFonte` documenta — ler o repositório exige entender o sistema
+// de arquivos em que ele está.
+const RAIZ = fileURLToPath(new URL("../../../", import.meta.url)).replace(/\\/g, "/");
 
 /**
  * O módulo que troca a capa DE PROPÓSITO — o único lugar onde a palavra pode

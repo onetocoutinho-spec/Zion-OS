@@ -1,0 +1,361 @@
+// Sentinela dos estados de rota: carregando, erro, não-encontrado e título.
+//
+// ===========================================================================
+// O QUE ESTE ARQUIVO PROVA — E O QUE NÃO PROVA
+// ===========================================================================
+//
+// PROVA que os arquivos de convenção do App Router existem, que estão do lado
+// certo da fronteira servidor/cliente, e que a tabela deixou de mentir enquanto
+// carrega. NÃO PROVA que o Next os aciona — isso é comportamento do framework,
+// conferido no navegador.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+import { lerFonte } from "../testing/lerFonte.ts";
+
+const caminho = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
+/**
+ * O fonte sem comentários — e a ORDEM das duas linhas é o ponto.
+ *
+ * ===========================================================================
+ * O FALSO VERMELHO QUE ESTA ORDEM CORRIGE (06/08/2026)
+ * ===========================================================================
+ *
+ * Tirar os blocos ANTES das linhas parece inofensivo até aparecer isto, que é
+ * um comentário de LINHA perfeitamente comum no `AppShell`:
+ *
+ *     // O Portal do Cliente (/cliente/*) tem a própria casca
+ *
+ * O `/*` de `/cliente/*` é lido como abertura de bloco, e o stripper engole
+ * tudo até o primeiro `*​/` de verdade — 500 caracteres adiante, levando junto
+ * a linha `useTituloDaAba(...)`. O teste então acusa "o painel da equipe não
+ * põe título" sobre um arquivo que põe.
+ *
+ * Tirando as LINHAS primeiro, aquele `/*` some antes de enganar ninguém.
+ *
+ * É o mesmo padrão que este repositório já documenta em `lerFonte`: sentinela
+ * que lê texto precisa entender o texto que lê. Ali o erro era o CRLF; aqui é
+ * um caminho de rota dentro de um comentário.
+ */
+const semComentarios = (t: string) =>
+  t.replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+const fonte = (rel: string) => semComentarios(lerFonte(new URL(rel, import.meta.url), "utf8"));
+
+// ---------------------------------------------------------------------------
+// OS ARQUIVOS DE CONVENÇÃO
+// ---------------------------------------------------------------------------
+
+test("as três telas de estado existem", () => {
+  const esperados = [
+    { arquivo: "./cliente/loading.tsx", o_que: "a troca de rota dentro do portal" },
+    { arquivo: "./cliente/error.tsx", o_que: "erro numa tela do portal, com a casca de pé" },
+    { arquivo: "./error.tsx", o_que: "erro fora do portal" },
+    { arquivo: "./not-found.tsx", o_que: "endereço que não existe" },
+  ];
+  for (const { arquivo, o_que } of esperados) {
+    assert.ok(existsSync(caminho(arquivo)), `falta ${arquivo} — ${o_que}`);
+  }
+});
+
+test("os dois error.tsx são Client Components, e o not-found NÃO precisa ser", () => {
+  // `error.tsx` recebe `reset` e o liga a um `onClick`: sem `"use client"` o
+  // Next recusa o arquivo. Já o `not-found` só tem links — marcá-lo como
+  // cliente mandaria JavaScript sem motivo para uma tela de beco sem saída.
+  for (const arquivo of ["./error.tsx", "./cliente/error.tsx"]) {
+    assert.match(fonte(arquivo), /^"use client";/, `${arquivo} precisa ser Client Component`);
+    assert.match(fonte(arquivo), /reset/, `${arquivo} não oferece "tentar de novo"`);
+  }
+  assert.ok(
+    !/"use client"/.test(fonte("./not-found.tsx")),
+    "o not-found virou Client Component sem precisar"
+  );
+});
+
+test("o erro do portal mostra o digest, que é o que liga à linha do log", () => {
+  // Em produção a mensagem real é omitida do navegador de propósito. Sem o
+  // digest não há como casar "quebrou para mim" com o log do servidor, e o
+  // relato vira "deu erro".
+  for (const arquivo of ["./error.tsx", "./cliente/error.tsx"]) {
+    assert.match(fonte(arquivo), /error\.digest/, `${arquivo} esconde o digest`);
+  }
+});
+
+test("o not-found oferece os DOIS caminhos de volta", () => {
+  // Há dois tipos de gente chegando aqui, e mandar a lojista para o painel da
+  // equipe seria pior que o próprio 404.
+  const texto = fonte("./not-found.tsx");
+  assert.match(texto, /href="\/cliente"/, "falta a volta para o portal");
+  assert.match(texto, /href="\/"/, "falta a volta para o início");
+});
+
+// ---------------------------------------------------------------------------
+// A TABELA QUE MENTIA
+// ---------------------------------------------------------------------------
+
+test("a tabela distingue 'não sei ainda' de 'não há'", () => {
+  // `useLiveQuery` devolve `data: null` enquanto carrega e as telas escrevem
+  // `(anuncios ?? [])`. Sem esta prop, a tabela recebia lista vazia e afirmava
+  // "Nenhum registro encontrado com os filtros atuais" — falso, e ainda
+  // culpando os filtros de quem está esperando.
+  const tabela = fonte("../components/ui/Table.tsx");
+  assert.match(tabela, /carregando\?:\s*boolean/, "a `Table` perdeu a prop `carregando`");
+  assert.match(tabela, /carregando \?/, "a prop existe mas não troca o que é desenhado");
+  assert.match(tabela, /aria-busy/, "sem `aria-busy` a tabela parece vazia na leitura");
+});
+
+test("o esqueleto da tabela é feito de <tr>/<td>, não de <div>", () => {
+  // Um `<div>` dentro de `<tbody>` é markup inválido: o navegador o EXPULSA
+  // para fora da tabela e o esqueleto aparece flutuando acima dela. É por isso
+  // que `LinhasFantasma` existe aqui em vez de reusar o `EsqueletoDeTabela`.
+  const tabela = fonte("../components/ui/Table.tsx");
+  const inicio = tabela.indexOf("function LinhasFantasma");
+  assert.ok(inicio > 0, "`LinhasFantasma` sumiu");
+  const corpo = tabela.slice(inicio);
+  assert.match(corpo, /<tr\b/, "as linhas fantasma deixaram de ser <tr>");
+  assert.match(corpo, /<td\b/, "as células fantasma deixaram de ser <td>");
+  // A geometria continua vindo do módulo com teste, e não de números soltos.
+  assert.match(tabela, /largurasDaLinhaDaTabela/, "as larguras deixaram de vir da geometria testada");
+  assert.match(tabela, /linhasParaMostrar/, "a contagem de linhas deixou de vir da geometria testada");
+});
+
+test("TODA tela do portal que afirma vazio trata o estado da busca", () => {
+  // ===========================================================================
+  // A LISTA ESCRITA À MÃO ERA O BURACO — e este arquivo já sabia disso
+  // ===========================================================================
+  //
+  // A versão anterior conferia CINCO telas nomeadas aqui. Em 06/08, aplicando a
+  // mesma regra ao diretório inteiro, apareceram mais QUATRO com o defeito:
+  //
+  //   Fotos                 "Importe seus produtos primeiro"  (com 80 na base)
+  //   Ferramentas avulsas   "Importe seus produtos primeiro"  (idem)
+  //   Medidas               "Nenhuma tabela ainda"
+  //   Relatórios            "Nenhum relatório publicado ainda"
+  //
+  // O comentário logo abaixo já dizia "instrumento que aprende só o último caso
+  // encontra só o último caso" — e o instrumento continuava com uma lista de
+  // casos escrita à mão, que é a mesma coisa um nível acima. Agora a lista é
+  // DERIVADA: uma tela nova entra no teste no dia em que nasce.
+  const faltando = telasQueAfirmamVazio()
+    .filter((t) => !trataCarregando(t.fonte))
+    .map((t) => t.nome);
+  assert.deepEqual(
+    faltando,
+    [],
+    `estas telas afirmam "não há" enquanto a busca está no ar: ${faltando.join(", ")}`
+  );
+});
+
+test("a varredura achou telas — se este número for 0, o teste não prova nada", () => {
+  const achadas = telasQueAfirmamVazio();
+  assert.ok(achadas.length >= 8, `só ${achadas.length} telas varridas — a varredura quebrou`);
+  assert.ok(
+    achadas.some((t) => t.nome === "produtos"),
+    "não achei uma tela que certamente afirma vazio"
+  );
+});
+
+test("a sentinela ENXERGA o defeito — nas quatro formas em que ele apareceu", () => {
+  // Sem esta prova, um erro nas expressões faria tudo passar para sempre sem
+  // nunca ter olhado nada. É o falso verde que `lerFonte` documenta, e o teste
+  // acima já passava verde enquanto quatro telas estavam quebradas.
+  const quebradas = [
+    'if ((produtos ?? []).length === 0) { return <VazioAmigavel />; }', // Fotos
+    "{lista.length === 0 ? (<p>Nenhuma tabela ainda</p>) : null}", //      Medidas
+    "{lista.length === 0 && !rasc ? (<p>vazio</p>) : null}", //            Relatórios
+    "if (itens.length === 0) return <p>Nada aqui</p>;", //                 genérica
+  ];
+  for (const codigo of quebradas) {
+    assert.ok(
+      AFIRMA_VAZIO.some((r) => r.test(codigo)),
+      `a varredura deixaria passar: ${codigo}`
+    );
+    assert.ok(!trataCarregando(codigo), `sem guarda nenhuma e mesmo assim aprovada: ${codigo}`);
+  }
+
+  // E o contrário: as formas CERTAS não podem ser acusadas.
+  const corretas = [
+    'estado === "carregando" ? (<Esqueleto />) : lista.length === 0 ? (<Vazio />) : null',
+    "{produtos && familias.length === 0 && (<p>vazio</p>)}",
+    'carregando ? "Carregando vendas…" : carregouUmaVez ? "Nenhuma venda." : "—"',
+    'if (estadoDosProdutos === "carregando") { return <Esqueleto />; }',
+  ];
+  for (const codigo of corretas) {
+    assert.ok(trataCarregando(codigo), `forma correta acusada como defeito: ${codigo}`);
+  }
+});
+
+/** Toda página de `/cliente` que lê dado vivo e afirma "não há". */
+function telasQueAfirmamVazio(): { nome: string; fonte: string }[] {
+  const raiz = fileURLToPath(new URL("./cliente/", import.meta.url));
+  const achadas: { nome: string; fonte: string }[] = [];
+  const descer = (dir: string) => {
+    for (const nome of readdirSync(dir)) {
+      const p = join(dir, nome);
+      if (statSync(p).isDirectory()) descer(p);
+      else if (nome === "page.tsx") {
+        const texto = semComentarios(lerFonte(p));
+        if (!/useLiveQuery/.test(texto)) continue;
+        if (!AFIRMA_VAZIO.some((r) => r.test(texto))) continue;
+        achadas.push({ nome: relative(raiz, dir).replace(/\\/g, "/") || "(raiz)", fonte: texto });
+      }
+    }
+  };
+  descer(raiz);
+  return achadas;
+}
+
+/** As formas em que uma tela afirma "não há" a partir de uma lista. */
+const AFIRMA_VAZIO = [
+  /\(\s*\w+ \?\? \[\]\s*\)\.length === 0/, //  (produtos ?? []).length === 0
+  /\w+\.length === 0 (\?|&&)/, //             lista.length === 0 ? (
+  /if \(\w+\.length === 0\)/, //              if (lista.length === 0) {
+];
+
+/**
+ * As TRÊS formas de tratar o carregamento que existem no portal.
+ *
+ * Estava espalhado por dois testes, cada um conhecendo as formas que eu tinha
+ * escrito por último — e foi assim que a Precificação passou verde usando um
+ * `return` antecipado enquanto dizia "Sem produtos para precificar" a quem tem
+ * 80. Uma definição só, usada pelos dois.
+ */
+function trataCarregando(texto: string): boolean {
+  return (
+    /carregando=\{[^}]*estado === "carregando"[^}]*\}/.test(texto) || // prop na <Table>
+    /estado === "carregando" \? \(/.test(texto) || //                    ternário
+    /if \([^)]*estado === "carregando"\) \{/.test(texto) || //           return antecipado
+    /estadoDo\w+ === "carregando"/.test(texto) || //                     estado renomeado
+    /consulta\.estado === "carregando"/.test(texto) ||
+    // ---------------------------------------------------------------------
+    // AS DUAS FORMAS QUE EU IA CHAMAR DE DEFEITO POR ENGANO (06/08)
+    // ---------------------------------------------------------------------
+    //
+    // Ao derivar a lista de telas, a varredura acusou `peso` e `vendas`. As
+    // duas estavam CERTAS — a minha regra é que só conhecia `estado`:
+    //
+    //   peso     `{produtos && familias.length === 0 && (` — `useLiveQuery`
+    //            devolve `data: null` enquanto carrega, então o teste de nulo
+    //            É o teste de carregamento, e é o mais direto dos três.
+    //
+    //   vendas   estado local próprio, com `carregouUmaVez` distinguindo
+    //            "nunca busquei" de "busquei e não veio" — a mais cuidadosa
+    //            das telas, e a que meu instrumento reprovaria.
+    //
+    // Sentinela que só conhece a forma que eu escrevi por último acusa quem
+    // resolveu o problema de outro jeito. Era esse mesmo erro, invertido, que
+    // deixou quatro telas passarem.
+    /\{\s*\w+ && [^}]*\.length === 0/.test(texto) || //                  guarda de nulo
+    /carregando \?[^:]*:\s*carregouUmaVez/.test(texto) || //             estado local
+    // A FORMA DA VISÃO GERAL, e ela é melhor que as minhas.
+    //
+    // `useLiveQuery` devolve `carregando` e `erro` além de `data`, e a tela
+    // desestrutura os três (`carregando: carregandoProdutos`) para tratar
+    // CARREGANDO, ERRO e NÚMEROS como caminhos exclusivos. As minhas só
+    // separavam dois: uma busca que FALHA cai no meu ramo de "não há" e a tela
+    // afirma loja vazia por causa de um 500.
+    /carregando: carregando\w+/.test(texto) ||
+    /carregando=\{carregando\w*\}/.test(texto) ||
+    /carregando=\{[^}]*\bcarregando\b[^}]*\}/.test(texto)
+  );
+}
+
+test("onde há estado VAZIO, o carregando é testado ANTES dele", () => {
+  // ===========================================================================
+  // O DEFEITO QUE ESTE TESTE EXISTE PARA MATAR — visto no navegador em 06/08
+  // ===========================================================================
+  //
+  // Três telas checavam `(dado ?? []).length === 0` ACIMA da tabela. O `?? []`
+  // transforma "ainda não sei" em "não há", e o ramo de cima ganha:
+  //
+  //   Produtos   "Sua base ainda está vazia. Importe sua planilha acima." (80)
+  //   Anúncios   "Você ainda não tem anúncios gerados"                   (880)
+  //   Auditoria  "Nenhuma auditoria ainda"
+  //
+  // A `<Table carregando>` que a Fase 3 consertou vive DENTRO do outro ramo, e
+  // nunca chegava a renderizar. O conserto estava certo e um nível fundo demais
+  // — o portão ficou verde porque nenhum teste olhava a ORDEM das condições.
+  //
+  // Medido atrasando o fetch de propósito: 1,2s depois da navegação, a tela
+  // mostrava a frase acima e zero linhas.
+  // AS DUAS FORMAS, e a segunda me custou um quarto caso.
+  //
+  // A primeira versão deste teste procurava só o ternário
+  // (`estado === "carregando" ? (`), porque era a forma que eu tinha acabado de
+  // escrever nas três telas. A Precificação usa um `return` ANTECIPADO — e o
+  // teste passou verde enquanto ela dizia "Sem produtos para precificar" a quem
+  // tem 80. Achei abrindo a tela, não no CI.
+  //
+  // Instrumento que aprende só o último caso encontra só o último caso.
+  const telas = [
+    "./cliente/anuncios/page.tsx",
+    "./cliente/auditoria/page.tsx",
+    "./cliente/produtos/page.tsx",
+    "./cliente/precificacao/page.tsx",
+  ];
+  const posicaoDoCarregando = (t: string) => {
+    const ternario = t.indexOf('estado === "carregando" ? (');
+    const antecipado = t.search(/if \([^)]*estado === "carregando"\) \{/);
+    // A PROP TAMBÉM CONTA, e ela é a forma mais limpa das três: em vez de
+    // ramificar a tela, a `<Table>` recebe o estado e decide o que desenhar.
+    // A Precificação usa esta, e sem esta linha o teste a reprovaria por
+    // resolver o problema melhor do que as outras.
+    const naProp = t.search(/carregando=\{[^}]*carregando[^}]*\}/);
+    const achados = [ternario, antecipado, naProp].filter((i) => i >= 0);
+    return achados.length ? Math.min(...achados) : -1;
+  };
+  const posicaoDoVazio = (t: string) =>
+    t.search(
+      /\b(total|lista|filtrados|filtradas)[^\n]{0,20}\.?length? ?=== 0 \? \(|total === 0 \? \(|if \(total === 0\) \{|if \(lista\.length === 0\) \{/
+    );
+
+  for (const tela of telas) {
+    const texto = fonte(tela);
+    const carregando = posicaoDoCarregando(texto);
+    const vazio = posicaoDoVazio(texto);
+    assert.ok(carregando >= 0, `${tela} perdeu a checagem de carregando acima do vazio`);
+    assert.ok(vazio >= 0, `${tela}: não achei o ramo de estado vazio — o teste precisa ser reescrito`);
+    assert.ok(
+      carregando < vazio,
+      `${tela} voltou a afirmar "está vazio" enquanto a busca está no ar`
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// O TÍTULO DA ABA
+// ---------------------------------------------------------------------------
+
+test("as duas cascas põem o título, e a do portal reusa o do cabeçalho", () => {
+  const portal = fonte("../components/client-portal/ClientPortalShell.tsx");
+  assert.match(
+    portal,
+    /useTituloDaAba\(tituloAtual\)/,
+    "o portal deixou de reusar o título do cabeçalho — é a segunda fonte de verdade nascendo"
+  );
+
+  const equipe = fonte("../components/layout/AppShell.tsx");
+  assert.match(equipe, /useTituloDaAba\(/, "o painel da equipe não põe título");
+  // A REGRA É O `null`, NÃO A GRAFIA DELE.
+  //
+  // Esta asserção exigia a expressão literal `useTituloDaAba(daEquipe ?
+  // current.label : null)`. Uma reescrita equivalente — mesma condição, ramos
+  // invertidos — a reprovava. É o terceiro caso hoje de sentinela ancorada na
+  // FORMA em vez do comportamento, e as três reprovaram código correto.
+  //
+  // O que precisa ser verdade: o hook recebe `null` no caminho em que esta
+  // casca não desenha, e é a MESMA condição que decide a saída antecipada.
+  const chamada = equipe.match(/useTituloDaAba\(([^;]*)\);/)?.[1] ?? "";
+  assert.match(
+    chamada,
+    /\bnull\b/,
+    "o AppShell precisa passar `null` fora das rotas dele: efeito de filho roda antes do de pai, e ele apagaria o título que o portal acabou de pôr"
+  );
+  const condicao = chamada.split("?")[0].trim();
+  assert.ok(
+    condicao.length > 0 && new RegExp(`if \\(${condicao}\\) return`).test(equipe),
+    `a condição do título (\`${condicao}\`) precisa ser a mesma que decide a saída antecipada — duas condições para a mesma pergunta divergem`
+  );
+});

@@ -52,11 +52,19 @@ const MARKETPLACES = ["Mercado Livre", "TikTok Shop", "Shopee", "Amazon"] as con
 const STATUS = ["Otimizado", "No ar, sem otimização", "Em revisão", "Sem otimização"] as const;
 const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as const;
 
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas à mão divergem, e
+ * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
+ * ele existe para evitar.
+ */
+const COLUNAS_DA_LISTA = ["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"];
+
 export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
   /** O que o chat desta tela pode responder e sobre quais produtos. */
   const chat = useContextoDaPergunta(clienteId);
-  const { data: produtos, reload } = useLiveQuery(listarProdutos);
+  const { data: produtos, reload, estado } = useLiveQuery(listarProdutos);
   // O RESUMO, não o anúncio inteiro. Esta tela lê `mlItemId`, `produtoId`,
   // `status`, `notaDiagnostico` e `criadoEm` — e nunca abre o JSONB da esteira,
   // que é 76,6% do peso da linha (medido em 03/08/2026: 1.055 kB de 1.377 kB).
@@ -886,7 +894,13 @@ export default function ClienteProdutos() {
         />
       )}
 
-      {total === 0 ? (
+      {/* CARREGANDO ANTES DE VAZIO — o `?? []` faz "ainda não sei" virar
+          "não há", e o ramo de cima ganha: a tela afirmava que a base
+          estava vazia para quem tem 80 produtos. A <Table carregando> vivia
+          no ramo de baixo e nunca chegava a renderizar. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : total === 0 ? (
         <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
           <Package size={20} className="mx-auto mb-2 text-zinc-600" />
           {/* Não diz mais "importe sua planilha": a planilha do ERP é UMA das
@@ -914,7 +928,7 @@ export default function ClienteProdutos() {
             </span>
           </div>
 
-          <Table headers={["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"]}>
+          <Table headers={COLUNAS_DA_LISTA}>
             {filtrados.length === 0 ? (
               <EmptyRow colSpan={7} />
             ) : (

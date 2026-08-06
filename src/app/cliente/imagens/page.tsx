@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import {
@@ -56,7 +57,7 @@ function norm(s: string): string {
  */
 function ClienteImagensInterno() {
   const { clienteId } = useClientPortal();
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  const { data: produtos, estado: estadoDosProdutos } = useLiveQuery(listarProdutos);
   const [modo, setModo] = useState<"produto" | "massa">("produto");
 
   if (!supabaseConfigurado) {
@@ -68,6 +69,20 @@ function ClienteImagensInterno() {
           titulo="Indisponível no modo demonstração"
           descricao="O upload de imagens usa o Supabase Storage. Conecte o Supabase para anexar fotos."
         />
+      </>
+    );
+  }
+
+  // "IMPORTE SEUS PRODUTOS" A QUEM TEM OITENTA.
+  //
+  // O ramo abaixo faz `(produtos ?? []).length === 0` e RETORNA. O `?? []`
+  // transforma "ainda não sei" em "não há", e enquanto a busca está no ar a
+  // tela inteira vira um convite para importar uma base que já existe.
+  if (estadoDosProdutos === "carregando") {
+    return (
+      <>
+        <PageHeader titulo="Fotos dos produtos" subtitulo="Anexe as fotos reais dos seus produtos." />
+        <EsqueletoDeBloco altura="h-40" />
       </>
     );
   }

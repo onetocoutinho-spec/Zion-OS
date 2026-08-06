@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
+import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { useLiveQuery } from "@/lib/hooks";
 import {
   listarTabelasDoCliente,
@@ -86,7 +87,7 @@ function planilhaParaTabelas(planilha: PlanilhaLida): { marca: string; linhas: L
 
 export default function ClienteMedidas() {
   const { clienteId } = useClientPortal();
-  const { data: tabelas, reload } = useLiveQuery(
+  const { data: tabelas, reload, estado } = useLiveQuery(
     () => listarTabelasDoCliente(clienteId),
     [clienteId]
   );
@@ -304,7 +305,16 @@ export default function ClienteMedidas() {
         </Card>
       )}
 
-      {lista.length === 0 && !rasc ? (
+      {/* "NENHUMA TABELA AINDA" ENQUANTO A BUSCA ESTÁ NO AR.
+          `lista` é `tabelas ?? []`, e o `?? []` faz "ainda não sei" virar
+          "não há" — com três sugestões de como criar a primeira. */}
+      {estado === "carregando" ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <EsqueletoDeBloco altura="h-28" />
+          <EsqueletoDeBloco altura="h-28" />
+          <EsqueletoDeBloco altura="h-28" />
+        </div>
+      ) : lista.length === 0 && !rasc ? (
         <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
           <Ruler size={20} className="mx-auto mb-2 text-zinc-600" />
           Nenhuma tabela ainda. Clique em <b>Importar modelos</b> (já vem com as marcas prontas),

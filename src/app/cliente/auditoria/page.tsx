@@ -38,9 +38,17 @@ const ROTULO_PRIO: Record<PrioridadeAuditoria, string> = {
   baixa: "Baixa",
 };
 
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas à mão divergem, e
+ * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
+ * ele existe para evitar.
+ */
+const COLUNAS_DA_LISTA = ["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"];
+
 export default function ClienteAuditoria() {
   const { clienteId, nome } = useClientPortal();
-  const { data: auditorias } = useLiveQuery(listarAuditorias);
+  const { data: auditorias, estado } = useLiveQuery(listarAuditorias);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const [auditando, setAuditando] = useState(false);
@@ -114,7 +122,13 @@ export default function ClienteAuditoria() {
         </p>
       )}
 
-      {lista.length === 0 ? (
+      {/* CARREGANDO ANTES DE VAZIO — o `?? []` faz "ainda não sei" virar
+          "não há", e o ramo de cima ganha: a tela afirmava que a base
+          estava vazia para quem tem 80 produtos. A <Table carregando> vivia
+          no ramo de baixo e nunca chegava a renderizar. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : lista.length === 0 ? (
         <VazioAmigavel
           icon={ClipboardCheck}
           titulo="Nenhuma auditoria ainda"
@@ -160,7 +174,7 @@ export default function ClienteAuditoria() {
             </div>
           </div>
 
-          <Table headers={["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"]}>
+          <Table headers={COLUNAS_DA_LISTA}>
             {ordenadas.length === 0 ? (
               <EmptyRow colSpan={5} />
             ) : (
