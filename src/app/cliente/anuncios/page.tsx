@@ -46,6 +46,9 @@ import {
 } from "@/lib/services/anunciosGerados";
 import { definirEstadoNoML, explicarEstado } from "@/lib/services/estadoDoAnuncioML";
 import { listarProdutos } from "@/lib/services/produtos";
+import { infracoesPorAnuncioDoCliente } from "@/lib/services/infracoesMarketplace";
+import { diagnosticarVitrine } from "@/modules/integration/domain/diagnosticoDaVitrine";
+import { OQueOMercadoLivreDisse } from "@/components/client-portal/OQueOMercadoLivreDisse";
 import { baixarVinculacaoCsv } from "@/lib/services/exportacaoErp";
 import { toneScore } from "@/lib/client-portal/metrics";
 import { toneFor } from "@/lib/status";
@@ -110,6 +113,40 @@ export default function ClienteAnuncios() {
     (a) => a.statusMarketplace && a.statusMarketplace !== "active"
   ).length;
   const semEstado = comMlb.filter((a) => !a.statusMarketplace).length;
+
+  /**
+   * O QUE O MERCADO LIVRE JÁ DISSE — e que nunca chegou a esta tela.
+   *
+   * Os dois lados estavam gravados e nunca se encontravam: o selo por linha já
+   * mostrava "Pausado no ML", e o motivo com o remédio (1.028 dos 1.060 vêm
+   * com o remédio escrito pelo próprio ML) ficava no banco, com a MESMA chave,
+   * a uma junção de distância.
+   */
+  const { data: infracoesPorAnuncio } = useLiveQuery(
+    () => infracoesPorAnuncioDoCliente(clienteId),
+    [clienteId]
+  );
+
+  const diagnostico = useMemo(
+    () =>
+      diagnosticarVitrine(
+        (anuncios ?? []).map((a) => ({
+          mlItemId: a.mlItemId ?? null,
+          statusMarketplace: a.statusMarketplace ?? null,
+          // `produto` é anulável no registro. Sem nome, o MLB é a identidade —
+          // melhor que uma linha vazia que a lojista não consegue localizar.
+          produto: a.produto ?? a.mlItemId ?? "Sem nome",
+        })),
+        infracoesPorAnuncio ?? {}
+      ),
+    [anuncios, infracoesPorAnuncio]
+  );
+
+  /** Remédios por MLB, para a linha expandida não recalcular a lista inteira. */
+  const remediosPorMlb = useMemo(
+    () => new Map(diagnostico.anuncios.map((d) => [d.mlItemId, d.remedios])),
+    [diagnostico]
+  );
 
   function exportarVinculacao() {
     const mapa = new Map<string, Produto>((produtos ?? []).map((p) => [p.id, p]));
@@ -204,6 +241,11 @@ export default function ClienteAnuncios() {
           </div>
         }
       />
+
+      {/* Antes da tabela, e antes dos filtros: o que o ML já apontou é o que
+          decide POR ONDE começar. Depois da tabela, seria mais um número que
+          se lê depois de já ter escolhido a linha errada. */}
+      <OQueOMercadoLivreDisse diagnostico={diagnostico} />
 
       {publicado && <AvisoPublicado resultado={publicado} />}
 
@@ -458,6 +500,10 @@ export default function ClienteAnuncios() {
                     {expandido && a.anuncio && (
                       <tr className="bg-white/[0.015]">
                         <td colSpan={5} className="px-4 py-4">
+                          {/* O remédio ANTES do detalhe: quando o ML apontou
+                              algo, é a única coisa nesta gaveta que muda o
+                              que a lojista faz a seguir. */}
+                          <RemedioDoML remedios={remediosPorMlb.get(a.mlItemId ?? "") ?? []} />
                           <DetalheAnuncio registro={a} />
                         </td>
                       </tr>
@@ -483,6 +529,34 @@ export default function ClienteAnuncios() {
         />
       )}
     </>
+  );
+}
+
+/**
+ * O que o Mercado Livre mandou fazer neste anúncio — na palavra dele.
+ *
+ * NÃO reescrevemos o texto. O ML é quem julga, e parafrasear a instrução dele
+ * introduz uma tradução que ninguém pediu e que pode divergir do que ele cobra
+ * na reavaliação. O HTML já sai limpo da borda de leitura (`semHtml`).
+ *
+ * Sem infração, não desenha nada: um bloco "tudo certo" em cada anúncio
+ * treinaria a leitora a pular a região onde o aviso importante aparece.
+ */
+function RemedioDoML({ remedios }: { remedios: string[] }) {
+  if (remedios.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
+      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-amber-200">
+        <AlertTriangle size={13} /> O Mercado Livre pediu
+      </p>
+      <ul className="mt-1.5 space-y-1">
+        {remedios.map((r) => (
+          <li key={r} className="text-sm leading-snug text-amber-100/90">
+            {r}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -172,7 +172,26 @@ ar**, sem escrever uma linha no ML.
 | com o remédio já escrito pelo ML | **1.028** |
 | anúncios atingidos por FOTOS | **400** |
 | anúncios atingidos por PQT | **327** |
-| **DOMAIN — anúncios PAUSADOS pelo ML** | **25**, e é a única categoria crescendo (03/08) |
+| DOMAIN — a única categoria ainda crescendo (03/08) | 110, em 25 anúncios |
+
+> ⚠️ **CORRIGIDO em 06/08: eu disse "25 anúncios pausados" e estava 5× errado.**
+> Aqueles 25 são os anúncios com infração DOMAIN. O estado real vem de outro
+> lugar — `anuncios_gerados.status_marketplace`, a palavra do próprio ML, lida
+> em 03/08:
+>
+> | estado no ML | anúncios |
+> |---|---|
+> | `active` | 491 |
+> | **`under_review`** | **155** |
+> | **`paused`** | **121** |
+> | `closed` | 12 |
+> | `inactive` | 2 |
+> | `null` — não sabemos | 99 |
+>
+> Cruzando estado com infração pelas regras de `diagnosticoDaVitrine`:
+> **135 fora do ar · 155 em revisão · 182 no ar mas punidos · 320 sem aviso.**
+>
+> **472 dos 792 anúncios não estão vendendo normalmente — 60% da vitrine.**
 
 ### A leitura que só apareceu ao ler o remédio
 
@@ -201,11 +220,12 @@ fotógrafo.**
 Mas o valor não está em consertar. Está em três coisas que ninguém sabia:
 
 1. **Que é foto.** Os três subgrupos escondiam isso — só ler o texto do remédio
-   revelou que PQT e DOMAIN são a mesma causa.
-2. **Que 25 anúncios estão PAUSADOS agora.** Fora do ar, perdendo venda. São 25,
-   não 400 — cabe num dia de trabalho.
-3. **Em que ordem refazer as 400.** Por estoque parado e por venda, não por
-   ordem alfabética.
+   revelou que PQT e DOMAIN são a mesma causa. Medido pela regra que ficou no
+   código: **438 anúncios, 95% dos punidos.**
+2. **Que 135 anúncios estão FORA DO AR agora**, e 155 em revisão. Perdendo
+   venda enquanto a tela dizia só "Pausado no ML", sem o porquê.
+3. **Em que ordem refazer.** Por urgência (fora do ar antes de punido) e, dentro
+   dela, por quantas infrações — não por ordem alfabética.
 
 ### A peça tipada já existe
 
