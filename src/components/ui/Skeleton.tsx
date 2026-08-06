@@ -150,7 +150,14 @@ export function Superficie<T>({
     const e = consulta.erro ?? new Error("Não consegui carregar estes dados.");
     if (erro) return <>{erro(e, consulta.reload)}</>;
     return (
-      <div className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
+      // `role="alert"` faz o leitor de tela ANUNCIAR a falha quando ela aparece.
+      // Sem isso a única pista era a cor âmbar, e a régua de UI do projeto trata
+      // "Visual-only error indication" como defeito de severidade alta: quem não
+      // vê a cor fica esperando um dado que não vem, sem saber que falhou.
+      <div
+        role="alert"
+        className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200"
+      >
         <p className="font-medium">Não consegui carregar estes dados.</p>
         {/* A mensagem técnica fica, e fica discreta. Sem ela o lojista não tem o
             que dizer a quem pode resolver; com ela em destaque, a tela vira log. */}

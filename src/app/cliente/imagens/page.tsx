@@ -253,10 +253,28 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                 <span className="font-semibold text-emerald-400">{lista.filter(enviada).length}</span> de{" "}
                 {lista.length} foto(s) vão para o anúncio.
               </span>
-              <span className="text-zinc-500">Todas entram por padrão · ★ = capa · 👁 tira do envio.</span>
+              {/* A legenda usava ★ 👁 🗑 — EMOJI descrevendo os ícones que os
+                  botões desenham em SVG (lucide). Além de inconsistente, a régua
+                  de UI do projeto lista "emoji como ícone" entre os
+                  anti-padrões. Agora a legenda mostra o MESMO ícone do botão. */}
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-zinc-500">
+                <span>Todas entram por padrão</span>
+                <span className="flex items-center gap-1">
+                  <Star size={11} aria-hidden="true" /> = capa
+                </span>
+                <span className="flex items-center gap-1">
+                  <EyeOff size={11} aria-hidden="true" /> tira do envio
+                </span>
+              </span>
             </div>
 
-            <div className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {/* DUAS COLUNAS NO CELULAR, e não três.
+                Não é gosto: é o que faz os controles caberem. Em toque cada
+                botão passa a ter 44px (a régua exige 44×44) e são três, em
+                coluna, com 8px de gap — 148px de altura. Numa tela de 375px com
+                três colunas a miniatura tem ~110px, e os botões não cabem; com
+                duas ela tem ~167px e cabem. No desktop continuam cinco. */}
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {lista.map((img) => {
                 const vai = enviada(img);
                 const ocupada = imgBusy === img.id;
@@ -265,10 +283,21 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                     key={img.id}
                     className="group relative aspect-square overflow-hidden rounded-lg border border-white/10 bg-black/30"
                   >
+                    {/* `alt=""` declara "imagem decorativa, ignore" — e numa tela
+                        cuja função é GERENCIAR fotos de produto ela não é
+                        decorativa. A régua: "BAD: alt='' for content images".
+                        O texto diz o papel da foto, que é o que distingue uma da
+                        outra aqui: a capa é a que o Mercado Livre exibe. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img.url}
-                      alt=""
+                      alt={
+                        img.tipoImagem === "Principal"
+                          ? "Foto de capa do produto"
+                          : img.tipoImagem === "Infográfico"
+                            ? "Infográfico do produto"
+                            : "Foto do produto"
+                      }
                       className={`h-full w-full object-cover transition-opacity ${vai ? "" : "opacity-35"}`}
                     />
                     {img.tipoImagem === "Principal" && (
@@ -287,31 +316,57 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                       </span>
                     )}
 
-                    {/* Controles */}
-                    <div className="absolute right-1 top-1 flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    {/* CONTROLES — e este bloco tinha três defeitos de uma vez.
+                        ==================================================
+                        Medido em 05/08/2026 contra a régua `ui-ux-pro-max`, que
+                        traz o exemplo LITERAL do que estava aqui:
+
+                          Touch Target Size · High
+                            Code Example Bad: w-6 h-6 buttons     ← era isto
+                          Hover vs Tap · High
+                            Don't: Rely only on hover              ← era isto
+                          Touch Spacing · Medium
+                            Do: Minimum 8px gap                    ← era gap-1 (4px)
+
+                        A consequência não era estética. NUM TELEFONE NÃO EXISTE
+                        HOVER: a tela cuja função é gerenciar fotos não tinha, no
+                        celular, caminho nenhum para definir a capa — que é
+                        exatamente o trabalho que o PLANO-001 §A2 aponta como o
+                        maior ganho de receita disponível desta conta (535 capas
+                        fora do padrão do Mercado Livre).
+
+                        `[@media(pointer:coarse)]` é a mesma consulta que
+                        `components/ui/form.tsx` já usa para os campos. Em toque
+                        os controles ficam SEMPRE visíveis e com 44px; com mouse
+                        continuam aparecendo no hover, com 24px, como antes — o
+                        desktop não muda. */}
+                    <div className="absolute right-1 top-1 flex flex-col gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100">
                       <button
                         onClick={() => tornarCapa(img)}
                         disabled={ocupada}
                         title="Definir como capa"
-                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-violet-300"
+                        aria-label={`Definir como capa${img.tipoImagem === "Principal" ? " (já é a capa)" : ""}`}
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-violet-300 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                       >
-                        <Star size={12} className={img.tipoImagem === "Principal" ? "fill-violet-400 text-violet-400" : ""} />
+                        <Star size={12} aria-hidden="true" className={img.tipoImagem === "Principal" ? "fill-violet-400 text-violet-400" : ""} />
                       </button>
                       <button
                         onClick={() => alternarEnvio(img)}
                         disabled={ocupada}
                         title={vai ? "Tirar do envio (mantém a foto)" : "Voltar a enviar"}
-                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-emerald-300"
+                        aria-label={vai ? "Tirar esta foto do envio (mantém a foto)" : "Voltar a enviar esta foto"}
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-emerald-300 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                       >
-                        {vai ? <Eye size={12} /> : <EyeOff size={12} />}
+                        {vai ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
                       </button>
                       <button
                         onClick={() => remover(img)}
                         disabled={ocupada}
                         title="Remover (apaga a foto)"
-                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-red-400"
+                        aria-label="Remover esta foto (apaga do catálogo)"
+                        className="flex h-6 w-6 items-center justify-center rounded bg-black/70 text-zinc-200 hover:text-red-400 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
                       >
-                        {ocupada ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        {ocupada ? <Loader2 size={12} aria-hidden="true" className="animate-spin" /> : <Trash2 size={12} aria-hidden="true" />}
                       </button>
                     </div>
                   </div>
@@ -330,8 +385,16 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
           {enviando ? "Enviando…" : lista.length > 0 ? "Adicionar mais fotos" : "Enviar fotos"}
           <input type="file" accept="image/*" multiple className="hidden" onChange={aoEscolher} disabled={enviando} />
         </label>
+        {/* "Passe o mouse" era a instrução, e no celular ela era FALSA duas
+            vezes: não existe mouse, e antes do conserto acima não existia
+            caminho nenhum. Consertar o comportamento e deixar o texto velho
+            trocaria um defeito por outro — a tela passaria a funcionar dizendo
+            que não. O texto agora vale nos dois casos, e os emoji saíram junto
+            (os botões desenham os ícones em SVG). */}
         <p className="mt-2 text-xs text-zinc-500">
-          Todas as fotos já vão para o anúncio — você não seleciona uma a uma. Passe o mouse numa foto para definir a capa (★), tirar do envio (👁, sem apagar) ou remover (🗑).
+          Todas as fotos já vão para o anúncio — você não seleciona uma a uma. No celular
+          os botões de cada foto ficam sempre visíveis; no computador eles aparecem ao
+          passar o mouse. Com eles você define a capa, tira do envio sem apagar, ou remove.
         </p>
       </Card>
 
@@ -423,7 +486,7 @@ function EstudioIA({
         <div className="w-28 shrink-0">
           <p className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Foto real</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={fonte.url} alt="" className="aspect-square w-full rounded-lg border border-white/5 object-cover" />
+          <img src={fonte.url} alt="Foto real do produto, antes da edição" className="aspect-square w-full rounded-lg border border-white/5 object-cover" />
         </div>
 
         {/* Ações */}
@@ -464,7 +527,7 @@ function EstudioIA({
           <p className="mb-2 text-[11px] uppercase tracking-wider text-zinc-500">Resultado</p>
           <div className="flex flex-wrap items-end gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={resultado.dataUrl} alt="" className="w-48 rounded-lg border border-white/10" />
+            <img src={resultado.dataUrl} alt="Resultado da edição, ainda não salvo" className="w-48 rounded-lg border border-white/10" />
             <div className="flex gap-2">
               <Button onClick={salvar} disabled={salvando}>
                 {salvando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
