@@ -218,7 +218,7 @@ function ConteudoAprovacoes({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Aguardando aprovação" value={aguardando} icon={Clock} tone="yellow" hint="Passaram no A10 — revisar e aprovar" />
         <StatCard label="Rascunhos" value={rascunhos} icon={ShieldCheck} tone="gray" hint="Com pendências ou A10 reprovado" />
         <StatCard label="Aprovados" value={aprovadosN} icon={CheckCircle2} tone="green" hint="Prontos para publicar (Fase 2)" />

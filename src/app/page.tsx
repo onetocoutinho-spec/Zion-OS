@@ -96,7 +96,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Indicadores */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Clientes ativos" value={clientesAtivos} icon={Users} tone="green" hint="Contratos em operação" />
         <StatCard label="Clientes em onboarding" value={emOnboarding} icon={Rocket} tone="violet" hint="Entrando na operação" />
         <StatCard label="Produtos em cadastro" value={produtosEmCadastro} icon={Package} tone="blue" hint="Aguardando publicação" />
@@ -113,7 +113,14 @@ export default function DashboardPage() {
           <ul className="space-y-3">
             {proximasAcoes.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-3">
-                <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
+                {/* 38px medidos no navegador; em toque sobe para 44 sem
+                    mexer no espaçamento com mouse. São DUAS listas com este
+                    mesmo Link — consertar uma só deixaria metade das tarefas
+                    difíceis de acertar, e a asserção do script pegou isso. */}
+                <Link
+                  href={`/tarefas/${t.id}/editar`}
+                  className="min-w-0 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-col [@media(pointer:coarse)]:justify-center"
+                >
                   <p className="text-sm text-zinc-200 hover:text-violet-300">{t.proximaAcao}</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {t.cliente} · {t.responsavel} · prazo {formatDate(t.prazo)}
@@ -133,8 +140,15 @@ export default function DashboardPage() {
           <ul className="space-y-3">
             {tarefasRecentes.map((t) => (
               <li key={t.id} className="flex items-start justify-between gap-3">
-                <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
-                  <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
+                {/* 38px medidos no navegador; em toque sobe para 44 sem
+                    mexer no espaçamento com mouse. São DUAS listas com este
+                    mesmo Link — consertar uma só deixaria metade das tarefas
+                    difíceis de acertar, e a asserção do script pegou isso. */}
+                <Link
+                  href={`/tarefas/${t.id}/editar`}
+                  className="min-w-0 [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-col [@media(pointer:coarse)]:justify-center"
+                >
+                  <p className="line-clamp-2 text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
                     {t.cliente} · {t.area}
                   </p>

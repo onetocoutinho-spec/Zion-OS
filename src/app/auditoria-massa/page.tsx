@@ -207,7 +207,7 @@ export default function AuditoriaMassaPage() {
       />
 
       {/* Indicadores */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Anúncios importados" value={totalImportados} icon={PackageSearch} tone="blue" hint="Somando todas as importações" />
         <StatCard label="Auditados" value={auditorias.length} icon={ClipboardList} tone="violet" hint="Amostra representativa carregada" />
         <StatCard label="Críticos" value={criticos} icon={AlertTriangle} tone="red" hint="Alto valor + score baixo" />
