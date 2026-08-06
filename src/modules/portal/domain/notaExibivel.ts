@@ -67,5 +67,10 @@ export function explicarVeredito(r: RegistroComNota & { vereditoA10: string }): 
   if (nota === null) {
     return "Veio pronto do marketplace — a IA não avaliou este anúncio.";
   }
-  return `Veredito da IA: ${r.vereditoA10} · nota ${nota}/100`;
+  // "VEREDITO" SAIU DA FRASE. É palavra de tribunal, e a lojista não está sendo
+  // julgada — a IA olhou o anúncio dela e disse se está pronto. O nome interno
+  // da régua (`vereditoA10`) fica no DADO, onde pertence: o A10 é o critério, e
+  // critério é coisa nossa.
+  const julgamento = r.vereditoA10 === "aprovado" ? "Aprovado" : "Reprovado";
+  return `${julgamento} pela IA · nota ${nota}/100`;
 }

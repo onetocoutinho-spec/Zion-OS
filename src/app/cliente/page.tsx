@@ -280,7 +280,7 @@ export default function ClienteHome() {
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
         />
         <StatCard
-          label="Score médio"
+          label="Nota média dos anúncios"
           value={m.score != null ? `${m.score}` : "—"}
           hint={m.score != null ? "de 100" : "otimize para gerar"}
           icon={Gauge}

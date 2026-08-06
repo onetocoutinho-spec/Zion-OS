@@ -66,7 +66,7 @@ const MAPA_FILTRO: Record<string, string> = {
  * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
  * ele existe para evitar.
  */
-const COLUNAS_DA_LISTA = ["Anúncio", "Score", "Problema principal", "Status", "Ação"];
+const COLUNAS_DA_LISTA = ["Anúncio", "Nota", "Problema principal", "Status", "Ação"];
 
 export default function ClienteAnuncios() {
   const { clienteId, nome } = useClientPortal();
@@ -280,7 +280,7 @@ export default function ClienteAnuncios() {
             //   "Prioridade"  — variava, mas era DERIVADA de Score e Problema
             //                   principal, que estão ali ao lado. Redundância,
             //                   não constância. Decisão do dono do produto.
-            headers={["Anúncio", "Score", "Problema principal", "Status", "Ação"]}
+            headers={COLUNAS_DA_LISTA}
           >
             {grupos.length === 0 ? (
               <EmptyRow colSpan={5} />

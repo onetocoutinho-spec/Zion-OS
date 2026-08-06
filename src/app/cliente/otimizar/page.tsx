@@ -54,6 +54,7 @@ import { quotaEsteira } from "@/lib/services/perfil";
 import type { FerramentaPortal } from "@/lib/agentes/catalogo";
 import { precoMinimo, MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
+import { foiAvaliadoPelaIA, explicarVeredito } from "@/modules/portal/domain/notaExibivel";
 import { saudeMargem } from "@/lib/client-portal/metrics";
 import { formatBRL } from "@/lib/format";
 import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
@@ -702,13 +703,35 @@ function ResultadoPasso({
       ) : (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Pill tone={registro!.vereditoA10 === "aprovado" ? "green" : "yellow"}>
-              Nota {registro!.notaDiagnostico}/100
+            {/* A CONTRADIÇÃO DE 03/08 ESTAVA AQUI TAMBÉM.
+              *
+              * Dois selos diziam metades do mesmo fato — "Nota 0/100" e
+              * "Veredito: aprovado", com o valor cru em minúscula. Num anúncio
+              * importado do ML, onde a nota é zero por AUSÊNCIA de medição, os
+              * dois juntos formavam a frase impossível que `notaExibivel`
+              * existe para impedir: ninguém tira zero e é aprovado.
+              *
+              * `explicarVeredito` já sabe as três coisas — se houve avaliação,
+              * o julgamento em palavra de gente, e a nota. Um selo, uma frase,
+              * a mesma função que a lista de anúncios já usava. */}
+            <Pill
+              tone={
+                !foiAvaliadoPelaIA(registro!)
+                  ? "gray"
+                  : registro!.vereditoA10 === "aprovado"
+                    ? "green"
+                    : "yellow"
+              }
+            >
+              {explicarVeredito(registro!)}
             </Pill>
-            <Pill tone={registro!.vereditoA10 === "aprovado" ? "green" : "yellow"}>
-              Veredito: {registro!.vereditoA10}
-            </Pill>
-            {registro!.qtdPendencias > 0 && <Pill tone="yellow">{registro!.qtdPendencias} pendência(s)</Pill>}
+            {registro!.qtdPendencias > 0 && (
+              <Pill tone="yellow">
+                {registro!.qtdPendencias === 1
+                  ? "1 pendência"
+                  : `${registro!.qtdPendencias} pendências`}
+              </Pill>
+            )}
           </div>
 
           <ConteudoFerramenta campo={ferramenta.key} anuncio={anuncio} />

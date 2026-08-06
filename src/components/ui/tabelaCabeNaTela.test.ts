@@ -96,7 +96,18 @@ test("os colSpan acompanharam o número de colunas", () => {
     new URL("../../app/cliente/anuncios/page.tsx", import.meta.url),
     "utf8"
   );
-  const cabecalhos = tela.slice(tela.indexOf("headers={["), tela.indexOf("]}", tela.indexOf("headers={[")));
+  // A LISTA PODE MORAR NUMA CONSTANTE, e é melhor quando mora.
+  //
+  // Este recorte procurava `headers={[` literal. Quando as colunas viraram
+  // `COLUNAS_DA_LISTA` — para a tabela carregada e o esqueleto usarem a MESMA
+  // lista, em vez de duas escritas à mão que divergem — ele passou a achar zero
+  // colunas e reprovou a versão melhor.
+  //
+  // É o quarto teste hoje ancorado na FORMA em vez do conteúdo. Agora ele
+  // procura onde a lista realmente está: a constante primeiro, o literal depois.
+  const daConstante = tela.match(/const COLUNAS_DA_LISTA = \[([^\]]*)\]/);
+  const doLiteral = tela.slice(tela.indexOf("headers={["), tela.indexOf("]}", tela.indexOf("headers={[")));
+  const cabecalhos = daConstante ? daConstante[1] : doLiteral;
   const colunas = (cabecalhos.match(/"/g) ?? []).length / 2;
   assert.equal(colunas, 5, `esperava 5 colunas, achei ${colunas}`);
   for (const m of tela.matchAll(/colSpan=\{(\d+)\}/g)) {

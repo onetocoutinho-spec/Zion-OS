@@ -50,7 +50,23 @@ import type { Produto, KitComponente } from "@/lib/types";
 
 const MARKETPLACES = ["Mercado Livre", "TikTok Shop", "Shopee", "Amazon"] as const;
 const STATUS = ["Otimizado", "No ar, sem otimização", "Em revisão", "Sem otimização"] as const;
-const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as const;
+const SCORES = ["Alta (70+)", "Média (40-69)", "Baixa (0-39)", "Sem nota"] as const;
+
+/**
+ * A faixa de uma nota — a MESMA lista que enche o seletor.
+ *
+ * As duas estavam escritas à mão em lugares distantes: as opções aqui e a
+ * classificação lá dentro do filtro. Renomear uma e esquecer a outra faz o
+ * filtro comparar "Alta (70+)" com "Alto (70+)" — nenhum produto casa, e a
+ * tela fica vazia sem dizer por quê. O tipo de retorno é a garantia: se
+ * divergirem de novo, quem reclama é o compilador.
+ */
+function faixaDaNota(nota: number | null): (typeof SCORES)[number] {
+  if (nota == null) return "Sem nota";
+  if (nota >= 70) return "Alta (70+)";
+  if (nota >= 40) return "Média (40-69)";
+  return "Baixa (0-39)";
+}
 
 /**
  * As colunas, numa constante porque DUAS renderizações as usam: a tabela
@@ -58,7 +74,7 @@ const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as 
  * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
  * ele existe para evitar.
  */
-const COLUNAS_DA_LISTA = ["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"];
+const COLUNAS_DA_LISTA = ["Produto", "Falta", "Estoque", "Preço", "Status", "Nota", "Ação"];
 
 export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
@@ -636,7 +652,7 @@ export default function ClienteProdutos() {
       if (fScore !== "Todos") {
         const s = scorePorProduto.get(p.id) ?? null;
         const faixa =
-          s == null ? "Sem score" : s >= 70 ? "Alto (70+)" : s >= 40 ? "Médio (40-69)" : "Baixo (0-39)";
+          faixaDaNota(s);
         if (faixa !== fScore) return false;
       }
       if (q && !`${p.nome} ${p.sku} ${p.codErp ?? ""}`.toLowerCase().includes(q)) return false;
@@ -922,7 +938,7 @@ export default function ClienteProdutos() {
             </div>
             <FilterSelect label="Marketplace" value={fMarket} options={MARKETPLACES} onChange={setFMarket} />
             <FilterSelect label="Status" value={fStatus} options={STATUS} onChange={setFStatus} />
-            <FilterSelect label="Score" value={fScore} options={SCORES} onChange={setFScore} />
+            <FilterSelect label="Nota do anúncio" value={fScore} options={SCORES} onChange={setFScore} />
             <span className="ml-auto text-xs text-zinc-500">
               {filtrados.length} de {total} produtos
             </span>

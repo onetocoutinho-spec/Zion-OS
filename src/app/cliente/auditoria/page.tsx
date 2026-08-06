@@ -44,7 +44,7 @@ const ROTULO_PRIO: Record<PrioridadeAuditoria, string> = {
  * esqueleto com número de colunas diferente do conteúdo é o pulo de layout que
  * ele existe para evitar.
  */
-const COLUNAS_DA_LISTA = ["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"];
+const COLUNAS_DA_LISTA = ["Produto / anúncio", "Prioridade", "Nota", "Principal problema", "Próxima ação"];
 
 export default function ClienteAuditoria() {
   const { clienteId, nome } = useClientPortal();
@@ -156,7 +156,7 @@ export default function ClienteAuditoria() {
             <StatCard label="Críticos" value={m.criticos} icon={AlertOctagon} tone={m.criticos ? "red" : "gray"} />
             <StatCard label="Prioridade alta" value={m.altas} icon={Flame} tone={m.altas ? "orange" : "gray"} />
             <StatCard
-              label="Score médio"
+              label="Nota média"
               value={m.score != null ? m.score : "—"}
               hint="de 100"
               icon={Gauge}
