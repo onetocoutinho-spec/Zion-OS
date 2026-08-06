@@ -95,7 +95,12 @@ export default function ClienteVendas() {
         titulo="Vendas"
         subtitulo="Faturamento, lucro e pedidos da sua loja no Mercado Livre."
         acao={
-          <div className="flex items-center gap-2">
+          /* `flex-wrap` — sem ele os quatro botões não quebram, empurram a
+              largura e deslocam a PÁGINA inteira. Visto num print da conta real
+              em 06/08/2026: o conteúdo aparecia cortado à esquerda e o título
+              fora da tela. O `PageHeader` já quebrava linha; era este grupo de
+              dentro que não. */
+          <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
               {PERIODOS.map((p) => (
                 <button

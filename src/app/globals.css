@@ -86,3 +86,99 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===========================================================================
+   NO CELULAR, A LINHA DA TABELA É UM CARTÃO
+   ===========================================================================
+
+   O DEFEITO, num print da conta real em 06/08/2026: a lojista abriu Meus
+   Produtos no telefone e viu
+
+       40/100   [Kit]  [Medidas]  [Otimizar]
+
+   sem NOME DE PRODUTO NENHUM. A tabela tem SETE colunas; em 375px ela não cabe,
+   o `overflow-x-auto` deixa rolar, e a coluna de identidade — a primeira — sai
+   da tela. Ela estava a um toque de "Otimizar" sem saber em qual produto.
+
+   Rolagem horizontal numa tabela de 3 colunas é aceitável. Numa de sete, ela
+   ESCONDE a identidade, e aí o que sobra na tela são números sem sujeito — o
+   mesmo defeito que o AUD-001 mediu nos dados, agora produzido pelo layout.
+
+   A régua (`ui-ux-pro-max`, Table Handling) dá as duas saídas: "horizontal
+   scroll OR card layout". O projeto tinha a primeira e ela não serve aqui.
+
+   POR QUE ISTO ESTÁ NO CSS E NÃO EM CADA PÁGINA
+
+   São CINCO telas com tabela — produtos, anúncios, auditoria, pendências,
+   precificação. Reescrever cada uma em cartão seria cinco implementações
+   divergindo na primeira que alguém esquecer, que é o defeito de "a regra em
+   cinco lugares" que este repositório já pagou na regra da capa.
+
+   Aqui a transformação é do CSS, o `<table>` continua sendo `<table>` (leitor
+   de tela e semântica preservados no desktop), e o rótulo de cada campo vem do
+   `data-rotulo` que a primitiva `Table` injeta a partir dos próprios headers —
+   uma fonte de verdade, não duas.
+
+   O `sm` é 640px: acima disso volta a ser tabela, e nada muda no computador. */
+@media (max-width: 639px) {
+  .tabela-cartao table,
+  .tabela-cartao tbody,
+  .tabela-cartao tr,
+  .tabela-cartao td {
+    display: block;
+    width: auto;
+  }
+
+  /* O cabeçalho não serve num cartão: o rótulo vai em cada campo. */
+  .tabela-cartao thead {
+    display: none;
+  }
+
+  .tabela-cartao tr {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  }
+  .tabela-cartao tr:last-child {
+    border-bottom: 0;
+  }
+
+  /* Rótulo à esquerda, valor à direita — a leitura fica em pares, e o nome do
+     campo nunca se perde por rolagem porque não há rolagem. */
+  .tabela-cartao td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.25rem 0.25rem;
+    text-align: right;
+  }
+  .tabela-cartao td::before {
+    content: attr(data-rotulo);
+    flex: 0 0 auto;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgb(161 161 170 / 0.75);
+    text-align: left;
+  }
+
+  /* A IDENTIDADE é o título do cartão: largura inteira, sem rótulo, em cima.
+     É exatamente o que a rolagem escondia. */
+  .tabela-cartao td[data-identidade] {
+    display: block;
+    text-align: left;
+    padding-bottom: 0.5rem;
+  }
+  .tabela-cartao td[data-identidade]::before {
+    content: none;
+  }
+
+  /* Uma célula que ocupa a linha toda (o estado vazio) não é par rótulo/valor. */
+  .tabela-cartao td[colspan]::before {
+    content: none;
+  }
+  .tabela-cartao td[colspan] {
+    display: block;
+    text-align: left;
+  }
+}

@@ -181,7 +181,12 @@ export default function ClienteAnuncios() {
             : "Os anúncios que a IA gerou para você. Revise e aprove os que estiverem prontos."
         }
         acao={
-          <div className="flex items-center gap-2">
+          /* `flex-wrap` — sem ele os quatro botões não quebram, empurram a
+              largura e deslocam a PÁGINA inteira. Visto num print da conta real
+              em 06/08/2026: o conteúdo aparecia cortado à esquerda e o título
+              fora da tela. O `PageHeader` já quebrava linha; era este grupo de
+              dentro que não. */
+          <div className="flex flex-wrap items-center gap-2">
             {publicados > 0 && (
               <Button
                 variant="ghost"
