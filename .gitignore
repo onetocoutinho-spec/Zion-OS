@@ -51,8 +51,12 @@ segredos*
 # vercel
 .vercel
 
-# local tooling
-.claude/
+# local tooling — o que e local fica de fora, mas a REGUA fica versionada:
+# uma skill que orienta o codigo e parte do projeto, nao configuracao de
+# maquina. Sem estas excecoes ela so entraria com `git add -f`, e todo
+# mundo esquece o -f.
+.claude/*
+!.claude/skills/
 
 # typescript
 *.tsbuildinfo

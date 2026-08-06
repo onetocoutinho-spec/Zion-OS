@@ -16,7 +16,7 @@ import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 type Estado = "idle" | "enviando" | "ok" | "erro";
 const SELECT_CLASS =
-  "w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/40";
+  "w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500";
 
 export default function NovoUsuarioPage() {
   const { data: clientes } = useLiveQuery(listarClientes);

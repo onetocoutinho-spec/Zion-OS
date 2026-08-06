@@ -107,7 +107,7 @@ export function GeradorDeGrade({
                     ? "34, 35, 36, 37"
                     : "valores separados por vírgula"
               }
-              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 hover:border-white/20 focus:border-violet-500/60"
+              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 hover:border-white/20 focus:border-violet-500"
             />
           </label>
         ))}
@@ -117,17 +117,17 @@ export function GeradorDeGrade({
         <label className="block">
           <span className="mb-1 block text-[11px] font-medium text-zinc-500">Custo padrão (R$)</span>
           <input inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/60" />
+            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500" />
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] font-medium text-zinc-500">Preço padrão (R$)</span>
           <input inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/60" />
+            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500" />
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] font-medium text-zinc-500">Estoque padrão</span>
           <input inputMode="numeric" value={estoque} onChange={(e) => setEstoque(e.target.value)}
-            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/60" />
+            className="w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500" />
         </label>
       </div>
 

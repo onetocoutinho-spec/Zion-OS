@@ -51,3 +51,38 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
+
+/* ===========================================================================
+   QUEM PEDIU MENOS MOVIMENTO RECEBE MENOS MOVIMENTO
+   ===========================================================================
+
+   Medido em 05/08/2026, com a régua `ui-ux-pro-max` (Motion Sensitivity e
+   Reduced Motion, as duas de severidade High): 57 arquivos usam animação e
+   apenas UM — `ui/Skeleton.tsx` — checava a preferência do sistema.
+
+   As animações deste projeto são duas: `animate-spin` (32 usos, os spinners de
+   carregamento) e `animate-pulse` (12, o esqueleto). Nenhum parallax, nenhum
+   scroll-trigger. É o caso mais benigno possível — e é justamente por isso que
+   a regra vale aqui: sensibilidade vestibular não escolhe qual movimento
+   incomoda, e um spinner girando indefinidamente numa tela que carrega devagar
+   é movimento contínuo no campo de visão.
+
+   FICA NO CSS GLOBAL, E NÃO EM 57 ARQUIVOS, de propósito. `motion-reduce:` do
+   Tailwind resolveria caso a caso e exigiria que cada tela nova lembrasse — o
+   mesmo defeito de "a regra em cinco lugares" que este repositório já pagou na
+   regra da capa. Aqui a regra tem UM lugar, e telas futuras a herdam sem
+   precisar saber que ela existe.
+
+   NÃO usa `animation: none`. Um spinner que PARA é pior que um que gira: ele
+   afirma que travou. A animação continua, muito mais devagar, então o
+   carregamento continua sendo legível como carregamento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

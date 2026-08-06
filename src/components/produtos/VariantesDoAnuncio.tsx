@@ -19,7 +19,7 @@ import {
 import type { Anuncio, AnuncioVariante } from "@/lib/types";
 
 const inputCls =
-  "rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500/60";
+  "rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500";
 
 export function VariantesDoAnuncio({ anuncio }: { anuncio: Anuncio }) {
   const { data: vinculadas, reload } = useLiveQuery(
@@ -158,7 +158,7 @@ function LinhaAnuncioVariante({
         </select>
       </td>
       <td className="px-3 py-2">
-        <button onClick={onExcluir} title="Desvincular"
+        <button onClick={onExcluir} title="Desvincular" aria-label="Desvincular esta variante"
           className="flex h-6 w-6 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400">
           <Trash2 size={13} />
         </button>

@@ -381,7 +381,7 @@ export default function ClienteOtimizar() {
             value={buscaProd}
             onChange={(e) => setBuscaProd(e.target.value)}
             placeholder="Buscar produto…"
-            className="mb-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+            className="mb-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
           />
           <ul className="max-h-96 divide-y divide-white/[0.04] overflow-y-auto">
             {produtosFiltrados.map((p) => {

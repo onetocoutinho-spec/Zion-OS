@@ -39,7 +39,7 @@ const STATUS_PASSO: Record<PassoCadeia["status"], { rotulo: string; classe: stri
 };
 
 const SELECT =
-  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500/50";
+  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (

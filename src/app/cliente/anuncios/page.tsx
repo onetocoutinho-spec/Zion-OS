@@ -247,7 +247,7 @@ export default function ClienteAnuncios() {
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar por produto, título ou MLB…"
-                className="w-64 rounded-lg border border-white/10 bg-white/[0.03] py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500/40 focus:outline-none"
+                className="w-64 rounded-lg border border-white/10 bg-white/[0.03] py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
               />
             </div>
             <FilterSelect label="Status" value={fStatus} options={STATUS_FILTRO} onChange={setFStatus} />

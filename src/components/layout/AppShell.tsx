@@ -155,6 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 onClick={sair}
                 title="Sair do Zion OS"
+                aria-label="Sair do Zion OS"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/5 hover:text-red-400"
               >
                 <LogOut size={16} />

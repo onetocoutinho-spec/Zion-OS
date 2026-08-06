@@ -601,7 +601,7 @@ function Jornada() {
                   setAviso(null);
                   setPublicado(null);
                 }}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500/50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500"
               >
                 <option value="">Escolha um produto…</option>
                 {(produtos ?? []).map((p) => (

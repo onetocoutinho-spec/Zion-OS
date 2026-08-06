@@ -19,6 +19,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
+import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
 import { PageHeader, ActionTile, Section, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
@@ -42,14 +43,19 @@ export default function ClienteHome() {
 
   // A home precisa do PESO, não só do produto: é o peso que decide se a
   // precificação existe, e era justamente ele que não aparecia em lugar nenhum.
-  const { data: produtos } = useLiveQuery(
-    () => listarProdutosComPeso(clienteId),
-    [clienteId]
-  );
-  const { data: anuncios } = useLiveQuery(
-    () => listarAnunciosGeradosDoCliente(clienteId),
-    [clienteId]
-  );
+  // `carregando` e `erro` NÃO SÃO OPCIONAIS AQUI — ver o bloco abaixo.
+  const {
+    data: produtos,
+    carregando: carregandoProdutos,
+    erro: erroProdutos,
+    reload: relerProdutos,
+  } = useLiveQuery(() => listarProdutosComPeso(clienteId), [clienteId]);
+  const {
+    data: anuncios,
+    carregando: carregandoAnuncios,
+    erro: erroAnuncios,
+    reload: relerAnuncios,
+  } = useLiveQuery(() => listarAnunciosGeradosDoCliente(clienteId), [clienteId]);
   const { data: auditorias } = useLiveQuery(listarAuditorias);
   const { data: pendencias } = useLiveQuery(
     () => listarPendenciasDoCliente(clienteId),
@@ -59,7 +65,12 @@ export default function ClienteHome() {
     () => listarRelatoriosDoCliente(clienteId),
     [clienteId]
   );
-  const { data: imagens } = useLiveQuery(listarTodasImagens);
+  const {
+    data: imagens,
+    carregando: carregandoImagens,
+    erro: erroImagens,
+    reload: relerImagens,
+  } = useLiveQuery(listarTodasImagens);
   const { data: canal } = useLiveQuery(
     () => buscarCanal(clienteId, "Mercado Livre"),
     [clienteId]
@@ -75,6 +86,33 @@ export default function ClienteHome() {
   );
   const { data: proximas } = useLiveQuery(portalProximasAcoes);
   const { data: quota } = useLiveQuery(quotaEsteira);
+
+  // ==========================================================================
+  // "NÃO SEI" NÃO PODE SAIR COMO ZERO — NEM NA PRIMEIRA TELA
+  // ==========================================================================
+  //
+  // Esta tela abria dez consultas e usava só `data` de todas. Como
+  // `useLiveQuery` começa em `{ data: null, carregando: true }` e o cálculo
+  // abaixo faz `produtos ?? []`, enquanto carregava — E QUANDO FALHAVA — a
+  // lojista via zero produtos, zero anúncios, nada pendente, nenhuma infração.
+  // Uma loja vazia e em paz.
+  //
+  // Este repositório tem uma regra escrita em dezenas de arquivos: zero
+  // significa "não sei", nunca um valor. Ela era aplicada com rigor à
+  // PROCEDÊNCIA do dado (`infracoes?: number` é opcional justamente para não
+  // afirmar conta limpa sem ter olhado) e não era aplicada ao ESTADO DE CARGA.
+  // O `?? []` fazia o que o `?? 0` é proibido de fazer.
+  //
+  // O arquivo já registrava TRÊS consertos desta mesma família, nesta mesma
+  // tela — "Otimizado" com zero avaliados, "Ativos: 791" contra os 491 do ML, e
+  // "Sem otimização: 0". Este é o quarto, e é o que faltava.
+  //
+  // SÓ AS TRÊS ESSENCIAIS entram aqui, e isso é escolha: produtos, anúncios e
+  // imagens formam todos os números dos cards. Auditorias, relatórios, quota e
+  // próximas ações alimentam listas que já sabem se estão vazias — exigi-las
+  // atrasaria a tela inteira por causa da parte menos importante dela.
+  const carregandoOsNumeros = carregandoProdutos || carregandoAnuncios || carregandoImagens;
+  const erroDosNumeros = erroProdutos ?? erroAnuncios ?? erroImagens;
 
   const m = useMemo(() => {
     const prods = produtos ?? [];
@@ -178,7 +216,48 @@ export default function ClienteHome() {
         }
       />
 
-      {/* Cards de visão geral */}
+      {/* Cards de visão geral — três estados, nunca um zero de mentira.
+          O esqueleto reserva a geometria dos oito cartões, então quando os
+          números chegam a página não pula (a régua trata salto de layout como
+          defeito de severidade alta). */}
+      {carregandoOsNumeros ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }, (_, i) => (
+            <EsqueletoDeBloco key={i} altura="h-[92px]" className="rounded-xl" />
+          ))}
+        </div>
+      ) : erroDosNumeros ? (
+        // NÃO é o card de zero, e não é um cartão vazio: é a falha dita em voz
+        // alta. `role="alert"` para o leitor de tela anunciar — a régua trata
+        // "erro só na cor" como defeito de severidade alta — e um botão, porque
+        // recarregar a página inteira para tentar de novo é trabalho que o
+        // sistema pode fazer por ela.
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200"
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle size={15} className="shrink-0" />
+            Não consegui ler os números da sua loja agora.
+          </p>
+          <p className="mt-1 text-xs text-amber-200/70">
+            Isto não quer dizer que a loja está vazia — quer dizer que a leitura falhou.
+            Nada foi alterado.
+          </p>
+          <p className="mt-1 text-xs text-amber-200/50">{erroDosNumeros.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              relerProdutos();
+              relerAnuncios();
+              relerImagens();
+            }}
+            className="mt-3 rounded-md border border-amber-400/30 px-2.5 py-1 text-xs transition hover:bg-amber-400/10 [@media(pointer:coarse)]:min-h-11"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {/* A ressalva anda junto do número: "não sabemos" nunca vira "no ar". */}
         <StatCard
@@ -222,6 +301,7 @@ export default function ClienteHome() {
         <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
         <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
       </div>
+      )}
 
 
       {/* O que você quer fazer hoje? */}
