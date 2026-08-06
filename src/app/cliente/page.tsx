@@ -1,27 +1,21 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import {
   Megaphone,
   AlertTriangle,
   Package,
-  Gauge,
   ListChecks,
   FileText,
   Sparkles,
   ArrowRight,
-  Wand2,
-  Upload,
-  Calculator,
-  ClipboardCheck,
-  Lightbulb,
-  CheckCircle2,
+  Gauge,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
-import { PageHeader, ActionTile, Section, Pill } from "@/components/client-portal/ui";
+import { Section, Pill } from "@/components/client-portal/ui";
+import { OQueImportaAgora } from "@/components/client-portal/OQueImportaAgora";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
@@ -204,9 +198,26 @@ export default function ClienteHome() {
 
   return (
     <>
-      <PageHeader
-        titulo={`Olá, ${nome} 👋`}
-        subtitulo="Este é o seu painel. Aqui você acompanha a saúde da sua loja e otimiza seus anúncios com a ajuda da IA."
+      {/* A TELA RESPONDE ANTES DE CUMPRIMENTAR.
+        *
+        * A área se chama "Hoje" e a pergunta dela é "o que importa agora?".
+        * Ela respondia com um cumprimento em 24px, um parágrafo descrevendo o
+        * próprio painel, oito cartões de número e seis blocos de escolha —
+        * QUATORZE elementos antes da primeira frase útil, que estava lá
+        * embaixo em "O que falta".
+        *
+        * Oito números iguais não são oito informações: são a decisão adiada
+        * oito vezes. Agora a resposta é o `h1`, o cumprimento é a linha de
+        * cima em 14px, e as três coisas que mais travam vêm com a consequência
+        * de cada uma. O resto é CONTADO, nunca escondido.
+        *
+        * A frase nomeia a consequência, não a contagem: "4 coisas estão
+        * travando sua loja" é um fato sobre a loja dela; "4 pontos a resolver"
+        * é um número sobre a nossa lista. */}
+      <OQueImportaAgora
+        lacunas={lacunas.lista}
+        estado={lacunas.estado}
+        nome={nome}
         acao={
           quota ? (
             <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
@@ -279,13 +290,15 @@ export default function ClienteHome() {
           icon={Package}
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
         />
-        <StatCard
-          label="Nota média dos anúncios"
-          value={m.score != null ? `${m.score}` : "—"}
-          hint={m.score != null ? "de 100" : "otimize para gerar"}
-          icon={Gauge}
-          tone={m.score != null && m.score >= 70 ? "green" : m.score != null ? "yellow" : "gray"}
-        />
+        {/* A NOTA MÉDIA SAIU DA PRIMEIRA TELA.
+          *
+          * Ela é uma média de 880 anúncios, e média não é decisão: "38 de 100"
+          * não diz qual anúncio abrir nem o que fazer com ele. A nota continua
+          * onde serve — por LINHA, em Produtos, Anúncios e Auditoria, ao lado
+          * do anúncio a que ela se refere.
+          *
+          * `m.score` continua sendo calculado porque alimenta outras contas
+          * deste arquivo; o que saiu foi a exibição. */}
         {/* O QUE O MERCADO LIVRE COBRA — a mesma conta da tela Pendências.
             Agrupado por produto, como a tela; e as peças paradas na dica,
             porque "12 pendências" e "830 peças paradas" contam a mesma
@@ -304,100 +317,15 @@ export default function ClienteHome() {
       )}
 
 
-      {/* O que você quer fazer hoje? */}
-      <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ActionTile
-            href="/cliente/anunciar"
-            icon={Wand2}
-            titulo="Otimizar meus anúncios"
-            descricao="A IA cria títulos, descrições e ficha técnica prontos."
-            tone="violet"
-          />
-          <ActionTile
-            href="/cliente/produtos"
-            icon={Upload}
-            titulo="Importar produtos"
-            descricao="Suba sua planilha e monte sua base em minutos."
-            tone="cyan"
-          />
-          <ActionTile
-            href="/cliente/precificacao"
-            icon={Calculator}
-            titulo="Analisar preço e margem"
-            descricao="Veja o lucro real de cada produto e o preço ideal."
-            tone="green"
-          />
-          <ActionTile
-            href="/cliente/auditoria"
-            icon={ClipboardCheck}
-            titulo="Ver problemas da loja"
-            descricao="Descubra o que corrigir primeiro para vender mais."
-            tone="orange"
-          />
-          <ActionTile
-            href="/cliente/anuncios"
-            icon={Megaphone}
-            titulo="Revisar meus anúncios"
-            descricao="Aprove ou refaça o que a IA já gerou para você."
-            tone="blue"
-          />
-          <ActionTile
-            href="/cliente/relatorios"
-            icon={FileText}
-            titulo="Gerar relatório"
-            descricao="Acompanhe o que foi feito e o que precisa de atenção."
-            tone="violet"
-          />
-        </div>
-      </Section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Sugestões da IA */}
-        <Section
-          titulo="O que falta"
-          descricao="Na ordem em que resolver destrava o resto."
-        >
-          <Card>
-            {lacunas.lista.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <CheckCircle2 size={16} className="text-emerald-400" />
-                Nada travado. Sua loja está em dia.
-              </div>
-            ) : (
-              <ul className="space-y-3">
-                {lacunas.lista.map((l) => (
-                  <li key={l.tipo} className="flex items-start gap-3">
-                    {/* Vermelho só para o que trava TUDO. Se tudo fosse urgente,
-                        nada seria — e a lista viraria ruído a se ignorar. */}
-                    {l.bloqueiaTudo ? (
-                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
-                    ) : (
-                      <Lightbulb size={16} className="mt-0.5 shrink-0 text-amber-400" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-zinc-200">{l.titulo}</p>
-                      <p className="mt-0.5 text-xs text-zinc-400">{l.trava}</p>
-                      <Link
-                        href={l.href}
-                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
-                      >
-                        {l.cta} <ArrowRight size={12} />
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {lacunas.estado.produtos > 0 && (
-              <p className="mt-4 border-t border-white/5 pt-3 text-xs text-zinc-500">
-                <strong className="text-zinc-300">{lacunas.estado.prontosParaPrecificar}</strong> de{" "}
-                {lacunas.estado.produtos} produto(s) têm custo e peso — os únicos com preço mínimo
-                calculado.
-              </p>
-            )}
-          </Card>
-        </Section>
+      {/* OS SEIS BLOCOS E A LISTA "O QUE FALTA" SAÍRAM DAQUI.
+        *
+        * Os seis eram escolha genérica — "Otimizar meus anúncios", "Importar
+        * produtos" — no lugar onde cabia a resposta. Eles não sabiam nada
+        * sobre a loja dela: apareciam iguais com 80 produtos ou com zero.
+        *
+        * A lista "O que falta" não sumiu: ela SUBIU. Agora abre a tela, com a
+        * frase que a resume, dentro de . Mantê-la nos dois
+        * lugares seria dizer a mesma coisa duas vezes na mesma tela. */}
 
         {/* Recados.
             Esta seção vinha de um RPC que SÓ a equipe preenche. Num produto sem
@@ -427,8 +355,7 @@ export default function ClienteHome() {
             )}
           </Card>
         </Section>
-        )}
-      </div>
+      )}
     </>
   );
 }
