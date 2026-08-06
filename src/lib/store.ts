@@ -6,15 +6,10 @@
 // Supabase basta reimplementar os serviços; este arquivo inteiro é descartável.
 
 import { clientes as seedClientes } from "./data/clientes";
-import { onboardings as seedOnboardings } from "./data/onboardings";
 import { produtos as seedProdutos } from "./data/produtos";
-import { anuncios as seedAnuncios } from "./data/anuncios";
 import { agentes as seedAgentes } from "./data/agentes";
-import { tarefas as seedTarefas } from "./data/tarefas";
 import { relatorios as seedRelatorios } from "./data/relatorios";
-import { financeiro as seedFinanceiro } from "./data/financeiro";
 import { execucoes as seedExecucoes } from "./data/execucoes";
-import { reunioes as seedReunioes } from "./data/reunioes";
 import { pendencias as seedPendencias } from "./data/pendencias";
 import { produtoVariantes as seedProdutoVariantes } from "./data/produtoVariantes";
 import { produtoAtributos as seedProdutoAtributos } from "./data/produtoAtributos";
@@ -25,17 +20,20 @@ import {
   problemasAnuncio as seedProblemas,
 } from "./data/auditoriaMassa";
 
+/**
+ * As coleções que sobraram depois que o painel da agência saiu (PLANO-003).
+ *
+ * Saíram `onboardings`, `anuncios`, `tarefas`, `financeiro` e `reunioes`: os
+ * serviços que as liam eram do modelo de agência e foram apagados junto com as
+ * telas. Coleção sem repositório é peso morto que alguém religa sem saber por
+ * que saiu — o mesmo argumento que o teste da tabela já registrava.
+ */
 export type CollectionName =
   | "clientes"
-  | "onboardings"
   | "produtos"
-  | "anuncios"
   | "agentes"
-  | "tarefas"
   | "relatorios"
-  | "financeiro"
   | "execucoes"
-  | "reunioes"
   | "pendencias"
   | "produtoVariantes"
   | "produtoAtributos"
@@ -61,15 +59,10 @@ const storageKey = (c: CollectionName) => `zion-os:${VERSAO}:${c}`;
 
 const SEEDS: Record<CollectionName, { id: string }[]> = {
   clientes: seedClientes,
-  onboardings: seedOnboardings,
   produtos: seedProdutos,
-  anuncios: seedAnuncios,
   agentes: seedAgentes,
-  tarefas: seedTarefas,
   relatorios: seedRelatorios,
-  financeiro: seedFinanceiro,
   execucoes: seedExecucoes,
-  reunioes: seedReunioes,
   pendencias: seedPendencias,
   produtoVariantes: seedProdutoVariantes,
   produtoAtributos: seedProdutoAtributos,
