@@ -38,6 +38,19 @@ const ROTULO_PRIO: Record<PrioridadeAuditoria, string> = {
   baixa: "Baixa",
 };
 
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Esqueleto com número de
+ * colunas diferente do conteúdo é o pulo de layout que ele evita.
+ */
+const COLUNAS_DA_LISTA = [
+  "Produto / anúncio",
+  "Prioridade",
+  "Score",
+  "Principal problema",
+  "Próxima ação",
+];
+
 export default function ClienteAuditoria() {
   const { clienteId, nome } = useClientPortal();
   const { data: auditorias, estado } = useLiveQuery(listarAuditorias);
@@ -114,7 +127,12 @@ export default function ClienteAuditoria() {
         </p>
       )}
 
-      {lista.length === 0 ? (
+      {/* CARREGANDO antes de vazio. `lista` é `auditorias ?? []`, e o `?? []`
+          fazia esta tela afirmar "nenhuma auditoria ainda" — e sugerir rodar
+          uma — enquanto a busca ainda estava no ar. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : lista.length === 0 ? (
         <VazioAmigavel
           icon={ClipboardCheck}
           titulo="Nenhuma auditoria ainda"
@@ -160,10 +178,7 @@ export default function ClienteAuditoria() {
             </div>
           </div>
 
-          <Table
-            carregando={estado === "carregando"}
-            headers={["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"]}
-          >
+          <Table headers={COLUNAS_DA_LISTA}>
             {ordenadas.length === 0 ? (
               <EmptyRow colSpan={5} />
             ) : (

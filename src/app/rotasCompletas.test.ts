@@ -98,7 +98,7 @@ test("o esqueleto da tabela é feito de <tr>/<td>, não de <div>", () => {
   assert.match(tabela, /linhasParaMostrar/, "a contagem de linhas deixou de vir da geometria testada");
 });
 
-test("as cinco telas de tabela do portal passam o estado da busca", () => {
+test("as cinco telas de tabela do portal tratam o estado da busca", () => {
   // A prop não serve de nada se ninguém a preencher, e o erro natural é ligar
   // uma tela, ver a tabela certa e achar que acabou.
   const telas = [
@@ -109,10 +109,47 @@ test("as cinco telas de tabela do portal passam o estado da busca", () => {
     "./cliente/produtos/page.tsx",
   ];
   for (const tela of telas) {
-    assert.match(
-      fonte(tela),
-      /carregando=\{[^}]*estado === "carregando"[^}]*\}/,
-      `${tela} ainda mostra o estado vazio enquanto carrega`
+    const texto = fonte(tela);
+    const trata =
+      /carregando=\{[^}]*estado === "carregando"[^}]*\}/.test(texto) ||
+      /estado === "carregando" \? \(/.test(texto) ||
+      /consulta\.estado === "carregando"/.test(texto);
+    assert.ok(trata, `${tela} ainda mostra o estado vazio enquanto carrega`);
+  }
+});
+
+test("onde há estado VAZIO, o carregando é testado ANTES dele", () => {
+  // ===========================================================================
+  // O DEFEITO QUE ESTE TESTE EXISTE PARA MATAR — visto no navegador em 06/08
+  // ===========================================================================
+  //
+  // Três telas checavam `(dado ?? []).length === 0` ACIMA da tabela. O `?? []`
+  // transforma "ainda não sei" em "não há", e o ramo de cima ganha:
+  //
+  //   Produtos   "Sua base ainda está vazia. Importe sua planilha acima." (80)
+  //   Anúncios   "Você ainda não tem anúncios gerados"                   (880)
+  //   Auditoria  "Nenhuma auditoria ainda"
+  //
+  // A `<Table carregando>` que a Fase 3 consertou vive DENTRO do outro ramo, e
+  // nunca chegava a renderizar. O conserto estava certo e um nível fundo demais
+  // — o portão ficou verde porque nenhum teste olhava a ORDEM das condições.
+  //
+  // Medido atrasando o fetch de propósito: 1,2s depois da navegação, a tela
+  // mostrava a frase acima e zero linhas.
+  const telas = [
+    "./cliente/anuncios/page.tsx",
+    "./cliente/auditoria/page.tsx",
+    "./cliente/produtos/page.tsx",
+  ];
+  for (const tela of telas) {
+    const texto = fonte(tela);
+    const carregando = texto.indexOf('estado === "carregando" ? (');
+    const vazio = texto.search(/\b(total|lista|filtrados)[^\n]*\.?length? ?=== 0 \? \(|total === 0 \? \(/);
+    assert.ok(carregando >= 0, `${tela} perdeu a checagem de carregando acima do vazio`);
+    assert.ok(vazio >= 0, `${tela}: não achei o ramo de estado vazio — o teste precisa ser reescrito`);
+    assert.ok(
+      carregando < vazio,
+      `${tela} voltou a afirmar "está vazio" enquanto a busca está no ar`
     );
   }
 });

@@ -51,6 +51,14 @@ const MARKETPLACES = ["Mercado Livre", "TikTok Shop", "Shopee", "Amazon"] as con
 const STATUS = ["Otimizado", "No ar, sem otimização", "Em revisão", "Sem otimização"] as const;
 const SCORES = ["Alto (70+)", "Médio (40-69)", "Baixo (0-39)", "Sem score"] as const;
 
+/**
+ * As colunas, numa constante porque agora DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas escritas à mão
+ * divergem, e um esqueleto com número de colunas diferente do conteúdo é
+ * exatamente o pulo de layout que ele existe para evitar.
+ */
+const COLUNAS_DA_LISTA = ["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"];
+
 export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
   /** O que o chat desta tela pode responder e sobre quais produtos. */
@@ -822,7 +830,21 @@ export default function ClienteProdutos() {
         <ImportarProdutos onImportado={() => setMostrarImport(false)} />
       )}
 
-      {total === 0 ? (
+      {/* CARREGANDO vem ANTES de vazio, e a ordem é o conserto.
+       *
+       * `total` é `(produtos ?? []).length`, e o `?? []` transforma "ainda não
+       * sei" em "não há". Enquanto a busca estava no ar, esta tela dizia à
+       * lojista com 80 produtos: **"Sua base ainda está vazia. Importe sua
+       * planilha acima para começar."** — uma instrução para refazer trabalho
+       * que ela já fez.
+       *
+       * Medido no navegador em 06/08, com o fetch atrasado de propósito para o
+       * instante durar: a `<Table carregando>` que a Fase 3 consertou está
+       * DENTRO do ramo de baixo, e nunca chegava a renderizar. O conserto
+       * estava certo e um nível fundo demais. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : total === 0 ? (
         <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
           <Package size={20} className="mx-auto mb-2 text-zinc-600" />
           Sua base ainda está vazia. Importe sua planilha acima para começar.
@@ -847,10 +869,7 @@ export default function ClienteProdutos() {
             </span>
           </div>
 
-          <Table
-            carregando={estado === "carregando"}
-            headers={["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"]}
-          >
+          <Table headers={COLUNAS_DA_LISTA}>
             {filtrados.length === 0 ? (
               <EmptyRow colSpan={7} />
             ) : (

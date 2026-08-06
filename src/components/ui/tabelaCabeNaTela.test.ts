@@ -96,9 +96,20 @@ test("os colSpan acompanharam o número de colunas", () => {
     new URL("../../app/cliente/anuncios/page.tsx", import.meta.url),
     "utf8"
   );
-  const cabecalhos = tela.slice(tela.indexOf("headers={["), tela.indexOf("]}", tela.indexOf("headers={[")));
+  // As colunas saíram do `headers={[...]}` inline e viraram `COLUNAS_DA_LISTA`
+  // em 06/08: passaram a ter DOIS leitores — a tabela carregada e o esqueleto
+  // que aparece antes dela. Duas listas escritas à mão divergiriam, e esqueleto
+  // com número de colunas diferente do conteúdo é o pulo de layout que ele
+  // existe para evitar. O teste segue a constante em vez de exigir o inline.
+  const decl = tela.slice(tela.indexOf("const COLUNAS_DA_LISTA"));
+  const cabecalhos = decl.slice(0, decl.indexOf("]"));
   const colunas = (cabecalhos.match(/"/g) ?? []).length / 2;
   assert.equal(colunas, 5, `esperava 5 colunas, achei ${colunas}`);
+  assert.match(
+    tela,
+    /headers=\{COLUNAS_DA_LISTA\}/,
+    "a tabela deixou de usar a constante: as duas listas voltam a poder divergir"
+  );
   for (const m of tela.matchAll(/colSpan=\{(\d+)\}/g)) {
     assert.equal(Number(m[1]), colunas, `colSpan=${m[1]} não acompanha as ${colunas} colunas`);
   }

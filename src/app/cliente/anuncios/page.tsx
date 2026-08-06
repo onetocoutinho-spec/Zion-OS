@@ -55,6 +55,19 @@ import { toneFor } from "@/lib/status";
 import type { AnuncioGeradoRegistro, Produto } from "@/lib/types";
 
 const STATUS_FILTRO = ["Aguardando aprovação", "Aprovado", "Rascunho", "Rejeitado", "Publicado"] as const;
+
+/**
+ * As colunas, numa constante porque DUAS renderizações as usam: a tabela
+ * carregada e o esqueleto que aparece antes dela. Duas listas à mão divergem,
+ * e esqueleto com número de colunas diferente do conteúdo é o pulo de layout
+ * que ele existe para evitar.
+ *
+ * Duas colunas saíram daqui, por motivos DIFERENTES:
+ *   "Marketplace" — 1 valor em 590 anúncios. Não informava nada.
+ *   "Prioridade"  — variava, mas era DERIVADA de Score e Problema principal,
+ *                   que estão ali ao lado. Redundância, não constância.
+ */
+const COLUNAS_DA_LISTA = ["Anúncio", "Score", "Problema principal", "Status", "Ação"];
 const MAPA_FILTRO: Record<string, string> = {
   "Aguardando aprovação": "aguardando_aprovacao",
   Aprovado: "aprovado",
@@ -270,7 +283,12 @@ export default function ClienteAnuncios() {
         </p>
       )}
 
-      {total === 0 ? (
+      {/* CARREGANDO antes de vazio. `total` é `(anuncios ?? []).length`, e o
+          `?? []` fazia esta tela dizer "você ainda não tem anúncios gerados"
+          para quem tem 880, enquanto a busca estava no ar. */}
+      {estado === "carregando" ? (
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      ) : total === 0 ? (
         <VazioAmigavel
           icon={Megaphone}
           titulo="Você ainda não tem anúncios gerados"
@@ -309,13 +327,14 @@ export default function ClienteAnuncios() {
           </div>
 
           <Table
-            carregando={estado === "carregando"}
+            // Sem `carregando` aqui: o ramo de cima já tratou. O TypeScript
+            // provou — dentro deste `else`, `estado` não pode ser "carregando".
             // Duas colunas saíram, por motivos DIFERENTES:
             //   "Marketplace" — 1 valor em 590 anúncios. Não informava nada.
             //   "Prioridade"  — variava, mas era DERIVADA de Score e Problema
             //                   principal, que estão ali ao lado. Redundância,
             //                   não constância. Decisão do dono do produto.
-            headers={["Anúncio", "Score", "Problema principal", "Status", "Ação"]}
+            headers={COLUNAS_DA_LISTA}
           >
             {grupos.length === 0 ? (
               <EmptyRow colSpan={5} />
