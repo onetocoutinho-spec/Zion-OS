@@ -89,7 +89,10 @@ export interface AmbienteDaIA {
  * `lib/agentes`, que é código de servidor com SDK. Há um teste que compara as
  * duas listas lendo a fonte, então divergir reprova.
  */
-const IMAGEM_IMPLEMENTADA: ReadonlySet<ProvedorDeImagem> = new Set<ProvedorDeImagem>(["gemini"]);
+const IMAGEM_IMPLEMENTADA: ReadonlySet<ProvedorDeImagem> = new Set<ProvedorDeImagem>([
+  "gemini",
+  "openai",
+]);
 
 /**
  * A MESMA ordem de `provedorConfigurado()` em `lib/agentes/provedorIA.ts`.
@@ -183,7 +186,10 @@ function motivoDaImagem(ativo: ProvedorDeImagem | null): string | null {
     return "Nenhum provedor de imagem configurado (GEMINI_API_KEY ou OPENAI_API_KEY).";
   }
   if (!IMAGEM_IMPLEMENTADA.has(ativo)) {
-    return "A geração de imagem pela OpenAI ainda não foi escrita: o formato da API não pôde ser verificado no ambiente de desenvolvimento. Use a sondagem desta rota, que roda no servidor, para descobrir o formato.";
+    // Genérico: em 06/08/2026 os dois caminhos passaram a existir, então esta
+    // linha só é alcançada por um provedor NOVO que entrou no tipo sem caminho
+    // escrito. Nomear a OpenAI aqui virou mentira no dia em que ela funcionou.
+    return `O caminho de imagem "${ativo}" está escolhido e não foi implementado. Configure outro provedor, ou escreva o caminho dele.`;
   }
   return null;
 }

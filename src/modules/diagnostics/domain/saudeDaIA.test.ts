@@ -90,14 +90,27 @@ test("a lista de caminhos de imagem IMPLEMENTADOS bate com a que vale", () => {
 
 // ── Chave existe ≠ caminho existe ───────────────────────────────────────────
 
-test("a OpenAI aparece com chave E sem caminho — os dois campos, separados", () => {
+test("`temChave` e `implementado` continuam sendo DOIS campos", () => {
+  // Este teste nasceu quando a OpenAI tinha chave e NÃO tinha caminho, e afirmava
+  // exatamente isso. Em 06/08/2026 o caminho foi escrito — com o formato medido
+  // contra a API real — e o teste passou a reprovar. Foi ele funcionando: a
+  // afirmação que ele guardava deixou de ser verdade.
+  //
+  // O que ele guarda agora é a DISTINÇÃO, que continua importando: chave presente
+  // não implica caminho existente, e colapsar os dois faria a tela prometer uma
+  // capacidade que lança ao ser usada. O próximo provedor que entrar no tipo sem
+  // código escrito cai exatamente aqui.
   const r = retratoDaIA({ OPENAI_API_KEY: "o" });
   const openai = r.imagem.provedores.find((p) => /OpenAI/.test(p.nome));
   assert.ok(openai);
   assert.equal(openai.temChave, true);
-  assert.equal(openai.implementado, false, "hoje a OpenAI tem chave e não tem caminho");
-  // Colapsar os dois faria a tela prometer uma capacidade que lança ao ser usada.
-  assert.match(String(r.imagem.motivo), /ainda não foi escrita/);
+  assert.equal(openai.implementado, true, "a OpenAI tem caminho desde 06/08/2026");
+  // Com caminho e chave, não há motivo de indisponibilidade.
+  assert.equal(r.imagem.motivo, null);
+
+  // E a distinção segue existindo como CAMPOS separados — é isso que permite
+  // dizer "tem chave, falta código" sobre um provedor futuro.
+  assert.ok("temChave" in openai && "implementado" in openai);
 });
 
 test("o motivo de 'nenhum provedor' é diferente do de 'sem caminho'", () => {
