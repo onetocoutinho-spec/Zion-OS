@@ -25,11 +25,16 @@ const fonte = (rel: string) =>
   semComentarios(lerFonte(new URL(rel, import.meta.url), "utf8"));
 
 /**
- * Os NOVE overlays do app, com o motivo de cada um estar na lista.
+ * Os OITO overlays do app, com o motivo de cada um estar na lista.
  *
- * A contagem é o ponto: `fixed inset-0` aparece em 8 ARQUIVOS, mas a tela de
- * produtos tem DOIS diálogos. Contar arquivos daria 8 e deixaria um sem foco
+ * A contagem é o ponto: `fixed inset-0` aparece em 7 ARQUIVOS, mas a tela de
+ * produtos tem DOIS diálogos. Contar arquivos daria 7 e deixaria um sem foco
  * preso — que foi como o defeito passou despercebido até agora.
+ *
+ * ERAM NOVE ATÉ 06/08. O nono era `/app/esteira/aprovacoes` — o "publicar
+ * anúncio" da EQUIPE, uma cópia do que a lojista já tem. Saiu com o painel da
+ * agência (PLANO-003), e foi esta sentinela que avisou: ela falhou com ENOENT
+ * no instante em que o arquivo sumiu, que é exatamente para o que ela existe.
  */
 const OVERLAYS = [
   { arquivo: "../layout/AppShell.tsx", o_que: "gaveta de navegação da equipe" },
@@ -38,7 +43,6 @@ const OVERLAYS = [
   { arquivo: "../client-portal/CadastrarProduto.tsx", o_que: "cadastro de produto" },
   { arquivo: "../client-portal/PublicarAnuncio.tsx", o_que: "publicar anúncio (lojista)" },
   { arquivo: "../esteira/MissaoRepublicacao.tsx", o_que: "missão de republicação" },
-  { arquivo: "../../app/esteira/aprovacoes/page.tsx", o_que: "publicar anúncio (equipe)" },
   { arquivo: "../../app/cliente/produtos/page.tsx", o_que: "medidas E kit — DOIS no mesmo arquivo" },
 ] as const;
 

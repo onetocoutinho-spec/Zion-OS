@@ -18,16 +18,11 @@ import { reunioes as seedReunioes } from "./data/reunioes";
 import { pendencias as seedPendencias } from "./data/pendencias";
 import { produtoVariantes as seedProdutoVariantes } from "./data/produtoVariantes";
 import { produtoAtributos as seedProdutoAtributos } from "./data/produtoAtributos";
-import { categoriaTemplates as seedCategoriaTemplates } from "./data/categoriaTemplates";
-import { anuncioVariantes as seedAnuncioVariantes } from "./data/anuncioVariantes";
-import { precificacaoVariantes as seedPrecificacaoVariantes } from "./data/precificacaoVariantes";
 import { imagensProduto as seedImagensProduto } from "./data/imagensProduto";
 import {
   importacoesAnuncios as seedImportacoes,
   auditoriasAnuncios as seedAuditorias,
   problemasAnuncio as seedProblemas,
-  filaOtimizacao as seedFila,
-  execucoesLote as seedExecucoesLote,
 } from "./data/auditoriaMassa";
 
 export type CollectionName =
@@ -44,15 +39,10 @@ export type CollectionName =
   | "pendencias"
   | "produtoVariantes"
   | "produtoAtributos"
-  | "categoriaTemplates"
-  | "anuncioVariantes"
-  | "precificacaoVariantes"
   | "imagensProduto"
   | "importacoesAnuncios"
   | "auditoriasAnuncios"
   | "problemasAnuncio"
-  | "filaOtimizacao"
-  | "execucoesLote"
   | "anunciosGerados"
   | "tabelasMedidas"
   | "decisoes"
@@ -83,15 +73,10 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
   pendencias: seedPendencias,
   produtoVariantes: seedProdutoVariantes,
   produtoAtributos: seedProdutoAtributos,
-  categoriaTemplates: seedCategoriaTemplates,
-  anuncioVariantes: seedAnuncioVariantes,
-  precificacaoVariantes: seedPrecificacaoVariantes,
   imagensProduto: seedImagensProduto,
   importacoesAnuncios: seedImportacoes,
   auditoriasAnuncios: seedAuditorias,
   problemasAnuncio: seedProblemas,
-  filaOtimizacao: seedFila,
-  execucoesLote: seedExecucoesLote,
   // Anúncios gerados pela esteira: nasce vazio (é produção real, não demo).
   anunciosGerados: [],
   tabelasMedidas: [],
