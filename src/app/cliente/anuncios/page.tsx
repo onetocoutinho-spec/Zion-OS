@@ -67,7 +67,7 @@ const STATUS_FILTRO = ["Aguardando aprovação", "Aprovado", "Rascunho", "Rejeit
  *   "Prioridade"  — variava, mas era DERIVADA de Score e Problema principal,
  *                   que estão ali ao lado. Redundância, não constância.
  */
-const COLUNAS_DA_LISTA = ["Anúncio", "Score", "Problema principal", "Status", "Ação"];
+const COLUNAS_DA_LISTA = ["Anúncio", "Nota", "Problema principal", "Status", "Ação"];
 const MAPA_FILTRO: Record<string, string> = {
   "Aguardando aprovação": "aguardando_aprovacao",
   Aprovado: "aprovado",

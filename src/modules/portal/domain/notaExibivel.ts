@@ -61,11 +61,21 @@ export function notaExibivel(r: RegistroComNota): number | null {
   return foiAvaliadoPelaIA(r) ? r.notaDiagnostico : null;
 }
 
-/** A frase do veredito, sem afirmar nota que não existe. */
+/**
+ * A frase do veredito, sem afirmar nota que não existe.
+ *
+ * "VEREDITO" SAIU DA FRASE (PLANO-004, item C). É palavra de tribunal, e a
+ * lojista não está sendo julgada — a IA olhou o anúncio dela e disse se está
+ * pronto. "Aprovado pela IA" diz a mesma coisa com a palavra que ela usaria.
+ *
+ * O nome interno da régua (`vereditoA10`) fica no dado, onde pertence: o A10 é
+ * o critério, e critério é coisa nossa.
+ */
 export function explicarVeredito(r: RegistroComNota & { vereditoA10: string }): string {
   const nota = notaExibivel(r);
   if (nota === null) {
     return "Veio pronto do marketplace — a IA não avaliou este anúncio.";
   }
-  return `Veredito da IA: ${r.vereditoA10} · nota ${nota}/100`;
+  const julgamento = r.vereditoA10 === "aprovado" ? "Aprovado" : "Reprovado";
+  return `${julgamento} pela IA · nota ${nota}/100`;
 }

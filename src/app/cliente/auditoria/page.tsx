@@ -46,7 +46,7 @@ const ROTULO_PRIO: Record<PrioridadeAuditoria, string> = {
 const COLUNAS_DA_LISTA = [
   "Produto / anúncio",
   "Prioridade",
-  "Score",
+  "Nota",
   "Principal problema",
   "Próxima ação",
 ];

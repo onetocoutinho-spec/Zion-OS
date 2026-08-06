@@ -95,10 +95,51 @@ julgamento, e é a parte que dá para provar sem abrir o navegador.
 Um elemento primário por tela, o resto subordinado. Onde há quatro cartões
 iguais, o que exige ação ganha peso e os outros viram texto.
 
-### C — Vocabulário
+### C — Vocabulário — FEITO (06/08)
 
 "Score IA", "No ar, sem otimização", "veredito A10" são palavras do sistema. As
 dela: vende / não vende, dá lucro / dá prejuízo, está no ar / está parado.
+
+**O que mudou.** A escolha do dono foi **"nota do anúncio"**.
+
+| Onde | Antes | Agora |
+|---|---|---|
+| Produtos, Anúncios, Auditoria | coluna `Score` / `Score IA` | `Nota` |
+| Produtos, filtro | `Score` · `Alto/Médio/Baixo` · `Sem score` | `Nota do anúncio` · `Alta/Média/Baixa` · `Sem nota` |
+| Ajuda, FAQ | "O que é o Score?" | "O que é a nota do anúncio?" |
+| Otimizar, aviso falado | "aprovado no A10" | "aprovado pela IA" |
+| Anúncios e Otimizar | "Veredito da IA: aprovado" | "Aprovado pela IA · nota 87/100" |
+
+**O que NÃO mudou, de propósito.** "Otimizar" é o verbo central do produto — é o
+que ela vem fazer aqui. "Rascunho" é português comum. Trocar palavra que ela já
+entende só para parecer mais simples é ruído. E os NOMES DE DADO ficam:
+`scoreQualidade`, `vereditoA10`, `toneScore`. O A10 é o nosso critério, e
+critério é coisa nossa — ele pertence ao dado, não à tela.
+
+**A contradição de 03/08 ainda estava viva num segundo lugar.** `Otimizar`
+mostrava dois selos com metades do mesmo fato — `Nota 0/100` e
+`Veredito: aprovado`, com o valor cru em minúscula. Num anúncio importado, onde
+`nota_diagnostico` é zero por ausência de medição, os dois juntos formavam
+exatamente a frase impossível que `notaExibivel` existe para impedir. Agora é um
+selo só, com `explicarVeredito` — a mesma função que a lista já usava, a uma
+importação de distância e nunca chamada ali.
+
+**A troca quebrou o filtro, e a sentinela pegou.** As faixas estavam escritas à
+mão em DOIS lugares distantes: as opções do seletor no topo do arquivo e a
+classificação lá dentro do `filter`. Renomeei uma e não a outra — "Alta (70+)"
+passou a ser comparada com "Alto (70+)", nenhum produto casava, e a tela ficava
+vazia sem dizer por quê. Agora há uma função `faixaDaNota` com retorno tipado
+como `(typeof SCORES)[number]`: se as duas divergirem de novo, quem reclama é o
+compilador. Medido na tela depois do conserto: 2 + 31 + 39 + 8 = 80 produtos, a
+partição exata da base.
+
+**A sentinela.** `src/app/cliente/palavrasDela.test.ts` varre o texto visível de
+`/cliente` nas três formas em que ele aparece (literal, `prop="texto"`, texto
+solto no JSX) e reprova "Score", "A10" e "Veredito". Ela tem os dois testes que
+este repositório aprendeu a exigir: um que prova que a varredura leu telas, e um
+que prova que ela ENXERGA o defeito — a primeira versão do recorte JSX só aceitava
+`>texto<` e passava por cima de `<Pill>Veredito: {x}</Pill>`, que é justamente a
+forma do defeito que motivou o item.
 
 ### D — Ação em lote no lugar de botão por linha
 

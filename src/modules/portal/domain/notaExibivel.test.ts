@@ -81,14 +81,29 @@ test("sem avaliação, a frase NÃO cita nota nenhuma", () => {
   assert.match(f, /n[ãa]o avaliou/i);
 });
 
-test("com avaliação, a frase traz veredito e nota", () => {
+test("com avaliação, a frase traz o julgamento e a nota — nas palavras dela", () => {
+  // "Veredito da IA: aprovado" saiu em 06/08 (PLANO-004, item C). "Veredito" é
+  // palavra de tribunal, e a lojista não está sendo julgada — a IA olhou o
+  // anúncio dela. O nome interno da régua (A10) fica no dado, não na frase.
   const f = explicarVeredito({
     notaDiagnostico: 87,
     vereditoA10: "aprovado",
     anuncio: { avaliadoPelaIA: true },
   });
-  assert.match(f, /aprovado/);
+  assert.match(f, /^Aprovado pela IA/);
   assert.match(f, /87\/100/);
+  assert.doesNotMatch(f, /veredito/i, "a palavra de tribunal voltou à tela");
+  assert.doesNotMatch(f, /A10/, "o nome interno da régua vazou para a lojista");
+});
+
+test("reprovado também é dito nas palavras dela", () => {
+  const f = explicarVeredito({
+    notaDiagnostico: 33,
+    vereditoA10: "reprovado",
+    anuncio: { avaliadoPelaIA: true },
+  });
+  assert.match(f, /^Reprovado pela IA/);
+  assert.match(f, /33\/100/);
 });
 
 test("nunca sai a contradição 'aprovado · nota 0/100'", () => {

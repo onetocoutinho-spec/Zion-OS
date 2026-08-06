@@ -42,7 +42,7 @@ const PASSOS = [
 
 const FAQ = [
   {
-    q: "O que é o Score?",
+    q: "O que é a nota do anúncio?",
     a: "É a nota de qualidade do anúncio, de 0 a 100. Quanto maior, mais completo e competitivo ele está. A IA calcula com base em título, descrição, ficha técnica, imagens e preço.",
   },
   {
