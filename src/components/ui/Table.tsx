@@ -2,16 +2,49 @@
 // Uso: <Table headers={["Cliente", "Status"]}><tr>...<Td>...</Td></tr></Table>
 
 import { EmptyState } from "./EmptyState";
+import { largurasDaLinhaDaTabela, linhasParaMostrar } from "./geometriaDoSkeleton";
 
 interface TableProps {
   headers: string[];
   children: React.ReactNode;
+  /**
+   * A busca ainda não voltou.
+   *
+   * ===========================================================================
+   * O DEFEITO QUE ESTA PROP EXISTE PARA MATAR
+   * ===========================================================================
+   *
+   * `useLiveQuery` devolve `data: null` enquanto carrega, e as telas escrevem
+   * `(anuncios ?? [])`. Enquanto a busca está no ar, a tabela recebe uma lista
+   * VAZIA e desenha o estado vazio: **"Nenhum registro encontrado com os
+   * filtros atuais."**
+   *
+   * Isso não é um espaço em branco — é uma AFIRMAÇÃO, e ela é falsa. A lojista
+   * com 400 anúncios lê que não tem nenhum, e a frase ainda culpa os filtros
+   * dela. Medido em 13 das 17 telas do portal.
+   *
+   * "Não sei ainda" e "não há" são estados diferentes e precisam de desenhos
+   * diferentes. O esqueleto diz o primeiro.
+   */
+  carregando?: boolean;
 }
 
-export function Table({ headers, children }: TableProps) {
+export function Table({ headers, children, carregando = false }: TableProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-white/5 bg-[#0e0e16]">
-      <table className="w-full text-left text-sm">
+      {/* `aria-busy`: as linhas fantasma são `aria-hidden` (leitor de tela não
+          lê cinco linhas vazias), e sem este sinal a tabela pareceria vazia na
+          leitura — a mesma mentira, só que em voz alta.
+
+          `data-cartao` + as variáveis: abaixo de 640px o CSS (globals.css)
+          desmonta a tabela em cartões e usa `--col-N` como rótulo de cada
+          célula. O rótulo é o PRÓPRIO `headers` — não há como divergir. */}
+      <table
+        className="w-full text-left text-sm"
+        aria-busy={carregando || undefined}
+        data-cartao=""
+        style={rotulosDasColunas(headers)}
+      >
         <thead>
           <tr className="border-b border-white/5">
             {headers.map((h) => (
@@ -24,9 +57,54 @@ export function Table({ headers, children }: TableProps) {
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/[0.04]">{children}</tbody>
+        <tbody className="divide-y divide-white/[0.04]">
+          {carregando ? <LinhasFantasma colunas={headers.length} /> : children}
+        </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * Publica os cabeçalhos como variáveis CSS, para o modo cartão lê-los.
+ *
+ * `JSON.stringify` e não aspas à mão: `content` em CSS exige a string entre
+ * aspas, e um cabeçalho com aspas dentro (ou uma barra invertida) quebraria a
+ * declaração inteira em silêncio — a célula perderia o rótulo e ninguém saberia
+ * por quê. O `JSON.stringify` escapa isso pela mesma regra que o CSS usa.
+ */
+function rotulosDasColunas(headers: string[]): React.CSSProperties {
+  return Object.fromEntries(
+    headers.map((h, i) => [`--col-${i + 1}`, JSON.stringify(h)])
+  ) as React.CSSProperties;
+}
+
+/**
+ * As linhas cinza do carregamento.
+ *
+ * Vive aqui e não no `Skeleton.tsx` por uma razão de HTML: aquele componente
+ * desenha com `<div>`, e um `<div>` dentro de `<tbody>` é markup inválido — o
+ * navegador o EXPULSA para fora da tabela, e o esqueleto aparece flutuando
+ * acima dela. As proporções, essas sim, vêm de lá (`geometriaDoSkeleton`, com
+ * teste): é a mesma geometria, pintada em `<tr>`/`<td>`.
+ */
+function LinhasFantasma({ colunas }: { colunas: number }) {
+  const larguras = largurasDaLinhaDaTabela(colunas);
+  return (
+    <>
+      {Array.from({ length: linhasParaMostrar() }, (_, linha) => (
+        <tr key={linha} aria-hidden="true" data-fantasma="">
+          {larguras.map((largura, coluna) => (
+            <td key={coluna} className="px-4 py-3" style={{ width: `${largura}%` }}>
+              <div
+                className="h-3 rounded bg-white/[0.06] motion-safe:animate-pulse"
+                style={{ width: coluna === 0 ? "88%" : "54%" }}
+              />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
   );
 }
 

@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useDialogo } from "@/components/ui/useDialogo";
 import {
   DECLARACAO_DIFERENCA,
   escolhaPodeSeguir,
@@ -31,6 +32,19 @@ export function MissaoRepublicacao({
   const [escolha, setEscolha] = useState<EscolhaRepublicacao | null>(null);
   const [declarou, setDeclarou] = useState(false);
 
+  /**
+   * O foco fica preso, e o Escape NÃO fecha — `null` é decisão, não omissão.
+   *
+   * Já existe um anúncio no ar e este diálogo pergunta o que fazer com ele.
+   * "Cancelar" é uma das opções da missão, e é a única saída legítima: sair
+   * pelo Escape deixaria a publicação em um estado que ninguém escolheu, e é
+   * o mesmo motivo pelo qual o fundo escuro daqui já não fecha no clique.
+   *
+   * Prender o foco continua valendo — mais aqui do que em qualquer outro
+   * diálogo, porque é o único que a pessoa NÃO pode contornar.
+   */
+  const caixa = useDialogo(true, null);
+
   const opcaoAtual = missao.opcoes.find((o) => o.escolha === escolha);
   const podeSeguir = escolhaPodeSeguir(missao, escolha, declarou) && !ocupado;
 
@@ -42,8 +56,14 @@ export function MissaoRepublicacao({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-amber-500/30 bg-[#0e0e16]">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden />
+      <div
+        ref={caixa}
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={missao.titulo}
+        className="relative flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-amber-500/30 bg-[#0e0e16]"
+      >
         <div className="flex items-start gap-2.5 border-b border-white/5 px-5 py-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>
@@ -97,7 +117,7 @@ export function MissaoRepublicacao({
                     <p className="text-sm font-medium text-zinc-200">
                       {o.rotulo}
                       {o.recomendada && (
-                        <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-400">
+                        <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-400">
                           recomendado
                         </span>
                       )}

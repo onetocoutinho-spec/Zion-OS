@@ -18,6 +18,7 @@ import {
   Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useAnunciar } from "@/components/ui/Anuncios";
 import { lerPlanilhaComoCsv } from "@/lib/planilha";
 import { useClientPortal } from "./context";
 import {
@@ -37,6 +38,7 @@ const SEM_COLUNA = "";
 export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) {
   const { clienteId, nome } = useClientPortal();
 
+  const anunciar = useAnunciar();
   const [etapa, setEtapa] = useState<"arquivo" | "mapear" | "revisar">("arquivo");
   const [texto, setTexto] = useState<string>("");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -88,16 +90,20 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
     setMsg(null);
     try {
       const r = await confirmarImportacaoProdutos({ clienteId, cliente: nome, linhas: analise.linhas });
-      setMsg({
-        tipo: "ok",
-        texto: `${r.total} produtos importados${r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : ""}.`,
-      });
+      const texto = `${r.total} produtos importados${r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : ""}.`;
+      setMsg({ tipo: "ok", texto });
+      // A importação some da tela ao terminar (volta para a etapa "arquivo"),
+      // então o resultado é a ÚNICA coisa que sobra dela — e sem anúncio ele
+      // aparecia sem nunca ser dito.
+      anunciar(texto);
       setEtapa("arquivo");
       setTexto("");
       setAnalise(null);
       onImportado?.();
     } catch (e) {
-      setMsg({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao importar." });
+      const texto = e instanceof Error ? e.message : "Falha ao importar.";
+      setMsg({ tipo: "erro", texto });
+      anunciar(`A importação falhou. ${texto}`, "urgente");
     } finally {
       setImportando(false);
     }

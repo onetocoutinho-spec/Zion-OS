@@ -40,7 +40,7 @@ const ROTULO_PRIO: Record<PrioridadeAuditoria, string> = {
 
 export default function ClienteAuditoria() {
   const { clienteId, nome } = useClientPortal();
-  const { data: auditorias } = useLiveQuery(listarAuditorias);
+  const { data: auditorias, estado } = useLiveQuery(listarAuditorias);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const [auditando, setAuditando] = useState(false);
@@ -160,7 +160,10 @@ export default function ClienteAuditoria() {
             </div>
           </div>
 
-          <Table headers={["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"]}>
+          <Table
+            carregando={estado === "carregando"}
+            headers={["Produto / anúncio", "Prioridade", "Score", "Principal problema", "Próxima ação"]}
+          >
             {ordenadas.length === 0 ? (
               <EmptyRow colSpan={5} />
             ) : (

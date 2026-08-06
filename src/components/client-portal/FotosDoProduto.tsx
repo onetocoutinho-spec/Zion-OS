@@ -139,7 +139,9 @@ export function FotosDoProduto({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={u}
-                alt={`Foto ${i + 1}`}
+                alt={i === 0 ? "Foto 1 do produto — capa do anúncio" : `Foto ${i + 1} do produto`}
+                loading="lazy"
+                decoding="async"
                 className="h-16 w-16 rounded-lg border border-white/10 object-cover"
               />
               {i === 0 && (

@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
+import { useDialogo } from "@/components/ui/useDialogo";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useLiveQuery } from "@/lib/hooks";
@@ -390,6 +391,7 @@ function ModalPublicar({
   onFechar: () => void;
 }) {
   const [pics, setPics] = useState<string[]>([]);
+  const caixa = useDialogo(true, onFechar);
   useEffect(() => {
     let vivo = true;
     if (registro.produtoId) {
@@ -408,8 +410,14 @@ function ModalPublicar({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} aria-hidden />
+      <div
+        ref={caixa}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Publicar no Mercado Livre"
+        className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]"
+      >
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
           <div>
             <p className="text-sm font-semibold text-white">Publicar no Mercado Livre</p>

@@ -41,7 +41,7 @@ const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
 function Precificacao() {
   const { clienteId, marketplace } = useClientPortal();
-  const { data: produtos, reload } = useLiveQuery(listarProdutos);
+  const { data: produtos, reload, estado } = useLiveQuery(listarProdutos);
   const { data: variantes } = useLiveQuery(listarTodasVariantes);
 
   // Chegou por um chip "falta custo" na lista de produtos. O id vem no endereço
@@ -279,6 +279,7 @@ function Precificacao() {
       </div>
 
       <Table
+        carregando={estado === "carregando"}
         headers={["Produto", "Custo", "Preço", "Taxas", "Lucro", "Margem", "Preço ideal", "Status"]}
       >
         {filtradas.length === 0 ? (

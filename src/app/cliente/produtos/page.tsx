@@ -6,6 +6,7 @@ import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertT
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
+import { useDialogo } from "@/components/ui/useDialogo";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { ImportarProdutos } from "@/components/client-portal/ImportarProdutos";
@@ -54,7 +55,7 @@ export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
   /** O que o chat desta tela pode responder e sobre quais produtos. */
   const chat = useContextoDaPergunta(clienteId);
-  const { data: produtos, reload } = useLiveQuery(listarProdutos);
+  const { data: produtos, reload, estado } = useLiveQuery(listarProdutos);
   // O RESUMO, não o anúncio inteiro. Esta tela lê `mlItemId`, `produtoId`,
   // `status`, `notaDiagnostico` e `criadoEm` — e nunca abre o JSONB da esteira,
   // que é 76,6% do peso da linha (medido em 03/08/2026: 1.055 kB de 1.377 kB).
@@ -157,6 +158,12 @@ export default function ClienteProdutos() {
   const [kitTipo, setKitTipo] = useState<"nenhum" | "kit" | "combo">("kit");
   const [kitItens, setKitItens] = useState<KitComponente[]>([]);
   const [salvandoKit, setSalvandoKit] = useState(false);
+
+  // Os dois diálogos desta tela. Ambos abrem a partir de um botão numa LINHA da
+  // tabela, e é aí que devolver o foco pesa: sem isso, fechar o de medidas do
+  // produto 37 devolve a pessoa ao topo de uma lista de 40.
+  const caixaMedidas = useDialogo(medindo !== null, () => setMedindo(null));
+  const caixaKit = useDialogo(kitProd !== null, () => setKitProd(null));
 
   // --- Importar custos (CSV: sku, custo) ---
   const custoInputRef = useRef<HTMLInputElement>(null);
@@ -840,7 +847,10 @@ export default function ClienteProdutos() {
             </span>
           </div>
 
-          <Table headers={["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"]}>
+          <Table
+            carregando={estado === "carregando"}
+            headers={["Produto", "Falta", "Estoque", "Preço", "Status", "Score IA", "Ação"]}
+          >
             {filtrados.length === 0 ? (
               <EmptyRow colSpan={7} />
             ) : (
@@ -961,6 +971,10 @@ export default function ClienteProdutos() {
           onClick={() => setMedindo(null)}
         >
           <div
+            ref={caixaMedidas}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tabela de medidas"
             className="w-full max-w-lg rounded-xl border border-white/10 bg-[#0e0e16] p-5"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1010,6 +1024,10 @@ export default function ClienteProdutos() {
           onClick={() => setKitProd(null)}
         >
           <div
+            ref={caixaKit}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Kit ou combo"
             className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl border border-white/10 bg-[#0e0e16] p-5"
             onClick={(e) => e.stopPropagation()}
           >

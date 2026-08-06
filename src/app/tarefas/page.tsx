@@ -89,7 +89,7 @@ export default function TarefasPage() {
               <Td><Badge>{t.status}</Badge></Td>
               <Td className={`whitespace-nowrap ${atrasada ? "font-medium text-red-400" : ""}`}>
                 {formatDate(t.prazo)}
-                {atrasada && <span className="ml-1 text-[10px] uppercase">atrasada</span>}
+                {atrasada && <span className="ml-1 text-[11px] uppercase">atrasada</span>}
               </Td>
               <Td className="whitespace-nowrap text-xs">{t.agenteRelacionado ?? "—"}</Td>
               <Td className="min-w-56 text-xs text-zinc-300">{t.proximaAcao}</Td>

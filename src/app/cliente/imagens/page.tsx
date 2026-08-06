@@ -279,24 +279,33 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
                     key={img.id}
                     className="group relative aspect-square overflow-hidden rounded-lg border border-white/10 bg-black/30"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {/* `alt` DESCRITIVO e não `alt=""`.
+                        `alt=""` diz ao leitor de tela "isto é enfeite, ignore".
+                        Estas são as fotos do produto — o assunto inteiro desta
+                        tela. Sem o texto, a galeria vira uma fileira de nadas e
+                        os botões de "capa" e "excluir" perdem a que se referem.
+
+                        `loading="lazy"`: uma lojista com 60 fotos baixava as 60
+                        de uma vez, em resolução cheia, para caixinhas de 100px. */}
                     <img
                       src={img.url}
-                      alt=""
+                      alt={`Foto do produto${img.tipoImagem ? ` — ${img.tipoImagem}` : ""}${vai ? "" : " (fora do envio)"}`}
+                      loading="lazy"
+                      decoding="async"
                       className={`h-full w-full object-cover transition-opacity ${vai ? "" : "opacity-35"}`}
                     />
                     {img.tipoImagem === "Principal" && (
-                      <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                      <span className="absolute left-1 top-1 rounded bg-violet-600/90 px-1 py-0.5 text-[11px] font-medium text-white">
                         Capa
                       </span>
                     )}
                     {img.tipoImagem === "Infográfico" && (
-                      <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[9px] font-medium text-white">
+                      <span className="absolute left-1 top-1 rounded bg-cyan-600/90 px-1 py-0.5 text-[11px] font-medium text-white">
                         Infográfico
                       </span>
                     )}
                     {!vai && (
-                      <span className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[9px] text-zinc-300">
+                      <span className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[11px] text-zinc-300">
                         fora do envio
                       </span>
                     )}
@@ -437,7 +446,12 @@ function EstudioIA({
         <div className="w-28 shrink-0">
           <p className="mb-1 text-[11px] uppercase tracking-wider text-zinc-500">Foto real</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={fonte.url} alt="" className="aspect-square w-full rounded-lg border border-white/5 object-cover" />
+          <img
+            src={fonte.url}
+            alt="A foto real que serve de origem para a geração"
+            decoding="async"
+            className="aspect-square w-full rounded-lg border border-white/5 object-cover"
+          />
         </div>
 
         {/* Ações */}
@@ -478,7 +492,18 @@ function EstudioIA({
           <p className="mb-2 text-[11px] uppercase tracking-wider text-zinc-500">Resultado</p>
           <div className="flex flex-wrap items-end gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={resultado.dataUrl} alt="" className="w-48 rounded-lg border border-white/10" />
+            {/* `aspect-square`: era a ÚNICA das cinco imagens do app sem altura
+                reservada — `w-48` sozinho deixa o navegador descobrir a altura
+                ao carregar, e a fileira de botões ao lado pulava para baixo no
+                instante em que a imagem chegava. As outras quatro já reservam
+                (`h-14 w-14`, `h-16 w-16`, `aspect-square`, `h-full` em caixa
+                dimensionada), e é por isso que só esta muda. */}
+            <img
+              src={resultado.dataUrl}
+              alt="Imagem gerada pela IA, aguardando você salvar ou descartar"
+              decoding="async"
+              className="aspect-square w-48 rounded-lg border border-white/10 object-contain"
+            />
             <div className="flex gap-2">
               <Button onClick={salvar} disabled={salvando}>
                 {salvando ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}

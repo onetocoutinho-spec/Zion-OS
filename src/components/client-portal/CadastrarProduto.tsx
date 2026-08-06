@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Save, AlertTriangle, Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useDialogo } from "@/components/ui/useDialogo";
 import {
   RASCUNHO_VAZIO,
   validarRascunho,
@@ -45,6 +46,10 @@ export function CadastrarProduto({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [margem, setMargem] = useState(MARGEM_MINIMA_PADRAO);
+
+  // O componente SÓ existe montado, então `aberto` é sempre `true`: quem
+  // decide abrir e fechar é quem o renderiza.
+  const caixa = useDialogo(true, onFechar);
 
   useEffect(() => {
     let vivo = true;
@@ -116,8 +121,14 @@ export function CadastrarProduto({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} aria-hidden />
+      <div
+        ref={caixa}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Cadastrar produto"
+        className="relative flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]"
+      >
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
           <div>
             <p className="text-sm font-semibold text-white">Cadastrar produto</p>

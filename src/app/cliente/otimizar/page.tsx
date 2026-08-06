@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { useAnunciar } from "@/components/ui/Anuncios";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
@@ -130,6 +131,9 @@ export default function ClienteOtimizar() {
   const [rodando, setRodando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Otimizar com IA é a operação mais LONGA do portal — dezenas de segundos com
+  // um `Sparkles` pulsando. Para quem não vê o pulso, terminava em silêncio.
+  const anunciar = useAnunciar();
   const [resultadoAgente, setResultadoAgente] = useState<{
     markdown: string;
     agente: string;
@@ -191,8 +195,11 @@ export default function ClienteOtimizar() {
         produto: produto.nome,
       });
       setResultadoAgente(r);
+      anunciar(`${ferramenta.nome}: pronto.`);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível gerar. Tente novamente.");
+      const motivo = e instanceof Error ? e.message : "Não foi possível gerar. Tente novamente.";
+      setErro(motivo);
+      anunciar(motivo, "urgente");
     } finally {
       setRodando(false);
     }
@@ -230,8 +237,15 @@ export default function ClienteOtimizar() {
         criadoEm: new Date().toISOString(),
         observacoes: "",
       });
+      anunciar(
+        passouA10
+          ? "Anúncio gerado e aprovado no A10. Já pode publicar."
+          : `Anúncio gerado como rascunho, com ${r.anuncio.pendencias.length} pendência(s).`
+      );
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Não foi possível gerar. Tente novamente.");
+      const motivo = e instanceof Error ? e.message : "Não foi possível gerar. Tente novamente.";
+      setErro(motivo);
+      anunciar(motivo, "urgente");
     } finally {
       setRodando(false);
     }

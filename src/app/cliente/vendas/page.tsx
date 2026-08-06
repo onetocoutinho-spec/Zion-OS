@@ -203,7 +203,7 @@ export default function ClienteVendas() {
                 </div>
               )}
               {m.porDia.length > 0 && (
-                <div className="mt-2 flex justify-between text-[10px] text-zinc-600">
+                <div className="mt-2 flex justify-between text-[11px] text-zinc-600">
                   <span>{m.porDia[0]?.dia.slice(5)}</span>
                   <span>{m.porDia[m.porDia.length - 1]?.dia.slice(5)}</span>
                 </div>

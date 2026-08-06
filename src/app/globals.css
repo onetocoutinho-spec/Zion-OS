@@ -1,5 +1,41 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+ * O SISTEMA DE TOKENS, LIGADO AO APP
+ * ===========================================================================
+ *
+ * `foundation.css` e `semantic.css` são gerados de `src/design/tokens.json`
+ * (fonte única) e existiam há tempo — servindo UMA rota, `/z`. O app que a
+ * lojista usa nunca os carregava, e por isso cada cor daqui era um hexadecimal
+ * escrito à mão, sem parentesco com o sistema.
+ *
+ * Estes dois arquivos só declaram variáveis (`--fnd-*`, `--sem-*`). Nenhuma
+ * utility do Tailwind muda de valor por causa deles: nada aqui é consumido até
+ * alguém escrever `var(--fnd-…)`. Importar é, literalmente, passar a ter os
+ * tokens à mão.
+ *
+ * O TERCEIRO ARQUIVO FICOU DE FORA, E É MEDIÇÃO, NÃO ESQUECIMENTO
+ *
+ * `foundation.theme.css` mapeia os tokens para utilities do Tailwind
+ * (`bg-brand-500`, `text-base-400`). Ele parecia aditivo — cria nomes novos —
+ * mas define também `--radius-*`, que são nomes que o Tailwind JÁ usa. Medido
+ * no CSS compilado com ele importado:
+ *
+ *     .rounded-lg  →  var(--fnd-radius-lg)  =  12px   (era 8px)
+ *     .rounded-xl  →  var(--fnd-radius-xl)  =  16px   (era 12px)
+ *
+ * São 266 `rounded-lg` e 62 `rounded-xl` no app: todo botão, todo campo, todo
+ * cartão e toda tabela ficariam visivelmente mais redondos. Isso é uma decisão
+ * de desenho, não a de ligar tokens, e por isso não entra junto.
+ *
+ * O que NÃO quebra, e foi conferido no mesmo teste: `--spacing-*` também colide
+ * por nome, mas a escala dinâmica do Tailwind sobrevive —
+ * `.min-h-11 { min-height: calc(var(--spacing) * 11) }` continua igual, e com
+ * ela os alvos de toque de 44px. `text-sm`/`text-xs` também seguem intactos.
+ */
+@import "../design/foundation/foundation.css";
+@import "../design/semantic/semantic.css";
+
 /* Texto secundário — @theme PURO, não `inline`.
  *
  * O zinc-500 do Tailwind (#71717a) dá 4,06:1 sobre o fundo escuro do portal,
@@ -22,10 +58,56 @@
  */
 @theme {
   --color-zinc-500: #8b8b94;
+
+  /* Texto terciário — a MESMA história do zinc-500, uma camada abaixo.
+   *
+   * A medição que corrigiu o zinc-500 olhou o texto secundário e parou ali. O
+   * zinc-600 (#52525b) ficou de fora, e ele não é enfeite: é a cor do
+   * PLACEHOLDER e da DICA de `INPUT_BASE` (components/ui/form.tsx), ou seja, de
+   * todo campo de todo formulário do produto.
+   *
+   * Recalculado sobre os quatro fundos opacos do app:
+   *
+   *   #52525b  →  2,59 canvas · 2,52 sidebar · 2,49 cartão · 2,41 campo
+   *
+   * Os quatro reprovam o mínimo de 4,5:1 da WCAG AA, e o campo — o fundo mais
+   * claro — reprova pior. Não é "meio apagado": é ilegível para quem enxerga
+   * pouco, e placeholder ilegível num formulário de cadastro é a lojista sem
+   * saber o que digitar.
+   *
+   * #7c7c85 é o cinza mais ESCURO que ainda passa 4,5:1 no campo (4,50). Preso
+   * ao piso de propósito: subir mais faria o terciário competir com o
+   * secundário, e a hierarquia primário → secundário → terciário é o que
+   * sustenta a densidade destas telas.
+   *
+   * O teste em globals.test.ts recalcula isto a partir do hexadecimal daqui.
+   * Trocar a cor sem passar no mínimo deixa o portão vermelho.
+   */
+  --color-zinc-600: #7c7c85;
 }
 
 :root {
-  --background: #08080d;
+  /* A CANVAS VEM DO TOKEN, e é o único par em que isso é gratuito.
+   *
+   * Medido: `--fnd-base-950` é `#08080D` — o MESMO valor, byte a byte, que
+   * estava escrito aqui à mão. O fundo do app sempre foi o token; só não
+   * sabia disso. Trocar o literal pela referência não muda um pixel e passa a
+   * fazer o app seguir `tokens.json`.
+   *
+   * As outras três superfícies do app NÃO são gratuitas, e por isso continuam
+   * literais (medido em distância RGB até o token correspondente):
+   *
+   *     #0e0e16  cartão    → --fnd-base-900 (#0F0F16)   distância  1
+   *     #0b0b12  sidebar   → --fnd-base-900 (#0F0F16)   distância  7
+   *     #12121c  campo     → --fnd-base-850 (#16161E)   distância  6
+   *
+   * A do campo é a que impede: sobre `#16161E`, o placeholder que a Fase 1
+   * levou a 4,50:1 cai para 4,35:1 e REPROVA a AA. Ou o token muda, ou o
+   * placeholder ganha um papel semântico próprio — o sistema hoje tem três
+   * níveis de texto mais "disabled", e o app usa quatro. É decisão de quem
+   * mantém `tokens.json`, não de quem importa o arquivo.
+   */
+  --background: var(--fnd-base-950);
   --foreground: #e4e4e7;
 }
 
@@ -50,4 +132,206 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+/* ===========================================================================
+ * FOCO VISÍVEL — uma regra, 47 campos
+ * ===========================================================================
+ *
+ * `outline-none` aparece 47 vezes no app, e em NENHUMA delas num botão: são
+ * 18 `<input>`, 9 `<select>`, 4 `<textarea>` e o resto dentro das constantes
+ * de classe compartilhadas (INPUT_BASE, FilterSelect). Botão e link nunca
+ * perderam o anel padrão do navegador — por isso o app é navegável por
+ * teclado e o buraco passou despercebido.
+ *
+ * O que sobrou nos campos foi `focus:border-violet-500/60`: uma borda de 1px a
+ * 60% de opacidade trocando de cor. Isso reprova o critério 2.4.11 da WCAG 2.2
+ * (Focus Appearance) — a área do indicador é pequena demais, e num teclado
+ * externo no celular é justamente onde a pessoa não sabe onde está.
+ *
+ * A regra vive AQUI e não nos 47 lugares pelo mesmo motivo que o token acima:
+ * quem escrever `outline-none` amanhã herda o anel sem precisar saber disto.
+ *
+ * `:focus-visible` e não `:focus`: o anel aparece para teclado e não pisca a
+ * cada clique de mouse, que é o motivo pelo qual alguém escreveu `outline-none`
+ * em primeiro lugar. A causa some junto com o sintoma.
+ *
+ * violet-400 (#a78bfa) dá 7,34:1 no canvas e 6,83:1 no campo — bem acima dos
+ * 3:1 que o indicador precisa. É a cor de destaque que o app já usa.
+ *
+ * `:where()` mantém especificidade ZERO: qualquer regra do Tailwind numa peça
+ * específica ganha desta sem `!important` de ninguém.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]) {
+  /* A COR fica no estado BASE, e não junto do foco. Medido no navegador:
+   *
+   * `INPUT_BASE` tem `transition-colors`, e no Tailwind v4 essa lista inclui
+   * `outline-color`. Com a cor declarada só no `:focus-visible`, o valor de
+   * partida é o inicial — `currentColor` — e o anel nascia da cor do TEXTO e
+   * ficava lá: medi #e4e4e7 no campo e #ffffff no botão, muito depois dos
+   * 150ms da transição. Desligando a transição no elemento, a mesma leitura
+   * devolvia #a78bfa — foi assim que o culpado apareceu.
+   *
+   * Declarada aqui, a cor nunca muda: não há de onde nem para onde
+   * transicionar, e o anel já nasce violeta. Sem outline pintado fora do
+   * foco, porque `outline-style` continua `none` até lá.
+   */
+  outline-color: #a78bfa;
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  /* A GEOMETRIA vem do token — os dois valores batem com o que a Fase 1
+   * escreveu à mão (`--fnd-a11y-focus-ring-width: 2px`,
+   * `--fnd-a11y-focus-ring-offset: 2px`), então a troca não muda um pixel.
+   *
+   * A COR NÃO vem, e é medição: `--sem-color-border-focus` é
+   * `--fnd-brand-400` (#9366FB), que dá 4,9:1 sobre o campo. Passa o mínimo de
+   * 3:1 — mas o violet-400 que está aqui dá 6,83:1. Adotar o token seria
+   * trocar um anel melhor por um pior para ganhar coerência; isso é decisão de
+   * desenho, e não se toma de lado dentro de um commit de encanamento. */
+  outline-width: var(--fnd-a11y-focus-ring-width);
+  outline-offset: var(--fnd-a11y-focus-ring-offset);
+  /* LONGHANDS de propósito. O atalho `outline: 2px solid #a78bfa` reescreve
+   * `outline-color` — e omitir a cor no atalho é pior ainda, porque o atalho
+   * RESETA o que ele não cita, devolvendo `currentColor` e o defeito de cima.
+   * Enquanto forem longhands, a cor da regra base sobrevive.
+   */
+  outline-style: solid;
+  border-radius: inherit;
+}
+
+/* ===========================================================================
+ * A TABELA VIRA CARTÃO NO CELULAR
+ * ===========================================================================
+ *
+ * O DEFEITO
+ *
+ * A tabela de produtos tem 7 colunas; a de precificação, 8. Num celular de
+ * 375px elas não cabem de jeito nenhum, e o `overflow-x-auto` resolve isso
+ * rolando de lado. Rolar é melhor que CORTAR — foi a decisão certa, e o teste
+ * `tabelaCabeNaTela` a registra. Mas rolar de lado tem um custo próprio: ao
+ * chegar na coluna de ação você não sabe mais de qual produto era a linha,
+ * porque a coluna de identidade ficou para trás.
+ *
+ * A saída não é escolher entre cortar e rolar. É parar de ser tabela.
+ *
+ * POR QUE EM CSS, E POR QUE COM VARIÁVEL
+ *
+ * São 20 tabelas em 18 arquivos, e as células são escritas à mão em cada tela
+ * (`<Td>{p.estoque}</Td>`). Uma versão em cartão feita em React exigiria dizer
+ * o rótulo de novo em cada célula — 20 tabelas de mudança, e a primeira que
+ * alguém esquecesse ficaria com cartões sem rótulo.
+ *
+ * Aqui o rótulo vem do `headers`, que a `<Table>` JÁ recebe: ela publica cada
+ * cabeçalho numa variável (`--col-1`, `--col-2`…) e o `nth-child` entrega a
+ * certa a cada célula. Zero mudança nas 20 chamadas, e o rótulo não tem como
+ * divergir do cabeçalho, porque é o mesmo dado.
+ *
+ * A primeira célula não recebe rótulo: ela é a identidade (nome do produto), e
+ * num cartão a identidade é o TÍTULO. "PRODUTO: Chinelo Ortopédico" seria
+ * dizer o óbvio ocupando a linha mais nobre.
+ */
+@media (max-width: 639px) {
+  table[data-cartao],
+  table[data-cartao] tbody,
+  table[data-cartao] tr,
+  table[data-cartao] td {
+    display: block;
+    width: auto;
+  }
+
+  /* O cabeçalho da tabela some: cada rótulo passou para dentro da célula. */
+  table[data-cartao] thead {
+    display: none;
+  }
+
+  table[data-cartao] tr {
+    padding: 0.75rem 1rem;
+  }
+
+  table[data-cartao] td {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.1875rem 0;
+  }
+
+  table[data-cartao] td::before {
+    content: var(--rotulo, "");
+    flex: 0 0 38%;
+    font-size: 11px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-zinc-500);
+  }
+
+  /* A identidade vira o título do cartão. */
+  table[data-cartao] td:first-child {
+    display: block;
+    padding-bottom: 0.375rem;
+  }
+  table[data-cartao] td:first-child::before {
+    content: none;
+  }
+
+  /* O `headers` da <Table> chega aqui. Dez posições cobrem a maior tabela do
+     app (precificação, 8 colunas) com folga; uma 11ª coluna cairia no `""` do
+     `var(--rotulo, "")` acima — fica sem rótulo, nunca com o rótulo errado. */
+  table[data-cartao] td:nth-child(1) { --rotulo: var(--col-1); }
+  table[data-cartao] td:nth-child(2) { --rotulo: var(--col-2); }
+  table[data-cartao] td:nth-child(3) { --rotulo: var(--col-3); }
+  table[data-cartao] td:nth-child(4) { --rotulo: var(--col-4); }
+  table[data-cartao] td:nth-child(5) { --rotulo: var(--col-5); }
+  table[data-cartao] td:nth-child(6) { --rotulo: var(--col-6); }
+  table[data-cartao] td:nth-child(7) { --rotulo: var(--col-7); }
+  table[data-cartao] td:nth-child(8) { --rotulo: var(--col-8); }
+  table[data-cartao] td:nth-child(9) { --rotulo: var(--col-9); }
+  table[data-cartao] td:nth-child(10) { --rotulo: var(--col-10); }
+
+  /* Empilhadas, oito barras cinza ficam mais altas que o cartão real que estão
+     imitando — e esqueleto que mente sobre o tamanho não acalma a tela. Três
+     bastam para dizer "está vindo um cartão". */
+  table[data-cartao] tr[data-fantasma] td:nth-child(n + 4) {
+    display: none;
+  }
+}
+
+/* ===========================================================================
+ * MOVIMENTO REDUZIDO
+ * ===========================================================================
+ *
+ * O `Skeleton` já respeita a preferência sozinho, em `motion-safe:animate-pulse`.
+ * As outras 44 animações do app não: 34 `animate-spin` e 10 `animate-pulse`.
+ *
+ * E elas NÃO são a mesma coisa, então não levam o mesmo tratamento:
+ *
+ *   GIRO é estado. O `Loader2` girando é o único sinal de que a publicação, a
+ *   otimização ou o upload estão acontecendo. Zerar a animação deixa um ícone
+ *   torto e parado no lugar onde deveria haver "estou trabalhando" — troca um
+ *   desconforto por uma mentira. Ele fica, mais lento.
+ *
+ *   PULSO é enfeite. O `Sparkles` pulsando (um deles com 26px) não informa
+ *   nada que o texto ao lado já não diga. Some.
+ *
+ * A varredura usual (`animation: none` em tudo) não faz essa distinção, e é
+ * por isso que ela não está aqui.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* `.animate-pulse` sem prefixo: o `motion-safe:` do Skeleton já está fora
+     deste media query e não é alcançado por esta linha. */
+  .animate-pulse {
+    animation: none !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1.8s !important;
+  }
 }

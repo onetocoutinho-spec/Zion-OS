@@ -5,6 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, Search, Zap } from "lucide-react";
 import { NAV_ITEMS } from "./nav";
+import { ID_DO_CONTEUDO, PularParaConteudo } from "./PularParaConteudo";
+import { useTituloDaAba } from "./tituloDaAba";
+import { useDialogo } from "@/components/ui/useDialogo";
+import { ProvedorDeAnuncios } from "@/components/ui/Anuncios";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 
@@ -19,7 +23,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <div>
           <p className="text-sm font-semibold tracking-wide text-white">Zion OS</p>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Zion Company</p>
+          <p className="text-[11px] uppercase tracking-widest text-zinc-500">Zion Company</p>
         </div>
       </div>
 
@@ -65,12 +69,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  // A gaveta do celular é um diálogo modal: cobre a tela inteira com um fundo
+  // escuro. Sem prender o foco, o Tab passeia pela página ATRÁS dela.
+  const gaveta = useDialogo<HTMLElement>(mobileOpen, () => setMobileOpen(false));
+
   useEffect(() => {
     if (!supabaseConfigurado) return;
     getSupabase()
       .auth.getUser()
       .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
   }, []);
+
+  const current =
+    NAV_ITEMS.find((i) =>
+      i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
+    ) ?? NAV_ITEMS[0];
+
+  // Nas rotas em que esta casca não desenha, o título é de OUTRO dono — `null`
+  // é "não mexa". O hook fica antes da saída porque hook não pode ficar depois,
+  // e o `current` subiu junto para poder alimentá-lo.
+  const daEquipe = !(
+    pathname === "/definir-senha" ||
+    pathname === "/z" ||
+    estaNoPortalCliente(pathname)
+  );
+  useTituloDaAba(daEquipe ? current.label : null);
 
   // O Portal do Cliente (/cliente/*) tem a própria casca (ClientPortalShell).
   // Aqui renderizamos só o conteúdo, sem a navegação interna da equipe.
@@ -81,7 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // sem a casca da equipe.
   // /z (ENG-003) é a superfície do Shell da Zion — moldura própria, tela cheia;
   // o app apenas hospeda a rota (o Shell não conhece este app).
-  if (pathname === "/definir-senha" || pathname === "/z" || estaNoPortalCliente(pathname)) return <>{children}</>;
+  if (!daEquipe) return <>{children}</>;
 
   async function sair() {
     await getSupabase().auth.signOut();
@@ -93,13 +116,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (busca.trim().length < 2) return;
     router.push(`/busca?q=${encodeURIComponent(busca.trim())}`);
   }
-  const current =
-    NAV_ITEMS.find((i) =>
-      i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
-    ) ?? NAV_ITEMS[0];
 
   return (
+    /* A região que fala existe nos DOIS painéis, e não só no portal.
+       `ImportarProdutos` é usado aqui (/produtos/importar) e lá: sem o provider
+       deste lado, a MESMA peça anunciaria o resultado no portal e ficaria muda
+       na equipe. O `useAnunciar` não quebraria — devolve uma função vazia — e é
+       justamente por isso que a falta passaria despercebida. */
+    <ProvedorDeAnuncios>
     <div className="flex min-h-screen">
+      {/* Primeiro elemento focável do documento, de propósito: o atalho só
+          serve se for a primeira parada do Tab. */}
+      <PularParaConteudo />
+
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
         <Sidebar />
@@ -112,7 +141,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-64">
+          <aside
+            ref={gaveta}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu de navegação"
+            className="absolute inset-y-0 left-0 w-64"
+          >
             <Sidebar onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
@@ -163,8 +198,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        {/* `tabIndex={-1}`: sem ele o salto move a barra de rolagem mas NÃO
+            move o foco, e o Tab seguinte volta para a sidebar — o atalho
+            pareceria funcionar e não funcionaria. */}
+        <main
+          id={ID_DO_CONTEUDO}
+          tabIndex={-1}
+          className="flex-1 px-4 py-6 sm:px-6 lg:px-8"
+        >
+          {children}
+        </main>
       </div>
     </div>
+    </ProvedorDeAnuncios>
   );
 }

@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PainelDoAssistente } from "./PainelDoAssistente";
+import { NavegacaoDeBaixo } from "./NavegacaoDeBaixo";
 import {
   Home,
   Package,
@@ -21,6 +22,10 @@ import {
   Zap,
   TrendingUp,
 } from "lucide-react";
+import { ID_DO_CONTEUDO, PularParaConteudo } from "@/components/layout/PularParaConteudo";
+import { useTituloDaAba } from "@/components/layout/tituloDaAba";
+import { useDialogo } from "@/components/ui/useDialogo";
+import { ProvedorDeAnuncios } from "@/components/ui/Anuncios";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
 import { meuPerfil } from "@/lib/services/perfil";
@@ -51,7 +56,7 @@ function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-white">{nome}</p>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Portal do Cliente</p>
+          <p className="text-[11px] uppercase tracking-widest text-zinc-500">Portal do Cliente</p>
         </div>
       </div>
 
@@ -132,6 +137,11 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
+  // A gaveta do celular é um diálogo modal: cobre a tela inteira com um fundo
+  // escuro. Sem prender o foco, o Tab passeia pela página ATRÁS dela — e aqui
+  // é onde mais dói, porque o portal é o produto que a lojista usa no celular.
+  const gaveta = useDialogo<HTMLElement>(mobileOpen, () => setMobileOpen(false));
+
   const { data: perfil, carregando } = useLiveQuery(meuPerfil);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
@@ -155,6 +165,11 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
     areaAtual?.telas.find((t) => telaAtiva(pathname, t.href))?.label ??
     areaAtual?.titulo ??
     "Hoje";
+
+  // A ABA usa o MESMO valor do cabeçalho. É o ponto: o comentário logo acima
+  // já dizia que duas fontes de verdade para este título envelhecem em
+  // direções diferentes — e a aba seria a terceira.
+  useTituloDaAba(tituloAtual);
 
   async function sair() {
     // O fio do Copilot é daquele lojista naquele navegador: sair encerra os
@@ -194,7 +209,16 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
         marketplace,
       }}
     >
+      {/* A região que fala vive AQUI, montada desde o primeiro render: leitor
+          de tela só anuncia mudança de região que já existia no DOM. */}
+      <ProvedorDeAnuncios>
       <div className="flex min-h-screen bg-[#08080d] text-zinc-200">
+        {/* Primeiro elemento focável do documento, de propósito: o atalho só
+            serve se for a primeira parada do Tab. Aqui pesa mais que no painel
+            da equipe — a área aberta abre as sub-telas dela, e são ~12 paradas
+            até o conteúdo. */}
+        <PularParaConteudo />
+
         {/* Sidebar desktop */}
         <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
           <Sidebar nome={nome} />
@@ -207,7 +231,13 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setMobileOpen(false)}
             />
-            <aside className="absolute inset-y-0 left-0 w-64">
+            <aside
+              ref={gaveta}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu de navegação"
+              className="absolute inset-y-0 left-0 w-64"
+            >
               <Sidebar nome={nome} onNavigate={() => setMobileOpen(false)} />
             </aside>
           </div>
@@ -244,7 +274,21 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          {/* `tabIndex={-1}`: sem ele o salto move a barra de rolagem mas NÃO
+              move o foco, e o Tab seguinte volta para a sidebar — o atalho
+              pareceria funcionar e não funcionaria. */}
+          {/* `pt-6` + `pb-*` explícito, e não `py-6`: as duas utilities do
+              Tailwind escrevem `padding-bottom`, e qual vence depende da ordem
+              na folha gerada, não da ordem das classes. Separar tira a dúvida.
+
+              O espaço de baixo reserva a barra (3.5rem) mais a faixa segura do
+              aparelho — sem ele, o último item da lista fica ATRÁS da barra e
+              é justamente o que a pessoa rolou até o fim para alcançar. */}
+          <main
+            id={ID_DO_CONTEUDO}
+            tabIndex={-1}
+            className="flex-1 px-4 pt-6 pb-[calc(3.5rem+1.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-6"
+          >
             <div className="mx-auto max-w-5xl space-y-6">{children}</div>
             {/* O assistente existe em TODA tela do portal, e nao so nas tres
                 que o embutiram. Fica aqui e nao em cada pagina porque a
@@ -252,8 +296,13 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
                 repetida em N paginas diverge na primeira que alguem esquecer. */}
             <PainelDoAssistente />
           </main>
+
+          {/* Fora do <main>: é navegação, não conteúdo — e o atalho "pular para
+              o conteúdo" não deve pular para dentro de um menu. */}
+          <NavegacaoDeBaixo />
         </div>
       </div>
+      </ProvedorDeAnuncios>
     </ClientPortalProvider>
   );
 }

@@ -107,7 +107,7 @@ export default function ProdutoDetalhePage() {
           >
             {a}
             {contador[a] !== undefined && (
-              <span className="ml-1.5 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400">
+              <span className="ml-1.5 rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[11px] text-zinc-400">
                 {contador[a]}
               </span>
             )}

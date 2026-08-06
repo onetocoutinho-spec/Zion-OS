@@ -16,6 +16,8 @@ import { useEffect, useState } from "react";
 import { Rocket, X, AlertTriangle, CheckCircle2, ExternalLink, Link2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { useDialogo } from "@/components/ui/useDialogo";
+import { useAnunciar } from "@/components/ui/Anuncios";
 import { MissaoRepublicacao } from "@/components/esteira/MissaoRepublicacao";
 import {
   montarPreviewML,
@@ -78,6 +80,12 @@ export function PublicarAnuncio({
   const [precisaReconectar, setPrecisaReconectar] = useState(false);
   const [missao, setMissao] = useState<{ missao: Missao; ativos: AnuncioAtivo[] } | null>(null);
 
+  // Enquanto a missão de republicação está por cima, o Escape é DELA — e ela
+  // não fecha com Escape. Passar `null` aqui evita que a mesma tecla feche os
+  // dois diálogos de uma vez e faça a decisão sumir sem ter sido tomada.
+  const caixa = useDialogo(true, missao ? null : onFechar);
+  const anunciar = useAnunciar();
+
   // Fotos reais do produto e estado da conexão: os dois fatos que mudam se o
   // botão pode ser clicado. Enquanto não chegam, nada é afirmado.
   useEffect(() => {
@@ -134,18 +142,28 @@ export function PublicarAnuncio({
         naoEncerrados = falharam.map((f) => f.mlItemId);
       }
       setMissao(null);
+      // A ação mais consequente do portal, e a que mais tempo leva. Quem usa
+      // leitor de tela apertava Enter e ficava no silêncio.
+      anunciar(
+        naoEncerrados.length > 0
+          ? `Anúncio publicado no ${registro.marketplace}, mas ${naoEncerrados.length} anúncio(s) antigo(s) não foram encerrados.`
+          : `Anúncio publicado no ${registro.marketplace}.`
+      );
       onPublicado({ id: r.id as string, permalink: r.permalink, naoEncerrados, avisos: r.avisos });
     } catch (e) {
       // O botão continua liberado: o lojista pode reconectar em outra aba e
       // tentar de novo sem fechar e reabrir esta tela.
       if (e instanceof ReconectarCanalError) setPrecisaReconectar(true);
-      setErro(
+      const motivo =
         e instanceof JaPublicadoError
           ? e.message
           : e instanceof Error
             ? e.message
-            : "Não foi possível publicar agora."
-      );
+            : "Não foi possível publicar agora.";
+      setErro(motivo);
+      // "urgente": falha na publicação precisa interromper. Seguir clicando
+      // achando que publicou é pior que ser cortado no meio de uma frase.
+      anunciar(`A publicação falhou. ${motivo}`, "urgente");
       setMissao(null);
     } finally {
       setPublicando(false);
@@ -155,8 +173,14 @@ export function PublicarAnuncio({
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-        <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} aria-hidden />
+        <div
+          ref={caixa}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Publicar no ${registro.marketplace}`}
+          className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-white/10 bg-[#0e0e16]"
+        >
           <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
             <div>
               <p className="text-sm font-semibold text-white">Publicar no {registro.marketplace}</p>
@@ -194,7 +218,13 @@ export function PublicarAnuncio({
                       <img
                         key={i}
                         src={u}
-                        alt={`Foto ${i + 1}`}
+                        alt={
+                          i === 0
+                            ? "Foto 1 que vai no anúncio — capa"
+                            : `Foto ${i + 1} que vai no anúncio`
+                        }
+                        loading="lazy"
+                        decoding="async"
                         className="h-14 w-14 rounded-lg border border-white/10 object-cover"
                       />
                     ))}
@@ -290,7 +320,7 @@ export function PublicarAnuncio({
 function Dado({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2">
-      <p className="text-[10px] uppercase tracking-wider text-zinc-500">{rotulo}</p>
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">{rotulo}</p>
       <p className="mt-0.5 text-sm font-medium text-zinc-200">{valor}</p>
     </div>
   );

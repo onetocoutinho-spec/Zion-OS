@@ -449,7 +449,7 @@ export default function EsteiraPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
-                        <tr className="text-[10px] uppercase tracking-wider text-zinc-600">
+                        <tr className="text-[11px] uppercase tracking-wider text-zinc-600">
                           <th className="py-1 pr-3">Cor</th><th className="py-1 pr-3">Tam.</th><th className="py-1 pr-3">SKU</th>
                           <th className="py-1 pr-3">EAN</th><th className="py-1 pr-3">Est.</th><th className="py-1 pr-3">Preço</th>
                         </tr>

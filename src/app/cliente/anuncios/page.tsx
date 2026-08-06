@@ -62,7 +62,9 @@ const MAPA_FILTRO: Record<string, string> = {
 
 export default function ClienteAnuncios() {
   const { clienteId, nome } = useClientPortal();
-  const { data: anuncios } = useLiveQuery(
+  // `estado` e não só `data`: com `data: null` a tela escreve `(anuncios ?? [])`
+  // e a tabela pinta "Nenhum registro encontrado" enquanto a busca está no ar.
+  const { data: anuncios, estado } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
     [clienteId]
   );
@@ -257,6 +259,7 @@ export default function ClienteAnuncios() {
           </div>
 
           <Table
+            carregando={estado === "carregando"}
             // Duas colunas saíram, por motivos DIFERENTES:
             //   "Marketplace" — 1 valor em 590 anúncios. Não informava nada.
             //   "Prioridade"  — variava, mas era DERIVADA de Score e Problema

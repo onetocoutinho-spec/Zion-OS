@@ -149,7 +149,7 @@ function SecaoEsteira() {
                   <span className="text-zinc-400">Quando usar:</span> {a.quandoUsar}
                 </p>
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Prompt do agente</p>
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-600">Prompt do agente</p>
                   <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap rounded-md bg-black/30 p-2.5 font-mono text-[11px] leading-relaxed text-zinc-400">
                     {a.promptSistema}
                   </pre>
