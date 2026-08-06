@@ -155,9 +155,105 @@ dentro da organização e convite pelo próprio cliente, com o RLS acompanhando.
 
 ---
 
+## O produto que não precisa do Mercado Livre
+
+*Acrescentado em 06/08, depois da pergunta do dono: "e se deixarmos para concluir
+o caminho para o ML somente no final, com a cliente usando?"*
+
+**A resposta é sim, e é melhor que a ordem original.** Existe um produto inteiro
+que roda sobre dado que já está no banco, sobre os anúncios que ela **já tem no
+ar**, sem escrever uma linha no ML.
+
+### O que já está no banco e nunca chegou na tela dela
+
+| | |
+|---|---|
+| infrações lidas do ML | **1.060** |
+| com o remédio já escrito pelo ML | **1.028** |
+| anúncios atingidos por FOTOS | **400** |
+| anúncios atingidos por PQT | **327** |
+| **DOMAIN — anúncios PAUSADOS pelo ML** | **25**, e é a única categoria crescendo (03/08) |
+
+### A leitura que só apareceu ao ler o remédio
+
+**Quase tudo é FOTO.** "PQT" parecia ser ficha do produto — não é. O remédio de
+344 das 362 é o **mesmo texto** das FOTOS:
+
+```
+motivo:  A foto de capa não cumpre os requisitos.
+remédio: Corrija suas fotos: descumpre o tamanho mínimo,
+         posição e proporção do produto.
+```
+
+E DOMAIN (110 infrações, 25 anúncios) diz *"Pausamos o anúncio porque ele
+infringe nossas políticas — ajuste o título e/ou substitua as fotos"*.
+
+Somando: **~1.026 das 1.060 são foto.** A loja da Leilane está penalizada por
+foto, quase inteiramente.
+
+### O que isso significa para o software
+
+O PLANO-002 já falsificou o conserto automático de capa (o ML **apara** a faixa
+branca; a regra é o produto **ocupar** o quadro). Continua valendo, e agora com
+mais força: **o software não conserta quase nada disto — é trabalho de
+fotógrafo.**
+
+Mas o valor não está em consertar. Está em três coisas que ninguém sabia:
+
+1. **Que é foto.** Os três subgrupos escondiam isso — só ler o texto do remédio
+   revelou que PQT e DOMAIN são a mesma causa.
+2. **Que 25 anúncios estão PAUSADOS agora.** Fora do ar, perdendo venda. São 25,
+   não 400 — cabe num dia de trabalho.
+3. **Em que ordem refazer as 400.** Por estoque parado e por venda, não por
+   ordem alfabética.
+
+### A peça tipada já existe
+
+`src/modules/catalog/domain/lacunasDoProduto.ts` já é o modelo que o item A
+propunha construir:
+
+```ts
+export type TipoLacunaProduto = "custo" | "peso" | "foto" | "preco";
+export interface LacunaProduto {
+  tipo: TipoLacunaProduto;
+  rotulo: string;   // duas ou três palavras
+  impede: string;   // o que isto impede
+  href?: string;    // onde se resolve, JÁ COM O PRODUTO no endereço
+}
+```
+
+Há **dois** sistemas de pendência no repositório: este, tipado, no nível do
+**catálogo**; e `anuncio.pendencias`, prosa da IA, no nível do **anúncio**. Só o
+segundo bloqueia o A10 — e só o A10 bloqueia publicar.
+
+**Adiar o ML adia o item A junto**, que era o pré-requisito mais caro do plano.
+
+### E o dado passa a se pagar sozinho
+
+Na ordem original a lojista preenchia custo para alimentar um pipeline que ela
+não vê. Nesta, preenche custo **para descobrir a própria margem**. Os 50 produtos
+sem custo deixam de ser lição de casa e viram a pergunta dela.
+
+---
+
 ## O plano
 
-### A — Tipar a pendência
+### I — O produto diagnóstico
+
+*"O que está errado na minha loja e quanto está me custando."* Roda sobre dado
+que já existe, sem escrever no ML:
+
+- **Os 25 pausados**, primeiro — estão fora do ar agora.
+- **As 400 com foto reprovada**, ordenadas por quanto custam (estoque parado,
+  venda perdida) — a tela mostra e prioriza; quem resolve é fotógrafo.
+- **Margem real**: 17 produtos em risco, e os 50 sem custo aparecendo como
+  *"não sei te dizer, e é por isto"*.
+- **Lacunas por produto** — `lacunasDoProduto`, que já está pronto e tipado.
+
+**Pronto quando:** a Leilane abre o portal e vê, sem perguntar a ninguém, o que
+está fora do ar, o que está penalizado e o que está dando prejuízo.
+
+### A — Tipar a pendência do anúncio
 
 **Pré-requisito de tudo.** Pendência deixa de ser string e passa a ter tipo,
 campo alvo, produto e tela de destino. Converte 177 frases em ~8 tipos.
@@ -240,21 +336,39 @@ o app funciona — a lição já está registrada.
 ## A ordem, e por quê
 
 ```
-H  verificar UX          (barato, e destrava confiança no que já foi feito)
-B  publicar o aprovado   (prova o caminho inteiro, hoje)
-A  tipar a pendência     (pré-requisito de C e das Missões)
-D  apagar a agência      (independente; barateia tudo que vem depois)
-C  fechar as famílias    (o funil passa a terminar)
-E  volume                (bloqueia a empresa grande)
-F  papéis e convite      (destrava a empresa grande como organização)
-G  a tela de vocês       (suporte deixa de ser adivinhação)
+H  verificar as 5 fases de UX     barato, e ainda pendente
+B  publicar O anúncio aprovado    a prova da cadeia, um clique
+D  apagar a agência               65 arquivos, medidos; barateia tudo depois
+I  o produto diagnóstico          ← A CLIENTE COMEÇA A USAR AQUI
+E  volume                         bloqueia a empresa grande
+F  papéis e convite               bloqueia a empresa grande
+──────── a cliente usando, e a empresa grande entrando ────────
+A  tipar a pendência do anúncio
+C  fechar as famílias do A10
+   publicar em escala
+G  a tela de vocês
 ```
 
-**Para a Leilane usar hoje:** H → B → A → C. Ao fim disso o funil termina, que
-é a definição de "pronto" já acordada — *a lojista opera sozinha*.
+**Para a Leilane usar:** H → B → D → I. Ela passa a ver o que está fora do ar, o
+que está penalizado e o que dá prejuízo — sobre a loja que ela já tem.
 
-**Para a empresa grande entrar:** o mesmo, mais E e F. Nenhum dos dois é tela;
-os dois são modelo.
+**Para a empresa grande entrar:** mais E e F. Nenhum dos dois é tela; os dois são
+modelo.
+
+**Depois, com ela usando:** A → C → publicar em escala.
+
+### A distinção que sustenta esta ordem
+
+**Adiar o ENDURECIMENTO do caminho do ML, não a PROVA.**
+
+Existe um anúncio aprovado, nota 75, zero pendências, parado sem MLB desde
+01/08. Publicar esse **um** valida a cadeia inteira ponta a ponta e custa um
+clique. Publicar os 79 é o trabalho que espera.
+
+O risco de adiar os dois juntos está registrado neste repositório: **866 testes
+verdes enquanto a IA inventava SKU e cor** (PR #79), descoberto só ao rodar
+contra o provedor real. Construir `esteira → A10 → publicar` por meses sem nunca
+executá-la de verdade repete exatamente esse erro, em escala maior.
 
 ---
 
@@ -280,7 +394,12 @@ Três suposições minhas caíram contra o banco, e todas eram plausíveis:
    pagina até 200 mil.
 3. *"A parede da empresa grande é disco."* — No Pro é 4,2%. A parede é o portal
    ler tabela inteira para o navegador.
+4. *"PQT é a ficha do produto."* — É foto. O nome do subgrupo enganou; só o
+   **texto do remédio** desmentiu, e com ele a conclusão mudou de "três
+   problemas diferentes" para "um problema, 1.026 vezes".
+5. *"Tipar a pendência é construir do zero."* — `lacunasDoProduto` já é
+   exatamente isso, para o catálogo. Faltava só ler o que já existe.
 
-**O que valeu em todas: ler o banco antes de escrever o plano.** As três
-suposições sobreviveriam a qualquer revisão de código, porque nenhuma delas é
-sobre código — são sobre dado.
+**O que valeu em todas: ler o banco antes de escrever o plano** — e, na 4,
+**ler o TEXTO e não o rótulo.** Nenhuma das cinco sobreviveria a uma revisão de
+código, porque nenhuma é sobre código: são sobre dado.
