@@ -17,6 +17,17 @@ const eslintConfig = defineConfig([
     // da plataforma (tem eslint próprio).
     ".obsidian/**",
     "platform/**",
+    // CÓPIAS DE TRABALHO DE OUTRA SESSÃO, não este código.
+    //
+    // Um agente rodando em worktree isolada cria um clone COMPLETO do repo em
+    // `.claude/worktrees/<nome>/`. O ESLint varria essa cópia junto: medido em
+    // 06/08/2026, o portão saltou de 46 para 112 avisos sem que uma linha
+    // daqui mudasse. Pior que o número: o relatório passa a misturar arquivos
+    // de dois trabalhos diferentes, e quem lê não tem como saber qual é qual.
+    //
+    // A worktree some sozinha quando o trabalho termina — mas enquanto existe,
+    // ela empurra o portão para um número que não é sobre este código.
+    ".claude/**",
   ]),
   // Regras novas do React Compiler (eslint-plugin-react-hooks recente): úteis,
   // mas NÃO devem barrar o build/deploy. Ficam como aviso até limparmos.
