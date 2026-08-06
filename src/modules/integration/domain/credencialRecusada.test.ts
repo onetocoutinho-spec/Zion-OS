@@ -151,3 +151,23 @@ test("Vendas não afirma 'nenhuma venda' quando não conseguiu perguntar", () =>
   // e conectado lendo. Colapsar dois deles foi o defeito original.
   assert.match(tela, /naoConectado \?/, "o estado 'nunca conectou' foi absorvido pelo novo");
 });
+
+test("nenhum dos três estados de canal é decidido lendo a prosa do aviso", () => {
+  // Vendas fazia:
+  //
+  //   aviso?.toLowerCase().includes("não conectado") ||
+  //   aviso?.toLowerCase().includes("nao conectado")
+  //
+  // Duas grafias, com e sem acento, porque ninguém sabia qual chegaria — o
+  // sintoma de estar decidindo comportamento pela REDAÇÃO de uma frase. É o
+  // mesmo defeito que a classificação da recusa do ML já não comete: melhore o
+  // texto para a lojista e a tela quebra, em silêncio, sem nenhum teste cair.
+  const tela = semComentarios(
+    lerFonte(new URL("../../../app/cliente/vendas/page.tsx", import.meta.url))
+  );
+  assert.ok(
+    !/includes\("n[ãa]o conectado"\)/.test(tela),
+    "o estado do canal voltou a ser decidido por busca de texto no aviso"
+  );
+  assert.match(tela, /naoConectado = precisaConectar/, "o estado deixou de vir do serviço");
+});

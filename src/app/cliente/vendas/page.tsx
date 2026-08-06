@@ -45,17 +45,21 @@ export default function ClienteVendas() {
   const [carregouUmaVez, setCarregouUmaVez] = useState(false);
   /** O ML recusou a credencial: nada do que está abaixo pôde ser lido. */
   const [precisaReconectar, setPrecisaReconectar] = useState(false);
+  /** O canal nunca foi ligado — outro estado, outra saída. */
+  const [precisaConectar, setPrecisaConectar] = useState(false);
 
   async function carregar() {
     if (!clienteId || carregando) return;
     setCarregando(true);
     setAviso(null);
     setPrecisaReconectar(false);
+    setPrecisaConectar(false);
     try {
       const r = await buscarVendasDoCliente(clienteId, { dias });
       setPedidos(r.pedidos);
       setAviso(r.aviso ?? null);
       setPrecisaReconectar(Boolean(r.precisaReconectar));
+      setPrecisaConectar(Boolean(r.precisaConectar));
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha ao buscar vendas.");
     } finally {
@@ -97,7 +101,15 @@ export default function ClienteVendas() {
     [m, margem, dias]
   );
   const maxDia = Math.max(1, ...m.porDia.map((d) => d.faturamento));
-  const naoConectado = aviso?.toLowerCase().includes("não conectado") || aviso?.toLowerCase().includes("nao conectado");
+  // ESTE ESTADO SAIU DA PROSA. Era:
+  //
+  //   aviso?.toLowerCase().includes("não conectado") ||
+  //   aviso?.toLowerCase().includes("nao conectado")
+  //
+  // Duas grafias, com e sem acento, porque ninguém sabia qual chegaria — o
+  // sintoma de estar decidindo comportamento pela redação de uma frase. Melhore
+  // o texto e a tela quebra em silêncio. Agora vem do serviço, como um fato.
+  const naoConectado = precisaConectar;
 
   return (
     <>

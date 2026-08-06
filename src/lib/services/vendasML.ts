@@ -42,10 +42,19 @@ export const METRICAS_ZERO: MetricasVendas = {
 export async function buscarVendasDoCliente(
   clienteId: string,
   opcoes: { dias?: number } = {}
-): Promise<{ pedidos: PedidoML[]; aviso?: string; precisaReconectar?: boolean }> {
+): Promise<{ pedidos: PedidoML[]; aviso?: string; precisaReconectar?: boolean; precisaConectar?: boolean }> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
   if (!canal?.ativo) {
-    return { pedidos: [], aviso: "Cliente não conectado ao Mercado Livre." };
+    // `precisaConectar` em vez de deixar a tela procurar "não conectado" no
+    // texto. Ela fazia isso — e com as duas grafias, com e sem acento, porque
+    // ninguém sabia qual chegaria. Amarrar comportamento à redação de uma frase
+    // é o mesmo defeito que este arquivo acabou de tirar da classificação da
+    // recusa do ML: mude a frase para melhor e a tela quebra em silêncio.
+    return {
+      pedidos: [],
+      aviso: "Cliente não conectado ao Mercado Livre.",
+      precisaConectar: true,
+    };
   }
   const dias = opcoes.dias ?? 30;
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
