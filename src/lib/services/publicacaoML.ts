@@ -159,13 +159,14 @@ export class JaPublicadoError extends Error {
  * motivos: a tela mostra um caminho (o link de reconectar) em vez de uma
  * mensagem sem saída, e o veredito NÃO é anexado às observações do anúncio —
  * uma credencial morta não diz nada sobre o conteúdo que se tentou publicar.
+ *
+ * A CLASSE MUDOU DE CASA (06/08), e a reexportação é o ponto: com oito outras
+ * telas passando a levantar o mesmo erro, DUAS classes com o mesmo nome fariam
+ * `instanceof` falhar em silêncio conforme o import — o pior tipo de defeito,
+ * porque a tela simplesmente voltaria a mostrar o box vermelho sem saída.
  */
-export class ReconectarCanalError extends Error {
-  constructor(mensagem: string) {
-    super(mensagem);
-    this.name = "ReconectarCanalError";
-  }
-}
+import { ReconectarCanalError } from "@/modules/integration/domain/credencialRecusada";
+export { ReconectarCanalError };
 
 /** Publicações em voo, por registro — barra o duplo clique simultâneo. */
 const emVoo = new Set<string>();

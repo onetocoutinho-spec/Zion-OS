@@ -473,3 +473,67 @@ repositório. Nenhuma veio de raciocínio ruim sobre código.
 **O que valeu em todas: ler o banco antes de escrever o plano** — e, na 4,
 **ler o TEXTO e não o rótulo.** Nenhuma das cinco sobreviveria a uma revisão de
 código, porque nenhuma é sobre código: são sobre dado.
+
+---
+
+## A credencial do Mercado Livre — o que foi medido em 06/08
+
+A tela de Precificação e a de Vendas mostravam, em inglês, num box vermelho:
+
+```
+Falha ao renovar token do ML: the client_id does not match the original
+```
+
+### As duas metades do problema
+
+**A metade que era software, e está consertada.** Nove rotas renovam token.
+`/api/ml/publicar` já classificava a recusa pelo HTTP do ML (4xx = a credencial
+não vale; 5xx = o ML está fora) e devolvia 409 com `motivo: "reconectar"`, que a
+tela converte num caminho de saída. As outras **oito** faziam
+`catch (e) { e.message }` e despejavam a prosa do ML.
+
+Pior que a prosa: em Vendas, `pedidos` voltava vazio e a tela desenhava a loja
+inteira zerada — subtítulo `"Nenhuma venda nos últimos 30 dias"`, sete cartões
+de R$ 0 — sobre uma lista que **ninguém conseguiu ler**. Vazio ali significa
+"não consegui perguntar", nunca "ela não vendeu". É o defeito que atravessa este
+projeto, desta vez sobre o faturamento dela.
+
+O acerto de `publicar` virou peça compartilhada
+(`modules/integration/domain/credencialRecusada.ts` +
+`infrastructure/renovacaoDaRota.ts`), e uma sentinela varre o diretório de
+rotas: uma décima rota que renove token cai no teste no dia em que nascer.
+
+**A metade que é credencial, e não é minha.** Medido:
+
+| | |
+|---|---|
+| `ML_CLIENT_ID` em `.env.local` | `7058066068734529` |
+| resposta do ML a esse par (client_id + refresh_token guardado) | recusa, às 17:23 UTC |
+| `canais_marketplace.atualizado_em` | **15:50 UTC do mesmo dia** |
+| a linha se moveu durante 1h54 de tentativas locais | **não** |
+
+Só duas coisas escrevem `atualizado_em`: uma renovação **bem-sucedida** e o
+callback do OAuth. Qualquer uma das duas significa o mesmo: às 15:50 **algum
+ambiente conseguiu**, com um `client_id` que não é o do `.env.local`. E como
+`ML_REDIRECT_URI` aponta para produção — e a rota de autorização recusa
+`redirect_uri` que não seja https —, esse ambiente só pode ser o publicado.
+
+**A leitura, dita como leitura e não como fato:** produção provavelmente está
+funcionando, e quem está fora é o ambiente local. Não consegui confirmar
+diretamente porque as rotas exigem sessão e eu não tenho login em produção. O
+teste de dez segundos é abrir `/cliente/vendas` no site publicado: se a tela
+mostrar vendas, está confirmado.
+
+### A decisão que sobra para o dono
+
+Não é só "copiar o client_id". Local e produção compartilham **a mesma linha**
+de `canais_marketplace` no banco de produção, e o ML **rotaciona** o
+refresh_token a cada renovação.
+
+- **Alinhar `.env.local` com o app do servidor** — o local volta a falar com o
+  ML, e a partir daí cada carregamento de tela em desenvolvimento **rotaciona a
+  credencial viva da lojista**. Duas rotações concorrentes derrubam uma delas.
+- **Deixar como está** — o local não fala com o ML, e agora diz isso em
+  português com um caminho, em vez da prosa em inglês. Produção não muda.
+
+A segunda é a mais segura enquanto houver uma lojista real na base.

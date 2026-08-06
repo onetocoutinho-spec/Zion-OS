@@ -10,6 +10,7 @@
 // inventa um custo MENOR do que o real — o erro perigoso.
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
+import { pedeReconexao } from "../../modules/integration/domain/credencialRecusada";
 import {
   TAXAS_PADRAO,
   reputacaoDoLevelId,
@@ -55,6 +56,14 @@ export interface CustosDoCliente {
   reputacaoDaApi: boolean;
   /** Motivo de alguma parte ter caído no padrão. Vale mostrar ao lojista. */
   aviso: string | null;
+  /**
+   * O ML recusou a credencial salva — só reconectar resolve.
+   *
+   * Separado do `aviso` de propósito: os outros avisos dizem "caiu no padrão,
+   * siga usando"; este tem uma AÇÃO, e a tela precisa saber a diferença para
+   * oferecer o caminho em vez de apenas informar.
+   */
+  precisaReconectar?: boolean;
 }
 
 /**
@@ -133,7 +142,11 @@ async function buscar(p: PedidoDeCustos, listingTypeId: string): Promise<CustosD
     });
     const dados = (await resposta.json()) as RespostaCustos;
     if (!resposta.ok) {
-      return { ...padrao, aviso: dados.erro ?? "Não foi possível consultar os custos no ML." };
+      return {
+        ...padrao,
+        aviso: dados.erro ?? "Não foi possível consultar os custos no ML.",
+        precisaReconectar: pedeReconexao(dados),
+      };
     }
 
     const rep = dados.reputacao;

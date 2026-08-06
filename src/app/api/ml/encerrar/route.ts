@@ -13,8 +13,9 @@
 // server-side pelo cliente, refresh_token lido só no servidor (RLS) e o token
 // rotacionado persistido antes de qualquer operação externa.
 
-import { encerrarItem, renovarToken } from "@/lib/marketplaces/mercadolivre";
+import { encerrarItem } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 interface Corpo {
@@ -68,7 +69,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace,
+      oQueFalhou: "encerrar o anúncio",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     // Persiste o refresh_token rotacionado ANTES da operação externa — se o
     // encerramento falhar, a conexão do cliente continua íntegra.
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);

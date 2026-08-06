@@ -43,15 +43,19 @@ export default function ClienteVendas() {
   const [carregando, setCarregando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [carregouUmaVez, setCarregouUmaVez] = useState(false);
+  /** O ML recusou a credencial: nada do que está abaixo pôde ser lido. */
+  const [precisaReconectar, setPrecisaReconectar] = useState(false);
 
   async function carregar() {
     if (!clienteId || carregando) return;
     setCarregando(true);
     setAviso(null);
+    setPrecisaReconectar(false);
     try {
       const r = await buscarVendasDoCliente(clienteId, { dias });
       setPedidos(r.pedidos);
       setAviso(r.aviso ?? null);
+      setPrecisaReconectar(Boolean(r.precisaReconectar));
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha ao buscar vendas.");
     } finally {
@@ -103,9 +107,21 @@ export default function ClienteVendas() {
        * lista do que a tela mostra, no lugar onde cabia o que ela descobriu.
        * Agora: "Lucro de R$ X em 30 dias — margem de Y%", e o prejuízo dito
        * como prejuízo quando for o caso. */}
+      {/* O SUBTÍTULO NÃO AFIRMA O QUE NINGUÉM LEU.
+        *
+        * Com a credencial recusada pelo ML, `pedidos` vem vazio — e
+        * `resumoDasVendas` produzia daí "Nenhuma venda nos últimos 30 dias".
+        * Vazio ali significa "não consegui perguntar", nunca "ela não vendeu",
+        * e a frase saía na linha mais nobre da tela como se fosse um fato
+        * apurado. É o mesmo defeito de `notaExibivel` — ausência virando
+        * afirmação — desta vez sobre o faturamento dela. */}
       <PageHeader
         titulo="Vendas"
-        subtitulo={`${pulso.frase}${pulso.detalhe ? ` ${pulso.detalhe}` : ""}`}
+        subtitulo={
+          precisaReconectar
+            ? "Não consegui consultar o Mercado Livre — a conexão da sua conta precisa ser refeita."
+            : `${pulso.frase}${pulso.detalhe ? ` ${pulso.detalhe}` : ""}`
+        }
         acao={
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
@@ -128,7 +144,26 @@ export default function ClienteVendas() {
         }
       />
 
-      {naoConectado ? (
+      {/* TRÊS ESTADOS, TRÊS DESENHOS — e o do meio não existia.
+        *
+        * "nunca conectou" e "conectado e lendo" estavam modelados; "conectado,
+        * mas o ML recusou a credencial" caía no segundo e desenhava a loja
+        * inteira zerada. São coisas diferentes e a saída é diferente: ali é
+        * conectar pela primeira vez, aqui é REFAZER uma conexão que existe. */}
+      {precisaReconectar ? (
+        <VazioAmigavel
+          icon={Plug}
+          titulo="Refaça a conexão com o Mercado Livre"
+          descricao="Sua conta está ligada, mas o Mercado Livre não aceitou mais a autorização salva — costuma acontecer quando a senha muda ou a permissão é revogada por lá. Nada foi perdido: é só autorizar de novo."
+          acao={
+            <Link href="/cliente/conectar-ml">
+              <Button>
+                <Plug size={15} /> Reconectar agora
+              </Button>
+            </Link>
+          }
+        />
+      ) : naoConectado ? (
         <VazioAmigavel
           icon={Plug}
           titulo="Conecte sua conta do Mercado Livre"

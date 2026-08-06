@@ -6,11 +6,11 @@
 // e grava (RLS). O refresh_token é rotacionado e persistido SÓ no servidor.
 
 import {
-  renovarToken,
   buscarAnunciosDoVendedor,
   recorteDaCategoria,
 } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 300, não 60 — o teto do plano Pro, que o worker da esteira já usa desde
@@ -64,7 +64,15 @@ export async function POST(request: Request) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
 
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace,
+      oQueFalhou: "importar seus anúncios",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
 
     const sellerId = canal.sellerId || tokens.userId;

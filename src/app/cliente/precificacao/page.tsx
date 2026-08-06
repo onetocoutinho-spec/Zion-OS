@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Calculator, Search, Package, TrendingUp } from "lucide-react";
+import { Calculator, Search, Package, TrendingUp, Plug } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
@@ -77,6 +77,8 @@ function Precificacao() {
   // para quem ainda não tem reputação).
   const [taxasBase, setTaxasBase] = useState<ModeloTaxas>(TAXAS_PADRAO);
   const [avisoCustos, setAvisoCustos] = useState<string | null>(null);
+  /** O ML recusou a credencial: o aviso ganha um caminho de saída. */
+  const [precisaReconectar, setPrecisaReconectar] = useState(false);
   /**
    * Os custos do lojista vivem em estado PRÓPRIO, não dentro de `taxasBase`.
    *
@@ -118,6 +120,7 @@ function Precificacao() {
         if (!vivo) return;
         setTaxasBase(c.taxas);
         setAvisoCustos(c.aviso);
+        setPrecisaReconectar(Boolean(c.precisaReconectar));
       })
       .catch(() => vivo && setAvisoCustos("Não foi possível consultar sua reputação no ML."));
     return () => {
@@ -272,10 +275,31 @@ function Precificacao() {
 
       <MargemMinima margem={margem} onMudou={setMargem} />
 
+      {/* AQUI A TELA CONTINUA ÚTIL — e é por isso que o desenho é outro.
+        *
+        * Diferente de Vendas, a Precificação não depende do ML para funcionar:
+        * ela cai na tabela padrão e os números seguem valendo, só menos exatos.
+        * Então o certo é um aviso com saída, não um vazio no lugar da tela.
+        *
+        * O que mudou é a frase: era a prosa crua do ML em inglês ("the
+        * client_id does not match the original"), sem nenhum caminho. */}
       {avisoCustos && (
-        <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
-          {avisoCustos} Os números abaixo usam a tabela padrão até o Mercado Livre responder.
-        </p>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+          <p>
+            {avisoCustos}{" "}
+            {precisaReconectar
+              ? "Até lá, os números usam a tabela padrão — a comissão real da sua conta pode ser diferente."
+              : "Os números abaixo usam a tabela padrão até o Mercado Livre responder."}
+          </p>
+          {precisaReconectar && (
+            <Link
+              href="/cliente/conectar-ml"
+              className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 px-2.5 py-1.5 font-medium text-amber-200 transition-colors hover:bg-amber-500/10"
+            >
+              <Plug size={13} /> Reconectar agora
+            </Link>
+          )}
+        </div>
       )}
 
       {/* OS QUATRO DEIXAM DE PESAR IGUAL.
@@ -335,7 +359,7 @@ function Precificacao() {
         </span>
       </div>
 
-      <Table
+      <Table
         headers={COLUNAS_DA_LISTA}
       >
         {filtradas.length === 0 ? (

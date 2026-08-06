@@ -15,12 +15,12 @@
 import {
   consultarTarifaDeVenda,
   consultarReputacao,
-  renovarToken,
 } from "@/lib/marketplaces/mercadolivre";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
 } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 interface Corpo {
@@ -72,7 +72,15 @@ export async function POST(request: Request) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
 
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace,
+      oQueFalhou: "calcular seus preços",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
 
     // A reputação vem sempre; a tarifa só quando há categoria e preço, porque
