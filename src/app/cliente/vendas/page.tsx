@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Plug,
 } from "lucide-react";
+import { resumoDasVendas } from "@/modules/portal/domain/resumoDoPulso";
 import { StatCard } from "@/components/ui/StatCard";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
 import { margemMinimaComOrigem } from "@/lib/services/margemCliente";
@@ -86,14 +87,25 @@ export default function ClienteVendas() {
    * 30 de 80 produtos têm custo.
    */
   const parcial = m.coberturaCusto < 100 && m.pedidos > 0;
+
+  const pulso = useMemo(
+    () => resumoDasVendas(m, margem, dias),
+    [m, margem, dias]
+  );
   const maxDia = Math.max(1, ...m.porDia.map((d) => d.faturamento));
   const naoConectado = aviso?.toLowerCase().includes("não conectado") || aviso?.toLowerCase().includes("nao conectado");
 
   return (
     <>
+      {/* O SUBTÍTULO VIROU O FATO. (PLANO-004, item B.)
+       *
+       * Era "Faturamento, lucro e pedidos da sua loja no Mercado Livre" — a
+       * lista do que a tela mostra, no lugar onde cabia o que ela descobriu.
+       * Agora: "Lucro de R$ X em 30 dias — margem de Y%", e o prejuízo dito
+       * como prejuízo quando for o caso. */}
       <PageHeader
         titulo="Vendas"
-        subtitulo="Faturamento, lucro e pedidos da sua loja no Mercado Livre."
+        subtitulo={`${pulso.frase}${pulso.detalhe ? ` ${pulso.detalhe}` : ""}`}
         acao={
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
@@ -137,7 +149,17 @@ export default function ClienteVendas() {
             </p>
           )}
 
-          {/* Cards */}
+          {/* SEM PEDIDO, SEM CARTÃO — e este defeito só apareceu na tela.
+           *
+           * Com zero vendas no período, os sete cartões saíam "R$ 0 · R$ 0 · 0
+           * · R$ 0 · R$ 0 · R$ 0 · 0%" logo abaixo da frase que já dizia
+           * "Nenhuma venda nos últimos 30 dias". Sete repetições da mesma
+           * ausência, com o peso visual de sete fatos.
+           *
+           * É a mesma regra que a Precificação e a Auditoria já aplicam — zero
+           * não é fato, é a falta dele — e eu tinha esquecido justamente aqui,
+           * onde o período sem venda é o caso mais comum de todos. */}
+          {m.pedidos > 0 && (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Faturamento" value={formatBRL(m.faturamento)} icon={DollarSign} tone="green" hint={`${dias} dias`} />
             {/* PARCIAL É DITO NO RÓTULO, não só num rodapé.
@@ -161,7 +183,9 @@ export default function ClienteVendas() {
             <StatCard label="Ticket médio" value={formatBRL(m.ticketMedio)} icon={Receipt} tone="blue" />
             <StatCard label="Taxas do ML" value={formatBRL(m.taxas)} icon={Percent} tone="orange" />
             <StatCard label="Custo dos produtos" value={formatBRL(m.custo)} icon={Package} tone="cyan" hint={`${m.coberturaCusto}% dos itens c/ custo`} />
-            <StatCard label="Unidades vendidas" value={m.unidades} icon={Package} tone="gray" />
+            {/* "Unidades vendidas" saiu: o MESMO número já é a dica de
+                "Pedidos", logo acima. Duas vezes o mesmo fato, com o mesmo
+                peso, é o defeito desta tela em miniatura. (PLANO-004, item B.) */}
             {/* A COR SAI DO PISO DELA, não de um 20 escrito aqui.
                 Havia um terceiro limiar de margem no repositório — `>= 20` era
                 verde — desligado do piso que a lojista escolheu e da regra que
@@ -175,6 +199,7 @@ export default function ClienteVendas() {
               hint={parcial ? undefined : `seu piso: ${margem}%`}
             />
           </div>
+          )}
 
           {m.coberturaCusto < 100 && m.pedidos > 0 && (
             <p className="text-xs text-zinc-500">

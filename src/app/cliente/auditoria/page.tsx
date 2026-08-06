@@ -6,13 +6,13 @@ import {
   ClipboardCheck,
   AlertOctagon,
   Flame,
-  Gauge,
   Play,
   Wand2,
   Search,
   Image as ImageIcon,
   DollarSign,
 } from "lucide-react";
+import { resumoDaAuditoria } from "@/modules/portal/domain/resumoDoPulso";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
@@ -105,13 +105,28 @@ export default function ClienteAuditoria() {
     }
   }
 
+  const pulso = useMemo(() => resumoDaAuditoria(m), [m]);
+
   const temProdutos = (produtos ?? []).length > 0;
 
   return (
     <>
       <PageHeader
         titulo="Auditoria da loja"
-        subtitulo="Descubra o que corrigir primeiro para vender mais. A IA analisa sua base e prioriza."
+        /* SEM AUDITORIA, O SUBTÍTULO VOLTA A CONVIDAR — visto na tela.
+         *
+         * Com a lista vazia, `pulso.frase` é "Nenhuma auditoria ainda" e o
+         * cartão logo abaixo diz exatamente a mesma coisa, com o botão. A
+         * frase do cabeçalho só informa quando HÁ o que informar; repetida,
+         * ela vira ruído no lugar mais nobre da tela.
+         *
+         * A regra geral do item B é "o subtítulo diz o que a tela descobriu" —
+         * e quando não há descoberta, dizer o que ela FAZ volta a ser o certo. */
+        subtitulo={
+          lista.length === 0
+            ? "Descubra o que corrigir primeiro para vender mais. A IA analisa sua base e prioriza."
+            : `${pulso.frase}${pulso.detalhe ? ` ${pulso.detalhe}` : ""}`
+        }
         acao={
           temProdutos ? (
             <Button onClick={auditar} disabled={auditando}>
@@ -155,20 +170,30 @@ export default function ClienteAuditoria() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatCard label="Total auditados" value={m.total} icon={ClipboardCheck} tone="violet" />
-            <StatCard label="Críticos" value={m.criticos} icon={AlertOctagon} tone={m.criticos ? "red" : "gray"} />
-            <StatCard label="Prioridade alta" value={m.altas} icon={Flame} tone={m.altas ? "orange" : "gray"} />
-            <StatCard
-              label="Score médio"
-              value={m.score != null ? m.score : "—"}
-              hint="de 100"
-              icon={Gauge}
-              tone={m.score != null && m.score >= 70 ? "green" : "yellow"}
-            />
-            <StatCard label="Problemas de SEO" value={m.seo} icon={Search} tone="cyan" />
-            <StatCard label="Problemas de imagem" value={m.imagem} icon={ImageIcon} tone="blue" />
-            <StatCard label="Problemas de preço" value={m.preco} icon={DollarSign} tone="green" />
+          {/* SETE CARTÕES VIRARAM QUATRO, E OS ZEROS SOMEM. (PLANO-004, item B.)
+           *
+           * Saíram "Total auditados" — que agora está na frase do cabeçalho,
+           * onde informa em vez de ocupar — e "Score médio", que é palavra do
+           * sistema: a lojista não decide nada com "62 de 100".
+           *
+           * Os três de CATEGORIA (foto, preço, texto) ficam, porque é neles
+           * que está a ação — mas só quando têm o que mostrar. Um cartão
+           * "Problemas de imagem: 0" pesa igual a "Problemas de imagem: 22" e
+           * obriga a leitura que a frase do cabeçalho já fez. */}
+          <div className="flex flex-wrap gap-3">
+            {[
+              { label: "Críticos", n: m.criticos, icon: AlertOctagon, tone: "red" as const },
+              { label: "Prioridade alta", n: m.altas, icon: Flame, tone: "orange" as const },
+              { label: "Problemas de imagem", n: m.imagem, icon: ImageIcon, tone: "blue" as const },
+              { label: "Problemas de preço", n: m.preco, icon: DollarSign, tone: "green" as const },
+              { label: "Problemas de texto", n: m.seo, icon: Search, tone: "cyan" as const },
+            ]
+              .filter((c) => c.n > 0)
+              .map((c) => (
+                <div key={c.label} className="min-w-40 flex-1">
+                  <StatCard label={c.label} value={c.n} icon={c.icon} tone={c.tone} />
+                </div>
+              ))}
             <div className="flex items-center justify-center rounded-xl border border-dashed border-white/10 bg-[#0e0e16] p-4">
               <Link href="/cliente/anunciar">
                 <Button variant="ghost">
