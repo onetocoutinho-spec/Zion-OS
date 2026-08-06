@@ -253,6 +253,27 @@ body {
     display: flex;
     gap: 0.75rem;
     padding: 0.1875rem 0;
+    /* QUEBRA DE LINHA, e ela conserta um defeito que só a tela mostrou.
+     *
+     * Medido a 375px na tela de Produtos: a célula de AÇÃO tem três botões
+     * (Kit · Medidas · Otimizar) que somam 227px de largura mínima, e o rótulo
+     * come 38% da linha — sobravam 211px. Com `nowrap`, o "Otimizar" terminava
+     * em x=390 numa tela de 375: **cortado e inalcançável**, e sem barra de
+     * rolagem porque o overflow é visível.
+     *
+     * É o mesmo defeito que o `TdMain` já tinha resolvido na tabela de desktop
+     * — esconder a coluna de ação — reaparecendo no cartão por outro caminho.
+     *
+     * Com `wrap`, o conteúdo que não couber ao lado do rótulo desce para a
+     * linha seguinte, onde tem a largura toda. Nenhum teste pegaria isto:
+     * o layout está certo no DOM e errado em pixels. */
+    flex-wrap: wrap;
+  }
+
+  /* O que desce ocupa a linha inteira, em vez de manter os 62% de antes. */
+  table[data-cartao] td > * {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   table[data-cartao] td::before {

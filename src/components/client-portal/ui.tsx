@@ -36,7 +36,31 @@ export function PageHeader({
         </h1>
         {subtitulo && <p className="mt-1 text-sm text-zinc-400">{subtitulo}</p>}
       </div>
-      {acao}
+      {/* A CAIXA DA AÇÃO QUEBRA LINHA, e ela existe por causa de um defeito
+       * medido a 375px na tela de Produtos:
+       *
+       *   <div className="flex items-center gap-2">  →  848px de largura
+       *   Novo produto · Importar do ML · Planilha de custos · Frete · Otimizar
+       *
+       * O `flex-wrap` deste componente estava no envelope de FORA, que quebra
+       * entre o título e a ação — mas a ação em si vinha de cada tela como um
+       * `flex` sem `wrap`. Resultado: 848px numa tela de 375, e a PÁGINA
+       * INTEIRA rolando de lado. Não era uma tela: são as 16 que passam `acao`.
+       *
+       * Envolver aqui conserta todas de uma vez, e nenhuma precisa saber disso
+       * — o mesmo movimento do `data-cartao` na `<Table>`.
+       *
+       * `[&>*]:flex-wrap` é o que de fato conserta, e a primeira tentativa sem
+       * ele não funcionou: envolver não basta. A caixa de fora quebra os FILHOS
+       * dela, e o filho é UM só — a fileira que cada tela monta. Era ela, por
+       * dentro, que media 848px com `nowrap`. Mandar o filho quebrar faz a
+       * largura mínima dele virar a do maior botão, e aí cabe.
+       *
+       * Em filho que não é flex, `flex-wrap` não faz nada — então é seguro
+       * aplicar às 16 telas sem saber o que cada uma passa. */}
+      {acao && (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 [&>*]:flex-wrap">{acao}</div>
+      )}
     </div>
   );
 }
