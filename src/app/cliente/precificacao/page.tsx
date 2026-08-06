@@ -7,6 +7,7 @@ import { Calculator, Search, Package, TrendingUp } from "lucide-react";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
+import { resumoDaPrecificacao } from "@/modules/pricing/domain/resumoDaPrecificacao";
 import { StatCard } from "@/components/ui/StatCard";
 import { PageHeader, Pill, VazioAmigavel } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
@@ -36,6 +37,16 @@ import {
   type ModeloTaxas,
 } from "@/modules/pricing/domain/modeloPreco";
 import { formatBRL } from "@/lib/format";
+
+/** As colunas, numa constante: a tabela e o esqueleto usam as duas. */
+const COLUNAS_DA_LISTA = ["Produto", "Custo", "Preço", "Taxas", "Lucro", "Margem", "Preço ideal", "Status"];
+
+const FAIXAS = [
+  { chave: "Prejuízo" as const, tone: "red" as const },
+  { chave: "Risco" as const, tone: "orange" as const },
+  { chave: "Atenção" as const, tone: "yellow" as const },
+  { chave: "Saudável" as const, tone: "green" as const },
+];
 
 const STATUS = ["Saudável", "Atenção", "Risco", "Prejuízo"] as const;
 
@@ -202,6 +213,28 @@ function Precificacao() {
 
   const total = (produtos ?? []).length;
 
+  const abertura = useMemo(
+    () => resumoDaPrecificacao(resumo as never, semCusto, total),
+    [resumo, semCusto, total]
+  );
+
+  // CARREGANDO antes de vazio — o QUARTO caso do mesmo defeito, achado ao abrir
+  // esta tela em 06/08. `total` é `(produtos ?? []).length`, e o `?? []` fazia a
+  // tela dizer "Sem produtos para precificar" a quem tem 80.
+  //
+  // Aqui a checagem é um `return` ANTECIPADO, não um ternário — e foi por isso
+  // que a sentinela dos outros três não pegou: ela procurava a forma que eu
+  // tinha acabado de ver. Instrumento que aprende só o último caso encontra só
+  // o último caso. O teste passou a cobrir as duas formas.
+  if (estado === "carregando") {
+    return (
+      <>
+        <PageHeader titulo="Precificação" subtitulo="Lendo seus produtos…" />
+        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+      </>
+    );
+  }
+
   if (total === 0) {
     return (
       <>
@@ -222,9 +255,14 @@ function Precificacao() {
 
   return (
     <>
+      {/* O SUBTÍTULO VIROU O FATO. (PLANO-004, item B.)
+       *
+       * Era "Lucro real por produto pelo modelo Zion. Veja onde a margem está
+       * saudável — ou em risco." — uma descrição do que a tela FAZ, no lugar
+       * onde cabia o que ela DESCOBRIU. */}
       <PageHeader
         titulo="Precificação"
-        subtitulo="Lucro real por produto pelo modelo Zion. Veja onde a margem está saudável — ou em risco."
+        subtitulo={`${abertura.frase}${abertura.detalhe ? ` ${abertura.detalhe}` : ""}`}
         acao={
           <Button variant={mostrarIdeal ? "primary" : "ghost"} onClick={() => setMostrarIdeal((v) => !v)}>
             <TrendingUp size={15} /> {mostrarIdeal ? "Ver todos" : "Calcular preço ideal"}
@@ -240,11 +278,30 @@ function Precificacao() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Saudável" value={resumo["Saudável"]} icon={Calculator} tone="green" />
-        <StatCard label="Atenção" value={resumo["Atenção"]} icon={Calculator} tone="yellow" />
-        <StatCard label="Risco" value={resumo["Risco"]} icon={Calculator} tone="orange" />
-        <StatCard label="Prejuízo" value={resumo["Prejuízo"]} icon={Calculator} tone="red" />
+      {/* OS QUATRO DEIXAM DE PESAR IGUAL.
+       *
+       * Antes: quatro cartões idênticos, e na conta real "Risco 17" e
+       * "Prejuízo 0" com a mesma borda, o mesmo fundo e o mesmo tamanho — um é
+       * o motivo de abrir a tela, o outro é boa notícia.
+       *
+       * Agora o balde VAZIO some. Não é esconder informação: zero produtos numa
+       * faixa não é um fato sobre a loja, é a ausência dele — e ocupar espaço
+       * com ausência é o que fazia a lojista ler os quatro para descobrir qual
+       * importava.
+       *
+       * O que sobra vem em ordem de gravidade, e a contagem embaixo diz sobre
+       * QUANTOS produtos os números falam — porque eles descrevem 25 de 80. */}
+      <div className="flex flex-wrap gap-3">
+        {FAIXAS.filter((f) => resumo[f.chave] > 0).map((f) => (
+          <div key={f.chave} className="min-w-40 flex-1">
+            <StatCard label={f.chave} value={resumo[f.chave]} icon={Calculator} tone={f.tone} />
+          </div>
+        ))}
+        {abertura.calculaveis > 0 && (
+          <p className="w-full text-xs text-zinc-500">
+            Sobre {abertura.calculaveis} de {total} produtos — os que têm custo e peso.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -278,9 +335,8 @@ function Precificacao() {
         </span>
       </div>
 
-      <Table
-        carregando={estado === "carregando"}
-        headers={["Produto", "Custo", "Preço", "Taxas", "Lucro", "Margem", "Preço ideal", "Status"]}
+      <Table
+        headers={COLUNAS_DA_LISTA}
       >
         {filtradas.length === 0 ? (
           <EmptyRow colSpan={8} />

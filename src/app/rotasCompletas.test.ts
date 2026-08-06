@@ -109,14 +109,29 @@ test("as cinco telas de tabela do portal tratam o estado da busca", () => {
     "./cliente/produtos/page.tsx",
   ];
   for (const tela of telas) {
-    const texto = fonte(tela);
-    const trata =
-      /carregando=\{[^}]*estado === "carregando"[^}]*\}/.test(texto) ||
-      /estado === "carregando" \? \(/.test(texto) ||
-      /consulta\.estado === "carregando"/.test(texto);
-    assert.ok(trata, `${tela} ainda mostra o estado vazio enquanto carrega`);
+    assert.ok(
+      trataCarregando(fonte(tela)),
+      `${tela} ainda mostra o estado vazio enquanto carrega`
+    );
   }
 });
+
+/**
+ * As TRÊS formas de tratar o carregamento que existem no portal.
+ *
+ * Estava espalhado por dois testes, cada um conhecendo as formas que eu tinha
+ * escrito por último — e foi assim que a Precificação passou verde usando um
+ * `return` antecipado enquanto dizia "Sem produtos para precificar" a quem tem
+ * 80. Uma definição só, usada pelos dois.
+ */
+function trataCarregando(texto: string): boolean {
+  return (
+    /carregando=\{[^}]*estado === "carregando"[^}]*\}/.test(texto) || // prop na <Table>
+    /estado === "carregando" \? \(/.test(texto) || //                    ternário
+    /if \([^)]*estado === "carregando"\) \{/.test(texto) || //           return antecipado
+    /consulta\.estado === "carregando"/.test(texto)
+  );
+}
 
 test("onde há estado VAZIO, o carregando é testado ANTES dele", () => {
   // ===========================================================================
@@ -136,15 +151,36 @@ test("onde há estado VAZIO, o carregando é testado ANTES dele", () => {
   //
   // Medido atrasando o fetch de propósito: 1,2s depois da navegação, a tela
   // mostrava a frase acima e zero linhas.
+  // AS DUAS FORMAS, e a segunda me custou um quarto caso.
+  //
+  // A primeira versão deste teste procurava só o ternário
+  // (`estado === "carregando" ? (`), porque era a forma que eu tinha acabado de
+  // escrever nas três telas. A Precificação usa um `return` ANTECIPADO — e o
+  // teste passou verde enquanto ela dizia "Sem produtos para precificar" a quem
+  // tem 80. Achei abrindo a tela, não no CI.
+  //
+  // Instrumento que aprende só o último caso encontra só o último caso.
   const telas = [
     "./cliente/anuncios/page.tsx",
     "./cliente/auditoria/page.tsx",
     "./cliente/produtos/page.tsx",
+    "./cliente/precificacao/page.tsx",
   ];
+  const posicaoDoCarregando = (t: string) => {
+    const ternario = t.indexOf('estado === "carregando" ? (');
+    const antecipado = t.search(/if \([^)]*estado === "carregando"\) \{/);
+    const achados = [ternario, antecipado].filter((i) => i >= 0);
+    return achados.length ? Math.min(...achados) : -1;
+  };
+  const posicaoDoVazio = (t: string) =>
+    t.search(
+      /\b(total|lista|filtrados|filtradas)[^\n]{0,20}\.?length? ?=== 0 \? \(|total === 0 \? \(|if \(total === 0\) \{|if \(lista\.length === 0\) \{/
+    );
+
   for (const tela of telas) {
     const texto = fonte(tela);
-    const carregando = texto.indexOf('estado === "carregando" ? (');
-    const vazio = texto.search(/\b(total|lista|filtrados)[^\n]*\.?length? ?=== 0 \? \(|total === 0 \? \(/);
+    const carregando = posicaoDoCarregando(texto);
+    const vazio = posicaoDoVazio(texto);
     assert.ok(carregando >= 0, `${tela} perdeu a checagem de carregando acima do vazio`);
     assert.ok(vazio >= 0, `${tela}: não achei o ramo de estado vazio — o teste precisa ser reescrito`);
     assert.ok(

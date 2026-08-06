@@ -6,15 +6,10 @@ import {
   AlertTriangle,
   Package,
   Gauge,
-  FileText,
-  Wand2,
-  Upload,
-  Calculator,
-  ClipboardCheck,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
-import { ActionTile, Section, Pill } from "@/components/client-portal/ui";
+import { Section, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
@@ -238,53 +233,17 @@ export default function ClienteHome() {
       </div>
 
 
-      {/* O que você quer fazer hoje? */}
-      <Section titulo="O que você quer fazer hoje?" descricao="Escolha uma ação para começar.">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ActionTile
-            href="/cliente/anunciar"
-            icon={Wand2}
-            titulo="Otimizar meus anúncios"
-            descricao="A IA cria títulos, descrições e ficha técnica prontos."
-            tone="violet"
-          />
-          <ActionTile
-            href="/cliente/produtos"
-            icon={Upload}
-            titulo="Importar produtos"
-            descricao="Suba sua planilha e monte sua base em minutos."
-            tone="cyan"
-          />
-          <ActionTile
-            href="/cliente/precificacao"
-            icon={Calculator}
-            titulo="Analisar preço e margem"
-            descricao="Veja o lucro real de cada produto e o preço ideal."
-            tone="green"
-          />
-          <ActionTile
-            href="/cliente/auditoria"
-            icon={ClipboardCheck}
-            titulo="Ver problemas da loja"
-            descricao="Descubra o que corrigir primeiro para vender mais."
-            tone="orange"
-          />
-          <ActionTile
-            href="/cliente/anuncios"
-            icon={Megaphone}
-            titulo="Revisar meus anúncios"
-            descricao="Aprove ou refaça o que a IA já gerou para você."
-            tone="blue"
-          />
-          <ActionTile
-            href="/cliente/relatorios"
-            icon={FileText}
-            titulo="Gerar relatório"
-            descricao="Acompanhe o que foi feito e o que precisa de atenção."
-            tone="violet"
-          />
-        </div>
-      </Section>
+      {/* OS SEIS CARTÕES DE «O QUE VOCÊ QUER FAZER HOJE?» SAÍRAM.
+       *
+       * Era o defeito que a UX-010 já tinha resolvido no menu — «quinze portas
+       * não são quinze oportunidades, são quinze maneiras de errar a primeira
+       * escolha» — reaparecendo dentro da tela inicial: seis escolhas iguais,
+       * sem nenhuma dizer qual importa hoje.
+       *
+       * E depois que a lista de lacunas subiu para o topo, eles viraram um
+       * MENU PARALELO ao da esquerda: a mesma navegação, duas vezes, uma delas
+       * sem ordem de prioridade. A lista já leva ao lugar certo com um clique,
+       * e o lugar certo agora vem com o motivo junto. (PLANO-004, item A.) */}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* A seção "O que falta" saiu daqui: virou `<OQueImportaAgora>` no topo
