@@ -537,3 +537,42 @@ refresh_token a cada renovação.
   português com um caminho, em vez da prosa em inglês. Produção não muda.
 
 A segunda é a mais segura enquanto houver uma lojista real na base.
+
+---
+
+## A varredura que a lista escrita à mão escondia (06/08, tarde)
+
+A Fase 3 consertou três telas que afirmavam "não há" enquanto a busca estava no
+ar, e o sentinela guardava o conserto — **numa lista de cinco telas escrita à
+mão**. O próprio arquivo já dizia, num comentário, *"instrumento que aprende só
+o último caso encontra só o último caso"*. A lista era esse mesmo erro um nível
+acima.
+
+Aplicando a regra ao diretório inteiro, mais quatro:
+
+| Tela | O que ela afirmava enquanto carregava |
+|---|---|
+| Fotos | "Importe seus produtos primeiro" — com 80 na base |
+| Ferramentas avulsas | idem |
+| Medidas | "Nenhuma tabela ainda", com três sugestões de como criar a primeira |
+| Relatórios | "Nenhum relatório publicado ainda" |
+
+Nas quatro a causa é a mesma de sempre: `(dado ?? []).length === 0`. O `?? []`
+transforma *"ainda não sei"* em *"não há"*.
+
+**E a varredura me deu dois falsos positivos — que são a parte útil.** `Peso` e
+`Vendas` foram acusadas e estavam **certas**:
+
+- `peso` faz `{produtos && familias.length === 0 && …}`. `useLiveQuery` devolve
+  `data: null` enquanto carrega, então **o teste de nulo é o teste de
+  carregamento** — a forma mais direta das três.
+- `vendas` tem estado local próprio e ainda distingue "nunca busquei" de
+  "busquei e não veio" (`carregouUmaVez`), com um `—` no primeiro caso. É a mais
+  cuidadosa do portal, e o meu instrumento a reprovaria.
+
+Sentinela que só conhece a forma que eu escrevi por último acusa quem resolveu
+o problema de outro jeito — e era esse mesmo erro, invertido, que deixava quatro
+telas passarem. A lista agora é **derivada do diretório**, e `trataCarregando`
+conhece as cinco formas legítimas. O teste tem, além disso, a prova de que
+**enxerga** o defeito: quatro trechos quebrados que ele precisa acusar e quatro
+corretos que ele não pode acusar.

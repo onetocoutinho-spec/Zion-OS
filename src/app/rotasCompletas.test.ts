@@ -11,15 +11,15 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lerFonte } from "../testing/lerFonte.ts";
 
 const caminho = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
-const fonte = (rel: string) =>
-  lerFonte(new URL(rel, import.meta.url), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+const semComentarios = (t: string) =>
+  t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const fonte = (rel: string) => semComentarios(lerFonte(new URL(rel, import.meta.url), "utf8"));
 
 // ---------------------------------------------------------------------------
 // OS ARQUIVOS DE CONVENÇÃO
@@ -98,23 +98,98 @@ test("o esqueleto da tabela é feito de <tr>/<td>, não de <div>", () => {
   assert.match(tabela, /linhasParaMostrar/, "a contagem de linhas deixou de vir da geometria testada");
 });
 
-test("as cinco telas de tabela do portal tratam o estado da busca", () => {
-  // A prop não serve de nada se ninguém a preencher, e o erro natural é ligar
-  // uma tela, ver a tabela certa e achar que acabou.
-  const telas = [
-    "./cliente/anuncios/page.tsx",
-    "./cliente/auditoria/page.tsx",
-    "./cliente/pendencias/page.tsx",
-    "./cliente/precificacao/page.tsx",
-    "./cliente/produtos/page.tsx",
+test("TODA tela do portal que afirma vazio trata o estado da busca", () => {
+  // ===========================================================================
+  // A LISTA ESCRITA À MÃO ERA O BURACO — e este arquivo já sabia disso
+  // ===========================================================================
+  //
+  // A versão anterior conferia CINCO telas nomeadas aqui. Em 06/08, aplicando a
+  // mesma regra ao diretório inteiro, apareceram mais QUATRO com o defeito:
+  //
+  //   Fotos                 "Importe seus produtos primeiro"  (com 80 na base)
+  //   Ferramentas avulsas   "Importe seus produtos primeiro"  (idem)
+  //   Medidas               "Nenhuma tabela ainda"
+  //   Relatórios            "Nenhum relatório publicado ainda"
+  //
+  // O comentário logo abaixo já dizia "instrumento que aprende só o último caso
+  // encontra só o último caso" — e o instrumento continuava com uma lista de
+  // casos escrita à mão, que é a mesma coisa um nível acima. Agora a lista é
+  // DERIVADA: uma tela nova entra no teste no dia em que nasce.
+  const faltando = telasQueAfirmamVazio()
+    .filter((t) => !trataCarregando(t.fonte))
+    .map((t) => t.nome);
+  assert.deepEqual(
+    faltando,
+    [],
+    `estas telas afirmam "não há" enquanto a busca está no ar: ${faltando.join(", ")}`
+  );
+});
+
+test("a varredura achou telas — se este número for 0, o teste não prova nada", () => {
+  const achadas = telasQueAfirmamVazio();
+  assert.ok(achadas.length >= 8, `só ${achadas.length} telas varridas — a varredura quebrou`);
+  assert.ok(
+    achadas.some((t) => t.nome === "produtos"),
+    "não achei uma tela que certamente afirma vazio"
+  );
+});
+
+test("a sentinela ENXERGA o defeito — nas quatro formas em que ele apareceu", () => {
+  // Sem esta prova, um erro nas expressões faria tudo passar para sempre sem
+  // nunca ter olhado nada. É o falso verde que `lerFonte` documenta, e o teste
+  // acima já passava verde enquanto quatro telas estavam quebradas.
+  const quebradas = [
+    'if ((produtos ?? []).length === 0) { return <VazioAmigavel />; }', // Fotos
+    "{lista.length === 0 ? (<p>Nenhuma tabela ainda</p>) : null}", //      Medidas
+    "{lista.length === 0 && !rasc ? (<p>vazio</p>) : null}", //            Relatórios
+    "if (itens.length === 0) return <p>Nada aqui</p>;", //                 genérica
   ];
-  for (const tela of telas) {
+  for (const codigo of quebradas) {
     assert.ok(
-      trataCarregando(fonte(tela)),
-      `${tela} ainda mostra o estado vazio enquanto carrega`
+      AFIRMA_VAZIO.some((r) => r.test(codigo)),
+      `a varredura deixaria passar: ${codigo}`
     );
+    assert.ok(!trataCarregando(codigo), `sem guarda nenhuma e mesmo assim aprovada: ${codigo}`);
+  }
+
+  // E o contrário: as formas CERTAS não podem ser acusadas.
+  const corretas = [
+    'estado === "carregando" ? (<Esqueleto />) : lista.length === 0 ? (<Vazio />) : null',
+    "{produtos && familias.length === 0 && (<p>vazio</p>)}",
+    'carregando ? "Carregando vendas…" : carregouUmaVez ? "Nenhuma venda." : "—"',
+    'if (estadoDosProdutos === "carregando") { return <Esqueleto />; }',
+  ];
+  for (const codigo of corretas) {
+    assert.ok(trataCarregando(codigo), `forma correta acusada como defeito: ${codigo}`);
   }
 });
+
+/** Toda página de `/cliente` que lê dado vivo e afirma "não há". */
+function telasQueAfirmamVazio(): { nome: string; fonte: string }[] {
+  const raiz = fileURLToPath(new URL("./cliente/", import.meta.url));
+  const achadas: { nome: string; fonte: string }[] = [];
+  const descer = (dir: string) => {
+    for (const nome of readdirSync(dir)) {
+      const p = join(dir, nome);
+      if (statSync(p).isDirectory()) descer(p);
+      else if (nome === "page.tsx") {
+        const texto = semComentarios(lerFonte(p));
+        if (!/useLiveQuery/.test(texto)) continue;
+        if (!AFIRMA_VAZIO.some((r) => r.test(texto))) continue;
+        achadas.push({ nome: relative(raiz, dir).replace(/\\/g, "/") || "(raiz)", fonte: texto });
+      }
+    }
+  };
+  descer(raiz);
+  return achadas;
+}
+
+/** As formas em que uma tela afirma "não há" a partir de uma lista. */
+const AFIRMA_VAZIO = [
+  /\(\s*\w+ \?\? \[\]\s*\)\.length === 0/, //  (produtos ?? []).length === 0
+  /\w+\.length === 0 (\?|&&)/, //             lista.length === 0 ? (
+  /if \(\w+\.length === 0\)/, //              if (lista.length === 0) {
+];
 
 /**
  * As TRÊS formas de tratar o carregamento que existem no portal.
@@ -129,7 +204,28 @@ function trataCarregando(texto: string): boolean {
     /carregando=\{[^}]*estado === "carregando"[^}]*\}/.test(texto) || // prop na <Table>
     /estado === "carregando" \? \(/.test(texto) || //                    ternário
     /if \([^)]*estado === "carregando"\) \{/.test(texto) || //           return antecipado
-    /consulta\.estado === "carregando"/.test(texto)
+    /estadoDo\w+ === "carregando"/.test(texto) || //                     estado renomeado
+    /consulta\.estado === "carregando"/.test(texto) ||
+    // ---------------------------------------------------------------------
+    // AS DUAS FORMAS QUE EU IA CHAMAR DE DEFEITO POR ENGANO (06/08)
+    // ---------------------------------------------------------------------
+    //
+    // Ao derivar a lista de telas, a varredura acusou `peso` e `vendas`. As
+    // duas estavam CERTAS — a minha regra é que só conhecia `estado`:
+    //
+    //   peso     `{produtos && familias.length === 0 && (` — `useLiveQuery`
+    //            devolve `data: null` enquanto carrega, então o teste de nulo
+    //            É o teste de carregamento, e é o mais direto dos três.
+    //
+    //   vendas   estado local próprio, com `carregouUmaVez` distinguindo
+    //            "nunca busquei" de "busquei e não veio" — a mais cuidadosa
+    //            das telas, e a que meu instrumento reprovaria.
+    //
+    // Sentinela que só conhece a forma que eu escrevi por último acusa quem
+    // resolveu o problema de outro jeito. Era esse mesmo erro, invertido, que
+    // deixou quatro telas passarem.
+    /\{\s*\w+ && [^}]*\.length === 0/.test(texto) || //                  guarda de nulo
+    /carregando \?[^:]*:\s*carregouUmaVez/.test(texto) //                estado local
   );
 }
 
