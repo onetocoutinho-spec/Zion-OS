@@ -42,6 +42,13 @@ export interface AnuncioNaVitrine {
   statusMarketplace: string | null;
   /** O nome que a lojista reconhece. */
   produto: string;
+  /**
+   * Unidades no marketplace. `null` = não lemos (34 dos 792 na conta real).
+   *
+   * É o que transforma "resolva estes 135" em "resolva estes 135, e comece
+   * pelos que têm 40 pares parados".
+   */
+  estoque: number | null;
 }
 
 /** Já limpo de HTML na borda de leitura (`infracoesPorAnuncioDoCliente`). */
@@ -75,6 +82,8 @@ export interface AnuncioDiagnosticado {
   remedios: string[];
   /** Quantas infrações neste MESMO anúncio. */
   quantasInfracoes: number;
+  /** Unidades paradas aqui. `null` = não sabemos, e não é zero. */
+  estoque: number | null;
 }
 
 export interface DiagnosticoDaVitrine {
@@ -89,6 +98,15 @@ export interface DiagnosticoDaVitrine {
    * lojista abrir 400 abas; "quase tudo é foto" manda ela chamar um fotógrafo.
    */
   causaDominante: { causa: string; anuncios: number; pct: number } | null;
+  /**
+   * Unidades presas em anúncio que não vende — a tradução do problema em
+   * mercadoria. Medido na conta real: 598 fora do ar, 684 em punido.
+   *
+   * Só soma o que foi LIDO. Estoque desconhecido não entra como zero nem como
+   * chute: a soma diz "pelo menos isto", que é verdade, em vez de um total que
+   * finge saber o que não sabe.
+   */
+  unidadesParadas: { foraDoAr: number; punidos: number; semLeitura: number };
 }
 
 /**
@@ -130,11 +148,41 @@ export function familiaDoRemedio(remedio: string): string {
   return "Outros";
 }
 
-/** Ordena por urgência e, dentro dela, por quantidade de infrações. */
+/**
+ * A faixa de custo de um anúncio parado — menor é mais urgente.
+ *
+ * ===========================================================================
+ * ONDE FICA QUEM TEM ESTOQUE DESCONHECIDO
+ * ===========================================================================
+ *
+ * Ordenar por `estoque ?? 0` mandaria os 34 anúncios sem leitura para o fim da
+ * fila, junto com os que têm zero — e são coisas OPOSTAS. Zero é "não há o que
+ * vender aqui, resolver não devolve nada"; desconhecido pode ser quarenta pares.
+ *
+ * A ordem é: com estoque lido e positivo (do maior para o menor) → sem leitura
+ * → com zero confirmado. Desconhecido no meio porque é o único lugar honesto:
+ * não promove ao topo o que não se sabe, nem esconde no fim o que pode importar.
+ *
+ * É a mesma lei da migração 050 aplicada a uma ordenação: `null` não é zero.
+ */
+function faixaDeCusto(estoque: number | null): number {
+  if (estoque === null) return 1; // não sabemos
+  return estoque > 0 ? 0 : 2; // tem o que vender · nada a vender
+}
+
+/** Ordena por urgência, depois por quanto custa, depois por gravidade. */
 function comparar(a: AnuncioDiagnosticado, b: AnuncioDiagnosticado): number {
   const ua = ORDEM_DA_URGENCIA.indexOf(a.urgencia);
   const ub = ORDEM_DA_URGENCIA.indexOf(b.urgencia);
   if (ua !== ub) return ua - ub;
+
+  const fa = faixaDeCusto(a.estoque);
+  const fb = faixaDeCusto(b.estoque);
+  if (fa !== fb) return fa - fb;
+
+  // Dentro da faixa "tem o que vender", o maior estoque primeiro.
+  if (fa === 0 && a.estoque !== b.estoque) return (b.estoque ?? 0) - (a.estoque ?? 0);
+
   if (b.quantasInfracoes !== a.quantasInfracoes) {
     return b.quantasInfracoes - a.quantasInfracoes;
   }
@@ -168,6 +216,7 @@ export function diagnosticarVitrine(
       // vezes mais.
       remedios: [...new Set(infracoes.map((i) => i.remedio).filter(Boolean))],
       quantasInfracoes: infracoes.length,
+      estoque: a.estoque,
     });
   }
 
@@ -185,7 +234,27 @@ export function diagnosticarVitrine(
     anuncios: diagnosticados,
     contagem,
     causaDominante: dominante(diagnosticados),
+    unidadesParadas: contarUnidades(diagnosticados),
   };
+}
+
+/** Unidades presas, só o que foi lido — o resto é contado à parte, não chutado. */
+function contarUnidades(
+  diagnosticados: readonly AnuncioDiagnosticado[]
+): DiagnosticoDaVitrine["unidadesParadas"] {
+  let foraDoAr = 0;
+  let punidos = 0;
+  let semLeitura = 0;
+  for (const d of diagnosticados) {
+    if (d.urgencia !== "fora_do_ar" && d.urgencia !== "penalizado") continue;
+    if (d.estoque === null) {
+      semLeitura += 1;
+      continue;
+    }
+    if (d.urgencia === "fora_do_ar") foraDoAr += d.estoque;
+    else punidos += d.estoque;
+  }
+  return { foraDoAr, punidos, semLeitura };
 }
 
 /** A causa que mais aparece, contada em ANÚNCIOS. */

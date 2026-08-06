@@ -136,6 +136,9 @@ export default function ClienteAnuncios() {
           // `produto` é anulável no registro. Sem nome, o MLB é a identidade —
           // melhor que uma linha vazia que a lojista não consegue localizar.
           produto: a.produto ?? a.mlItemId ?? "Sem nome",
+          // `?? null` e nunca `?? 0`: estoque não lido não é estoque zerado, e
+          // a ordenação depende dessa diferença.
+          estoque: a.estoqueMarketplace ?? null,
         })),
         infracoesPorAnuncio ?? {}
       ),
@@ -145,6 +148,11 @@ export default function ClienteAnuncios() {
   /** Remédios por MLB, para a linha expandida não recalcular a lista inteira. */
   const remediosPorMlb = useMemo(
     () => new Map(diagnostico.anuncios.map((d) => [d.mlItemId, d.remedios])),
+    [diagnostico]
+  );
+
+  const urgenciaPorMlb = useMemo(
+    () => new Map(diagnostico.anuncios.map((d) => [d.mlItemId, d.urgencia])),
     [diagnostico]
   );
 
@@ -503,7 +511,12 @@ export default function ClienteAnuncios() {
                           {/* O remédio ANTES do detalhe: quando o ML apontou
                               algo, é a única coisa nesta gaveta que muda o
                               que a lojista faz a seguir. */}
-                          <RemedioDoML remedios={remediosPorMlb.get(a.mlItemId ?? "") ?? []} />
+                          <RemedioDoML
+                            remedios={remediosPorMlb.get(a.mlItemId ?? "") ?? []}
+                            foraDoAr={
+                              urgenciaPorMlb.get(a.mlItemId ?? "") === "fora_do_ar"
+                            }
+                          />
                           <DetalheAnuncio registro={a} />
                         </td>
                       </tr>
@@ -541,9 +554,28 @@ export default function ClienteAnuncios() {
  *
  * Sem infração, não desenha nada: um bloco "tudo certo" em cada anúncio
  * treinaria a leitora a pular a região onde o aviso importante aparece.
+ *
+ * COM UMA EXCEÇÃO, e ela apareceu ao olhar o topo da lista real: o anúncio mais
+ * caro da conta está `closed` com 43 unidades e ZERO infrações registradas. O
+ * ML tirou do ar e não disse por quê. Calar ali seria pior que não ter a
+ * seção — a lojista veria "Encerrado no ML" e nenhuma pista do que fazer.
  */
-function RemedioDoML({ remedios }: { remedios: string[] }) {
-  if (remedios.length === 0) return null;
+function RemedioDoML({ remedios, foraDoAr }: { remedios: string[]; foraDoAr: boolean }) {
+  if (remedios.length === 0) {
+    if (!foraDoAr) return null;
+    return (
+      <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+        <p className="text-sm text-zinc-300">
+          Este anúncio não está no ar e o Mercado Livre{" "}
+          <strong className="font-medium">não registrou o motivo</strong>.
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Vale abrir no ML: o aviso pode estar lá sem ter entrado na lista de
+          infrações que lemos.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="mb-4 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
       <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-amber-200">

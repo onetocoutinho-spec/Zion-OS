@@ -14,8 +14,9 @@ import {
 const anuncio = (
   mlItemId: string | null,
   statusMarketplace: string | null,
-  produto = "Chinelo"
-): AnuncioNaVitrine => ({ mlItemId, statusMarketplace, produto });
+  produto = "Chinelo",
+  estoque: number | null = 0
+): AnuncioNaVitrine => ({ mlItemId, statusMarketplace, produto, estoque });
 
 const foto = (n = 1): InfracaoDoAnuncio[] =>
   Array.from({ length: n }, () => ({
@@ -165,6 +166,81 @@ test("a lista sai ordenada por urgência, e dentro dela pelo que dói mais", () 
     d.anuncios.map((a) => a.produto),
     ["pausado com 9", "pausado com 1", "em revisão", "punido no ar", "saudável"]
   );
+});
+
+// ---------------------------------------------------------------------------
+// QUANTO CUSTA — a ordem dentro da urgência
+// ---------------------------------------------------------------------------
+
+test("dentro da urgência, quem tem mais estoque parado vem primeiro", () => {
+  // "Resolva estes 135" vira "resolva estes 135, e comece pelos 40 pares".
+  const d = diagnosticarVitrine(
+    [
+      anuncio("MLB_2", "paused", "dois pares", 2),
+      anuncio("MLB_40", "paused", "quarenta pares", 40),
+      anuncio("MLB_9", "paused", "nove pares", 9),
+    ],
+    {}
+  );
+  assert.deepEqual(d.anuncios.map((a) => a.produto), [
+    "quarenta pares",
+    "nove pares",
+    "dois pares",
+  ]);
+});
+
+test("estoque DESCONHECIDO não é zero, e fica entre os dois", () => {
+  // A regra inteira desta ordenação. `estoque ?? 0` mandaria os 34 anúncios
+  // sem leitura para o fim junto com os que têm zero — e são coisas opostas:
+  // zero é "não há o que vender aqui"; desconhecido pode ser quarenta pares.
+  const d = diagnosticarVitrine(
+    [
+      anuncio("MLB_zero", "paused", "zero confirmado", 0),
+      anuncio("MLB_null", "paused", "não lido", null),
+      anuncio("MLB_um", "paused", "um par", 1),
+    ],
+    {}
+  );
+  assert.deepEqual(d.anuncios.map((a) => a.produto), [
+    "um par",
+    "não lido",
+    "zero confirmado",
+  ]);
+});
+
+test("a urgência manda mais que o estoque", () => {
+  // Um punido com 100 pares não passa na frente de um FORA DO AR com 1: o
+  // primeiro ainda vende, o segundo não aparece para ninguém.
+  const d = diagnosticarVitrine(
+    [
+      anuncio("MLB_punido", "active", "punido com 100", 100),
+      anuncio("MLB_fora", "paused", "fora do ar com 1", 1),
+    ],
+    { MLB_punido: foto() }
+  );
+  assert.deepEqual(d.anuncios.map((a) => a.produto), [
+    "fora do ar com 1",
+    "punido com 100",
+  ]);
+});
+
+test("as unidades paradas somam só o que foi LIDO", () => {
+  // A soma diz "pelo menos isto", que é verdade — em vez de um total que finge
+  // saber o que não sabe. O não lido é contado à parte, em anúncios.
+  const d = diagnosticarVitrine(
+    [
+      anuncio("MLB_a", "paused", "a", 10),
+      anuncio("MLB_b", "closed", "b", 5),
+      anuncio("MLB_c", "active", "c", 7),
+      anuncio("MLB_d", "paused", "d", null),
+      anuncio("MLB_e", "active", "e (saudável)", 999),
+    ],
+    { MLB_c: foto() }
+  );
+  assert.equal(d.unidadesParadas.foraDoAr, 15, "10 + 5, sem o não lido");
+  assert.equal(d.unidadesParadas.punidos, 7);
+  assert.equal(d.unidadesParadas.semLeitura, 1, "conta ANÚNCIOS, não unidades");
+  // O saudável com 999 não entra: não está parado.
 });
 
 test("a ordem é estável entre chamadas", () => {

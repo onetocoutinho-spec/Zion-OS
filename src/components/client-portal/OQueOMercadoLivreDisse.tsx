@@ -68,6 +68,7 @@ export function OQueOMercadoLivreDisse({
   aoFiltrar?: (urgencia: Urgencia) => void;
 }) {
   const comAlgo = VISIVEIS.filter((u) => diagnostico.contagem[u] > 0);
+  const unidades = diagnostico.unidadesParadas;
 
   // Nada apontado é uma notícia boa e merece uma frase, não uma faixa vazia.
   if (comAlgo.length === 0) return null;
@@ -126,6 +127,30 @@ export function OQueOMercadoLivreDisse({
           );
         })}
       </div>
+
+      {/* O problema traduzido em MERCADORIA. "135 anúncios" é abstrato;
+          "598 pares que ninguém encontra" é o motivo de largar o que se está
+          fazendo. Só aparece quando há estoque lido — inventar um total seria
+          o oposto do que esta faixa existe para fazer. */}
+      {unidades.foraDoAr + unidades.punidos > 0 && (
+        <p className="mt-3 text-sm text-zinc-400">
+          Há pelo menos{" "}
+          <strong className="font-medium text-zinc-200">
+            {(unidades.foraDoAr + unidades.punidos).toLocaleString("pt-BR")} unidades
+          </strong>{" "}
+          em anúncios que não vendem como deviam
+          {unidades.foraDoAr > 0 && (
+            <> — {unidades.foraDoAr.toLocaleString("pt-BR")} delas fora do ar</>
+          )}
+          .
+          {unidades.semLeitura > 0 && (
+            <span className="text-zinc-500">
+              {" "}
+              ({unidades.semLeitura} anúncios sem estoque lido não entram nesta conta.)
+            </span>
+          )}
+        </p>
+      )}
 
       {/* A data importa: o estado foi LIDO num instante, não é ao vivo. Sem
           isto a lojista corrige uma foto e acha que a tela está mentindo por
