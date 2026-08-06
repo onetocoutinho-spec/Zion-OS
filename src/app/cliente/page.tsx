@@ -1,22 +1,16 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import {
   Megaphone,
   AlertTriangle,
   Package,
   Gauge,
-  ListChecks,
   FileText,
-  Sparkles,
-  ArrowRight,
   Wand2,
   Upload,
   Calculator,
   ClipboardCheck,
-  Lightbulb,
-  CheckCircle2,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
@@ -30,6 +24,7 @@ import { listarProdutosComPeso } from "@/lib/services/pesoDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { lacunasDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
+import { OQueImportaAgora } from "@/components/client-portal/OQueImportaAgora";
 import { montarEstadoDaLoja } from "@/components/client-portal/useEstadoDaLoja";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -85,8 +80,6 @@ export default function ClienteHome() {
     // não é isso que a lojista encontra ao clicar no menu de mesmo nome.
     const pendsInternas = (pendencias ?? []).filter((p) => !p.resolvida);
     const daConta = pendenciasDaMemoria(ans, infracoesDaConta ?? {});
-
-    const produtosComAnuncio = new Set(ans.map((a) => a.produtoId).filter(Boolean));
 
     // "ATIVOS" É A PALAVRA DO MERCADO LIVRE, NÃO A DA NOSSA ESTEIRA.
     //
@@ -178,8 +171,38 @@ export default function ClienteHome() {
         }
       />
 
-      {/* Cards de visão geral */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* ======================================================================
+       * A RESPOSTA VEM PRIMEIRO — e ela já existia, três posições abaixo.
+       * ======================================================================
+       *
+       * Esta área se chama "Hoje" e a pergunta dela, em UX-010, é **"o que
+       * importa agora?"**. A tela respondia na terceira posição: primeiro OITO
+       * cartões de número, depois SEIS cartões de "o que você quer fazer hoje?",
+       * e só então a lista do que está travando.
+       *
+       * São 14 elementos antes da resposta — e os seis cartões de escolha são o
+       * defeito que a UX-010 já tinha resolvido no menu ("quinze portas não são
+       * quinze oportunidades, são quinze maneiras de errar a primeira escolha")
+       * reaparecendo dentro da tela inicial.
+       *
+       * `lacunasDaLoja` já entrega tudo o que a resposta precisa: título, o que
+       * aquilo TRAVA, para onde ir e o texto do botão — ordenado por quanto
+       * destrava, não por quantidade. Não faltava lógica. Faltava ela ser a
+       * primeira coisa. (PLANO-004, item A.)
+       */}
+      <OQueImportaAgora lacunas={lacunas.lista} estado={lacunas.estado} />
+
+      {/* TRÊS números, não oito.
+       *
+       * Saíram os que não são fato da loja dela: "Score médio" (palavra do
+       * sistema), "Relatórios" (contagem de tela nossa), "Pontos a resolver" e
+       * "Próximas ações" (contagens de listas que agora aparecem inteiras logo
+       * acima — um número que resume o que está do lado é ruído), e "Pendências
+       * abertas", que a lista de lacunas já cobre com a consequência junto.
+       *
+       * Ficaram os três que dizem o estado da VITRINE dela, e nenhum deles é
+       * urgente o bastante para vir antes da resposta. */}
+      <div className="grid grid-cols-3 gap-3">
         {/* A ressalva anda junto do número: "não sabemos" nunca vira "no ar". */}
         <StatCard
           label="Anúncios no ar"
@@ -200,27 +223,6 @@ export default function ClienteHome() {
           icon={Package}
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
         />
-        <StatCard
-          label="Score médio"
-          value={m.score != null ? `${m.score}` : "—"}
-          hint={m.score != null ? "de 100" : "otimize para gerar"}
-          icon={Gauge}
-          tone={m.score != null && m.score >= 70 ? "green" : m.score != null ? "yellow" : "gray"}
-        />
-        {/* O QUE O MERCADO LIVRE COBRA — a mesma conta da tela Pendências.
-            Agrupado por produto, como a tela; e as peças paradas na dica,
-            porque "12 pendências" e "830 peças paradas" contam a mesma
-            história com urgências diferentes. */}
-        <StatCard
-          label="Pendências abertas"
-          value={m.pendencias}
-          icon={ListChecks}
-          tone={m.pendencias > 0 ? "yellow" : "gray"}
-          hint={m.pecasParadas > 0 ? `${m.pecasParadas} peças paradas` : undefined}
-        />
-        <StatCard label="Relatórios" value={m.relatorios} icon={FileText} tone="blue" />
-        <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
-        <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
       </div>
 
 
@@ -273,51 +275,9 @@ export default function ClienteHome() {
       </Section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Sugestões da IA */}
-        <Section
-          titulo="O que falta"
-          descricao="Na ordem em que resolver destrava o resto."
-        >
-          <Card>
-            {lacunas.lista.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <CheckCircle2 size={16} className="text-emerald-400" />
-                Nada travado. Sua loja está em dia.
-              </div>
-            ) : (
-              <ul className="space-y-3">
-                {lacunas.lista.map((l) => (
-                  <li key={l.tipo} className="flex items-start gap-3">
-                    {/* Vermelho só para o que trava TUDO. Se tudo fosse urgente,
-                        nada seria — e a lista viraria ruído a se ignorar. */}
-                    {l.bloqueiaTudo ? (
-                      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-400" />
-                    ) : (
-                      <Lightbulb size={16} className="mt-0.5 shrink-0 text-amber-400" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-zinc-200">{l.titulo}</p>
-                      <p className="mt-0.5 text-xs text-zinc-400">{l.trava}</p>
-                      <Link
-                        href={l.href}
-                        className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300"
-                      >
-                        {l.cta} <ArrowRight size={12} />
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {lacunas.estado.produtos > 0 && (
-              <p className="mt-4 border-t border-white/5 pt-3 text-xs text-zinc-500">
-                <strong className="text-zinc-300">{lacunas.estado.prontosParaPrecificar}</strong> de{" "}
-                {lacunas.estado.produtos} produto(s) têm custo e peso — os únicos com preço mínimo
-                calculado.
-              </p>
-            )}
-          </Card>
-        </Section>
+        {/* A seção "O que falta" saiu daqui: virou `<OQueImportaAgora>` no topo
+            da tela (PLANO-004, item A). Mesma lista, mesma ordem, mesma lógica —
+            só deixou de ser a terceira coisa que a lojista lê. */}
 
         {/* Recados.
             Esta seção vinha de um RPC que SÓ a equipe preenche. Num produto sem
