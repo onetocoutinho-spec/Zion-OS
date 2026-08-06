@@ -22,17 +22,51 @@ interface StatCardProps {
 
 export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: StatCardProps) {
   return (
-    <div className="rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10">
+    // O ÍCONE SAI DO FLUXO DO TEXTO.
+    //
+    // Ele é decorativo e ocupava 36px + 12px de gap num cartão que no celular
+    // tem 165px — quase um terço da largura, roubada do número. Em posição
+    // absoluta o texto usa a largura toda e só reserva o canto (`pr-9`).
+    //
+    // A alternativa que eu tentei antes era `break-words` no valor, e ela
+    // produziu o pior defeito do dia: "R$ 16.600" quebrou como "R$ 16.60" /
+    // "0" — lê-se dezesseis reais e sessenta. Um valor quebrado no meio não é
+    // um número incompleto, é um número ERRADO.
+    //
+    // E a medição automática aprovou: o script contava texto cortado por
+    // `scrollWidth > clientWidth`, e texto quebrado não vaza. Disse "0
+    // cortados". Só a captura de tela pegou. Fica registrado porque é a lição
+    // do dia: métrica de layout não substitui olhar a tela.
+    <div className="relative rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-xs text-zinc-500">{label}</p>
-          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-white">
+        <div className="min-w-0 pr-9 sm:pr-10">
+          {/* O RÓTULO NÃO TRUNCA — ele quebra.
+              ==============================================
+              `truncate` estava aqui e só apareceu quando a grade da home passou
+              a duas colunas no celular: em 375px o cartão fica estreito e SEIS
+              dos oito rótulos viraram "Clientes em o…", "Tarefas atras…",
+              "Faturamento …".
+              Um número sem o nome dele é a pior forma deste defeito neste
+              projeto — "3" sozinho não informa nada, e a família de defeitos que
+              este repositório mais pagou é exatamente número sem significado
+              (ver AUD-001). Rótulo em duas linhas custa altura; rótulo cortado
+              custa o sentido.
+              Medido no navegador em 375px, depois de a troca de grade revelar o
+              problema. Nenhuma leitura de código teria mostrado isto: o
+              `truncate` estava ali desde sempre e só cortava quando o cartão
+              ficasse estreito. */}
+          <p className="text-xs leading-snug text-zinc-500">{label}</p>
+          {/* `text-2xl` cortava "R$ 16.600" a 84px de 110px num cartão de duas
+              colunas — e valor cortado é pior que rótulo cortado: "R$ 16.6" é um
+              número ERRADO, não um número incompleto. Medido no navegador. */}
+          <p className="mt-1.5 text-xl font-semibold tracking-tight text-white sm:text-2xl">
             {value}
           </p>
           {hint && <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>}
         </div>
         <div
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${ICON_STYLES[tone]}`}
+          aria-hidden="true"
+          className={`absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg sm:h-9 sm:w-9 ${ICON_STYLES[tone]}`}
         >
           <Icon size={17} />
         </div>

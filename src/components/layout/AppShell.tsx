@@ -120,8 +120,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex-1 lg:pl-60 flex flex-col min-w-0">
         <header className="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-white/5 bg-[#08080d]/80 backdrop-blur px-4 sm:px-6">
+            {/* 44px, MEDIDO NO NAVEGADOR — não estimado.
+                Este botão tinha 20×20px: só o ícone, sem área em volta. É a
+                ÚNICA porta de navegação no celular, e o alvo era menos da
+                metade do mínimo da régua (44×44). Medido em 06/08/2026 com
+                Chromium em 375px, depois de o dono dizer que "não consegue nem
+                usar no celular" — nenhum grep tinha achado isto, porque o
+                defeito não está no que o código diz, está no tamanho que ele
+                produz. */}
           <button
-            className="lg:hidden text-zinc-400 hover:text-white"
+            className="lg:hidden -ml-2 flex h-11 w-11 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
             onClick={() => setMobileOpen(!mobileOpen)}
             aria-label="Abrir menu"
           >

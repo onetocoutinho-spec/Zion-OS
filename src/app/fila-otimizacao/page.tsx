@@ -94,7 +94,7 @@ export default function FilaOtimizacaoPage() {
         countLabel="itens na fila"
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Total na fila" value={fila.length} icon={ListFilter} tone="violet" />
         <StatCard label="Pendentes" value={pendentes} icon={Clock} tone="yellow" />
         <StatCard label="Em andamento" value={emAndamento} icon={PlayCircle} tone="blue" />
