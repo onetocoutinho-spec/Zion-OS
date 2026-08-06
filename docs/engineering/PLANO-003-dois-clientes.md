@@ -116,19 +116,41 @@ A parede real é **o portal ler tabelas inteiras para o navegador**. A tela
 `anuncios_gerados`, `auditorias`, `produto_variantes`, `imagens_produto`) e
 filtra em JavaScript.
 
+> ⚠️ **CORRIGIDO em 06/08 — os números abaixo estavam 8× errados.** Eu havia
+> escrito "~306 MB por abertura" e "836 aberturas no mês", calculados com
+> `pg_total_relation_size / n_live_tup` — que inclui índices, TOAST e espaço
+> livre, e **não é o payload**. Refeito com `pg_column_size`, o dado de verdade:
+>
+> | tabela | linhas | dados | KB/linha |
+> |---|---|---|---|
+> | `anuncios_gerados` | 880 | 1.377 KB | 1,56 |
+> | — **sem** o jsonb `anuncio` | 880 | 322 KB | 0,37 |
+> | `produto_variantes` | 970 | 168 KB | 0,17 |
+> | `imagens_produto` | 651 | 138 KB | 0,21 |
+> | `produtos` | 80 | 29 KB | 0,36 |
+
 | | por abertura da tela |
 |---|---|
-| Leilane, 80 produtos | **~5 MB** |
-| empresa, 1.000 produtos | ~61 MB |
-| empresa, 5.000 produtos | **~306 MB** |
+| Leilane, 80 produtos | **~1,7 MB** (era "5 MB") |
+| empresa, 5.000 produtos | **~40 MB** (era "306 MB") |
 
-Com 250 GB/mês de egresso no Pro, 5.000 produtos dão **836 aberturas dessa tela
-no mês inteiro**. Cinco pessoas usando normalmente estouram em uma semana.
+Com 250 GB/mês no Pro isso dá **~6.400 aberturas por mês**, não 836. **O egresso
+não é a parede.** O que é real a 5.000 produtos:
 
-> Estimativa por tamanho em disco (`pg_total_relation_size / n_live_tup`), que
-> inclui índices — é ordem de grandeza, não byte exato. Para o número exato,
-> medir a aba de rede com a tela aberta. A ordem de grandeza basta para
-> concluir: **não escala como está.**
+- **60.625 linhas de variante** atravessando a rede para calcular dois agregados
+  por produto (o peso máximo e quais têm peso). É o maior pedaço dos 40 MB, e o
+  mais desnecessário — o Postgres devolveria isso em poucos KB.
+- **40 MB de latência** num celular, que é problema mesmo cabendo no egresso.
+- **5.000 linhas no DOM**, sem virtualização.
+
+**E metade do item E já estava feito.** `ResumoDoAnuncio` +
+`COLUNAS_DO_RESUMO` existem desde 03/08, com a mesma medição (o jsonb é 76,6%
+da linha), e `/cliente/produtos`, `/cliente/relatorios`, `useEstadoDaLoja` e a
+importação já usam. Falta só `/cliente/anuncios`, e por um motivo específico:
+a LISTA lê `anuncio.tituloOtimizado` e `anuncio.pendencias[0]` para desenhar
+cada linha. Trocar sem projetar esses dois campos apagaria os dois em silêncio —
+o mapeador tolera coluna ausente. `quemUsaOResumo.test.ts` guarda isso e aponta
+o caminho.
 
 Restam duas paredes que nenhum painel resolve:
 
@@ -326,12 +348,28 @@ Depois disto, toda mudança compartilhada custa metade da conferência.
 
 ### E — Volume, antes da empresa grande entrar
 
-Parar de ler tabela inteira no navegador. É o único item que **bloqueia** a
-empresa grande — com 5.000 produtos a tela não abre em tempo aceitável e o
-egresso do mês acaba em uma semana.
+*Reescrito em 06/08 depois de medir o dado em vez do disco.*
+
+**Feito, e já estava:** a leitura estreita (`ResumoDoAnuncio`) existe e é usada
+por Produtos, Relatórios, o estado da loja e a importação. `quemUsaOResumo.test.ts`
+trava a regressão — trocar de volta é uma linha, e agora fica vermelho.
+
+**O que falta, em ordem de tamanho:**
+
+1. **As 60.625 linhas de variante.** A tela puxa todas para calcular o peso
+   máximo por produto e quais têm peso. É o maior pedaço dos 40 MB. Vira um
+   agregado no Postgres, e a tela passa a receber uma linha por produto.
+2. **`/cliente/anuncios` ainda paga o jsonb**, porque a lista lê dois campos de
+   dentro dele. Projetar `anuncio->>tituloOtimizado` e `anuncio->pendencias->>0`
+   no `select` resolve — e o teste já diz isso.
+3. **5.000 linhas no DOM**, sem virtualização.
 
 **Pronto quando:** abrir `/cliente/produtos` com 5.000 produtos custa a mesma
 ordem de bytes que hoje custa com 80.
+
+> Os três precisam ser VISTOS. Cada um tem o mesmo formato de risco: o mapeador
+> tolera coluna ausente, então uma leitura estreita mal feita entrega dado vazio
+> com cara de dado real, sem erro nenhum. Portão verde não pega isso.
 
 ### F — Papéis e convite dentro da conta
 
@@ -419,6 +457,18 @@ Três suposições minhas caíram contra o banco, e todas eram plausíveis:
    problemas diferentes" para "um problema, 1.026 vezes".
 5. *"Tipar a pendência é construir do zero."* — `lacunasDoProduto` já é
    exatamente isso, para o catálogo. Faltava só ler o que já existe.
+6. *"A tela custa 306 MB com 5.000 produtos e o egresso acaba em uma semana."*
+   — custa ~40 MB e cabem ~6.400 aberturas. Usei tamanho em DISCO
+   (`pg_total_relation_size`, que inclui índices e TOAST) onde precisava do
+   tamanho do DADO (`pg_column_size`). Errei por 8×.
+7. *"Metade do item E é trabalho novo."* — `ResumoDoAnuncio` já existia desde
+   03/08, com a mesma medição que eu refiz do zero.
+8. *"O diagnóstico precisa de margem real e lacunas por produto."* — as duas
+   telas já existiam. Listei no plano antes de olhar.
+
+**O padrão das oito:** três vieram de instrumento errado (disco por dado, grep
+por grafo, rótulo por texto) e três de não ter lido o que já estava no
+repositório. Nenhuma veio de raciocínio ruim sobre código.
 
 **O que valeu em todas: ler o banco antes de escrever o plano** — e, na 4,
 **ler o TEXTO e não o rótulo.** Nenhuma das cinco sobreviveria a uma revisão de
