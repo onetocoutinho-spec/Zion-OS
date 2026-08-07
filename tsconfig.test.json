@@ -20,6 +20,9 @@
   //
   // Aqui cada um responde por si, e o portão roda as duas checagens.
   "extends": "./tsconfig.json",
-  "include": ["src/**/*.ts", "src/**/*.tsx", "next-env.d.ts"],
+  //  entra aqui porque o checador do pre-commit vive la, e um teste
+  // fora do portao e um teste que ninguem roda — foi assim que os 7 testes do
+  // buraco do `alter table` passaram despercebidos: o total nao mudou.
+  "include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "next-env.d.ts"],
   "exclude": ["node_modules"]
 }

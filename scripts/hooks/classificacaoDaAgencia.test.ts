@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  tabelasNovasComClienteId,
+  tabelasQueGanhamClienteId,
   tabelasClassificadas,
   oQueFaltaClassificar,
   explicar,
@@ -26,7 +26,7 @@ test("acha a tabela nas formas em que as migrações deste repo a escrevem", () 
     `create table pedidos (\n  id uuid primary key default gen_random_uuid(),\n  cliente_id uuid not null references public.clientes(id) on delete cascade\n);`,
   ];
   for (const sql of casos) {
-    assert.deepEqual(tabelasNovasComClienteId(sql), ["pedidos"], `não achou em: ${sql.slice(0, 45)}`);
+    assert.deepEqual(tabelasQueGanhamClienteId(sql), ["pedidos"], `não achou em: ${sql.slice(0, 45)}`);
   }
 });
 
@@ -34,14 +34,14 @@ test("tabela SEM cliente_id não é problema deste hook", () => {
   // `agencias` é o exemplo real: nasceu na 054 e não tem `cliente_id`, porque
   // uma agência não pertence a uma loja.
   const sql = `create table public.agencias (id uuid primary key, nome text not null);`;
-  assert.deepEqual(tabelasNovasComClienteId(sql), []);
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), []);
 });
 
 test("uma coluna PARECIDA não conta", () => {
   // `cliente_id_antigo` e `id_cliente` não são a coluna de escopo, e tratá-los
   // como tal encheria o hook de alarme falso — que é como se desliga um hook.
   const sql = `create table public.x (id uuid, cliente_id_antigo uuid, id_cliente uuid);`;
-  assert.deepEqual(tabelasNovasComClienteId(sql), []);
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), []);
 });
 
 test("duas tabelas na mesma migração, e só uma com cliente_id", () => {
@@ -49,7 +49,7 @@ test("duas tabelas na mesma migração, e só uma com cliente_id", () => {
     create table public.agencias (id uuid primary key, nome text);
     create table public.notas (id uuid primary key, cliente_id uuid not null, texto text);
   `;
-  assert.deepEqual(tabelasNovasComClienteId(sql), ["notas"]);
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), ["notas"]);
 });
 
 test("parênteses aninhados não confundem o recorte", () => {
@@ -60,7 +60,7 @@ test("parênteses aninhados não confundem o recorte", () => {
     valor numeric(10,2) not null default 0,
     cliente_id uuid not null
   );`;
-  assert.deepEqual(tabelasNovasComClienteId(sql), ["x"]);
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), ["x"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -132,4 +132,75 @@ test("a mensagem diz a tabela, o arquivo e as duas saídas", () => {
   assert.match(texto, /false,/, "não mostra como classificar como não-operação");
   assert.match(texto, /create policy agencia_escopo/, "não lembra que a política não nasce sozinha");
   assert.match(texto, /--no-verify/, "não diz como seguir sem decidir agora");
+});
+
+// ---------------------------------------------------------------------------
+// O BURACO DO `alter table` — fechado em 07/08
+// ---------------------------------------------------------------------------
+//
+// A primeira versão só lia `create table`. Uma tabela ANTIGA que ganha
+// `cliente_id` depois entra no mesmo dilema — a agência opera aquilo ou não? —
+// e passava batido pelo hook.
+
+test("tabela antiga que GANHA cliente_id conta, nas formas que o Postgres aceita", () => {
+  const casos = [
+    `alter table public.notas add column cliente_id uuid not null;`,
+    `alter table notas add column if not exists cliente_id uuid;`,
+    `alter table public.notas add cliente_id uuid;`, // `column` é opcional
+    `ALTER TABLE "notas" ADD COLUMN "cliente_id" uuid references public.clientes(id);`,
+    `alter table only public.notas add column cliente_id uuid;`,
+    `alter table if exists public.notas add column cliente_id uuid;`,
+  ];
+  for (const sql of casos) {
+    assert.deepEqual(tabelasQueGanhamClienteId(sql), ["notas"], `não achou em: ${sql.slice(0, 50)}`);
+  }
+});
+
+test("várias ações no mesmo alter, e o cliente_id não é a primeira", () => {
+  // O recorte vai até o `;` de propósito: parar logo depois do nome da tabela
+  // perderia a adição que vem em segundo lugar.
+  const sql = `alter table public.notas
+    add column titulo text,
+    add column cliente_id uuid not null,
+    add column criado_em timestamptz default now();`;
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), ["notas"]);
+});
+
+test("MENCIONAR cliente_id não é ADICIONAR — os três alarmes falsos", () => {
+  // Alarme falso é como se desliga um hook. Estes três citam a coluna e não a
+  // criam, e tratá-los como defeito ensinaria a usar `--no-verify` por reflexo.
+  const casos = [
+    `alter table public.notas add constraint fk foreign key (cliente_id) references public.clientes(id);`,
+    `alter table public.notas drop column cliente_id;`,
+    `create index idx_notas_cliente on public.notas (cliente_id);`,
+    `alter table public.notas alter column cliente_id set not null;`,
+    `alter table public.notas rename column cliente_id to loja_id;`,
+  ];
+  for (const sql of casos) {
+    assert.deepEqual(tabelasQueGanhamClienteId(sql), [], `alarme falso em: ${sql.slice(0, 55)}`);
+  }
+});
+
+test("uma coluna com nome PARECIDO no alter também não conta", () => {
+  const sql = `alter table public.notas add column cliente_id_antigo uuid;`;
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), []);
+});
+
+test("create e alter na mesma migração, sem duplicar", () => {
+  const sql = `
+    create table public.notas (id uuid primary key, cliente_id uuid not null);
+    alter table public.notas add column cliente_id uuid;
+  `;
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), ["notas"], "a mesma tabela apareceu duas vezes");
+});
+
+test("um alter sem ponto e vírgula no fim do arquivo ainda é lido", () => {
+  const sql = `alter table public.notas add column cliente_id uuid not null`;
+  assert.deepEqual(tabelasQueGanhamClienteId(sql), ["notas"]);
+});
+
+test("a mensagem não diz mais 'criada em' — pode ser tabela antiga", () => {
+  const texto = explicar([{ tabela: "notas", migracao: "056-x.sql" }]);
+  assert.match(texto, /ganha cliente_id em/);
+  assert.doesNotMatch(texto, /criada em/, "a frase virou mentira quando o alter entrou");
 });
