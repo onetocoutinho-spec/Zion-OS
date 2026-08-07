@@ -206,22 +206,57 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
 
       {mostrando && mostrando.itens.length > 0 && (
         <div className="mt-3 space-y-4">
+          {/* DEZ FATOS NUMA FRASE CINZA VIRARAM UM FATO E UMA NOTA DE RODAPÉ.
+            *
+            * Era uma linha só, separada por `·`: data com SEGUNDOS, anúncios
+            * lidos, e mais oito categorias em sequência — terminando no número
+            * que mais importa, "5.841 peças paradas", em último lugar e no
+            * mesmo cinza de tudo.
+            *
+            * Dez números lado a lado não são dez informações: são a decisão
+            * adiada dez vezes, o mesmo defeito que a tela "Hoje" tinha. Aqui a
+            * consequência é ESTOQUE PARADO — dinheiro que não gira — e é ela
+            * que sobe.
+            *
+            * O detalhamento não some: vira a linha de baixo, onde serve a quem
+            * quiser conferir a conta. E a data perde os segundos: precisão de
+            * máquina num lugar onde a pergunta é "isto está velho?". */}
+          {/* UM NÚMERO SÓ, E É O QUE EU SEI ESTAR CERTO.
+            *
+            * Tentei duas vezes compor esta frase com DOIS números e errei nas
+            * duas. Primeiro "5.841 peças em 180 anúncios" — mas `estoqueTravado`
+            * soma só a gravidade "receita" e 180 é o total de todo tipo.
+            * Depois "em 814 anúncios" — e 814 é maior que os 781 lidos, porque
+            * `grupos.quantos` conta MLBs (variações), não anúncios.
+            *
+            * Dois números verdadeiros numa frase falsa é pior que um número só.
+            * `estoqueTravado` eu li na função que o produz e sei o que ele
+            * soma; a contagem de anúncios correspondente eu não tenho — então
+            * não afirmo. A linha de baixo dá o detalhe a quem quiser conferir. */}
+          {mostrando.estoqueTravado > 0 ? (
+            <p className="text-sm text-zinc-300">
+              <strong className="text-lg font-semibold text-amber-300">
+                {mostrando.estoqueTravado.toLocaleString("pt-BR")} peças
+              </strong>{" "}
+              paradas em estoque, atrás do que o Mercado Livre apontou.
+            </p>
+          ) : (
+            <p className="text-sm text-zinc-300">
+              {mostrando.itens.length}{" "}
+              {mostrando.itens.length === 1 ? "pendência" : "pendências"} na sua conta do
+              Mercado Livre.
+            </p>
+          )}
+
           <p className="text-xs text-zinc-500">
-            {/* A DATA vem antes dos números. Um retrato de três dias atrás
-                apresentado como atual é a mesma mentira que o `status` fixo
-                era — e o botão ao lado é o que o torna atual. */}
+            {/* A DATA continua vindo antes do detalhe: um retrato de três dias
+                atrás apresentado como atual é a mesma mentira que o `status`
+                fixo era — e o botão ao lado é o que o torna atual. */}
             {mostrando.lidoEm
-              ? `Lido em ${new Date(mostrando.lidoEm).toLocaleString("pt-BR")} · `
+              ? `Lido em ${new Date(mostrando.lidoEm).toLocaleDateString("pt-BR")} · `
               : ""}
             {mostrando.lidos} anúncios lidos ·{" "}
             {mostrando.totais.map((t) => `${t.quantas} ${ROTULO[t.tipo].toLowerCase()}`).join(" · ")}
-            {mostrando.estoqueTravado > 0 && (
-              <>
-                {" "}
-                · <strong className="text-amber-400">{mostrando.estoqueTravado} peças</strong> paradas
-                atrás disso
-              </>
-            )}
           </p>
 
           {grupos.map((g) => {
