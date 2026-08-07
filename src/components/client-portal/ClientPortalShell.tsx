@@ -20,6 +20,7 @@ import {
   Store,
   Zap,
   TrendingUp,
+  ArrowLeft,
 } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
@@ -194,6 +195,38 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
           <Sparkles size={20} className="text-white" />
         </div>
       </div>
+    );
+  }
+
+  // A AGÊNCIA NÃO É A LOJISTA, e a casca não pode fingir que é.
+  //
+  // A única rota daqui que ela alcança é a aterrissagem do OAuth — o
+  // `redirect_uri` do Mercado Livre é um endereço só e mora sob `/cliente/`.
+  // Com a casca do portal, ela lia "Operador da Agência Teste · PORTAL DO
+  // CLIENTE" e via o menu da loja: Hoje, Catálogo, Anúncios, Pulso. Ela está
+  // conectando a loja de um cliente, e a tela se comportava como se ela FOSSE
+  // aquele cliente.
+  //
+  // Aqui a casca some e fica só o conteúdo, com o caminho de volta para o
+  // painel — que é de onde ela veio.
+  if (perfil?.papel === "agencia") {
+    return (
+      <ClientPortalProvider value={{ perfil, clienteId, nome, marketplace }}>
+        <div className="min-h-screen bg-[#08080d] text-zinc-200">
+          <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/5 bg-[#08080d]/80 px-4 backdrop-blur sm:px-6">
+            <Link
+              href="/clientes"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            >
+              <ArrowLeft size={15} /> Voltar para as lojas
+            </Link>
+            <span className="ml-auto text-xs text-zinc-500">{perfil.nome}</span>
+          </header>
+          <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
+            {children}
+          </main>
+        </div>
+      </ClientPortalProvider>
     );
   }
 

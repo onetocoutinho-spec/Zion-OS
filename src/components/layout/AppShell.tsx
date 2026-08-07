@@ -4,12 +4,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, Search, Zap } from "lucide-react";
-import { NAV_ITEMS } from "./nav";
+import { NAV_ITEMS, navDoPapel, type NavItem } from "./nav";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
+import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 import { useTituloDaAba } from "./tituloDaAba";
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({
+  onNavigate,
+  itens,
+}: {
+  onNavigate?: () => void;
+  itens: NavItem[];
+}) {
   const pathname = usePathname();
 
   return (
@@ -25,7 +32,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {itens.map((item) => {
           const active =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           const Icon = item.icon;
@@ -63,6 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [emailUsuario, setEmailUsuario] = useState<string | null>(null);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -71,6 +79,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     getSupabase()
       .auth.getUser()
       .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
+    // O papel decide o MENU. Enquanto não chega, `perfil` é null e o menu
+    // completo aparece — é o comportamento de sempre para equipe, que é a
+    // maioria absoluta de quem abre esta casca, e some num piscar para a
+    // agência. Esconder tudo até saber faria a tela nascer sem navegação.
+    meuPerfil()
+      .then(setPerfil)
+      .catch(() => setPerfil(null));
   }, []);
 
   // O Portal do Cliente (/cliente/*) tem a própria casca (ClientPortalShell).
@@ -95,10 +110,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   //
   // O hook fica ANTES da saída porque hook não pode ficar depois dela, e o
   // `current` subiu junto para poder alimentá-lo.
+  // O MENU DEPENDE DE QUEM ESTÁ OLHANDO.
+  //
+  // A agência é cliente da Zion, não operadora dela. Sem este filtro ela via o
+  // painel inteiro — "Novo Usuário", "Agentes IA", "Memória (AIL)", e o
+  // "Financeiro", que guarda quanto a Zion cobra dela e quanto sobra.
+  //
+  // O RLS já esvazia a maioria dessas telas, e esvaziar não basta: OFERECER É
+  // DIFERENTE DE ENTREGAR. Ela clica, vê tela vazia, e conclui que o produto
+  // está quebrado.
+  const itens = navDoPapel(perfil?.papel ?? "equipe");
   const current =
-    NAV_ITEMS.find((i) =>
-      i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)
-    ) ?? NAV_ITEMS[0];
+    itens.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href))) ??
+    itens[0] ??
+    NAV_ITEMS[0];
   useTituloDaAba(foraDestaCasca ? null : current.label);
 
   if (foraDestaCasca) return <>{children}</>;
@@ -118,7 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
-        <Sidebar />
+        <Sidebar itens={itens} />
       </aside>
 
       {/* Sidebar mobile (drawer) */}
@@ -129,7 +154,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 w-64">
-            <Sidebar onNavigate={() => setMobileOpen(false)} />
+            <Sidebar itens={itens} onNavigate={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}
