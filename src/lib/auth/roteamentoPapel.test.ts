@@ -120,3 +120,52 @@ test("a agência inativa não entra, como qualquer outro papel", () => {
     { tipo: "sem_acesso" }
   );
 });
+
+// ---------------------------------------------------------------------------
+// A ATERRISSAGEM DO OAUTH É A ÚNICA EXCEÇÃO
+// ---------------------------------------------------------------------------
+//
+// O `redirect_uri` registrado no app do Mercado Livre é UM endereço só, e ele
+// mora sob `/cliente/`. Se a agência for expulsa dessa página, o ML devolve o
+// código para uma tela que redireciona antes de consumi-lo — e a conexão morre
+// no meio, sem erro visível.
+
+test("a agência ENTRA na página de conexão do marketplace", () => {
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  assert.deepEqual(decidirRota(agencia, "/cliente/conectar-ml"), { tipo: "ok" });
+});
+
+test("e continua expulsa do resto do portal", () => {
+  // A exceção é de UMA rota. Se ela vazasse para o prefixo, a agência veria a
+  // casca do portal com a loja de quem está logado — que não existe para ela.
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  for (const rota of ["/cliente", "/cliente/produtos", "/cliente/vendas", "/cliente/conectar-ml/x"]) {
+    assert.deepEqual(
+      decidirRota(agencia, rota),
+      { tipo: "redirect", para: "/" },
+      `${rota} deixou a agência entrar`
+    );
+  }
+});
+
+test("a exceção NÃO abre a porta para quem não tem vínculo", () => {
+  assert.deepEqual(
+    decidirRota({ papel: "agencia", clienteId: null, agenciaId: null }, "/cliente/conectar-ml"),
+    { tipo: "sem_acesso" }
+  );
+});
+
+test("a lojista continua entrando na mesma página, como sempre", () => {
+  assert.deepEqual(
+    decidirRota({ papel: "cliente", clienteId: "loja-1" }, "/cliente/conectar-ml"),
+    { tipo: "ok" }
+  );
+});
+
+test("a equipe continua sendo mandada para o painel", () => {
+  // Ela não conecta marketplace por esta tela; se cair aqui, foi engano.
+  assert.deepEqual(
+    decidirRota({ papel: "equipe", clienteId: null }, "/cliente/conectar-ml"),
+    { tipo: "redirect", para: "/" }
+  );
+});

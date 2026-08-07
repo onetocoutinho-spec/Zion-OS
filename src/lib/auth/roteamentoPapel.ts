@@ -70,6 +70,18 @@ export function estaNoPortalCliente(pathname: string): boolean {
 }
 
 /**
+ * A página de aterrissagem do OAuth do marketplace.
+ *
+ * Mora sob `/cliente/` por acidente histórico — o `redirect_uri` registrado no
+ * app do Mercado Livre aponta para lá, e é UM endereço só para todo mundo. Ela
+ * não é uma tela do portal: é onde o marketplace devolve o código, e quem o
+ * consome pode ser uma lojista ou uma agência.
+ */
+export function ehAConexaoDoMarketplace(pathname: string): boolean {
+  return pathname === "/cliente/conectar-ml";
+}
+
+/**
  * Decide o destino a partir do perfil real e da rota atual:
  *   - sem perfil / inativo / cliente sem empresa  → "sem_acesso"
  *   - cliente fora de /cliente                     → redirect "/cliente"
@@ -99,7 +111,20 @@ export function decidirRota(perfil: PerfilRota | null, pathname: string): Decisa
   // empresa é: não há sobre o que operar.
   if (perfil.papel === "agencia") {
     if (!perfil.agenciaId) return { tipo: "sem_acesso" };
-    return noPortal ? { tipo: "redirect", para: "/" } : { tipo: "ok" };
+    // A CONEXÃO COM O MARKETPLACE É A ÚNICA EXCEÇÃO, e ela é imposta de fora.
+    //
+    // O `redirect_uri` registrado no app do Mercado Livre é UM endereço só, e
+    // ele mora sob `/cliente/`. Todo retorno de OAuth cai ali, seja de quem
+    // for. Expulsar a agência dessa página faria o ML devolver o código para
+    // uma tela que redireciona antes de consumi-lo — e a conexão morre no meio,
+    // sem erro visível.
+    //
+    // A alternativa era registrar um segundo redirect no app do ML. Esta é a
+    // que não exige mexer na configuração de lá.
+    if (noPortal && !ehAConexaoDoMarketplace(pathname)) {
+      return { tipo: "redirect", para: "/" };
+    }
+    return { tipo: "ok" };
   }
 
   // equipe: nunca dentro do Portal do Cliente (evita ver a casca do cliente).

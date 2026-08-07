@@ -47,6 +47,31 @@ function paraApp(r: CanalRowPublic): CanalMarketplace {
   };
 }
 
+/**
+ * Quais lojas já estão conectadas — em UMA consulta, não uma por linha.
+ *
+ * A lista de lojas de uma agência tem dez, vinte linhas. Chamar `buscarCanal`
+ * por linha seria uma tempestade de rede para responder uma pergunta que cabe
+ * numa consulta só: *quais faltam conectar?* — que é o que ela olha de manhã.
+ *
+ * Não pede `cliente_id` nenhum: o RLS já limita ao que quem pergunta alcança.
+ * Equipe recebe todas, agência recebe as dela, lojista recebe a sua.
+ */
+export async function lojasConectadas(
+  marketplace = "Mercado Livre"
+): Promise<Set<string>> {
+  if (!supabaseConfigurado) return new Set();
+  const { data } = await getSupabase()
+    .from("canais_marketplace")
+    .select("cliente_id, ativo")
+    .eq("marketplace", marketplace);
+  const conectadas = new Set<string>();
+  for (const linha of (data ?? []) as { cliente_id: string; ativo: boolean | null }[]) {
+    if (linha.ativo) conectadas.add(linha.cliente_id);
+  }
+  return conectadas;
+}
+
 export async function buscarCanal(
   clienteId: string,
   marketplace = "Mercado Livre"

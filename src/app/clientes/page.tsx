@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Plug } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
@@ -11,12 +11,14 @@ import { LinkButton } from "@/components/ui/Button";
 import { CLIENTE_STATUS, RISCOS } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
+import { lojasConectadas } from "@/lib/services/canaisMarketplace";
 import { formatDate } from "@/lib/format";
 
 const HEADERS = [
   "Empresa",
   "Segmento",
   "Marketplaces",
+  "Mercado Livre",
   "Plano",
   "Status",
   "Risco",
@@ -29,6 +31,10 @@ export default function ClientesPage() {
   const [status, setStatus] = useState("Todos");
   const [risco, setRisco] = useState("Todos");
   const { data: clientes } = useLiveQuery(listarClientes);
+  // Uma consulta para a lista inteira: o RLS ja limita ao que quem pergunta
+  // alcanca, entao equipe recebe todas e agencia recebe as dela.
+  const { data: conectadasData } = useLiveQuery(() => lojasConectadas());
+  const conectadas = conectadasData ?? new Set<string>();
 
   const filtrados = (clientes ?? []).filter(
     (c) =>
@@ -82,6 +88,23 @@ export default function ClientesPage() {
                   <Badge key={m} tone="gray">{m}</Badge>
                 ))}
               </div>
+            </Td>
+            {/* A PERGUNTA DA MANHÃ DE UMA AGÊNCIA: quais lojas ainda faltam
+                conectar. Ela estava respondível só entrando loja por loja.
+                O botão leva à aterrissagem do OAuth com a loja no endereço —
+                que não é autoridade: o servidor só cria o ticket se quem
+                clicou operar aquela loja, e recusa com 403 se não. */}
+            <Td>
+              {conectadas.has(c.id) ? (
+                <Badge tone="green">Conectado</Badge>
+              ) : (
+                <Link
+                  href={`/cliente/conectar-ml?cliente=${c.id}`}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
+                >
+                  <Plug size={12} /> Conectar
+                </Link>
+              )}
             </Td>
             <Td className="whitespace-nowrap">{c.plano}</Td>
             <Td><Badge>{c.status}</Badge></Td>

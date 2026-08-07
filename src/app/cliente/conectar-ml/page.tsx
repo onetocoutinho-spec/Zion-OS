@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Store, CheckCircle2, AlertTriangle, Loader2, Plug, RefreshCw, Unplug } from "lucide-react";
 import { Card } from "@/components/ui/Card";
@@ -14,7 +15,26 @@ import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 type Estado = "idle" | "processando" | "ok" | "erro";
 
 export default function ConectarML() {
-  const { clienteId } = useClientPortal();
+  // `useSearchParams` exige Suspense no App Router.
+  return (
+    <Suspense fallback={null}>
+      <Conexao />
+    </Suspense>
+  );
+}
+
+function Conexao() {
+  // A LOJA PODE VIR DE FORA.
+  //
+  // O portal sabe qual é a loja de quem tem UMA. A agência opera dez e nenhuma
+  // é "a dela", então ela diz qual pelo endereço (`?cliente=`).
+  //
+  // O parâmetro NÃO é autoridade: ele decide o que a TELA mostra. Quem decide o
+  // que pode ser gravado é o servidor — a rota só cria o ticket se a pessoa
+  // alcançar aquela loja, e recusa com 403 se não.
+  const params = useSearchParams();
+  const { clienteId: doPortal } = useClientPortal();
+  const clienteId = params.get("cliente") ?? doPortal;
   const { data: canal, reload } = useLiveQuery(
     () => buscarCanal(clienteId, "Mercado Livre"),
     [clienteId]
@@ -28,6 +48,8 @@ export default function ConectarML() {
     if (!clienteId) return;
     const q = new URLSearchParams(window.location.search);
     const code = q.get("code");
+    // O `state` que volta do ML é um TICKET opaco (migração 055), não a loja.
+    const ticket = q.get("state");
     const erro = q.get("error");
     if (erro) {
       setEstado("erro");
@@ -36,6 +58,12 @@ export default function ConectarML() {
       return;
     }
     if (!code) return;
+    if (!ticket) {
+      setEstado("erro");
+      setMsg("Faltou o identificador desta conexão. Clique em Conectar de novo.");
+      history.replaceState(null, "", window.location.pathname);
+      return;
+    }
     // Evita reprocessar em re-render.
     history.replaceState(null, "", window.location.pathname);
     (async () => {
@@ -43,13 +71,18 @@ export default function ConectarML() {
       setMsg(null);
       try {
         // O servidor troca o code e SALVA o refresh_token no canal (R3): o
-        // navegador só envia o code + clienteId e a sessão; nunca vê o token.
+        // navegador nunca vê o token.
+        //
+        // Vai o TICKET, não o `clienteId`: a loja sai dele no servidor. O
+        // navegador devolve o papelzinho que recebeu e não afirma qual loja é —
+        // afirmar seria deixar qualquer um conectar a própria conta do Mercado
+        // Livre em qualquer loja, trocando um parâmetro.
         const resp = await fetch("/api/ml/conectar", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
           body: JSON.stringify({
             code,
-            clienteId,
+            ticket,
             redirectUri: `${window.location.origin}/cliente/conectar-ml`,
           }),
         });
@@ -74,8 +107,35 @@ export default function ConectarML() {
 
   const conectado = Boolean(canal?.ativo);
 
-  function conectar() {
-    window.location.href = `/api/ml/autorizar?clienteId=${encodeURIComponent(clienteId)}`;
+  // O TICKET NASCE ANTES DA NAVEGAÇÃO, e é por isso que aqui há um `fetch`.
+  //
+  // `window.location.href` é navegação pura: não leva o header `Authorization`,
+  // e a sessão deste app vive no localStorage, não em cookie. A rota antiga era
+  // anônima na prática — só montava uma URL, e a segurança ficava toda no
+  // callback, que usava a loja da sessão.
+  //
+  // Agora a rota confere o acesso, grava o ticket e devolve a URL. Só então a
+  // tela navega.
+  async function conectar() {
+    setEstado("processando");
+    setMsg(null);
+    try {
+      const r = await fetch("/api/ml/autorizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+        body: JSON.stringify({ clienteId }),
+      });
+      const d = (await r.json()) as { url?: string; erro?: string };
+      if (!r.ok || !d.url) {
+        setEstado("erro");
+        setMsg(d.erro ?? "Não foi possível iniciar a conexão com o Mercado Livre.");
+        return;
+      }
+      window.location.href = d.url;
+    } catch {
+      setEstado("erro");
+      setMsg("Não foi possível falar com o servidor. Verifique sua conexão.");
+    }
   }
   async function desconectar() {
     setEstado("processando");
