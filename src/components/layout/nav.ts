@@ -1,16 +1,12 @@
 import {
   LayoutDashboard,
   Users,
-  Rocket,
   Package,
   Megaphone,
   Bot,
-  ListChecks,
-  CalendarDays,
   AlertCircle,
   BarChart3,
   TrendingUp,
-  Wallet,
   Settings,
   Layers,
   ClipboardList,
@@ -34,7 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/", icon: LayoutDashboard },
   { label: "Clientes", href: "/clientes", icon: Users },
   { label: "Novo Usuário", href: "/usuarios/novo", icon: UserPlus },
-  { label: "Onboarding", href: "/onboarding", icon: Rocket },
   { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Templates", href: "/templates", icon: Layers },
   { label: "Anúncios", href: "/anuncios", icon: Megaphone },
@@ -44,14 +39,11 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Auditoria em Massa", href: "/auditoria-massa", icon: ClipboardList },
   { label: "Fila de Otimização", href: "/fila-otimizacao", icon: ListFilter },
   { label: "Agentes IA", href: "/agentes", icon: Bot },
-  { label: "Tarefas", href: "/tarefas", icon: ListChecks },
-  { label: "Reuniões", href: "/reunioes", icon: CalendarDays },
   { label: "Pendências", href: "/pendencias", icon: AlertCircle },
   { label: "Vendas", href: "/vendas", icon: TrendingUp },
   { label: "Memória (AIL)", href: "/ail/padroes", icon: Brain },
   { label: "Decision Intelligence", href: "/ail/inteligencia", icon: Activity },
   { label: "Relatórios", href: "/relatorios", icon: BarChart3 },
-  { label: "Financeiro", href: "/financeiro", icon: Wallet },
   { label: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 
@@ -73,22 +65,19 @@ export const NAV_ITEMS: NavItem[] = [
  *
  * O que ficou de fora, e por quê:
  *
- *   Dashboard, Onboarding,      são a operação da ZION sobre os clientes dela,
- *   Novo Usuário, Templates,    não a operação da agência sobre as lojas.
- *   Agentes IA, Memória (AIL),
+ *   Dashboard, Novo Usuário,    são a operação da ZION sobre os clientes dela,
+ *   Templates, Agentes IA,      não a operação da agência sobre as lojas.
+ *   Memória (AIL),
  *   Decision Intelligence
  *
- *   Tarefas, Reuniões           herança de agência de marketing: são as notas
- *                               da Zion SOBRE o cliente, não trabalho da loja.
- *
- *   Financeiro                  `valor_mensal`, `custo_operacional` e
- *                               `lucro_estimado` — quanto a Zion cobra, quanto
- *                               custa atender e quanto sobra. Uma agência
- *                               lendo isso entra em qualquer renegociação
- *                               sabendo a margem do outro lado. O RLS já foi
- *                               fechado (055a); aqui o menu para de oferecer.
- *
  *   Configurações               é a configuração da Zion, não a da agência.
+ *
+ * TRÊS SAÍRAM DO PRODUTO INTEIRO em 07/08 — Tarefas, Reuniões e Financeiro. O
+ * filtro chegou a excluí-las daqui, mas o motivo era mais fundo do que "a
+ * agência não vê": eram herança de agência de marketing, tinham ZERO linhas no
+ * banco depois de meses, e sob o modelo self-service nada voltaria a escrever
+ * nelas. Foram apagadas junto com Onboarding. O RLS delas já tinha sido fechado
+ * antes (055a, 055b) e continua fechado — tabela sem tela ainda é tabela.
  *
  * OFERECER É DIFERENTE DE ENTREGAR, e é isso que este filtro resolve. Sem ele,
  * o RLS esvazia as telas e a agência lê tela vazia como produto quebrado.

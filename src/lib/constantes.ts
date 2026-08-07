@@ -6,11 +6,9 @@ import type {
   ClienteStatus,
   EtapaStatus,
   Marketplace,
-  PagamentoStatus,
   Prioridade,
   RelatorioStatus,
   Risco,
-  TarefaStatus,
 } from "./types";
 
 export const MARKETPLACES: Marketplace[] = [
@@ -45,24 +43,12 @@ export const CADASTRO_STATUS: CadastroStatus[] = [
 
 export const PUBLICACAO_STATUS = ["Pendente", "Agendado", "Publicado"] as const;
 
-export const TAREFA_STATUS: TarefaStatus[] = [
-  "Não iniciado",
-  "Em andamento",
-  "Aguardando cliente",
-  "Aguardando aprovação",
-  "Em revisão",
-  "Concluído",
-  "Travado",
-];
-
 export const RELATORIO_STATUS: RelatorioStatus[] = [
   "Pendente",
   "Em elaboração",
   "Enviado",
   "Aprovado",
 ];
-
-export const PAGAMENTO_STATUS: PagamentoStatus[] = ["Pago", "Pendente", "Atrasado"];
 
 export const AREAS_AGENTE: AreaAgente[] = [
   "Agência",
@@ -79,21 +65,6 @@ export const AREAS_AGENTE: AreaAgente[] = [
   "Processos internos",
 ];
 
-export const AREAS_TAREFA = [
-  "Agência",
-  "Comercial",
-  "Onboarding",
-  "Mercado Livre",
-  "TikTok Shop",
-  "Shopee",
-  "Amazon",
-  "Anúncios",
-  "Imagens",
-  "Precificação",
-  "Relatórios",
-  "Financeiro",
-] as const;
-
 export const EQUIPE = ["Camila", "Lucas", "Amanda", "Rafael"] as const;
 
 export const PLANOS = ["Início", "Organiza", "Escala", "—"] as const;
@@ -101,8 +72,6 @@ export const PLANOS = ["Início", "Organiza", "Escala", "—"] as const;
 export const IMPLANTACAO_STATUS = ["Ativo", "Em teste", "Planejado"] as const;
 
 export const FREQUENCIAS_USO = ["Diário", "Semanal", "Quinzenal", "Sob demanda"] as const;
-
-export const REUNIAO_STATUS = ["Agendada", "Realizada", "Cancelada"] as const;
 
 // ---- v1.7: modelagem de produtos marketplace ----
 

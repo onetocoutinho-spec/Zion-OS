@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ExternalLink, Lightbulb, Pencil, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Lightbulb, Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -11,8 +10,6 @@ import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
 import { VariantesDoAnuncio } from "@/components/produtos/VariantesDoAnuncio";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarAnuncio, excluirAnuncio } from "@/lib/services/anuncios";
-import { listarTarefasDoAnuncio } from "@/lib/services/tarefas";
-import { formatDate } from "@/lib/format";
 import type { Anuncio } from "@/lib/types";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
@@ -44,13 +41,11 @@ export default function AnuncioDetalhePage() {
   const router = useRouter();
 
   const { data: anuncio, carregando } = useLiveQuery(() => buscarAnuncio(id), [id]);
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoAnuncio(id), [id]);
 
   if (carregando) return null;
   if (!anuncio)
     return <EmptyState mensagem="Anúncio não encontrado." acaoLabel="Voltar para anúncios" acaoHref="/anuncios" />;
 
-  const qs = `?cliente=${encodeURIComponent(anuncio.cliente)}&anuncio=${encodeURIComponent(anuncio.produto)}`;
   const sugestoes = melhoriasSugeridas(anuncio);
 
   async function excluir() {
@@ -75,9 +70,6 @@ export default function AnuncioDetalhePage() {
         <div className="flex flex-wrap gap-2">
           <LinkButton href={`/anuncios/${id}/editar`} variant="ghost">
             <Pencil size={14} /> Editar
-          </LinkButton>
-          <LinkButton href={`/tarefas/nova${qs}`} variant="ghost">
-            <Plus size={14} /> Criar tarefa relacionada
           </LinkButton>
           <ExecutarComAgente
             clienteId={anuncio.clienteId}
@@ -151,30 +143,6 @@ export default function AnuncioDetalhePage() {
           )}
         </Card>
 
-        <Card
-          title={`Tarefas deste anúncio (${tarefas?.length ?? 0})`}
-          action={
-            <Link href={`/tarefas/nova${qs}`} className="text-xs text-violet-400 hover:text-violet-300">
-              + Criar tarefa relacionada
-            </Link>
-          }
-        >
-          {tarefas && tarefas.length > 0 ? (
-            <ul className="divide-y divide-white/[0.04]">
-              {tarefas.map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
-                    <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
-                    <p className="text-xs text-zinc-500">{t.responsavel} · prazo {formatDate(t.prazo)}</p>
-                  </Link>
-                  <Badge>{t.status}</Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState compacto mensagem="Nenhuma tarefa vinculada a este anúncio." acaoLabel="Criar tarefa" acaoHref={`/tarefas/nova${qs}`} />
-          )}
-        </Card>
       </div>
     </div>
   );

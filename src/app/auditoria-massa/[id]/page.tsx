@@ -6,7 +6,6 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ExternalLink,
   ListPlus,
-  ClipboardPlus,
   CheckCircle2,
   EyeOff,
   ArrowLeft,
@@ -19,7 +18,6 @@ import { useLiveQuery } from "@/lib/hooks";
 import { buscarAuditoria, alterarStatusAuditoria } from "@/lib/services/auditorias";
 import { listarProblemasDaAuditoria } from "@/lib/services/problemasAnuncio";
 import { enviarAuditoriaParaFila } from "@/lib/services/filaOtimizacao";
-import { criarTarefa } from "@/lib/services/tarefas";
 import { formatBRL } from "@/lib/format";
 import {
   ROTULO_PRIORIDADE,
@@ -88,34 +86,6 @@ export default function AuditoriaDetalhePage() {
     }
   }
 
-  async function criarTarefaRelacionada() {
-    if (!auditoria) return;
-    setBusy(true);
-    try {
-      await criarTarefa({
-        clienteId: auditoria.clienteId,
-        cliente: auditoria.cliente,
-        produtoId: auditoria.produtoId,
-        produto: null,
-        anuncioId: auditoria.anuncioId,
-        anuncio: null,
-        agenteId: null,
-        area: "Anúncios",
-        tarefa: `Otimizar anúncio: ${auditoria.tituloAtual}`,
-        responsavel: auditoria.responsavel || "Lucas",
-        prioridade: auditoria.prioridade === "critica" ? "Urgente" : "Alta",
-        status: "Não iniciado",
-        prazo: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        agenteRelacionado: auditoria.agenteRecomendado,
-        proximaAcao: auditoria.proximaAcao,
-        observacoes: `Gerado a partir da Auditoria em Massa. Problemas: ${auditoria.problemasEncontrados}`,
-      });
-      router.push("/tarefas");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function marcar(status: "otimizado" | "ignorado") {
     if (!auditoria) return;
     setBusy(true);
@@ -152,9 +122,6 @@ export default function AuditoriaDetalhePage() {
       <div className="flex flex-wrap gap-2">
         <Button variant="primary" onClick={enviarParaFila} disabled={busy}>
           <ListPlus size={14} /> Enviar para a fila
-        </Button>
-        <Button variant="ghost" onClick={criarTarefaRelacionada} disabled={busy}>
-          <ClipboardPlus size={14} /> Criar tarefa relacionada
         </Button>
         <Button variant="success" onClick={() => marcar("otimizado")} disabled={busy}>
           <CheckCircle2 size={14} /> Marcar otimizado

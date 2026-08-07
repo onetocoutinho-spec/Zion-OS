@@ -16,9 +16,8 @@ import { AbaImagens } from "@/components/produtos/AbaImagens";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarProduto, excluirProduto } from "@/lib/services/produtos";
 import { listarAnunciosDoProduto } from "@/lib/services/anuncios";
-import { listarTarefasDoProduto } from "@/lib/services/tarefas";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
-import { formatBRL, formatDate } from "@/lib/format";
+import { formatBRL } from "@/lib/format";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -39,7 +38,6 @@ export default function ProdutoDetalhePage() {
 
   const { data: produto, carregando } = useLiveQuery(() => buscarProduto(id), [id]);
   const { data: anuncios } = useLiveQuery(() => listarAnunciosDoProduto(id), [id]);
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoProduto(id), [id]);
   const { data: variantes } = useLiveQuery(() => listarVariantesDoProduto(id), [id]);
 
   if (carregando) return null;
@@ -186,31 +184,6 @@ export default function ProdutoDetalhePage() {
             </Card>
           )}
 
-          <Card
-            title={`Tarefas deste produto (${tarefas?.length ?? 0})`}
-            className="xl:col-span-2"
-            action={
-              <Link href={`/tarefas/nova${qs}`} className="text-xs text-violet-400 hover:text-violet-300">
-                + Criar tarefa relacionada
-              </Link>
-            }
-          >
-            {tarefas && tarefas.length > 0 ? (
-              <ul className="divide-y divide-white/[0.04]">
-                {tarefas.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
-                      <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
-                      <p className="text-xs text-zinc-500">{t.responsavel} · prazo {formatDate(t.prazo)}</p>
-                    </Link>
-                    <Badge>{t.status}</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState compacto mensagem="Nenhuma tarefa vinculada a este produto." acaoLabel="Criar tarefa" acaoHref={`/tarefas/nova${qs}`} />
-            )}
-          </Card>
         </div>
       )}
 

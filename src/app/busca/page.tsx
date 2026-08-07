@@ -15,7 +15,6 @@ const TONE_POR_TIPO: Record<ResultadoBusca["tipo"], Tone> = {
   Cliente: "green",
   Produto: "blue",
   "Anúncio": "cyan",
-  Tarefa: "orange",
   Agente: "violet",
 };
 

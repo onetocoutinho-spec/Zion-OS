@@ -22,11 +22,8 @@ import type {
   Produto,
   ProdutoAtributo,
   ProdutoVariante,
-  RegistroFinanceiro,
   Relatorio,
-  Reuniao,
   TabelaMedida,
-  Tarefa,
 } from "../types";
 import type {
   AgenteRow,
@@ -39,7 +36,6 @@ import type {
   ExecucaoLoteRow,
   ExecucaoRow,
   FilaOtimizacaoRow,
-  FinanceiroRow,
   ImagemProdutoRow,
   ImportacaoAnunciosRow,
   PendenciaRow,
@@ -49,9 +45,7 @@ import type {
   ProdutoRow,
   ProdutoVarianteRow,
   RelatorioRow,
-  ReuniaoRow,
   TabelaMedidaRow,
-  TarefaRow,
 } from "./database.types";
 import { resumoVariante } from "../variantes";
 
@@ -281,47 +275,6 @@ export function agenteParaBanco(d: Partial<AgenteIA>): Record<string, unknown> {
   return r;
 }
 
-// ---- Tarefas ----
-
-export function tarefaParaApp(row: TarefaRow): Tarefa {
-  return {
-    id: row.id,
-    clienteId: row.cliente_id,
-    cliente: row.clientes?.empresa ?? "—",
-    produtoId: row.produto_id,
-    produto: row.produtos?.nome ?? null,
-    anuncioId: row.anuncio_id,
-    anuncio: row.anuncios?.produtos?.nome ?? null,
-    agenteId: row.agente_id,
-    agenteRelacionado: row.agentes?.nome ?? null,
-    area: row.area ?? "Agência",
-    tarefa: row.tarefa,
-    responsavel: row.responsavel ?? "",
-    prioridade: row.prioridade as Tarefa["prioridade"],
-    status: row.status as Tarefa["status"],
-    prazo: row.prazo ?? "",
-    proximaAcao: row.proxima_acao ?? "",
-    observacoes: row.observacoes ?? "",
-  };
-}
-
-export function tarefaParaBanco(d: Partial<Tarefa>): Record<string, unknown> {
-  const r: Record<string, unknown> = {};
-  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
-  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
-  if (d.anuncioId !== undefined) r.anuncio_id = d.anuncioId;
-  if (d.agenteId !== undefined) r.agente_id = d.agenteId;
-  if (d.area !== undefined) r.area = d.area;
-  if (d.tarefa !== undefined) r.tarefa = d.tarefa;
-  if (d.responsavel !== undefined) r.responsavel = d.responsavel;
-  if (d.prioridade !== undefined) r.prioridade = d.prioridade;
-  if (d.status !== undefined) r.status = d.status;
-  if (d.prazo !== undefined) r.prazo = d.prazo || null;
-  if (d.proximaAcao !== undefined) r.proxima_acao = d.proximaAcao;
-  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
-  return r;
-}
-
 // ---- Relatórios ----
 
 export function relatorioParaApp(row: RelatorioRow): Relatorio {
@@ -356,40 +309,6 @@ export function relatorioParaBanco(d: Partial<Relatorio>): Record<string, unknow
   return r;
 }
 
-// ---- Financeiro ----
-
-export function financeiroParaApp(row: FinanceiroRow): RegistroFinanceiro {
-  return {
-    id: row.id,
-    clienteId: row.cliente_id,
-    cliente: row.clientes?.empresa ?? "—",
-    plano: row.plano ?? "—",
-    valorMensal: Number(row.valor_mensal ?? 0),
-    dataVencimento: row.data_vencimento ?? "",
-    statusPagamento: row.status_pagamento as RegistroFinanceiro["statusPagamento"],
-    servicosExtras: row.servicos_extras ?? "—",
-    custoOperacional: Number(row.custo_operacional ?? 0),
-    lucroEstimado: Number(row.lucro_estimado ?? 0),
-    observacoes: row.observacoes ?? "",
-  };
-}
-
-export function financeiroParaBanco(
-  d: Partial<RegistroFinanceiro>
-): Record<string, unknown> {
-  const r: Record<string, unknown> = {};
-  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
-  if (d.plano !== undefined) r.plano = d.plano;
-  if (d.valorMensal !== undefined) r.valor_mensal = d.valorMensal;
-  if (d.dataVencimento !== undefined) r.data_vencimento = d.dataVencimento || null;
-  if (d.statusPagamento !== undefined) r.status_pagamento = d.statusPagamento;
-  if (d.servicosExtras !== undefined) r.servicos_extras = d.servicosExtras;
-  if (d.custoOperacional !== undefined) r.custo_operacional = d.custoOperacional;
-  if (d.lucroEstimado !== undefined) r.lucro_estimado = d.lucroEstimado;
-  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
-  return r;
-}
-
 // ---- Execuções de agentes ----
 
 export function execucaoParaApp(row: ExecucaoRow): ExecucaoAgente {
@@ -411,30 +330,6 @@ export function execucaoParaBanco(d: Partial<ExecucaoAgente>): Record<string, un
   if (d.contexto !== undefined) r.contexto = d.contexto;
   if (d.resultado !== undefined) r.resultado = d.resultado;
   if (d.tipo !== undefined) r.tipo = d.tipo;
-  return r;
-}
-
-// ---- Reuniões ----
-
-export function reuniaoParaApp(row: ReuniaoRow): Reuniao {
-  return {
-    id: row.id,
-    clienteId: row.cliente_id,
-    cliente: row.clientes?.empresa ?? "—",
-    titulo: row.titulo,
-    dataHora: row.data_hora,
-    pauta: row.pauta ?? "",
-    status: row.status as Reuniao["status"],
-  };
-}
-
-export function reuniaoParaBanco(d: Partial<Reuniao>): Record<string, unknown> {
-  const r: Record<string, unknown> = {};
-  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
-  if (d.titulo !== undefined) r.titulo = d.titulo;
-  if (d.dataHora !== undefined) r.data_hora = d.dataHora || null;
-  if (d.pauta !== undefined) r.pauta = d.pauta;
-  if (d.status !== undefined) r.status = d.status;
   return r;
 }
 

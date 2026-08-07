@@ -118,19 +118,23 @@ test("os cartões numéricos ficam em DUAS colunas no celular", () => {
     /grid-cols-1[^"]*sm:grid-cols-2[^"]*xl:grid-cols-4/,
     "a grade dos cartões voltou a uma coluna no celular"
   );
-  assert.match(HOME, /grid grid-cols-2[^"]*xl:grid-cols-4/);
+  // O `xl:` não é fixado de propósito: ele já foi 4 e virou 3 quando três
+  // cartões saíram com as telas apagadas em 07/08. O que este teste guarda é o
+  // CELULAR — duas colunas em 375px —, não quantos cabem no desktop.
+  assert.match(HOME, /grid grid-cols-2[^"]*xl:grid-cols-\d/);
 });
 
-test("o nome da tarefa não é cortado no meio", () => {
-  // `truncate` escondia metade — 196px de 376px. `line-clamp-2` mostra duas
-  // linhas inteiras, que é o que permite reconhecer a tarefa.
-  assert.doesNotMatch(HOME, /truncate text-sm text-zinc-200/, "o nome da tarefa voltou a ser cortado");
-  assert.match(HOME, /line-clamp-2/);
-});
-
-test("os links de tarefa alcançam 44px em toque", () => {
-  // 38px medidos. E eram DUAS listas com o mesmo Link — a asserção do script de
-  // conserto pegou que eu ia consertar só uma.
-  const ocorrencias = HOME.match(/\[@media\(pointer:coarse\)\]:min-h-11/g) ?? [];
-  assert.ok(ocorrencias.length >= 2, `esperava as duas listas, achei ${ocorrencias.length}`);
-});
+// ── Duas asserções saíram daqui em 07/08, e vale dizer por quê ──────────────
+//
+// "o nome da tarefa não é cortado no meio" (line-clamp-2) e "os links de tarefa
+// alcançam 44px em toque" (min-h-11 em DUAS listas) mediam as duas listas de
+// tarefa da home. As telas de Tarefas, Reuniões, Financeiro e Onboarding foram
+// apagadas — zero linhas no banco depois de meses —, e com elas as listas.
+//
+// Não foram afrouxadas para passar: o alvo que elas mediam não existe mais.
+// Mantê-las verdes exigiria um `line-clamp-2` decorativo em texto que ninguém
+// mais lê — teste que dita a forma do código em vez de guardar comportamento.
+//
+// A REGRA continua guardada onde ainda há alvo de toque: `tresEstadosNaTela` e
+// `geometriaDoWorkspace` seguram os 44px do portal da lojista, que é a tela que
+// alguém de fato abre no celular.

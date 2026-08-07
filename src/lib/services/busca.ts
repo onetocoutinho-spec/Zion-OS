@@ -1,15 +1,14 @@
-// Busca global simples: varre clientes, produtos, anúncios, tarefas e agentes.
+// Busca global simples: varre clientes, produtos, anúncios e agentes.
 // Usa os próprios serviços de listagem, então funciona igualmente com
 // Supabase ou com o modo demonstração local.
 
 import { listarClientes } from "./clientes";
 import { listarProdutos } from "./produtos";
 import { listarAnuncios } from "./anuncios";
-import { listarTarefas } from "./tarefas";
 import { listarAgentes } from "./agentes";
 
 export interface ResultadoBusca {
-  tipo: "Cliente" | "Produto" | "Anúncio" | "Tarefa" | "Agente";
+  tipo: "Cliente" | "Produto" | "Anúncio" | "Agente";
   titulo: string;
   descricao: string;
   href: string;
@@ -23,11 +22,10 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
   const termo = consulta.trim().toLowerCase();
   if (termo.length < 2) return [];
 
-  const [clientes, produtos, anuncios, tarefas, agentes] = await Promise.all([
+  const [clientes, produtos, anuncios, agentes] = await Promise.all([
     listarClientes(),
     listarProdutos(),
     listarAnuncios(),
-    listarTarefas(),
     listarAgentes(),
   ]);
 
@@ -62,17 +60,6 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
         titulo: a.produto,
         descricao: `${a.cliente} · ${a.marketplace} · ${a.statusPublicacao}`,
         href: `/anuncios/${a.id}`,
-      });
-    }
-  });
-
-  tarefas.forEach((t) => {
-    if (contem(t.tarefa, termo) || contem(t.cliente, termo) || contem(t.responsavel, termo)) {
-      resultados.push({
-        tipo: "Tarefa",
-        titulo: t.tarefa,
-        descricao: `${t.cliente} · ${t.status} · ${t.responsavel}`,
-        href: `/tarefas/${t.id}/editar`,
       });
     }
   });

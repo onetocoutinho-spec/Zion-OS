@@ -12,12 +12,8 @@ import { useLiveQuery } from "@/lib/hooks";
 import { alterarStatusCliente, buscarCliente, excluirCliente } from "@/lib/services/clientes";
 import { listarProdutosDoCliente } from "@/lib/services/produtos";
 import { listarAnunciosDoCliente } from "@/lib/services/anuncios";
-import { listarTarefasDoCliente } from "@/lib/services/tarefas";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
-import { listarFinanceiroDoCliente } from "@/lib/services/financeiro";
-import { buscarOnboardingDoCliente } from "@/lib/services/onboardings";
-import { listarReunioesDoCliente } from "@/lib/services/reunioes";
-import { formatBRL, formatDate, formatDateTime } from "@/lib/format";
+import { formatBRL, formatDate } from "@/lib/format";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -35,11 +31,7 @@ export default function ClienteDetalhePage() {
   const { data: cliente, carregando } = useLiveQuery(() => buscarCliente(id), [id]);
   const { data: produtos } = useLiveQuery(() => listarProdutosDoCliente(id), [id]);
   const { data: anuncios } = useLiveQuery(() => listarAnunciosDoCliente(id), [id]);
-  const { data: tarefas } = useLiveQuery(() => listarTarefasDoCliente(id), [id]);
   const { data: relatorios } = useLiveQuery(() => listarRelatoriosDoCliente(id), [id]);
-  const { data: financeiro } = useLiveQuery(() => listarFinanceiroDoCliente(id), [id]);
-  const { data: onboarding } = useLiveQuery(() => buscarOnboardingDoCliente(id), [id]);
-  const { data: reunioes } = useLiveQuery(() => listarReunioesDoCliente(id), [id]);
 
   if (carregando) return null;
   if (!cliente)
@@ -71,9 +63,6 @@ export default function ClienteDetalhePage() {
         <div className="flex flex-wrap gap-2">
           <LinkButton href={`/clientes/${id}/editar`} variant="ghost">
             <Pencil size={14} /> Editar
-          </LinkButton>
-          <LinkButton href={`/tarefas/nova${qs}`} variant="ghost">
-            <Plus size={14} /> Tarefa
           </LinkButton>
           <LinkButton href={`/produtos/novo${qs}`} variant="ghost">
             <Plus size={14} /> Produto
@@ -123,31 +112,6 @@ export default function ClienteDetalhePage() {
           )}
         </Card>
 
-        {/* Pendências (do onboarding) */}
-        <Card title="Pendências e onboarding">
-          {onboarding ? (
-            <>
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm text-zinc-400">Checklist de onboarding</span>
-                <Link href="/onboarding" className="text-xs text-violet-400 hover:text-violet-300">
-                  Abrir onboarding →
-                </Link>
-              </div>
-              {onboarding.pendenciasCliente.length > 0 ? (
-                <ul className="list-inside list-disc space-y-1.5 text-sm text-zinc-400">
-                  {onboarding.pendenciasCliente.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-zinc-500">Nenhuma pendência do cliente. ✓</p>
-              )}
-            </>
-          ) : (
-            <EmptyState compacto mensagem="Este cliente não tem onboarding registrado." />
-          )}
-        </Card>
-
         {/* Produtos vinculados */}
         <Card title={`Produtos (${produtos?.length ?? 0})`}>
           {produtos && produtos.length > 0 ? (
@@ -186,32 +150,6 @@ export default function ClienteDetalhePage() {
           )}
         </Card>
 
-        {/* Tarefas vinculadas */}
-        <Card
-          title={`Tarefas (${tarefas?.length ?? 0})`}
-          action={
-            <Link href={`/tarefas/nova${qs}`} className="text-xs text-violet-400 hover:text-violet-300">
-              + Criar tarefa relacionada
-            </Link>
-          }
-        >
-          {tarefas && tarefas.length > 0 ? (
-            <ul className="divide-y divide-white/[0.04]">
-              {tarefas.map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/tarefas/${t.id}/editar`} className="min-w-0">
-                    <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{t.tarefa}</p>
-                    <p className="text-xs text-zinc-500">{t.responsavel} · prazo {formatDate(t.prazo)}</p>
-                  </Link>
-                  <Badge>{t.status}</Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState compacto mensagem="Nenhuma tarefa pendente para este cliente." acaoLabel="Criar tarefa" acaoHref={`/tarefas/nova${qs}`} />
-          )}
-        </Card>
-
         {/* Relatórios vinculados */}
         <Card title={`Relatórios (${relatorios?.length ?? 0})`}>
           {relatorios && relatorios.length > 0 ? (
@@ -231,55 +169,6 @@ export default function ClienteDetalhePage() {
           )}
         </Card>
 
-        {/* Reuniões */}
-        <Card
-          title={`Reuniões (${reunioes?.length ?? 0})`}
-          action={
-            <Link
-              href={`/reunioes/nova${qs}`}
-              className="text-xs text-violet-400 hover:text-violet-300"
-            >
-              + Agendar reunião
-            </Link>
-          }
-        >
-          {reunioes && reunioes.length > 0 ? (
-            <ul className="divide-y divide-white/[0.04]">
-              {reunioes.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/reunioes/${r.id}/editar`} className="min-w-0">
-                    <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{r.titulo}</p>
-                    <p className="text-xs text-zinc-500">{formatDateTime(r.dataHora)}</p>
-                  </Link>
-                  <Badge>{r.status}</Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState compacto mensagem="Nenhuma reunião com este cliente." acaoLabel="Agendar reunião" acaoHref={`/reunioes/nova${qs}`} />
-          )}
-        </Card>
-
-        {/* Financeiro vinculado */}
-        <Card title="Financeiro">
-          {financeiro && financeiro.length > 0 ? (
-            <ul className="divide-y divide-white/[0.04]">
-              {financeiro.map((f) => (
-                <li key={f.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <div>
-                    <p className="text-sm text-zinc-200">
-                      {formatBRL(f.valorMensal)} <span className="text-zinc-500">/ mês · vence {formatDate(f.dataVencimento)}</span>
-                    </p>
-                    <p className="text-xs text-zinc-500">Lucro estimado: {formatBRL(f.lucroEstimado)}</p>
-                  </div>
-                  <Badge>{f.statusPagamento}</Badge>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState compacto mensagem="Nenhum registro financeiro para este cliente." acaoLabel="Criar registro" acaoHref={`/financeiro/novo${qs}`} />
-          )}
-        </Card>
       </div>
     </div>
   );

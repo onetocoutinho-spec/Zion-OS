@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/Button";
 import { Field, FormGrid, Input, Select } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
-import { listarTarefas } from "@/lib/services/tarefas";
 import { criarPendencia } from "@/lib/services/pendencias";
 
 interface PendenciaFormProps {
@@ -17,22 +16,15 @@ interface PendenciaFormProps {
 export function PendenciaForm({ clientePadrao }: PendenciaFormProps) {
   const router = useRouter();
   const { data: clientes } = useLiveQuery(listarClientes);
-  const { data: tarefas } = useLiveQuery(listarTarefas);
   const [erros, setErros] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     cliente: clientePadrao ?? "",
     descricao: "",
-    tarefa: "",
   });
 
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
-
-  // Tarefas do cliente selecionado (vínculo opcional)
-  const tarefasDoCliente = (tarefas ?? []).filter(
-    (t) => !form.cliente || t.cliente === form.cliente
-  );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,13 +35,14 @@ export function PendenciaForm({ clientePadrao }: PendenciaFormProps) {
     setErros(novosErros);
     if (Object.keys(novosErros).length > 0) return;
 
-    const tarefaSelecionada = tarefasDoCliente.find((t) => t.tarefa === form.tarefa);
-
+    // O vinculo com tarefa saiu junto com a tela de Tarefas (07/08). A coluna
+    // continua no banco e continua aceitando null — que e o que toda pendencia
+    // criada por aqui sempre foi, ja que a tabela nunca teve uma linha.
     await criarPendencia({
       clienteId: clienteSelecionado!.id,
       cliente: clienteSelecionado!.empresa,
-      tarefaId: tarefaSelecionada?.id ?? null,
-      tarefa: tarefaSelecionada?.tarefa ?? null,
+      tarefaId: null,
+      tarefa: null,
       descricao: form.descricao.trim(),
       resolvida: false,
     });
@@ -71,18 +64,7 @@ export function PendenciaForm({ clientePadrao }: PendenciaFormProps) {
               options={(clientes ?? []).map((c) => c.empresa)}
               placeholder="Selecione o cliente…"
               value={form.cliente}
-              onChange={(e) => {
-                set("cliente", e.target.value);
-                set("tarefa", "");
-              }}
-            />
-          </Field>
-          <Field label="Tarefa vinculada (opcional)">
-            <Select
-              options={tarefasDoCliente.map((t) => t.tarefa)}
-              placeholder="Nenhuma"
-              value={form.tarefa}
-              onChange={(e) => set("tarefa", e.target.value)}
+              onChange={(e) => set("cliente", e.target.value)}
             />
           </Field>
         </FormGrid>

@@ -8,6 +8,7 @@
 // que alguém entrou com esse papel. O menu lateral trazia o painel inteiro da
 // Zion: Dashboard, Novo Usuário, Onboarding, Templates, Agentes IA, Tarefas,
 // Reuniões, Memória (AIL), Decision Intelligence, Financeiro, Configurações.
+// (Quatro dessas não existem mais — veja o bloco seguinte.)
 //
 // O RLS esvazia a maioria dessas telas, e esvaziar não basta: OFERECER É
 // DIFERENTE DE ENTREGAR. A agência clica, vê tela vazia, e conclui que o
@@ -17,6 +18,21 @@
 // `custo_operacional` e `lucro_estimado` — quanto a Zion cobra da agência,
 // quanto custa atendê-la e quanto sobra. A política de RLS foi removida na
 // 055a; este teste guarda o outro lado.
+//
+// ===========================================================================
+// QUATRO DELAS SAÍRAM DO PRODUTO INTEIRO — e isso ENFRAQUECEU o teste
+// ===========================================================================
+//
+// Ainda em 07/08, Tarefas, Reuniões, Financeiro e Onboarding foram apagadas:
+// zero linhas no banco depois de meses, e nada voltaria a escrever nelas sob o
+// modelo self-service.
+//
+// Uma asserção do tipo "não aparece para a agência" continuaria VERDE para
+// essas quatro — mas por vacuidade, porque a rota não existe mais em lugar
+// nenhum. Teste que passa pelo motivo errado é teste que não avisa quando o
+// motivo certo volta. Por isso a asserção delas mudou de lugar: agora é contra
+// `NAV_ITEMS`, e diz "não voltou ao produto", que é mais forte do que "não
+// aparece para a agência".
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -38,11 +54,17 @@ test("a agência vê MENOS, e o que ela vê é o que ela opera", () => {
   assert.ok(itens.length >= 8, `só ${itens.length} itens — o painel ficou inútil`);
 });
 
-test("o FINANCEIRO nunca aparece para a agência", () => {
-  // A asserção que existe por causa de `lucro_estimado`. Uma agência que lê
-  // isso entra em qualquer renegociação sabendo a margem do outro lado.
-  const hrefs = navDoPapel("agencia").map((i) => i.href);
-  assert.ok(!hrefs.includes("/financeiro"), "o Financeiro voltou ao menu da agência");
+test("as quatro telas apagadas não voltaram ao menu de NINGUÉM", () => {
+  // Contra NAV_ITEMS, não contra o menu da agência: a rota não existe mais, e
+  // o que precisa ser guardado agora é a volta dela — por qualquer papel.
+  //
+  // O Financeiro é o caso com dente: `lucro_estimado` é a margem da Zion sobre
+  // o cliente. Se a tela voltar um dia, que seja de propósito e com esta linha
+  // vermelha no caminho.
+  const hrefs = new Set(NAV_ITEMS.map((i) => i.href));
+  for (const apagada of ["/tarefas", "/reunioes", "/financeiro", "/onboarding"]) {
+    assert.ok(!hrefs.has(apagada), `${apagada} voltou ao produto — foi apagada em 07/08`);
+  }
 });
 
 test("o que é operação da ZION fica fora", () => {
@@ -50,14 +72,10 @@ test("o que é operação da ZION fica fora", () => {
   for (const proibido of [
     "/", // o painel da Zion
     "/usuarios/novo",
-    "/onboarding",
     "/templates",
     "/agentes",
-    "/tarefas",
-    "/reunioes",
     "/ail/padroes",
     "/ail/inteligencia",
-    "/financeiro",
     "/configuracoes",
   ]) {
     assert.ok(!hrefs.has(proibido), `${proibido} apareceu para a agência`);

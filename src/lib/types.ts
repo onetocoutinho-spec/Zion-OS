@@ -22,9 +22,6 @@ export type Prioridade = "Baixa" | "Média" | "Alta" | "Urgente";
 /** Status de uma etapa de trabalho (SEO, descrição, imagens etc.) */
 export type EtapaStatus = "Pendente" | "Em andamento" | "Concluído";
 
-/** Status de um item do checklist de onboarding. */
-export type ChecklistStatus = "Pendente" | "Em andamento" | "Concluído" | "Travado";
-
 export interface Cliente {
   id: string;
   empresa: string;
@@ -37,35 +34,6 @@ export interface Cliente {
   proximaReuniao: string | null;
   proximaAcao: string;
   risco: Risco;
-  observacoes: string;
-}
-
-export type OnboardingStatus = "Não iniciado" | "Em andamento" | "Concluído" | "Travado";
-
-/** Chaves dos 14 itens do checklist de onboarding (rótulos em lib/onboarding.ts). */
-export type OnboardingItemKey =
-  | "contratoFechado"
-  | "boasVindas"
-  | "acessosML"
-  | "acessosTikTok"
-  | "acessosShopee"
-  | "acessoERP"
-  | "baseProdutos"
-  | "pastaCriada"
-  | "diagnosticoIniciado"
-  | "diagnosticoConcluido"
-  | "reuniaoInicial"
-  | "plano30Dias"
-  | "primeirasTarefas"
-  | "clienteLiberado";
-
-export interface Onboarding {
-  id: string;
-  clienteId: string;
-  /** Nome de exibição (join com clientes). */
-  cliente: string;
-  itens: Record<OnboardingItemKey, ChecklistStatus>;
-  pendenciasCliente: string[];
   observacoes: string;
 }
 
@@ -359,38 +327,6 @@ export interface AgenteIA {
   agentesConectados: string[];
 }
 
-export type TarefaStatus =
-  | "Não iniciado"
-  | "Em andamento"
-  | "Aguardando cliente"
-  | "Aguardando aprovação"
-  | "Em revisão"
-  | "Concluído"
-  | "Travado";
-
-export interface Tarefa {
-  id: string;
-  clienteId: string;
-  /** Nome de exibição (join com clientes). */
-  cliente: string;
-  produtoId: string | null;
-  /** Produto vinculado (nome de exibição), quando fizer sentido. */
-  produto: string | null;
-  anuncioId: string | null;
-  /** Anúncio vinculado (nome do produto do anúncio), quando fizer sentido. */
-  anuncio: string | null;
-  agenteId: string | null;
-  area: string;
-  tarefa: string;
-  responsavel: string;
-  prioridade: Prioridade;
-  status: TarefaStatus;
-  prazo: string; // ISO yyyy-mm-dd
-  agenteRelacionado: string | null;
-  proximaAcao: string;
-  observacoes: string;
-}
-
 export type RelatorioStatus = "Pendente" | "Em elaboração" | "Enviado" | "Aprovado";
 
 export interface Relatorio {
@@ -407,21 +343,6 @@ export interface Relatorio {
   pendencias: string;
   proximasAcoes: string;
   status: RelatorioStatus;
-}
-
-export type PagamentoStatus = "Pago" | "Pendente" | "Atrasado";
-
-export type ReuniaoStatus = "Agendada" | "Realizada" | "Cancelada";
-
-export interface Reuniao {
-  id: string;
-  clienteId: string;
-  /** Nome de exibição (join com clientes). */
-  cliente: string;
-  titulo: string;
-  dataHora: string | null; // ISO datetime
-  pauta: string;
-  status: ReuniaoStatus;
 }
 
 export interface Pendencia {
@@ -445,21 +366,6 @@ export interface ExecucaoAgente {
   contexto: string;
   resultado: string;
   tipo: "IA" | "Simulada";
-}
-
-export interface RegistroFinanceiro {
-  id: string;
-  clienteId: string;
-  /** Nome de exibição (join com clientes). */
-  cliente: string;
-  plano: string;
-  valorMensal: number;
-  dataVencimento: string; // ISO yyyy-mm-dd
-  statusPagamento: PagamentoStatus;
-  servicosExtras: string;
-  custoOperacional: number;
-  lucroEstimado: number;
-  observacoes: string;
 }
 
 // ============================================================

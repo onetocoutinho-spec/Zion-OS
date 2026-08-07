@@ -8,7 +8,6 @@ import {
   Check,
   History,
   Link2,
-  ListPlus,
   Pencil,
   Play,
   Sparkles,
@@ -31,7 +30,6 @@ import {
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
 import { atualizarAnuncio, listarAnuncios } from "@/lib/services/anuncios";
-import { criarTarefa } from "@/lib/services/tarefas";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { formatDateTime } from "@/lib/format";
 
@@ -89,7 +87,6 @@ export default function AgenteDetalhePage() {
   const [tituloSugerido, setTituloSugerido] = useState<string | null>(null);
   const [tituloAplicado, setTituloAplicado] = useState(false);
   const [tarefasSugeridas, setTarefasSugeridas] = useState<TarefaSugerida[]>([]);
-  const [tarefasCriadas, setTarefasCriadas] = useState<number[]>([]);
 
   const { data: agente, carregando } = useLiveQuery(() => buscarAgente(id), [id]);
   const { data: execucoes } = useLiveQuery(() => listarExecucoesDoAgente(id), [id]);
@@ -141,7 +138,6 @@ export default function AgenteDetalhePage() {
     setTituloSugerido(null);
     setTituloAplicado(false);
     setTarefasSugeridas([]);
-    setTarefasCriadas([]);
     try {
       const retorno = await executarAgenteIA(agente, entrada.trim(), {
         contexto: contexto || undefined,
@@ -160,39 +156,10 @@ export default function AgenteDetalhePage() {
     }
   }
 
-  // Cliente para vincular as tarefas criadas (direto ou derivado do contexto)
-  const clienteVinculo = cliente ?? null;
-  const clienteVinculoId = clienteVinculo?.id ?? produto?.clienteId ?? anuncio?.clienteId ?? "";
-  const clienteVinculoNome = clienteVinculo?.empresa ?? produto?.cliente ?? anuncio?.cliente ?? "";
-
   async function aplicarTitulo() {
     if (!anuncio || !tituloSugerido) return;
     await atualizarAnuncio(anuncio.id, { tituloOtimizado: tituloSugerido });
     setTituloAplicado(true);
-  }
-
-  async function criarTarefaSugerida(sugestao: TarefaSugerida, indice: number) {
-    if (!agente || !clienteVinculoId || tarefasCriadas.includes(indice)) return;
-    const prazo = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    await criarTarefa({
-      clienteId: clienteVinculoId,
-      cliente: clienteVinculoNome,
-      produtoId: produto?.id ?? null,
-      produto: produto?.nome ?? null,
-      anuncioId: anuncio?.id ?? null,
-      anuncio: anuncio?.produto ?? null,
-      agenteId: agente.id,
-      agenteRelacionado: agente.nome,
-      area: agente.area,
-      tarefa: sugestao.tarefa,
-      responsavel: "Informação necessária",
-      prioridade: sugestao.prioridade,
-      status: "Não iniciado",
-      prazo,
-      proximaAcao: sugestao.proximaAcao,
-      observacoes: `Criada a partir de execução do agente ${agente.nome}.`,
-    });
-    setTarefasCriadas((atuais) => [...atuais, indice]);
   }
 
   return (
@@ -379,27 +346,6 @@ export default function AgenteDetalhePage() {
                             {sugestao.proximaAcao}
                           </p>
                         </div>
-                        {clienteVinculoId ? (
-                          <Button
-                            variant={tarefasCriadas.includes(indice) ? "success" : "ghost"}
-                            onClick={() => criarTarefaSugerida(sugestao, indice)}
-                            disabled={tarefasCriadas.includes(indice)}
-                          >
-                            {tarefasCriadas.includes(indice) ? (
-                              <>
-                                <Check size={14} /> Tarefa criada
-                              </>
-                            ) : (
-                              <>
-                                <ListPlus size={14} /> Criar tarefa
-                              </>
-                            )}
-                          </Button>
-                        ) : (
-                          <span className="text-[11px] text-zinc-600">
-                            Selecione um cliente no contexto para criar
-                          </span>
-                        )}
                       </div>
                     ))}
                   </div>
