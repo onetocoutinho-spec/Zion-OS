@@ -1,0 +1,6 @@
+#!/bin/sh
+# Versionado em `.githooks/` e ligado por `core.hooksPath` — `.git/hooks/` não
+# vai para o repositório, então um hook lá dentro só protege quem o escreveu.
+#
+# `npm run prepare` liga (roda sozinho depois de `npm install`).
+node scripts/hooks/preCommit.mjs
