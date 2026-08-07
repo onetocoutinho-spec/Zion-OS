@@ -27,7 +27,9 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 /** true quando o Supabase está configurado no servidor. Sem isso = modo demo. */
 export const autenticacaoConfigurada = Boolean(url && anonKey);
 
-export type Papel = "equipe" | "cliente";
+import { lerPapel, type PapelPerfil } from "./roteamentoPapel";
+
+export type Papel = PapelPerfil;
 export type Regra = "autenticado" | "equipe" | "cliente";
 
 export interface UsuarioAutenticado {
@@ -38,6 +40,8 @@ export interface UsuarioAutenticado {
 export interface PerfilServidor {
   papel: Papel;
   clienteId: string | null;
+  /** Preenchido só quando `papel === "agencia"`. */
+  agenciaId: string | null;
   ativo: boolean;
   nome: string;
 }
@@ -84,8 +88,15 @@ export function avaliarAcesso(params: {
   perfil: PerfilServidor | null;
   regra: Regra;
   clienteAlvo?: string | null;
+  /**
+   * A agência do perfil opera a loja `clienteAlvo`?
+   *
+   * Só é consultado quando o papel é "agencia" — a resposta vem do banco, e
+   * quem a busca é a camada de IO (`autorizar`). Ausente significa NEGAR.
+   */
+  agenciaOperaOCliente?: boolean;
 }): Decisao {
-  const { perfil, regra, clienteAlvo } = params;
+  const { perfil, regra, clienteAlvo, agenciaOperaOCliente } = params;
 
   // Autenticado, mas sem perfil = SEM ACESSO (R1).
   if (!perfil) return { ok: false, status: 403, motivo: "Usuário sem perfil." };
@@ -103,6 +114,19 @@ export function avaliarAcesso(params: {
     if (perfil.papel === "equipe") return { ok: true };
     if (perfil.papel === "cliente" && perfil.clienteId && perfil.clienteId === clienteAlvo) {
       return { ok: true };
+    }
+    // A AGÊNCIA SÓ ALCANÇA AS LOJAS DELA — e quem responde isso é o banco.
+    //
+    // Esta função é PURA: ela não pode consultar `clientes.agencia_id`. Então
+    // recebe a resposta pronta da camada de IO, e o padrão é NEGAR: `undefined`
+    // (ninguém perguntou) cai no mesmo lugar que `false`.
+    //
+    // Isso importa porque as rotas que chamam `exigirAcessoAoCliente` seguem
+    // usando `service_role`, que passa por cima do RLS. Aqui é a única parede.
+    if (perfil.papel === "agencia") {
+      return agenciaOperaOCliente === true
+        ? { ok: true }
+        : { ok: false, status: 403, motivo: "Sem permissão para este recurso." };
     }
     // Não revela se o recurso do outro cliente existe.
     return { ok: false, status: 403, motivo: "Sem permissão para este recurso." };
@@ -147,22 +171,51 @@ export async function obterPerfilDoUsuario(
 ): Promise<PerfilServidor | null> {
   const { data, error } = await supabase
     .from("perfis")
-    .select("papel, cliente_id, nome, ativo")
+    .select("papel, cliente_id, agencia_id, nome, ativo")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw error; // erro real de banco sobe (não vira "sem acesso" silencioso)
   if (!data) return null;
+  // `lerPapel` devolve `null` para o que não reconhece — e papel desconhecido
+  // NÃO vira equipe. Ver o comentário longo em `roteamentoPapel.ts`.
+  const papel = lerPapel(data.papel);
+  if (!papel) return null; // papel irreconhecível = sem perfil = sem acesso
   return {
-    papel: data.papel === "cliente" ? "cliente" : "equipe",
+    papel,
     clienteId: (data.cliente_id as string | null) ?? null,
+    agenciaId: (data.agencia_id as string | null) ?? null,
     ativo: (data.ativo as boolean | null) ?? true,
     nome: (data.nome as string | null) ?? "",
   };
 }
 
+/**
+ * A loja pertence a esta agência?
+ *
+ * Lê `clientes.agencia_id` com o cliente do PEDIDO (sujeito ao RLS), não com
+ * `service_role`. A política `agencia_le_as_lojas` já limita o que ele enxerga,
+ * então a consulta responde "não" tanto para loja de outra agência quanto para
+ * loja que não existe — e não revela a diferença.
+ */
+async function agenciaOperaALoja(
+  supabase: SupabaseClient,
+  agenciaId: string | null,
+  clienteId: string
+): Promise<boolean> {
+  if (!agenciaId) return false;
+  const { data, error } = await supabase
+    .from("clientes")
+    .select("id")
+    .eq("id", clienteId)
+    .eq("agencia_id", agenciaId)
+    .maybeSingle();
+  if (error) throw error; // erro de banco sobe; não vira "pode passar"
+  return Boolean(data);
+}
+
 /** Contexto demo (Supabase não configurado): trata como equipe, sem bloquear. */
 function contextoDemo(): ContextoAutorizado {
-  return { usuario: null, perfil: { papel: "equipe", clienteId: null, ativo: true, nome: "demo" }, supabase: null };
+  return { usuario: null, perfil: { papel: "equipe", clienteId: null, agenciaId: null, ativo: true, nome: "demo" }, supabase: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +227,13 @@ async function autorizar(req: Request, regra: Regra, clienteAlvo?: string | null
   const auth = await obterUsuarioAutenticado(req);
   if (!auth) throw new ErroAutorizacao(401, "Não autenticado.");
   const perfil = await obterPerfilDoUsuario(auth.supabase, auth.usuario.id);
-  const decisao = avaliarAcesso({ perfil, regra, clienteAlvo });
+  // A pergunta que só o banco responde, e só quando ela é necessária: uma
+  // consulta a mais apenas para agência, e nenhuma para os outros dois papéis.
+  const agenciaOperaOCliente =
+    perfil?.papel === "agencia" && clienteAlvo
+      ? await agenciaOperaALoja(auth.supabase, perfil.agenciaId, clienteAlvo)
+      : undefined;
+  const decisao = avaliarAcesso({ perfil, regra, clienteAlvo, agenciaOperaOCliente });
   if (!decisao.ok) throw new ErroAutorizacao(decisao.status, decisao.motivo);
   return { usuario: auth.usuario, perfil: perfil as PerfilServidor, supabase: auth.supabase };
 }

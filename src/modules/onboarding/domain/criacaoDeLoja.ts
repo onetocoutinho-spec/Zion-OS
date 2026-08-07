@@ -73,7 +73,7 @@ export interface EstadoDoUsuario {
   /** Já tem perfil? Então a loja já foi provisionada. */
   temPerfil: boolean;
   /** O papel do perfil existente, quando houver. */
-  papelExistente?: "equipe" | "cliente";
+  papelExistente?: "equipe" | "cliente" | "agencia";
 }
 
 export type DecisaoProvisionamento =

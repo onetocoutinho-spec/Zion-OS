@@ -5,14 +5,17 @@
 // (migração 005); aqui é só o consumo.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { lerPapel, type PapelPerfil } from "../auth/roteamentoPapel";
 
 export interface Perfil {
-  papel: "equipe" | "cliente";
+  papel: PapelPerfil;
   clienteId: string | null;
+  /** Preenchido só quando `papel === "agencia"`. */
+  agenciaId?: string | null;
   nome: string;
 }
 
-const EQUIPE: Perfil = { papel: "equipe", clienteId: null, nome: "" };
+const EQUIPE: Perfil = { papel: "equipe", clienteId: null, agenciaId: null, nome: "" };
 
 /**
  * Perfil do usuário logado. NEGA POR PADRÃO (R1):
@@ -31,15 +34,20 @@ export async function meuPerfil(): Promise<Perfil | null> {
   if (!auth.user) return null; // não autenticado = sem acesso
   const { data, error } = await sb
     .from("perfis")
-    .select("papel, cliente_id, nome, ativo")
+    .select("papel, cliente_id, agencia_id, nome, ativo")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (error) throw error; // erro real sobe — não vira acesso indevido
   if (!data) return null; // sem perfil = SEM ACESSO (antes era equipe)
   if (data.ativo === false) return null; // perfil inativo = SEM ACESSO
+  // Papel irreconhecível = SEM ACESSO, pela mesma regra das duas linhas acima.
+  // Antes ele virava "equipe" — o mais privilegiado. Ver `lerPapel`.
+  const papel = lerPapel(data.papel);
+  if (!papel) return null;
   return {
-    papel: data.papel === "cliente" ? "cliente" : "equipe",
+    papel,
     clienteId: (data.cliente_id as string | null) ?? null,
+    agenciaId: (data.agencia_id as string | null) ?? null,
     nome: (data.nome as string | null) ?? "",
   };
 }
@@ -64,17 +72,23 @@ export async function carregarPerfil(): Promise<CargaPerfil> {
   if (!auth.user) return { tipo: "sem_sessao" }; // sessão ausente/expirada
   const { data, error } = await sb
     .from("perfis")
-    .select("papel, cliente_id, nome, ativo")
+    .select("papel, cliente_id, agencia_id, nome, ativo")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (error) throw error; // erro de banco → temporário (não "sem acesso")
   if (!data) return { tipo: "sem_perfil" };
   if (data.ativo === false) return { tipo: "inativo" };
+  // Papel irreconhecível cai no MESMO desfecho de "sem perfil": o AuthGate já
+  // sabe desenhar essa tela, e inventar um estado novo aqui só adiaria a
+  // decisão. Ver `lerPapel` — antes isto virava "equipe".
+  const papel = lerPapel(data.papel);
+  if (!papel) return { tipo: "sem_perfil" };
   return {
     tipo: "ok",
     perfil: {
-      papel: data.papel === "cliente" ? "cliente" : "equipe",
+      papel,
       clienteId: (data.cliente_id as string | null) ?? null,
+      agenciaId: (data.agencia_id as string | null) ?? null,
       nome: (data.nome as string | null) ?? "",
     },
   };

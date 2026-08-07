@@ -19,8 +19,16 @@ export function validarNovaSenha(senha: string, confirmacao: string): ValidacaoS
   return { ok: true };
 }
 
-/** Destino após definir a senha, conforme o papel do perfil. Puro. */
-export function destinoAposSenha(papel: "equipe" | "cliente" | null | undefined): "/" | "/cliente" {
+/**
+ * Destino após definir a senha, conforme o papel do perfil. Puro.
+ *
+ * Só o `cliente` vai para o portal. Equipe e AGÊNCIA vão para o painel — as
+ * duas operam várias lojas, e a diferença entre elas é o que o RLS deixa cada
+ * uma enxergar lá dentro, não a rota.
+ */
+export function destinoAposSenha(
+  papel: "equipe" | "cliente" | "agencia" | null | undefined
+): "/" | "/cliente" {
   return papel === "cliente" ? "/cliente" : "/";
 }
 

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/form";
 import { meuPerfil } from "@/lib/services/perfil";
 import { validarNovaSenha, destinoAposSenha, SENHA_MIN } from "@/lib/auth/definirSenha";
+import type { PapelPerfil } from "@/lib/auth/roteamentoPapel";
 
 type Estado = "verificando" | "pronto" | "sem_sessao" | "enviando" | "erro" | "ok";
 
@@ -66,7 +67,7 @@ export default function DefinirSenhaPage() {
       setEstado("ok");
       setMsg("Senha definida! Entrando…");
       // Carrega o perfil (criado no convite) e redireciona conforme o papel.
-      let papel: "equipe" | "cliente" | null = null;
+      let papel: PapelPerfil | null = null;
       try {
         papel = (await meuPerfil())?.papel ?? null;
       } catch {
