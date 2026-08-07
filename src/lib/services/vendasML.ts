@@ -6,6 +6,7 @@
 
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
+import { pedeReconexao } from "../../modules/integration/domain/credencialRecusada";
 import type { Produto } from "../types";
 import type { PedidoML } from "../marketplaces/mercadolivre";
 
@@ -41,10 +42,14 @@ export const METRICAS_ZERO: MetricasVendas = {
 export async function buscarVendasDoCliente(
   clienteId: string,
   opcoes: { dias?: number } = {}
-): Promise<{ pedidos: PedidoML[]; aviso?: string }> {
+): Promise<{ pedidos: PedidoML[]; aviso?: string; precisaReconectar?: boolean; precisaConectar?: boolean }> {
   const canal = await buscarCanal(clienteId, "Mercado Livre");
   if (!canal?.ativo) {
-    return { pedidos: [], aviso: "Cliente não conectado ao Mercado Livre." };
+    // `precisaConectar` em vez de deixar a tela procurar "não conectado" no
+    // TEXTO. Ela fazia isso, com as duas grafias (com e sem acento), porque
+    // ninguém sabia qual chegaria — o sintoma de decidir comportamento pela
+    // redação de uma frase. Melhore o texto e a tela quebra em silêncio.
+    return { pedidos: [], aviso: "Cliente não conectado ao Mercado Livre.", precisaConectar: true };
   }
   const dias = opcoes.dias ?? 30;
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
@@ -60,7 +65,17 @@ export async function buscarVendasDoCliente(
     erro?: string;
   };
   if (!resposta.ok) {
-    return { pedidos: [], aviso: dados.erro ?? "Falha ao buscar vendas." };
+    // `precisaReconectar` existe para a tela NÃO afirmar "nenhuma venda".
+    //
+    // Com a credencial recusada, `pedidos` vem vazio — e vazio aqui significa
+    // "não consegui perguntar", nunca "ela não vendeu". A tela desenhava a
+    // loja inteira zerada, com sete cartões de R$ 0, em cima de uma lista que
+    // ninguém conseguiu ler. É a ausência virando afirmação, de novo.
+    return {
+      pedidos: [],
+      aviso: dados.erro ?? "Falha ao buscar vendas.",
+      precisaReconectar: pedeReconexao(dados),
+    };
   }
   return { pedidos: dados.pedidos ?? [] };
 }
@@ -133,7 +148,7 @@ export async function metricasDeVendas(
   clienteId: string,
   produtos: Produto[],
   opcoes: { dias?: number } = {}
-): Promise<{ metricas: MetricasVendas; aviso?: string }> {
-  const { pedidos, aviso } = await buscarVendasDoCliente(clienteId, opcoes);
-  return { metricas: calcularMetricas(pedidos, produtos), aviso };
+): Promise<{ metricas: MetricasVendas; aviso?: string; precisaReconectar?: boolean }> {
+  const { pedidos, aviso, precisaReconectar } = await buscarVendasDoCliente(clienteId, opcoes);
+  return { metricas: calcularMetricas(pedidos, produtos), aviso, precisaReconectar };
 }

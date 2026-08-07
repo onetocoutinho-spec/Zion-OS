@@ -12,12 +12,13 @@
 // autorização server-side, refresh_token via RLS, token rotacionado persistido
 // antes da operação externa.
 
-import { renovarToken, CAMPOS_PEDIDOS_AO_ML } from "@/lib/marketplaces/mercadolivre";
+import { CAMPOS_PEDIDOS_AO_ML } from "@/lib/marketplaces/mercadolivre";
 import { inventariarItem } from "@/modules/integration/domain/inventarioDoItemML";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
 } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 const API = "https://api.mercadolibre.com";
@@ -55,7 +56,15 @@ export async function GET(request: Request) {
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace: "Mercado Livre",
+      oQueFalhou: "ver o diagnóstico deste anúncio",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 

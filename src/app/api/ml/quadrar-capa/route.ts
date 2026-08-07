@@ -35,7 +35,6 @@
 // externa.
 
 import {
-  renovarToken,
   variacoesDaFoto,
   subirFoto,
   definirFotosDoItem,
@@ -45,6 +44,7 @@ import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
 } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 const API = "https://api.mercadolibre.com";
@@ -89,7 +89,15 @@ export async function POST(request: Request) {
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace: "Mercado Livre",
+      oQueFalhou: "ajustar a foto de capa",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 

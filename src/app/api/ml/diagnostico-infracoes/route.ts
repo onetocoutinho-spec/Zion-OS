@@ -21,11 +21,11 @@
 // instrumento de medição, e instrumento que sobrevive ao seu propósito vira
 // código morto.
 
-import { renovarToken } from "@/lib/marketplaces/mercadolivre";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
 } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import {
   lerInfracoes,
   contarPorMotivo,
@@ -117,7 +117,15 @@ export async function GET(request: Request) {
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace: "Mercado Livre",
+      oQueFalhou: "ver o que o Mercado Livre apontou",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 

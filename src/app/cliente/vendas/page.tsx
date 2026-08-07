@@ -41,16 +41,24 @@ export default function ClienteVendas() {
   const [pedidos, setPedidos] = useState<PedidoML[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** O ML recusou a credencial: nada abaixo pôde ser lido. */
+  const [precisaReconectar, setPrecisaReconectar] = useState(false);
+  /** O canal nunca foi ligado — outro estado, outra saída. */
+  const [precisaConectar, setPrecisaConectar] = useState(false);
   const [carregouUmaVez, setCarregouUmaVez] = useState(false);
 
   async function carregar() {
     if (!clienteId || carregando) return;
     setCarregando(true);
+    setPrecisaReconectar(false);
+    setPrecisaConectar(false);
     setAviso(null);
     try {
       const r = await buscarVendasDoCliente(clienteId, { dias });
       setPedidos(r.pedidos);
       setAviso(r.aviso ?? null);
+      setPrecisaReconectar(Boolean(r.precisaReconectar));
+      setPrecisaConectar(Boolean(r.precisaConectar));
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha ao buscar vendas.");
     } finally {
@@ -87,7 +95,10 @@ export default function ClienteVendas() {
    */
   const parcial = m.coberturaCusto < 100 && m.pedidos > 0;
   const maxDia = Math.max(1, ...m.porDia.map((d) => d.faturamento));
-  const naoConectado = aviso?.toLowerCase().includes("não conectado") || aviso?.toLowerCase().includes("nao conectado");
+  // ESTE ESTADO SAIU DA PROSA. Era duas buscas de texto no aviso, com e sem
+  // acento, porque ninguém sabia qual chegaria — o sintoma de decidir
+  // comportamento pela REDAÇÃO de uma frase. Agora vem do serviço, como fato.
+  const naoConectado = precisaConectar;
 
   return (
     <>
@@ -121,7 +132,31 @@ export default function ClienteVendas() {
         }
       />
 
-      {naoConectado ? (
+      {/* TRÊS ESTADOS, TRÊS DESENHOS — e o do meio não existia.
+        *
+        * "nunca conectou" e "conectado e lendo" estavam modelados; "conectado,
+        * mas o ML recusou a credencial" caía no segundo e desenhava a loja
+        * inteira zerada: sete cartões de R$ 0 em cima de uma lista que ninguém
+        * conseguiu ler. Vazio ali significa "não consegui perguntar", nunca
+        * "ela não vendeu" — a ausência virando afirmação, agora sobre o
+        * faturamento dela.
+        *
+        * A saída é outra, também: ali é conectar pela primeira vez, aqui é
+        * REFAZER uma conexão que existe. */}
+      {precisaReconectar ? (
+        <VazioAmigavel
+          icon={Plug}
+          titulo="Refaça a conexão com o Mercado Livre"
+          descricao="Sua conta está ligada, mas o Mercado Livre não aceitou mais a autorização salva — costuma acontecer quando a senha muda ou a permissão é revogada por lá. Nada foi perdido: é só autorizar de novo."
+          acao={
+            <Link href="/cliente/conectar-ml">
+              <Button>
+                <Plug size={15} /> Reconectar agora
+              </Button>
+            </Link>
+          }
+        />
+      ) : naoConectado ? (
         <VazioAmigavel
           icon={Plug}
           titulo="Conecte sua conta do Mercado Livre"

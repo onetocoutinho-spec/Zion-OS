@@ -23,8 +23,8 @@
 //
 // Depois de rodar UMA vez em produção e me mandar o JSON, apague este arquivo.
 
-import { renovarToken } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 const API = "https://api.mercadolibre.com";
@@ -124,7 +124,15 @@ export async function POST(request: Request) {
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace: marketplace,
+      oQueFalhou: "ver as guias de tamanho",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
     const sellerId = canal.sellerId ?? tokens.userId ?? null;

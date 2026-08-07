@@ -19,8 +19,9 @@
 // persistido ANTES de qualquer operação externa — se a operação falhar, a
 // conexão do cliente continua íntegra.
 
-import { definirEstadoDoItem, renovarToken } from "@/lib/marketplaces/mercadolivre";
+import { definirEstadoDoItem } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 interface Corpo {
@@ -84,7 +85,15 @@ export async function POST(request: Request) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
 
-    const tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
+    const renovacao = await renovarTokenDaRota({
+      clientId,
+      clientSecret,
+      refreshToken: canal.refreshToken,
+      marketplace: marketplace,
+      oQueFalhou: "pausar ou reativar o anúncio",
+    });
+    if ("recusa" in renovacao) return renovacao.recusa;
+    const tokens = renovacao.tokens;
     await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
 
     const resultado = await definirEstadoDoItem(tokens.accessToken, itemId, estado);
