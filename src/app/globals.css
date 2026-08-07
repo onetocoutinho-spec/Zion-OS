@@ -173,6 +173,19 @@ body {
     content: none;
   }
 
+  /* A CAIXA DE MARCAÇÃO não é par rótulo/valor: é o controle da linha.
+     Fica em cima do título, alinhada à esquerda e sem rótulo — `attr()` de um
+     atributo ausente devolve string vazia, e um `::before` vazio num flex
+     ainda ocupa espaço e desalinha a caixa. */
+  .tabela-cartao td[data-selecao] {
+    display: block;
+    text-align: left;
+    padding-bottom: 0;
+  }
+  .tabela-cartao td[data-selecao]::before {
+    content: none;
+  }
+
   /* Uma célula que ocupa a linha toda (o estado vazio) não é par rótulo/valor. */
   .tabela-cartao td[colspan]::before {
     content: none;

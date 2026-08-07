@@ -30,6 +30,17 @@ interface TableProps {
    * diferentes. O esqueleto diz o primeiro.
    */
   carregando?: boolean;
+  /**
+   * A caixa mestre — presente só nas tabelas que agem em lote.
+   *
+   * A <Table> desenha o CABEÇALHO da coluna de seleção; a célula de cada linha
+   * é do chamador (`<TdSelecao>`), porque só ele sabe o id da linha.
+   */
+  marcaMestre?: {
+    estado: "nenhum" | "parcial" | "todos";
+    aoAlternar: () => void;
+    rotulo: string;
+  };
 }
 
 /**
@@ -59,6 +70,20 @@ function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNo
       if (!isValidElement(celula)) return celula;
       const cp = celula.props as { colSpan?: number };
       if (cp.colSpan) return celula;
+      // A CAIXA DE MARCAÇÃO NÃO CONTA COMO COLUNA.
+      //
+      // Este contador casa cada célula com `headers[indice]`, e a coluna de
+      // seleção não está no `headers` — ela é desenhada pela própria <Table>.
+      // Sem esta saída ela consome `headers[0]` e TODO o resto anda uma casa:
+      // medido a 375px, o nome do produto apareceu rotulado "FALTA", o estoque
+      // como "PREÇO", e assim por diante. Errado em silêncio, e só no celular.
+      //
+      // A COMPARAÇÃO É POR TIPO, e a primeira versão disto errou: eu testava
+      // `props["data-selecao"]`, mas `TdSelecao` é um COMPONENTE — o atributo
+      // só existe no `<td>` que ele renderiza, nunca nas props do elemento que
+      // chega aqui. O `colSpan` acima funciona porque é passado como prop de
+      // verdade; o meu marcador não era.
+      if (celula.type === TdSelecao) return celula;
       const indice = coluna++;
       return cloneElement(celula as ReactElement<Record<string, unknown>>, {
         "data-rotulo": headers[indice] ?? "",
@@ -69,7 +94,7 @@ function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNo
   });
 }
 
-export function Table({ headers, children, carregando = false }: TableProps) {
+export function Table({ headers, children, carregando = false, marcaMestre }: TableProps) {
   return (
     <div className="tabela-cartao rounded-xl border border-white/5 bg-[#0e0e16] sm:overflow-x-auto">
       {/* `aria-busy`: as linhas fantasma são `aria-hidden` (o leitor de tela não
@@ -78,6 +103,16 @@ export function Table({ headers, children, carregando = false }: TableProps) {
       <table className="w-full text-left text-sm" aria-busy={carregando || undefined}>
         <thead>
           <tr className="border-b border-white/5">
+            {marcaMestre && (
+              <th scope="col" className="w-10 px-4 py-3">
+                <CaixaDeMarca
+                  marcado={marcaMestre.estado === "todos"}
+                  parcial={marcaMestre.estado === "parcial"}
+                  aoAlternar={marcaMestre.aoAlternar}
+                  rotulo={marcaMestre.rotulo}
+                />
+              </th>
+            )}
             {headers.map((h) => (
               <th
                 key={h}
@@ -89,10 +124,74 @@ export function Table({ headers, children, carregando = false }: TableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.04] max-sm:divide-y-0">
-          {carregando ? <LinhasFantasma colunas={headers.length} /> : comRotulos(children, headers)}
+          {carregando ? (
+            <LinhasFantasma colunas={headers.length + (marcaMestre ? 1 : 0)} />
+          ) : (
+            comRotulos(children, headers)
+          )}
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * A caixa de marcação, com aparência própria.
+ *
+ * `appearance-none` e não o checkbox do sistema: o nativo pinta um quadrado
+ * branco de sistema operacional dentro de uma tabela escura, e o `accent-color`
+ * resolve só o preenchimento — a borda continua clara.
+ *
+ * `indeterminate` não é atributo de HTML, é propriedade do elemento: só dá para
+ * ligar por referência. Sem ela, "meio marcado" apareceria como "desmarcado" e
+ * a caixa mestre mentiria sobre o estado da lista.
+ */
+function CaixaDeMarca({
+  marcado,
+  parcial = false,
+  aoAlternar,
+  rotulo,
+}: {
+  marcado: boolean;
+  parcial?: boolean;
+  aoAlternar: () => void;
+  rotulo: string;
+}) {
+  return (
+    <input
+      type="checkbox"
+      checked={marcado}
+      ref={(el) => {
+        if (el) el.indeterminate = parcial;
+      }}
+      onChange={aoAlternar}
+      aria-label={rotulo}
+      title={rotulo}
+      className="size-4 cursor-pointer appearance-none rounded border border-white/25 bg-white/[0.04] transition-colors checked:border-violet-500 checked:bg-violet-500 indeterminate:border-violet-500 indeterminate:bg-violet-500/40 hover:border-white/45"
+    />
+  );
+}
+
+/**
+ * A célula de marcação de uma linha.
+ *
+ * `data-selecao` não é enfeite: é por ele que `comRotulos` sabe que esta célula
+ * NÃO consome uma posição do `headers` — senão todo rótulo do modo cartão
+ * andaria uma casa.
+ */
+export function TdSelecao({
+  marcado,
+  aoAlternar,
+  rotulo,
+}: {
+  marcado: boolean;
+  aoAlternar: () => void;
+  rotulo: string;
+}) {
+  return (
+    <td className="px-4 py-3 align-top" data-selecao="">
+      <CaixaDeMarca marcado={marcado} aoAlternar={aoAlternar} rotulo={rotulo} />
+    </td>
   );
 }
 

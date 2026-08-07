@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Truck } from "lucide-react";
-import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
+import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Truck, Gauge } from "lucide-react";
+import { Table, Td, TdMain, TdSelecao, EmptyRow } from "@/components/ui/Table";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
@@ -15,6 +15,15 @@ import { CadastrarProduto } from "@/components/client-portal/CadastrarProduto";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos, atualizarProduto } from "@/lib/services/produtos";
+import { enfileirarProdutos } from "@/lib/services/filaOtimizacaoProduto";
+import { quotaEsteira } from "@/lib/services/perfil";
+import {
+  estadoDaMarcaMestre,
+  alternarTodos,
+  alternarUm,
+  resumoDaSelecao,
+  corteDaCota,
+} from "@/modules/portal/domain/selecaoEmLote";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { lacunasDoProduto } from "@/modules/catalog/domain/lacunasDoProduto";
@@ -75,6 +84,13 @@ function faixaDaNota(nota: number | null): (typeof SCORES)[number] {
  * ele existe para evitar.
  */
 const COLUNAS_DA_LISTA = ["Produto", "Falta", "Estoque", "Preço", "Status", "Nota", "Ação"];
+
+/** A caixa mestre do ESQUELETO: reserva a coluna e não faz nada. */
+const MESTRE_INERTE = {
+  estado: "nenhum" as const,
+  aoAlternar: () => {},
+  rotulo: "Aguardando a lista carregar",
+};
 
 export default function ClienteProdutos() {
   const { clienteId, nome } = useClientPortal();
@@ -663,6 +679,58 @@ export default function ClienteProdutos() {
 
   const total = (produtos ?? []).length;
 
+  // ---------------------------------------------------------------------------
+  // AÇÃO EM LOTE
+  // ---------------------------------------------------------------------------
+  //
+  // Medido na base em 06/08: 72 dos 80 produtos já passaram pela fila. A lojista
+  // JÁ otimiza em lote — só que a única granularidade era "tudo" ou "os que
+  // faltam", nunca "esses doze".
+  //
+  // A SELEÇÃO SOBREVIVE AO FILTRO, de propósito. Limpar a marca quando o filtro
+  // muda evita a confusão do "agi sobre o que você não vê" e cria outra pior:
+  // ela marca doze, digita uma letra na busca e perde tudo. Perder escolha dá
+  // mais raiva que mantê-la — e o preço de manter é ter que DIZER, que é o que
+  // `resumoDaSelecao` faz na barra.
+  const [marcados, setMarcados] = useState<ReadonlySet<string>>(new Set());
+  const [enfileirando, setEnfileirando] = useState(false);
+  const [msgLote, setMsgLote] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const { data: quota } = useLiveQuery(quotaEsteira);
+
+  const idsVisiveis = useMemo(() => filtrados.map((p) => p.id), [filtrados]);
+  const estadoDaMestre = estadoDaMarcaMestre(idsVisiveis, marcados);
+  const resumo = resumoDaSelecao(marcados, idsVisiveis);
+  const corte = corteDaCota(resumo.total, quota?.restante ?? 0);
+
+  async function otimizarSelecionados() {
+    if (enfileirando || corte.entram === 0) return;
+    // O `slice` acontece aqui, mas o número já foi DITO na barra antes do
+    // clique — `corteDaCota` é a mesma conta, feita onde ela decide.
+    const alvo = [...marcados].slice(0, corte.entram);
+    if (
+      !window.confirm(
+        `Enfileirar ${alvo.length} produto(s) para a IA otimizar no servidor ` +
+          `(título, descrição, SEO, ficha, medidas, FAQ e plano)? ` +
+          `Roda sozinho — você pode fechar a aba.`
+      )
+    )
+      return;
+    setEnfileirando(true);
+    setMsgLote(null);
+    try {
+      const n = await enfileirarProdutos(clienteId, alvo);
+      setMsgLote({
+        tipo: "ok",
+        texto: `${n} produto(s) na fila. A IA processa no servidor — acompanhe em Ferramentas avulsas (pode fechar a aba).`,
+      });
+      setMarcados(new Set());
+    } catch (e) {
+      setMsgLote({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao enfileirar." });
+    } finally {
+      setEnfileirando(false);
+    }
+  }
+
   /** Alguma importação rodando. Duas ao mesmo tempo se atropelam na base. */
   const ocupadoImportando = importandoML || importandoCusto || importandoPeso;
 
@@ -914,8 +982,16 @@ export default function ClienteProdutos() {
           "não há", e o ramo de cima ganha: a tela afirmava que a base
           estava vazia para quem tem 80 produtos. A <Table carregando> vivia
           no ramo de baixo e nunca chegava a renderizar. */}
+      {/* A COLUNA DE SELEÇÃO TAMBÉM É RESERVADA NO ESQUELETO. Sem `marcaMestre`
+          abaixo, o carregamento desenharia 7 colunas e a lista carregada 8 — o
+          pulo de layout que a constante das colunas existe para evitar,
+          reaparecendo por uma coluna que não vem dela. A caixa é inerte: não há
+          linha para marcar, e um controle que responde ao clique sem ter o que
+          marcar é um controle que mente. */}
       {estado === "carregando" ? (
-        <Table carregando headers={COLUNAS_DA_LISTA}>{null}</Table>
+        <Table carregando headers={COLUNAS_DA_LISTA} marcaMestre={MESTRE_INERTE}>
+          {null}
+        </Table>
       ) : total === 0 ? (
         <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
           <Package size={20} className="mx-auto mb-2 text-zinc-600" />
@@ -944,9 +1020,68 @@ export default function ClienteProdutos() {
             </span>
           </div>
 
-          <Table headers={COLUNAS_DA_LISTA}>
+          {/* A BARRA DE LOTE — o que substitui os botões repetidos por linha.
+            *
+            * `sticky top-16` e não `fixed bottom`: o cabeçalho do portal tem
+            * 4rem e é `sticky top-0`, e embaixo já moram a navegação do celular
+            * e o botão do assistente. Grudada logo abaixo do cabeçalho ela
+            * acompanha a rolagem das 80 linhas sem disputar espaço com nada.
+            *
+            * Só existe quando há seleção: barra vazia permanente é mais um
+            * elemento competindo com a lista. */}
+          {resumo.total > 0 && (
+            <div
+              className="sticky top-16 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-violet-500/25 bg-[#15121f]/95 px-4 py-3 backdrop-blur"
+              role="region"
+              aria-label="Ações para os produtos selecionados"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-zinc-100">{resumo.frase}</p>
+                {/* O aviso da cota aparece ANTES do clique, não depois dele. */}
+                {corte.frase && (
+                  <p className="mt-0.5 flex items-center gap-1.5 text-xs text-amber-400">
+                    <Gauge size={12} /> {corte.frase}
+                  </p>
+                )}
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <Button onClick={otimizarSelecionados} disabled={enfileirando || corte.entram === 0}>
+                  <Wand2 size={15} />
+                  {enfileirando ? "Enfileirando…" : `Otimizar ${corte.entram} com IA`}
+                </Button>
+                <Button variant="ghost" onClick={() => setMarcados(new Set())}>
+                  Limpar seleção
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {msgLote && (
+            <p
+              role="status"
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                msgLote.tipo === "ok"
+                  ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                  : "border-red-500/20 bg-red-500/10 text-red-400"
+              }`}
+            >
+              {msgLote.texto}
+            </p>
+          )}
+
+          <Table
+            headers={COLUNAS_DA_LISTA}
+            marcaMestre={{
+              estado: estadoDaMestre,
+              aoAlternar: () => setMarcados((m) => alternarTodos(idsVisiveis, m)),
+              rotulo:
+                estadoDaMestre === "todos"
+                  ? `Desmarcar os ${idsVisiveis.length} produtos desta lista`
+                  : `Marcar os ${idsVisiveis.length} produtos desta lista`,
+            }}
+          >
             {filtrados.length === 0 ? (
-              <EmptyRow colSpan={7} />
+              <EmptyRow colSpan={8} />
             ) : (
               filtrados.map((p) => {
                 const status = statusDoProduto(p);
@@ -972,7 +1107,17 @@ export default function ClienteProdutos() {
                   p.id
                 );
                 return (
-                  <tr key={p.id} className="hover:bg-white/[0.02]">
+                  <tr
+                    key={p.id}
+                    className={
+                      marcados.has(p.id) ? "bg-violet-500/[0.06]" : "hover:bg-white/[0.02]"
+                    }
+                  >
+                    <TdSelecao
+                      marcado={marcados.has(p.id)}
+                      aoAlternar={() => setMarcados((m) => alternarUm(p.id, m))}
+                      rotulo={`Selecionar ${p.nome}`}
+                    />
                     <TdMain sub={p.sku || p.codErp || undefined}>{p.nome}</TdMain>
                     <Td>
                       {/* O que falta NESTA linha, com o caminho para resolver.
@@ -1023,32 +1168,49 @@ export default function ClienteProdutos() {
                         <span className="text-zinc-600">—</span>
                       )}
                     </Td>
+                    {/* TRÊS BOTÕES POR LINHA VIRARAM UM, MAIS DOIS ÍCONES.
+                      *
+                      * Medido na base em 06/08: 80 produtos, ZERO kits/combos e
+                      * ZERO tabelas de medidas salvas. Cento e sessenta destes
+                      * botões são de funções que esta lojista nunca usou uma
+                      * vez — e pesavam igual à que ela usa.
+                      *
+                      * Não somem: viram ícone com nome acessível. O que se
+                      * corrige é o PESO, não a existência. */}
                     <Td>
                       <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => abrirKit(p)}
-                          title="Montar kit/combo com este produto"
-                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs transition-colors ${
-                            p.tipoProduto === "kit" || p.tipoProduto === "combo"
-                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                              : "border-white/10 bg-white/[0.03] text-zinc-300 hover:border-white/20"
-                          }`}
-                        >
-                          <Boxes size={12} /> {p.tipoProduto === "kit" || p.tipoProduto === "combo" ? "Kit ✓" : "Kit"}
-                        </button>
-                        <button
-                          onClick={() => abrirMedidas(p)}
-                          title="Tabela de medidas deste produto"
-                          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-zinc-300 transition-colors hover:border-white/20"
-                        >
-                          <Ruler size={12} /> Medidas
-                        </button>
+                        {/* O `?produto=` É O CONSERTO. Os 80 links apontavam
+                            para `/cliente/anunciar` sem parâmetro nenhum: a
+                            linha sabia qual produto era e o clique jogava essa
+                            informação fora — a lojista caía numa lista de 80
+                            para escolher de novo o que já tinha escolhido. A
+                            tela de destino sempre soube ler o parâmetro. */}
                         <Link
-                          href="/cliente/anunciar"
+                          href={`/cliente/anunciar?produto=${p.id}`}
                           className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-300 transition-colors hover:bg-violet-500/20"
                         >
                           <Wand2 size={12} /> Otimizar
                         </Link>
+                        <button
+                          onClick={() => abrirKit(p)}
+                          aria-label={`Montar kit ou combo com ${p.nome}`}
+                          title="Montar kit/combo com este produto"
+                          className={`inline-flex size-7 items-center justify-center rounded-lg border transition-colors ${
+                            p.tipoProduto === "kit" || p.tipoProduto === "combo"
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                              : "border-transparent text-zinc-500 hover:border-white/15 hover:text-zinc-300"
+                          }`}
+                        >
+                          <Boxes size={14} />
+                        </button>
+                        <button
+                          onClick={() => abrirMedidas(p)}
+                          aria-label={`Tabela de medidas de ${p.nome}`}
+                          title="Tabela de medidas deste produto"
+                          className="inline-flex size-7 items-center justify-center rounded-lg border border-transparent text-zinc-500 transition-colors hover:border-white/15 hover:text-zinc-300"
+                        >
+                          <Ruler size={14} />
+                        </button>
                       </div>
                     </Td>
                   </tr>

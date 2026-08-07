@@ -50,8 +50,15 @@ test("o CABEÇALHO continua sem quebrar — ali o texto é curto", () => {
   // A distinção importa: rótulo de coluna quebrado em duas linhas é feio e não
   // custa largura, porque "Score" e "Falta" já são estreitos. O problema nunca
   // foi o `th`.
+  //
+  // O RECORTE PARTE DO `headers.map`, e não do primeiro `<th>` do arquivo.
+  // Desde a coluna de seleção existe um `<th>` ANTES dele — o da caixa de
+  // marcação, que não tem texto e portanto não tem o que quebrar. Ancorado em
+  // "o primeiro `<th>`", este teste passou a medir a célula errada e reprovou
+  // uma mudança correta. Sentinela ancorada em posição envelhece com o layout.
   const codigo = semComentarios(TABELA);
-  const cabecalho = codigo.slice(codigo.indexOf("<th"), codigo.indexOf("</th>"));
+  const daLista = codigo.slice(codigo.indexOf("headers.map"));
+  const cabecalho = daLista.slice(daLista.indexOf("<th"), daLista.indexOf("</th>"));
   assert.match(cabecalho, /whitespace-nowrap/);
 });
 
