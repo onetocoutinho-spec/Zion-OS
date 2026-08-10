@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
+import { diagnosticarEGravar } from "@/lib/services/diagnosticoDeInfracoes";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
 import { infracoesPorAnuncioDoCliente } from "@/lib/services/infracoesMarketplace";
@@ -88,6 +89,14 @@ const EXPLICACAO: Record<Gravidade, string> = {
 export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; cliente: string }) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  /**
+   * O que a conferida atualizou, dito separadamente.
+   *
+   * São DUAS leituras, em dois endpoints do ML, e elas falham
+   * independentemente. Um "pronto" único esconderia a metade que não veio — e
+   * a lista continuaria mostrando as infrações antigas com cara de atuais.
+   */
+  const [oQueVeio, setOQueVeio] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{
     itens: PendenciaDaConta[];
     grupos: GrupoDePendencia[];
@@ -145,7 +154,36 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
   async function conferir() {
     setCarregando(true);
     setErro(null);
+    setOQueVeio(null);
     try {
+      // ===================================================================
+      // AS INFRAÇÕES PRIMEIRO, E A ORDEM É O PONTO
+      // ===================================================================
+      //
+      // `medir` lê as infrações do NOSSO banco, não do ML. Rodar a conferida
+      // dos anúncios antes deixaria a lista montada com as infrações antigas —
+      // e ela abriria com data de hoje, afirmando atualidade sobre metade
+      // velha. Foi assim que as acusações de PI de 30-31/07 continuaram
+      // parecendo o retrato de agora.
+      //
+      // FALHAM SEPARADO, de propósito. São dois endpoints do ML: o de
+      // infrações são ~53 páginas, o de anúncios ~40 requisições. Se o
+      // primeiro cair, o segundo ainda vale — e o texto diz qual metade veio.
+      let infracoesAtualizadas: string;
+      try {
+        const d = await diagnosticarEGravar(clienteId);
+        infracoesAtualizadas =
+          d.falharam > 0
+            ? `${d.gravadas} infração(ões) atualizadas, ${d.falharam} não gravaram`
+            : `${d.gravadas} infração(ões) atualizadas`;
+      } catch (falha) {
+        // Não interrompe: a leitura dos anúncios é a outra metade e continua
+        // valendo. Mas a lista vai usar as infrações de antes, e isso é dito.
+        infracoesAtualizadas =
+          "as infrações NÃO puderam ser lidas agora — a lista abaixo usa as últimas que gravamos" +
+          (falha instanceof Error ? ` (${falha.message})` : "");
+      }
+
       const r = await importarAnunciosDoCliente(clienteId, cliente, "medir");
       if (!r.medicao) {
         setErro(r.aviso ?? "Não consegui ler os anúncios no Mercado Livre.");
@@ -153,6 +191,9 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
       }
       const p = r.medicao.pendenciasDaConta;
       setResultado({ ...p, lidos: r.medicao.anuncios, lidoEm: new Date().toISOString() });
+      setOQueVeio(
+        `${r.estadosAtualizados ?? 0} anúncio(s) com estado novo · ${infracoesAtualizadas}.`
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao conferir a conta.");
     } finally {
@@ -188,8 +229,9 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
                 gravação que ela esconde.
                 O que ela protege continua valendo, e é isso que o texto novo
                 afirma: nenhum produto, preço, foto ou anúncio é alterado. */}
-            Lê a sua conta e lista o que precisa de você, em ordem. Não altera seus
-            produtos nem seus anúncios — só guarda o que o Mercado Livre respondeu.
+            Lê a sua conta INTEIRA — o estado dos anúncios e as infrações — e lista o
+            que precisa de você, em ordem. Não altera seus produtos nem seus anúncios
+            — só guarda o que o Mercado Livre respondeu. Demora um pouco.
           </p>
         </div>
         <Button variant="ghost" onClick={conferir} disabled={carregando}>
@@ -202,6 +244,17 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
         <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-400">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           {erro}
+        </p>
+      )}
+
+      {/* O QUE A CONFERIDA TROUXE, pelas duas metades.
+          São dois endpoints do ML que falham separado. Um "pronto" único
+          esconderia a metade que não veio — e a lista abriria com data de hoje
+          afirmando atualidade sobre infrações antigas. */}
+      {oQueVeio && !erro && (
+        <p className="mt-3 flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-xs text-zinc-400">
+          <Info size={14} className="mt-0.5 shrink-0 text-zinc-500" />
+          {oQueVeio}
         </p>
       )}
 

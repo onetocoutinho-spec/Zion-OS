@@ -668,3 +668,68 @@ test("a tela não promete mais o que deixou de ser verdade", () => {
   );
   assert.match(tela, /só guarda o que o Mercado Livre respondeu/);
 });
+
+// ---------------------------------------------------------------------------
+// AS DUAS METADES NUM GESTO — e por que a ORDEM decide
+// ---------------------------------------------------------------------------
+//
+// O retrato da conta tem dois eixos, em dois endpoints do ML:
+//
+//   estado dos anúncios   `medir`, ~40 requisições
+//   infrações             `diagnosticarEGravar`, ~53 páginas
+//
+// Até 10/08/2026 cada um tinha o seu botão, em telas diferentes. O de Pendências
+// atualizava o estado; as infrações só se alguém abrisse Produtos. Resultado
+// medido: 1.060 infrações de 03/08 e acusações de PI de 30-31/07 sendo
+// apresentadas dentro de uma lista carimbada com a data de hoje.
+//
+// A ORDEM NÃO É ESTILO: `medir` lê as infrações do NOSSO banco, não do ML.
+// Conferir os anúncios primeiro monta a lista com as infrações antigas — e ela
+// abre afirmando atualidade sobre metade velha.
+
+const TELA_PENDENCIAS = lerFonte(
+  new URL("../../components/client-portal/PendenciasDaConta.tsx", import.meta.url)
+);
+
+test("a conferida atualiza as DUAS metades", () => {
+  const corpo = TELA_PENDENCIAS.slice(TELA_PENDENCIAS.indexOf("async function conferir("));
+  const fim = corpo.indexOf("\n  }\n");
+  const conferir = corpo.slice(0, fim > 0 ? fim : 2500);
+  assert.match(conferir, /diagnosticarEGravar\(/, "a conferida parou de atualizar as infrações");
+  assert.match(conferir, /importarAnunciosDoCliente\(/, "a conferida parou de ler os anúncios");
+});
+
+test("as infrações vêm ANTES dos anúncios — senão a lista sai com as velhas", () => {
+  const corpo = TELA_PENDENCIAS.slice(TELA_PENDENCIAS.indexOf("async function conferir("));
+  const infracoes = corpo.indexOf("diagnosticarEGravar(");
+  const anuncios = corpo.indexOf("importarAnunciosDoCliente(");
+  assert.ok(infracoes > 0 && anuncios > 0, "uma das duas leituras sumiu");
+  assert.ok(
+    infracoes < anuncios,
+    "os anúncios passaram a ser lidos ANTES das infrações: `medir` monta a lista com o que está no banco, então ela sairia com as infrações antigas e a data de hoje"
+  );
+});
+
+test("a falha de uma metade não derruba a outra", () => {
+  // ~53 páginas contra ~40 requisições: a chance de uma cair sozinha é real.
+  // Sem o catch interno, a lista inteira sumiria por causa da metade que falhou.
+  const corpo = TELA_PENDENCIAS.slice(TELA_PENDENCIAS.indexOf("async function conferir("));
+  const infracoes = corpo.indexOf("diagnosticarEGravar(");
+  const trechoDasInfracoes = corpo.slice(Math.max(0, infracoes - 200), infracoes + 500);
+  assert.match(
+    trechoDasInfracoes,
+    /try\s*\{/,
+    "a leitura de infrações ficou sem catch próprio: se ela cair, a dos anúncios nem roda"
+  );
+  assert.match(
+    corpo,
+    /a lista abaixo usa as últimas que gravamos/,
+    "a tela deixou de avisar que está mostrando infrações antigas"
+  );
+});
+
+test("a tela DIZ o que cada metade trouxe, separadamente", () => {
+  // Um "pronto" único esconde a metade que não veio.
+  assert.match(TELA_PENDENCIAS, /anúncio\(s\) com estado novo/);
+  assert.match(TELA_PENDENCIAS, /infração\(ões\) atualizadas/);
+});
