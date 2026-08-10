@@ -57,11 +57,22 @@ test("o porto lê SOMENTE de produtos e produto_variantes", () => {
 });
 
 test("o porto escopa TODA leitura de produto pelos ids recebidos", () => {
-  const escopadas = PORTO_CODIGO.match(/\.in\(\s*"(id|produto_id)"\s*,\s*ids\s*\)/g) ?? [];
+  // `lote` entrou em 10/08/2026, quando as duas leituras passaram a paginar e a
+  // partir os ids em lotes de 200. O invariante não mudou — nenhuma varredura
+  // de catálogo — mas o nome da variável no `in` sim.
+  const escopadas = PORTO_CODIGO.match(/\.in\(\s*"(id|produto_id)"\s*,\s*(ids|lote)\s*\)/g) ?? [];
   assert.equal(
     escopadas.length,
     2,
     `esperava 2 leituras escopadas por ids, achei ${escopadas.length}`
+  );
+  // E `lote` PRECISA sair de `ids`. Sem esta linha, aceitar o nome novo abriria
+  // a porta para um `lote` que viesse de qualquer outro lugar — que é
+  // exatamente a varredura de catálogo que este teste existe para impedir.
+  assert.match(
+    PORTO_CODIGO,
+    /const lote = ids\.slice\(/,
+    "`lote` deixou de ser um recorte de `ids` — o escopo pode ter sido perdido"
   );
 });
 
@@ -86,13 +97,26 @@ test("leitura que FALHOU não vira leitura VAZIA — as duas queries são confer
   //
   // O caminho honesto é lançar: o `catch` de `calcularConsequencia` devolve
   // `null` e registra. Perde-se o número, não a escrita.
-  for (const q of ["produtos", "variantes"]) {
-    assert.match(
-      PORTO_CODIGO,
-      new RegExp(`if\\s*\\(${q}\\.error\\)\\s*throw`),
-      `${q}.error não é conferido: uma falha de leitura vira número plausível`
-    );
-  }
+  // A CONFERÊNCIA MUDOU DE LUGAR, não de existência.
+  //
+  // Até 10/08/2026 eram dois `if (produtos.error) throw` / `if (variantes.error)
+  // throw` no corpo. Com a paginação, checar só a última resposta deixaria
+  // passar a falha de uma página do meio — então o `throw` desceu para dentro
+  // do laço de leitura, onde vale para TODA página e todo lote.
+  //
+  // Quem prova o COMPORTAMENTO é `variantesAlemDoCorte.test.ts`, com o
+  // PostgREST recusando de verdade. Aqui fica a garantia estrutural de que o
+  // caminho do erro não sumiu e de que ele ainda diz QUAL leitura falhou.
+  assert.match(
+    PORTO_CODIGO,
+    /if\s*\(error\)\s*throw/,
+    "o caminho de erro sumiu do porto: uma falha de leitura vira número plausível"
+  );
+  assert.match(
+    PORTO_CODIGO,
+    /leitura de \$\{oQue\} falhou/,
+    "a mensagem deixou de dizer QUAL leitura falhou"
+  );
   assert.ok(
     !/\.data\s*\?\?\s*\[\]/.test(PORTO_CODIGO),
     "`.data ?? []` voltou ao porto: ele apaga a diferença entre falhar e vir vazio"

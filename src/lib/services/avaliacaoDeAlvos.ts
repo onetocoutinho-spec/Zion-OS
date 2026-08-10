@@ -62,6 +62,47 @@ interface LinhaDeVariante extends MedidasDaVariante {
   produto_id: string;
 }
 
+/** Quantos ids cabem num `in` sem produzir URL de quilômetros. */
+const IDS_POR_LOTE = 200;
+/** O corte do PostgREST. Pedir mais numa página não adianta: ele para aqui. */
+const PAGINA = 1000;
+/** Trava de segurança contra laço infinito, não limite de negócio. */
+const TETO_DE_PAGINAS = 200;
+
+type Resposta<T> = PromiseLike<{ data: unknown; error: { message: string } | null }> & {
+  __linha?: T;
+};
+
+/**
+ * Lê TODAS as linhas: em lotes de ids, e paginando dentro de cada lote.
+ *
+ * `montar` recebe o lote de ids e a janela, e devolve a consulta pronta. Manter
+ * a montagem com quem chama é o que evita um wrapper genérico que esconderia o
+ * `select` e o escopo de tenant — os dois precisam continuar visíveis na
+ * chamada.
+ *
+ * LANÇA em erro, e isso é deliberado: preserva a distinção que este módulo já
+ * defendia — leitura que falhou não é leitura que deu vazio.
+ */
+async function lerTudo<T>(
+  oQue: string,
+  montar: (lote: string[], de: number, ate: number) => Resposta<T>,
+  ids: readonly string[]
+): Promise<T[]> {
+  const todas: T[] = [];
+  for (let i = 0; i < ids.length; i += IDS_POR_LOTE) {
+    const lote = ids.slice(i, i + IDS_POR_LOTE) as string[];
+    for (let pagina = 0; pagina < TETO_DE_PAGINAS; pagina++) {
+      const { data, error } = await montar(lote, pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+      if (error) throw new Error(`consequencia: leitura de ${oQue} falhou — ${error.message}`);
+      const linhas = (data ?? []) as T[];
+      todas.push(...linhas);
+      if (linhas.length < PAGINA) break;
+    }
+  }
+  return todas;
+}
+
 /**
  * Avalia pricing para CADA alvo, antes e depois.
  *
@@ -83,17 +124,49 @@ export async function avaliacaoDeAlvos(
 
   // Duas queries, ambas escopadas por `.in(..., ids)` E pelo tenant. Nunca uma
   // varredura de catálogo.
+  //
+  // ===========================================================================
+  // POR QUE PAGINAM — a truncagem entra pela porta que a guarda abaixo fecha
+  // ===========================================================================
+  //
+  // Estas duas leituras eram consultas únicas. O PostgREST corta em 1.000 linhas
+  // e devolve 200 sem erro, então `error` é `null` e a guarda logo abaixo — que
+  // existe exatamente para separar "leitura falhou" de "leitura deu vazio" —
+  // não é acionada. A truncagem passa por baixo dela.
+  //
+  // E o efeito é o CASO QUE AQUELE COMENTÁRIO DESCREVE, palavra por palavra:
+  // um produto cujas variantes ficaram fora do corte chega a
+  // `depoisPorProduto.get(p.id) ?? []` como lista vazia, `embalagemDe([])`
+  // calcula sem medida nenhuma, e o módulo afirma que aquele produto NÃO passou
+  // a ser calculável. Pior que perder o número: com `antes` cheio e `depois`
+  // vazio, a conclusão se inverte — a escrita aparece como se tivesse APAGADO
+  // as medidas que ela acabou de gravar.
+  //
+  // Medido em 10/08/2026: `produto_variantes` tem 970 linhas, média de 12,1 por
+  // produto e máximo de 41. Bastam 83 produtos num alvo para cruzar o corte, e
+  // a lojista tem 80 no catálogo.
+  //
+  // O lote de ids também é recortado: `in` com milhares de uuids produz URL de
+  // quilômetros, e o corte de 1.000 valeria para `produtos` do mesmo jeito.
   const [produtos, variantes, config] = await Promise.all([
-    admin
-      .from("produtos")
-      .select("id, nome, marca, custo, preco_venda, vendedor_paga_frete")
-      .eq("cliente_id", clienteId)
-      .in("id", ids),
-    admin
-      .from("produto_variantes")
-      .select("produto_id, peso, altura, largura, comprimento")
-      .eq("cliente_id", clienteId)
-      .in("produto_id", ids),
+    lerTudo<LinhaDeProduto>("produtos", (lote, de, ate) =>
+      admin
+        .from("produtos")
+        .select("id, nome, marca, custo, preco_venda, vendedor_paga_frete")
+        .eq("cliente_id", clienteId)
+        .in("id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    , ids),
+    lerTudo<LinhaDeVariante>("variantes", (lote, de, ate) =>
+      admin
+        .from("produto_variantes")
+        .select("produto_id, peso, altura, largura, comprimento")
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    , ids),
     configuracaoDoLojista(clienteId),
   ]);
 
@@ -114,14 +187,16 @@ export async function avaliacaoDeAlvos(
   // `try/catch` desenhado para isto, devolve `consequencia: null` e registra o
   // erro. A escrita permanece consumada, auditada e com rastro — só o número se
   // perde, que é exatamente o que se quer perder quando não se sabe.
-  if (produtos.error) throw new Error(`consequencia: leitura de produtos falhou — ${produtos.error.message}`);
-  if (variantes.error) throw new Error(`consequencia: leitura de variantes falhou — ${variantes.error.message}`);
+  //
+  // O `throw` mora dentro de `lerTudo` desde 10/08/2026, para valer em TODA
+  // página e em todo lote — checar só a última resposta deixaria passar a falha
+  // de uma página do meio.
 
-  const linhas = produtos.data as LinhaDeProduto[];
+  const linhas = produtos;
   if (linhas.length === 0) return [];
 
   const depoisPorProduto = new Map<string, LinhaDeVariante[]>();
-  for (const v of variantes.data as LinhaDeVariante[]) {
+  for (const v of variantes) {
     const lista = depoisPorProduto.get(v.produto_id) ?? [];
     lista.push(v);
     depoisPorProduto.set(v.produto_id, lista);
