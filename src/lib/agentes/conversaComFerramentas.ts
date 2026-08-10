@@ -66,8 +66,27 @@ export interface TurnoDoModelo {
   texto: string;
   /** O que ele quer que rode antes de continuar. */
   chamadas: readonly { nome: string; args: Record<string, unknown> }[];
-  /** Tokens gastos neste turno — a conta que decide se isto escala. */
+  /**
+   * Tokens gastos neste turno — a conta que decide se isto escala.
+   *
+   * SOMA OS QUATRO CAMPOS, e isso deixou de ser detalhe em 10/08/2026, quando o
+   * cache entrou. Com cache, `input_tokens` passa a ser só o RESTO não
+   * cacheado: o prefixo lido vai para `cache_read_input_tokens` e o escrito
+   * para `cache_creation_input_tokens`.
+   *
+   * Somar só entrada + saída faria o medidor despencar de ~37 mil para ~2 mil
+   * e parecer uma economia de 95%. Não seria economia: seria o medidor tendo
+   * parado de ver a maior parte do que ele mede.
+   *
+   * Este número existe porque a AUD-001 achou o custo documentado em dois
+   * lugares com valores diferentes e nenhum conferível. Quebrá-lo ao ligar o
+   * cache seria desfazer exatamente aquele conserto.
+   */
   tokens: number;
+  /** Do total acima, quanto veio do cache — a 0,1× do preço de entrada. */
+  tokensLidosDoCache: number;
+  /** Quanto foi ESCRITO no cache neste turno, a 1,25×. Zero é o caso comum. */
+  tokensEscritosNoCache: number;
 }
 
 /**
@@ -144,6 +163,57 @@ const ESFORCO = (process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
   | "medium"
   | "high";
 
+/**
+ * O PREFIXO CACHEADO: ferramentas + prompt do sistema.
+ *
+ * ===========================================================================
+ * O QUE FOI MEDIDO EM 10/08/2026
+ * ===========================================================================
+ *
+ *   catálogo de ferramentas   ~4.240 tokens
+ *   prompt do sistema         ~1.977 tokens
+ *                             ─────────────
+ *                             ~6.200 tokens, IDÊNTICOS em toda chamada
+ *
+ * O laço reenvia isso a cada passo, até seis por fala. Eram ~37.200 tokens de
+ * entrada por pergunta, todos a preço cheio, e nada disso mudava entre um passo
+ * e o seguinte.
+ *
+ * ===========================================================================
+ * POR QUE A MARCA VAI NO SYSTEM E NÃO NAS FERRAMENTAS
+ * ===========================================================================
+ *
+ * A ordem de renderização é `tools` → `system` → `messages`. Uma marca no
+ * ÚLTIMO bloco do system cobre os dois — ferramentas e prompt — com um só
+ * ponto de corte. Marcar as ferramentas separadamente gastaria um dos quatro
+ * pontos disponíveis para cachear um pedaço que este já cobre.
+ *
+ * ===========================================================================
+ * POR QUE AS MENSAGENS FICAM DE FORA
+ * ===========================================================================
+ *
+ * `historico.slice(-FALAS_MANTIDAS)` é uma janela DESLIZANTE: quando ela anda,
+ * as falas mais antigas somem do começo, e o começo é justamente o que o cache
+ * casa. Uma marca ali escreveria entrada nova toda vez que a janela andasse —
+ * pagando 1,25× repetidamente para ler 0,1× quase nunca.
+ *
+ * ===========================================================================
+ * DOIS PREFIXOS, NÃO UM
+ * ===========================================================================
+ *
+ * `ofertaDoPasso` manda 11 ferramentas no passo 0 (o `obrigado`) e 18 nos
+ * demais. Definição de ferramenta diferente = prefixo diferente, então são
+ * duas entradas de cache. As duas são estáveis e se repetem em toda fala, então
+ * as duas valem — mas quem mexer em `ofertaDoPasso` precisa saber que está
+ * mexendo na chave do cache.
+ *
+ * `tool_choice` mudar de `any` para `auto` NÃO invalida nada: só a definição
+ * das ferramentas e o modelo forçam reconstrução.
+ */
+function sistemaCacheado(system: string): Anthropic.TextBlockParam[] {
+  return [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
+}
+
 function cliente(): Anthropic {
   const chave = process.env.ANTHROPIC_API_KEY;
   if (!chave) throw new Error("ANTHROPIC_API_KEY ausente.");
@@ -188,10 +258,16 @@ function turnoDaResposta(m: Anthropic.Message): TurnoDoModelo {
       nome: b.name,
       args: (b.input ?? {}) as Record<string, unknown>,
     }));
+  const u = m.usage;
+  const lidos = u?.cache_read_input_tokens ?? 0;
+  const escritos = u?.cache_creation_input_tokens ?? 0;
   return {
     texto,
     chamadas,
-    tokens: (m.usage?.input_tokens ?? 0) + (m.usage?.output_tokens ?? 0),
+    // Os QUATRO. `input_tokens` sozinho é o resto não cacheado — ver o campo.
+    tokens: (u?.input_tokens ?? 0) + (u?.output_tokens ?? 0) + lidos + escritos,
+    tokensLidosDoCache: lidos,
+    tokensEscritosNoCache: escritos,
   };
 }
 
@@ -233,7 +309,7 @@ export async function pedirTurnoEmFluxo(
     const fluxo = cliente().messages.stream({
       model: MODELO,
       max_tokens: MAX_TOKENS,
-      system,
+      system: sistemaCacheado(system),
       messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
       tools,
       tool_choice,
@@ -272,7 +348,7 @@ export async function pedirTurno(
   const corpo = {
     model: MODELO,
     max_tokens: MAX_TOKENS,
-    system,
+    system: sistemaCacheado(system),
     messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
     tools,
     tool_choice,

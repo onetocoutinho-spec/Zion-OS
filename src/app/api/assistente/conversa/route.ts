@@ -472,6 +472,8 @@ export async function POST(request: Request) {
       const mandar = (e: unknown) => controlador.enqueue(cod.encode(JSON.stringify(e) + "\n"));
 
       let tokens = 0;
+      /** Do total acima, quanto foi servido do cache. Prova de que ele pega. */
+      let doCache = 0;
       /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
       let proposta: Proposta | undefined;
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
@@ -543,6 +545,12 @@ export async function POST(request: Request) {
               : { modo: "livre" }
           );
           tokens += turno.tokens;
+          // O CACHE PRECISA SER VISÍVEL, senão não dá para saber se pegou.
+          //
+          // Um cache que nunca acerta é indistinguível de um que funciona:
+          // mesma resposta, mesma latência aparente, só a conta é outra. Este
+          // número é a única prova, e é ele que a sentinela de produção lê.
+          doCache += turno.tokensLidosDoCache;
 
           // ---- DEFESA DE PROTOCOLO, não classificação semântica.
           //
@@ -562,6 +570,7 @@ export async function POST(request: Request) {
               falas: historico,
               ferramentas: usadas,
               tokens,
+              doCache,
             });
             controlador.close();
             return;
@@ -849,6 +858,7 @@ export async function POST(request: Request) {
               falas: historico,
               ferramentas: usadas,
               tokens,
+              doCache,
               ...(conversaId ? { conversaId } : {}),
               // A proposta so vai com ID. Sem ID, a tela nao oferece botao.
               ...(proposta && propostaId ? { proposta, propostaId } : {}),
@@ -1117,6 +1127,7 @@ export async function POST(request: Request) {
           falas: historico,
           ferramentas: usadas,
           tokens,
+          doCache,
         });
         controlador.close();
       } catch (e) {
