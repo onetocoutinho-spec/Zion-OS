@@ -249,6 +249,15 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "meus_custos",
+    efeito: "le",
+    descricao:
+      "Os CUSTOS DO LOJISTA e a MARGEM MÍNIMA dela — o que ela paga por venda além do produto e do marketplace: embalagem, etiqueta, informativos, imposto, comissão do gestor, comissão do sistema e cupom. " +
+      "Use para \"quanto sai de mim em cada venda?\", \"qual minha margem mínima?\", \"por que o preço mínimo está tão alto?\" e sempre que ela questionar de onde vem um desconto no cálculo. " +
+      "IMPORTANTE: estes valores entram em TODA conta de preço do Zion. Se algum estiver errado, todo número que o software dá está errado — então quando ela estranhar um preço, confira estes ANTES de investigar o produto.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
     nome: "procedencia",
     efeito: "le",
     descricao:

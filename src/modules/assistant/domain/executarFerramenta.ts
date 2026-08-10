@@ -189,6 +189,29 @@ export interface ContextoDoPreco {
   doProduto: (
     produtoId: string
   ) => Promise<{ produtoId: string; nome: string; entradas: EntradasDoPreco } | null>;
+  /**
+   * A CONFIGURAÇÃO do lojista: a margem mínima e os custos dele.
+   *
+   * Vive aqui e não num contexto próprio porque é entrada do MESMO cálculo:
+   * Simples Nacional, comissão do gestor, custo do ERP, embalagem, etiqueta e
+   * cupom entram em toda conta de preço que este módulo faz.
+   *
+   * Até 10/08/2026 nenhuma ferramenta os alcançava. Eles se acertavam em duas
+   * telas — Configurações e Precificação — e quem não abrisse nenhuma das duas
+   * recebia todo número do software calculado sobre valores que nunca conferiu.
+   */
+  configuracao: () => Promise<{
+    margemMinima: number;
+    custos: {
+      embalagem: number;
+      etiqueta: number;
+      informativos: number;
+      impostoPercentual: number;
+      comissaoGestorPercentual: number;
+      comissaoSistemaPercentual: number;
+      cupomPercentual: number;
+    };
+  }>;
   /** O catálogo para a triagem de margem. Roda com a TABELA — ver o serviço. */
   catalogo: () => Promise<{
     produtos: readonly ProdutoParaTriagem[];
@@ -861,6 +884,55 @@ export async function executarFerramenta(
 
     case "pendencias":
       return analisarPendencias(args, ctx);
+
+    case "meus_custos": {
+      if (!ctx.preco?.configuracao) {
+        return { saida: { erro: "Não consigo ler seus custos por aqui agora." } };
+      }
+      const cfg = await ctx.preco.configuracao();
+      const k = cfg.custos;
+
+      // OS DOIS TIPOS SEPARADOS, e a separação não é estética.
+      //
+      // Percentual e valor fixo pesam de formas opostas: 12% de imposto dobra
+      // em reais quando o preço dobra; R$ 0,50 de embalagem é o mesmo em toda
+      // venda e pesa MUITO mais num chinelo de R$ 50 do que num tênis de
+      // R$ 300. Somar os dois num número só esconderia justamente a diferença
+      // que decide onde a margem aperta.
+      const emPercentual = [
+        { nome: "imposto", valor: k.impostoPercentual },
+        { nome: "comissão do gestor", valor: k.comissaoGestorPercentual },
+        { nome: "comissão do sistema", valor: k.comissaoSistemaPercentual },
+        { nome: "cupom", valor: k.cupomPercentual },
+      ].filter((x) => x.valor > 0);
+      const emReais = [
+        { nome: "embalagem", valor: k.embalagem },
+        { nome: "etiqueta", valor: k.etiqueta },
+        { nome: "informativos", valor: k.informativos },
+      ].filter((x) => x.valor > 0);
+
+      const somaPercentual = emPercentual.reduce((t, x) => t + x.valor, 0);
+      const somaReais = emReais.reduce((t, x) => t + x.valor, 0);
+
+      return {
+        saida: {
+          margemMinima: cfg.margemMinima,
+          emPercentual,
+          emReais,
+          somaPercentual,
+          somaReais,
+          // ZERADO É UM FATO, e diferente de "não informado".
+          //
+          // O domínio normaliza ausência para 0, então daqui não dá para
+          // distinguir "ela não paga imposto" de "ninguém preencheu". Dizer
+          // isso é o serviço; afirmar que ela não paga seria inventar.
+          tudoZerado: somaPercentual === 0 && somaReais === 0,
+          aviso:
+            "Estes valores entram em TODA conta de preço. Onde estiverem zerados, o cálculo assume que ela não paga aquilo — e um custo esquecido faz a margem parecer melhor do que é. " +
+            "Para trocar, ela ajusta em Configurações; o chat ainda não grava isto.",
+        },
+      };
+    }
 
     case "procedencia":
       return consultarProcedencia(args, ctx);

@@ -47,23 +47,41 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 10 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 11 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 10);
+  assert.equal(PRIMEIRA_ACAO.length, 11);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas dez — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas onze — a matriz que autorizou a decisão", () => {
+  // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
+  //
+  // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
+  // comissão do gestor, comissão do sistema, embalagem, etiqueta,
+  // informativos, cupom. Sem escrita, sem chamada externa, sem custo, e o
+  // tenant vem da sessão como nas outras dez.
+  //
+  // Por que ela pode ser a PRIMEIRA ação, que é a pergunta que esta matriz faz:
+  // o pior caso de um "obrigado" disparando `meus_custos` é a lojista ver os
+  // próprios custos sem ter pedido. É o mesmo dano de `estado_da_loja` — ou
+  // seja, nenhum.
+  //
+  // E há razão para ela estar entre as primeiras: estes valores entram em TODA
+  // conta de preço. Quando a lojista estranha um número, conferi-los ANTES de
+  // investigar o produto é o caminho curto — e obrigá-la a uma pergunta
+  // preliminar para chegar neles seria esconder a causa mais provável atrás de
+  // um passo.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "contar",
     "estado_da_loja",
+    "meus_custos",
     "o_que_falta_no_produto",
     "o_que_impede",
     "pendencias",
@@ -180,8 +198,17 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // A contagem por LISTA é o que dá sentido ao total: 17 sozinho passaria com
   // uma leitura virando proposta. As cinco linhas juntas dizem que o catálogo é
   // o mesmo, com um poder novo declarado no lugar certo.
-  assert.equal(FERRAMENTAS.length, 17);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 10);
+  //
+  // De 17 para 18 em 10/08/2026, e só a LEITURA subiu: `meus_custos`. O poder
+  // de agir não mudou — continuam 1 rascunho, 5 propostas e 1 ação.
+  //
+  // A decisão: os custos do lojista e a margem mínima entram em toda conta de
+  // preço do software e só se acertavam em duas telas. Quem não abrisse
+  // nenhuma das duas recebia todo número calculado sobre valores que nunca
+  // conferiu. Dar VOZ a eles não dá poder novo a ninguém — a troca continua
+  // sendo em Configurações.
+  assert.equal(FERRAMENTAS.length, 18);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

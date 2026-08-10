@@ -304,8 +304,12 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // parar de incomodar, ela entraria na primeira ação por derivação, e um
   // "obrigado" poderia colocar anúncio no ar. É o caminho mais curto que existe
   // entre um atalho e um estrago.
-  assert.equal(FERRAMENTAS.length, 17);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 10);
+  // 18 desde 10/08/2026: `meus_custos`, LEITURA. Os custos do lojista e a
+  // margem mínima entram em toda conta de preço e só se acertavam em duas
+  // telas — dar voz a eles não dá poder novo a ninguém. Nenhuma das outras
+  // dezessete mudou de efeito.
+  assert.equal(FERRAMENTAS.length, 18);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -315,7 +319,10 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  assert.equal(PRIMEIRA_ACAO.length, 10);
+  // 11 desde 10/08/2026. O que o C1R garante NÃO mudou e é o que a linha
+  // seguinte prova: toda ferramenta da primeira ação tem efeito `le`. O número
+  // trava o tamanho; o laço trava a natureza.
+  assert.equal(PRIMEIRA_ACAO.length, 11);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

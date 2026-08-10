@@ -93,7 +93,7 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
-import { catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
+import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 
 export const maxDuration = 60;
@@ -406,6 +406,7 @@ export async function POST(request: Request) {
     // O modelo nunca ve custo nem taxas — ele ve o resultado.
     preco: {
       doProduto: (id) => precoDoProduto(clienteDaSessao, id),
+      configuracao: () => configuracaoDoLojista(clienteDaSessao),
       catalogo: () => catalogoParaTriagem(clienteDaSessao),
     },
   };
