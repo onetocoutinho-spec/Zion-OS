@@ -96,29 +96,60 @@ export async function gravarInfracoes(
  * A projeção é estreita de propósito (`related_item_id, motivo, remedio`): são
  * mais de mil linhas por lojista, e trazer a linha inteira para montar um mapa
  * de dois campos é o mesmo desperdício que o JSONB dos anúncios era.
+ *
+ * ===========================================================================
+ * POR QUE ISTO PAGINA — o corte de 1.000 do PostgREST, de novo
+ * ===========================================================================
+ *
+ * Esta função lia numa consulta só. O PostgREST corta toda resposta em 1.000
+ * linhas e NÃO avisa: devolve 200, sem erro, com `content-range: 0-999`.
+ *
+ * Medido em 10/08/2026 na conta da lojista: **1.060 infrações**. Sessenta
+ * ficavam de fora, e sem `order` a escolha de QUAIS sessenta é indefinida —
+ * podia mudar entre duas aberturas da mesma tela.
+ *
+ * O estrago não é "faltam 60 linhas". É que 102 dos 460 anúncios têm UMA única
+ * infração: se a dela cair no corte, o anúncio deixa de ter a palavra do ML e
+ * cai no caminho de trás, onde a tela mostra SUSPEITA NOSSA baseada em tamanho
+ * — uma regra que, conferida contra as infrações, acerta 29%. O anúncio não
+ * some da lista; ele passa a receber a instrução errada.
+ *
+ * Mesmo defeito que a `listar` do repositório documenta desde a importação de
+ * custos, onde 2.085 de 3.085 variantes "não existiam" para quem casava
+ * planilha com produto. A ordenação por `id` é o que torna a paginação
+ * confiável: sem desempate estável, a mesma linha pode vir em duas páginas e
+ * outra em nenhuma.
  */
 export async function infracoesPorAnuncioDoCliente(
   clienteId: string
 ): Promise<Record<string, { motivo: string; remedio: string }[]>> {
   if (!supabaseConfigurado) return {};
-  const { data, error } = await getSupabase()
-    .from("infracoes_marketplace")
-    .select("related_item_id, motivo, remedio")
-    .eq("cliente_id", clienteId)
-    .not("related_item_id", "is", null);
-  if (error) return {};
+  const PAGINA = 1000;
+  const TETO_PAGINAS = 200; // trava de segurança, não limite real
   const mapa: Record<string, { motivo: string; remedio: string }[]> = {};
-  for (const l of (data ?? []) as {
-    related_item_id: string;
-    motivo: string | null;
-    remedio: string | null;
-  }[]) {
-    (mapa[l.related_item_id] ??= []).push({
-      motivo: l.motivo ?? "",
-      // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
-      // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.
-      remedio: semHtml(l.remedio ?? ""),
-    });
+  for (let pagina = 0; pagina < TETO_PAGINAS; pagina++) {
+    const { data, error } = await getSupabase()
+      .from("infracoes_marketplace")
+      .select("related_item_id, motivo, remedio")
+      .eq("cliente_id", clienteId)
+      .not("related_item_id", "is", null)
+      .order("id", { ascending: true })
+      .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
+    if (error) return mapa;
+    const lote = (data ?? []) as {
+      related_item_id: string;
+      motivo: string | null;
+      remedio: string | null;
+    }[];
+    for (const l of lote) {
+      (mapa[l.related_item_id] ??= []).push({
+        motivo: l.motivo ?? "",
+        // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
+        // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.
+        remedio: semHtml(l.remedio ?? ""),
+      });
+    }
+    if (lote.length < PAGINA) break;
   }
   return mapa;
 }
