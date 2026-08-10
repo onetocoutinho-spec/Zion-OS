@@ -233,7 +233,7 @@ export async function importarCustos(
 
   const porSku = new Map<string, number>();
   const porEan = new Map<string, number>();
-  const porNomeExato = new Map<string, number>();
+  const porNomeExato = new Map<string, { custo: number; original: string }[]>();
   const entradasNome: EntradaNome[] = [];
   for (const row of linhas) {
     const custo = parseNumeroCusto(row[hCusto] ?? "");
@@ -253,7 +253,23 @@ export async function importarCustos(
     if (hNome) {
       const nome = (row[hNome] ?? "").trim();
       if (nome) {
-        porNomeExato.set(normNome(nome), custo);
+        // TODOS os custos daquele nome, não o último.
+        //
+        // Era `porNomeExato.set(chave, custo)` — um `Map`. Duas linhas com o
+        // MESMO nome e custos diferentes faziam o segundo `set` sobrescrever o
+        // primeiro, calado, e `custoPorNome` consultava este mapa ANTES da
+        // detecção de ambiguidade. Resultado: a guarda de conflito só valia
+        // para nomes PARECIDOS; para nomes idênticos o último vencia.
+        //
+        // Medido em 10/08/2026 forjando uma planilha suja: duas linhas de
+        // "Babuche Molekinha Arco Iris 22591.408" com 54,16 e 61,90 gravaram
+        // 61,90 e reportaram ZERO ambíguos. E nome repetido é a forma MAIS
+        // comum de planilha suja — o mesmo produto listado duas vezes, com o
+        // preço velho e o novo.
+        const chave = normNome(nome);
+        const jaVistos = porNomeExato.get(chave) ?? [];
+        jaVistos.push({ custo, original: nome });
+        porNomeExato.set(chave, jaVistos);
         entradasNome.push({ palavras: palavras(nome), custo, original: nome });
       }
     }
@@ -310,8 +326,20 @@ export async function importarCustos(
    * uma seria gravar custo errado sem avisar.
    */
   function custoPorNome(nomeProduto: string, produtoId: string): number | null {
-    const exato = porNomeExato.get(normNome(nomeProduto));
-    if (exato != null) return exato;
+    const exatos = porNomeExato.get(normNome(nomeProduto));
+    if (exatos && exatos.length > 0) {
+      const distintos = [...new Map(exatos.map((e) => [e.custo, e])).values()];
+      // Nome IDÊNTICO com custos diferentes é conflito, e recusar aqui é a
+      // mesma decisão que o caminho aproximado já tomava logo abaixo.
+      if (distintos.length > 1) {
+        ambiguos.set(produtoId, {
+          produto: nomeProduto,
+          candidatos: distintos.map((d) => ({ custo: d.custo, origem: d.original })),
+        });
+        return null;
+      }
+      return distintos[0].custo;
+    }
 
     const candidatos = entradasNome.filter((e) => mesmaIdentidade(e.original, nomeProduto));
     if (candidatos.length === 0) return null;
