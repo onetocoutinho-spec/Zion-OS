@@ -1,4 +1,6 @@
 import { criarRepositorio } from "../repositorio";
+import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { lerTudoPaginado } from "../supabase/paginado";
 import { anuncioGeradoParaApp, anuncioGeradoParaBanco } from "../supabase/mappers";
 import type { AnuncioGeradoRow } from "../supabase/database.types";
 import type { AnuncioGeradoRegistro, StatusAnuncioGerado } from "../types";
@@ -129,6 +131,41 @@ export async function listarResumoDeAnunciosDoProduto(
     { coluna: "produto_id", valor: produtoId, campoLocal: "produtoId" },
     COLUNAS_DO_RESUMO
   );
+}
+
+/**
+ * A categoria do ML por produto — a leitura mais estreita que existe aqui.
+ *
+ * DUAS colunas, e a estreiteza é o ponto: quem precisa disto quer saber com que
+ * `category_id` pedir a tarifa exata, não o anúncio. `listarResumoDeAnunciosDoCliente`
+ * traria 22 colunas e ~322 kB para produzir um mapa de dois campos — o mesmo
+ * desperdício que o JSONB já era.
+ *
+ * Quando um produto tem vários anúncios, vale o PRIMEIRO com categoria
+ * conhecida. Eles são variações do mesmo item e compartilham a categoria; se um
+ * dia divergirem, a tarifa é por item e esta função deixa de bastar.
+ */
+export async function categoriasDosProdutos(clienteId: string): Promise<Map<string, string>> {
+  if (!supabaseConfigurado) return new Map();
+  const linhas = await lerTudoPaginado<{ produto_id: string | null; categoria_ml: string | null }>(
+    "categorias dos produtos",
+    (de, ate) =>
+      getSupabase()
+        .from("anuncios_gerados")
+        .select("produto_id, categoria_ml")
+        .eq("cliente_id", clienteId)
+        .not("categoria_ml", "is", null)
+        .order("id", { ascending: true })
+        .range(de, ate)
+  ).catch(() => []);
+
+  const mapa = new Map<string, string>();
+  for (const l of linhas) {
+    const produto = (l.produto_id ?? "").trim();
+    const categoria = (l.categoria_ml ?? "").trim();
+    if (produto && categoria && !mapa.has(produto)) mapa.set(produto, categoria);
+  }
+  return mapa;
 }
 
 export async function buscarAnuncioGerado(

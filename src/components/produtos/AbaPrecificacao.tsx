@@ -11,6 +11,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { calcularPrecificacao, resumoVariante } from "@/lib/variantes";
 import { custosDoCliente } from "@/lib/services/taxasDoCliente";
+import { categoriasDosProdutos } from "@/lib/services/anunciosGerados";
 import { comissaoPercentual, taxaFixaVenda } from "@/modules/pricing/domain/modeloPreco";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import {
@@ -69,11 +70,25 @@ export function AbaPrecificacao({ produto }: { produto: Produto }) {
   // `custosDoCliente` é a função que a tela de Precificação usa: comissão da
   // categoria exata via API do ML + reputação real da conta. Chamar daqui não
   // é rede nova — a resposta é cacheada por (cliente, categoria, preço, tipo).
+  //
+  // A CATEGORIA PASSOU A SER ENVIADA em 10/08/2026, e até então este comentário
+  // prometia o que o código não fazia: sem `categoryId`,
+  // `/sites/MLB/listing_prices` devolve `null` e a "comissão da categoria
+  // exata" era a da tabela. Medido: bolsas são MLB7022 (15%) e recebiam os 19%
+  // de Moda — quatro pontos de comissão inventada, que fazem a margem parecer
+  // pior e o preço ideal sair mais alto.
+  //
+  // `null` continua sendo um caminho normal: produto sem anúncio publicado não
+  // tem categoria, cai na tabela, e `comissaoDaApi` diz isso na tela.
   useEffect(() => {
     let vivo = true;
-    custosDoCliente({ clienteId: produto.clienteId, marketplace })
+    categoriasDosProdutos(produto.clienteId)
+      .then((porProduto) => (vivo ? porProduto.get(produto.id) ?? undefined : undefined))
+      .then((categoryId) =>
+        custosDoCliente({ clienteId: produto.clienteId, marketplace, categoryId, preco: produto.precoVenda || undefined })
+      )
       .then((c) => {
-        if (!vivo) return;
+        if (!vivo || !c) return;
         setOrigemDasTaxas({ daApi: c.comissaoDaApi, aviso: c.aviso });
         setF((cur) => ({
           ...cur,
@@ -91,7 +106,7 @@ export function AbaPrecificacao({ produto }: { produto: Produto }) {
     return () => {
       vivo = false;
     };
-  }, [produto.clienteId, marketplace]);
+  }, [produto.clienteId, produto.id, produto.precoVenda, marketplace]);
 
   const num = (s: string) => Number(s.replace(",", ".")) || 0;
   function set<K extends keyof typeof f>(k: K, v: string) {

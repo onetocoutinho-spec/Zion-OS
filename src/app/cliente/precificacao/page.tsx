@@ -21,6 +21,7 @@ import {
   type CustosDoLojista,
 } from "@/modules/pricing/domain/custosDoLojista";
 import { custosDoCliente, embalagemDasVariantes } from "@/lib/services/taxasDoCliente";
+import { categoriasDosProdutos } from "@/lib/services/anunciosGerados";
 import { definirCustoEscolhido } from "@/lib/services/importacaoCustos";
 import { CustoEditavel } from "@/components/client-portal/CustoEditavel";
 import { toneSaudeMargem } from "@/lib/client-portal/metrics";
@@ -73,6 +74,9 @@ function Precificacao() {
   // de 90% no frete. Enquanto não chega, vale o padrão (verde, a regra do ML
   // para quem ainda não tem reputação).
   const [taxasBase, setTaxasBase] = useState<ModeloTaxas>(TAXAS_PADRAO);
+  /** A tarifa EXATA por categoria do ML (056). Vazio = ninguém respondeu ainda. */
+  const [taxasPorCategoria, setTaxasPorCategoria] = useState<Map<string, ModeloTaxas>>(new Map());
+  const [categoriaPorProduto, setCategoriaPorProduto] = useState<Map<string, string>>(new Map());
   const [avisoCustos, setAvisoCustos] = useState<string | null>(null);
   /** O ML recusou a credencial: o aviso ganha um caminho de saída. */
   const [precisaReconectar, setPrecisaReconectar] = useState(false);
@@ -108,18 +112,51 @@ function Precificacao() {
 
   useEffect(() => {
     let vivo = true;
-    // Sem categoria no pedido: aqui só a reputação interessa. A comissão exata
-    // por categoria é consultada nas telas de UM produto, onde o lojista está
-    // prestes a decidir um preço — uma chamada por linha desta tabela seria
-    // uma tempestade de rede sem ganho proporcional.
-    custosDoCliente({ clienteId, marketplace })
-      .then((c) => {
-        if (!vivo) return;
-        setTaxasBase(c.taxas);
-        setAvisoCustos(c.aviso);
-        setPrecisaReconectar(Boolean(c.precisaReconectar));
-      })
-      .catch(() => vivo && setAvisoCustos("Não foi possível consultar sua reputação no ML."));
+    // UMA CHAMADA POR CATEGORIA, e não por linha.
+    //
+    // O comentário anterior recusava a comissão exata aqui porque "uma chamada
+    // por linha seria uma tempestade de rede". A premissa estava certa e a
+    // conclusão não: as linhas são 80, mas as CATEGORIAS são 4 — medido em
+    // 10/08/2026, depois que a 056 passou a guardar o `category_id`.
+    //
+    // Sem isso, `/sites/MLB/listing_prices` devolve `null` e a tabela vale para
+    // tudo. A tabela cobra 19% (Premium, Moda); as bolsas dela são MLB7022,
+    // onde o ML cobra 15%. Quatro pontos de comissão inventada fazem a margem
+    // parecer pior e o "preço ideal" sair mais alto — ela deixa de vender por
+    // um custo que não existe.
+    //
+    // O `custosDoCliente` cacheia por (cliente, categoria, preço, tipo), então
+    // a segunda montagem desta tela não paga rede nenhuma.
+    (async () => {
+      const porProduto = await categoriasDosProdutos(clienteId).catch(() => new Map<string, string>());
+      if (!vivo) return;
+      setCategoriaPorProduto(porProduto);
+
+      const categorias = [...new Set(porProduto.values())];
+      // A base SEM categoria continua sendo pedida: é ela que traz a reputação,
+      // e é o que vale para produto que não tem anúncio publicado.
+      const base = await custosDoCliente({ clienteId, marketplace }).catch(() => null);
+      if (!vivo) return;
+      if (base) {
+        setTaxasBase(base.taxas);
+        setAvisoCustos(base.aviso);
+        setPrecisaReconectar(Boolean(base.precisaReconectar));
+      } else {
+        setAvisoCustos("Não foi possível consultar sua reputação no ML.");
+      }
+
+      const porCategoria = new Map<string, ModeloTaxas>();
+      await Promise.all(
+        categorias.map(async (categoryId) => {
+          const c = await custosDoCliente({ clienteId, marketplace, categoryId }).catch(() => null);
+          // Falha de UMA categoria não derruba as outras: as que vierem usam a
+          // tarifa exata, as que não vierem caem na base — e `procedencia` já
+          // sabe dizer qual é qual.
+          if (c) porCategoria.set(categoryId, c.taxas);
+        })
+      );
+      if (vivo) setTaxasPorCategoria(porCategoria);
+    })();
     return () => {
       vivo = false;
     };
@@ -141,8 +178,12 @@ function Precificacao() {
 
   const linhas = useMemo(() => {
     return (produtos ?? []).map((p) => {
+      // A tarifa da CATEGORIA deste produto, quando o ML respondeu por ela.
+      // Sem categoria conhecida (produto que nunca foi publicado) ou sem
+      // resposta, vale a base — que é a tabela, e a tela diz que é.
+      const daCategoria = taxasPorCategoria.get(categoriaPorProduto.get(p.id) ?? "");
       const taxasDoProduto: ModeloTaxas = {
-        ...taxasBase,
+        ...(daCategoria ?? taxasBase),
         custosDoLojista: custosLojista,
         embalagem: embalagemPorProduto.get(p.id) ?? null,
         // Só entra quando o produto REALMENTE informou. Ausente fica ausente,
@@ -164,7 +205,7 @@ function Precificacao() {
       const pendencia = piso && !piso.ok && piso.motivo === "sem_peso" ? piso.pendencia : null;
       return { p, taxas, lucro, saude, precoIdeal, pendencia };
     });
-  }, [produtos, margem, taxasBase, custosLojista, embalagemPorProduto]);
+  }, [produtos, margem, taxasBase, taxasPorCategoria, categoriaPorProduto, custosLojista, embalagemPorProduto]);
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
