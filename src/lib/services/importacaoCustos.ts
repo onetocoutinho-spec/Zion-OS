@@ -185,7 +185,21 @@ interface EntradaNome {
  * mostrar nada.
  *
  * SÓ O NOME: quem casa por SKU ou EAN atinge a variante exata, e ali não há
- * espalhamento a avisar.
+ * espalhamento a avisar. Quem lê precisa saber disso para não ler "nenhum"
+ * como "esta linha não vai gravar" numa planilha que casa por SKU.
+ *
+ * ===========================================================================
+ * DEVOLVE TODAS AS LINHAS, INCLUSIVE AS DE ZERO
+ * ===========================================================================
+ *
+ * A primeira versão só registrava `> 1`, e a tela mostrava "1 produto" como
+ * padrão para o que não estava no mapa. Resultado medido em 10/08/2026: uma
+ * linha de "Sapato Fantasma Que Nao Existe No Catalogo" aparecia como
+ * "1 produto" — como se fosse cair em algum lugar. Confundir ZERO com UM é o
+ * oposto do que esta coluna existe para fazer.
+ *
+ * Zero é a informação mais útil das três: é a linha que não vai gravar nada, e
+ * saber disso ANTES vale mais que o `naoEncontrados` do relatório depois.
  */
 export function alcancePorNome(
   linhas: readonly Record<string, string>[],
@@ -197,13 +211,14 @@ export function alcancePorNome(
 
   linhas.forEach((row, i) => {
     const daPlanilha = (row[colunaNome] ?? "").trim();
+    // Linha sem nome não é "zero produtos": é linha que não usa este caminho.
+    // Ficar de fora do mapa é o certo — a tela não afirma nada sobre ela.
     if (!daPlanilha) return;
     const exato = normNome(daPlanilha);
-    const atingidos = nomesDoCatalogo.filter(
-      (n) => normNome(n) === exato || mesmaIdentidade(daPlanilha, n)
+    alcance.set(
+      i,
+      nomesDoCatalogo.filter((n) => normNome(n) === exato || mesmaIdentidade(daPlanilha, n))
     );
-    // A linha que atinge UM produto é o caso normal e não precisa de aviso.
-    if (atingidos.length > 1) alcance.set(i, atingidos);
   });
   return alcance;
 }

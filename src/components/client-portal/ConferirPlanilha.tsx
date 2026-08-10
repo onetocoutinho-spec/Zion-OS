@@ -162,12 +162,36 @@ export function ConferirPlanilha({
                 <td className="px-3 py-2">
                   {(() => {
                     const atinge = alcance.get(l.numero - 2);
-                    if (!atinge) return <span className="text-white/30">1 produto</span>;
+
+                    // FORA DO MAPA = a linha não tem nome. Não se afirma nada
+                    // sobre ela: quem casa por SKU ou EAN vai pelo outro
+                    // caminho, e este número não fala daquele.
+                    if (!atinge) return <span className="text-white/30">—</span>;
+
+                    // ZERO. A informação mais útil das três, e a que estava
+                    // sendo mostrada como "1 produto" até 10/08/2026.
+                    //
+                    // Com chave alternativa na linha, zero PELO NOME não é zero
+                    // no total — o SKU ainda pode achar. Dizer "nenhum" ali
+                    // seria trocar um erro por outro.
+                    if (atinge.length === 0) {
+                      return l.chave ? (
+                        <span className="text-white/30" title="Nenhum produto casa por nome — o SKU/EAN desta linha ainda pode achar.">
+                          pelo SKU
+                        </span>
+                      ) : (
+                        <span className="text-amber-300" title="Esta linha não vai encontrar produto nenhum. Confira o nome.">
+                          nenhum
+                        </span>
+                      );
+                    }
+
+                    if (atinge.length === 1) {
+                      return <span className="text-white/30">1 produto</span>;
+                    }
+
                     return (
-                      <span
-                        className="text-amber-300"
-                        title={atinge.join(", ")}
-                      >
+                      <span className="text-amber-300" title={atinge.join(", ")}>
                         {atinge.length} produtos
                       </span>
                     );
