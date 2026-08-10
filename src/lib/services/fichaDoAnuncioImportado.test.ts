@@ -600,3 +600,71 @@ test("a 049 GRITA se um dia rodar numa base com linhas órfãs", () => {
   const notNull = sql.indexOf("set not null");
   assert.ok(guarda < notNull, "a guarda ficou depois do NOT NULL: não protege nada");
 });
+
+// ---------------------------------------------------------------------------
+// `medir` GUARDA O RETRATO — e continua não apagando nada
+// ---------------------------------------------------------------------------
+//
+// Medido na conta real em 10/08/2026: a lojista clicava "Conferir agora", via o
+// retrato de hoje, e no F5 seguinte a tela voltava a abrir com a leitura de
+// 03/08. SETE DIAS. Nada de rotina atualizava aquilo — `medir` saía antes de
+// toda escrita, inclusive da que só registra o que o ML respondeu.
+//
+// A regra que a saída antecipada protege é "perguntar o que o ML tem não pode
+// APAGAR o catálogo". Guardar o estado de anúncios que já são nossos não é
+// isso: é o que a migração 051 criou lugar para guardar, e o modo `novos` já
+// grava com a mesma função pura.
+//
+// Estas asserções guardam os dois lados: que a gravação existe, e que ela
+// continua sendo SÓ do eixo do marketplace.
+
+test("`medir` grava o estado que acabou de observar", () => {
+  const trecho = FONTE.slice(
+    FONTE.indexOf('if (modo === "medir")'),
+    FONTE.indexOf('if (modo === "enriquecer")')
+  );
+  assert.match(
+    trecho,
+    /atualizarEstadoNoMarketplaceBulk\(/,
+    "`medir` voltou a descartar a leitura — a tela vai envelhecer em silêncio de novo"
+  );
+  assert.match(trecho, /estadosDesatualizados\(/, "gravou sem comparar: escreveria linha que não mudou");
+});
+
+test("e NÃO grava mais nada — o catálogo continua intocado por `medir`", () => {
+  // A lista é a mesma do teste posicional, mais os escritores de catálogo que
+  // não apagam mas alteram. Se algum aparecer DENTRO do ramo, `medir` deixou de
+  // ser diagnóstico.
+  const trecho = FONTE.slice(
+    FONTE.indexOf('if (modo === "medir")'),
+    FONTE.indexOf('if (modo === "enriquecer")')
+  );
+  for (const escrita of [
+    "criarProdutos(",
+    "criarVariantesBulk(",
+    "criarImagensBulk(",
+    "excluirAnunciosImportadosML(",
+    "excluirProdutosImportadosML(",
+    "criarAtributosBulk(",
+    "atualizarProduto(",
+  ]) {
+    assert.ok(
+      !trecho.includes(escrita),
+      `${escrita} entrou no ramo \`medir\`: perguntar o que o ML tem passou a mexer no catálogo`
+    );
+  }
+});
+
+test("a tela não promete mais o que deixou de ser verdade", () => {
+  // "Não altera nada" era exato enquanto `medir` não escrevia. Promessa falsa
+  // numa tela de diagnóstico é pior que a gravação que ela esconde.
+  const tela = lerFonte(
+    new URL("../../components/client-portal/PendenciasDaConta.tsx", import.meta.url)
+  );
+  assert.doesNotMatch(
+    tela,
+    /em ordem\. Não altera nada\./,
+    "a tela voltou a prometer que não altera nada, e `medir` grava o estado"
+  );
+  assert.match(tela, /só guarda o que o Mercado Livre respondeu/);
+});

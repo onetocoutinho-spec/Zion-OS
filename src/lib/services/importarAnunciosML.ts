@@ -673,16 +673,62 @@ export async function importarAnunciosDoCliente(
   // trabalho: é a garantia de que perguntar "o que o ML tem?" não pode, por
   // nenhum caminho, apagar o catálogo.
   if (modo === "medir") {
-    // Uma LEITURA a mais, para o "novos por status" existir. `medir` continua
-    // não escrevendo nada — e continua saindo antes de tudo que apaga.
+    // Uma LEITURA a mais, para o "novos por status" existir.
     // O RESUMO basta: daqui só sai um conjunto de MLBs. Trazer o JSONB de cada
     // anúncio para montar uma lista de strings era ~1 MB de rede por conferida.
-    const conhecidos = new Set(
-      (await listarResumoDeAnunciosDoCliente(clienteId)).map((e) => e.mlItemId).filter(Boolean) as string[]
+    const existentes = await listarResumoDeAnunciosDoCliente(clienteId);
+    const conhecidos = new Set(existentes.map((e) => e.mlItemId).filter(Boolean) as string[]);
+
+    // ===================================================================
+    // O RETRATO PASSA A FICAR — e por que isso NÃO viola a saída antecipada
+    // ===================================================================
+    //
+    // Até 10/08/2026 `medir` não escrevia NADA, e o efeito foi medido na conta
+    // real: a lojista clicava "Conferir agora", via o retrato de hoje, e no F5
+    // seguinte a tela voltava a abrir com a leitura de 03/08 — SETE DIAS de
+    // atraso. Nada de rotina atualizava aquilo, então o número que ela usava
+    // para decidir o dia era de uma semana antes.
+    //
+    // A regra que `medir` protege é "perguntar o que o ML tem não pode apagar
+    // o catálogo", e ela continua inteira: nenhum produto, variante ou imagem é
+    // tocado, e a saída segue ANTES das cinco operações destrutivas que o
+    // teste posicional nomeia.
+    //
+    // O que se grava é OUTRA COISA: o estado que o próprio ML acabou de
+    // informar sobre anúncios que já são nossos. É exatamente o que a migração
+    // 051 criou lugar para guardar, e o modo `novos` já grava com a mesma
+    // função pura. Não é leitura nova — é parar de descartar a que já foi
+    // feita.
+    //
+    // Grava só onde MUDOU, e só as colunas do eixo do marketplace. `status` (a
+    // esteira do Zion) não é tocado. Anúncio que o ML não devolveu fica
+    // intocado: ausência não é encerramento.
+    let gravados = 0;
+    let gravadosQueFalharam = 0;
+    const mudaram = estadosDesatualizados(
+      existentes,
+      todos.map((a) => ({
+        mlb: a.mlb,
+        status: a.status,
+        subStatus: a.subStatus ?? [],
+        fotoCapaMaxSize: a.fotoCapaMaxSize,
+        estoque: a.estoque,
+      })),
+      new Date().toISOString()
     );
+    if (mudaram.length > 0) {
+      const r = await atualizarEstadoNoMarketplaceBulk(mudaram);
+      gravados = r.atualizados;
+      gravadosQueFalharam = r.falharam;
+    }
+
     // O que o ML JÁ DISSE, do nosso banco (052). Sem isto, a lista de
     // pendências volta a cobrar a nossa inferência de capa — que erra em 71%
     // dos anúncios sobre os quais ele se pronunciou.
+    //
+    // AS INFRAÇÕES NÃO SÃO RELIDAS AQUI: elas vêm de outro endpoint do ML e de
+    // outro botão, na tela de Produtos. Este caminho atualiza metade do
+    // retrato, e é a metade que estava se perdendo.
     const jaAcusados = await infracoesPorAnuncioDoCliente(clienteId);
     return {
       produtos: 0,
@@ -692,6 +738,8 @@ export async function importarAnunciosDoCliente(
       pulados: 0,
       leitura,
       aviso: avisoLeitura,
+      estadosAtualizados: gravados,
+      estadosQueFalharam: gravadosQueFalharam,
       medicao: medirFichas(todos, dados.foraDaFicha, conhecidos, dados.obrigatorios, jaAcusados),
     };
   }

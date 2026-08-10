@@ -181,7 +181,15 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
         <div>
           <p className="text-sm font-semibold text-zinc-100">O que o Mercado Livre está cobrando</p>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Lê a sua conta e lista o que precisa de você, em ordem. Não altera nada.
+            {/* A PROMESSA MUDOU EM 10/08/2026, porque o comportamento mudou.
+                Dizia "Não altera nada". Desde que `medir` passou a guardar o
+                estado que o ML acabou de informar, a frase virava mentira — e
+                uma promessa falsa numa tela de diagnóstico é pior que a
+                gravação que ela esconde.
+                O que ela protege continua valendo, e é isso que o texto novo
+                afirma: nenhum produto, preço, foto ou anúncio é alterado. */}
+            Lê a sua conta e lista o que precisa de você, em ordem. Não altera seus
+            produtos nem seus anúncios — só guarda o que o Mercado Livre respondeu.
           </p>
         </div>
         <Button variant="ghost" onClick={conferir} disabled={carregando}>
