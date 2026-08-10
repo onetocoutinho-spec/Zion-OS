@@ -21,7 +21,9 @@ import { AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatBRLExato } from "@/lib/format";
 import type { PlanilhaLida } from "@/lib/planilha";
+import { alcancePorNome } from "@/lib/services/importacaoCustos";
 import {
+  colunaDoPapel,
   montarPrevia,
   NOME_DO_PAPEL,
   PAPEIS,
@@ -34,15 +36,44 @@ import {
 
 interface Props {
   planilha: PlanilhaLida;
+  /**
+   * Os nomes do catálogo — para dizer QUANTOS produtos cada linha atinge.
+   *
+   * Opcional: sem eles a conferência funciona como antes, só não avisa sobre
+   * espalhamento. Melhor isso do que uma tela que não abre.
+   */
+  nomesDoCatalogo?: readonly string[];
   onCancelar: () => void;
   onConfirmar: (mapa: Mapeamento) => void;
   ocupado?: boolean;
 }
 
-export function ConferirPlanilha({ planilha, onCancelar, onConfirmar, ocupado }: Props) {
+export function ConferirPlanilha({
+  planilha,
+  nomesDoCatalogo,
+  onCancelar,
+  onConfirmar,
+  ocupado,
+}: Props) {
   const [mapa, setMapa] = useState<Mapeamento>(() => sugerirMapeamento(planilha.headers));
 
   const previa = useMemo(() => montarPrevia(planilha.linhas, mapa), [planilha.linhas, mapa]);
+
+  /**
+   * QUANTOS produtos cada linha atinge pelo nome.
+   *
+   * Uma linha que atinge dois produtos não é erro — pode ser o mesmo modelo em
+   * duas cores, e espalhar é o que ela quer. Mas é decisão dela, e sem esta
+   * coluna a decisão era tomada em silêncio pelo casamento de nomes.
+   *
+   * O caso medido: "Babuche Yvate FEMININA Eva 1816" atingiu também o
+   * MASCULINO. Os dois tinham o mesmo custo e ninguém percebeu.
+   */
+  const alcance = useMemo(
+    () => alcancePorNome(planilha.linhas, colunaDoPapel(mapa, "nome") ?? null, nomesDoCatalogo ?? []),
+    [planilha.linhas, mapa, nomesDoCatalogo]
+  );
+  const linhasQueEspalham = alcance.size;
   const alertas = useMemo(() => sinaisDaPlanilha(planilha.linhas, mapa), [planilha.linhas, mapa]);
   const liberado = podeImportar(alertas);
 
@@ -115,6 +146,7 @@ export function ConferirPlanilha({ planilha, onCancelar, onConfirmar, ocupado }:
               <th className="px-3 py-2 font-medium">Linha</th>
               <th className="px-3 py-2 font-medium">Identificação</th>
               <th className="px-3 py-2 font-medium">Nome</th>
+              <th className="px-3 py-2 font-medium">Atinge</th>
               <th className="px-3 py-2 font-medium">Custo lido</th>
               <th className="px-3 py-2 font-medium">Preço de venda</th>
             </tr>
@@ -126,6 +158,20 @@ export function ConferirPlanilha({ planilha, onCancelar, onConfirmar, ocupado }:
                 <td className="max-w-[10rem] truncate px-3 py-2 text-white/70">{l.chave || "—"}</td>
                 <td className="max-w-[16rem] truncate px-3 py-2 text-white/70" title={l.nome}>
                   {l.nome || "—"}
+                </td>
+                <td className="px-3 py-2">
+                  {(() => {
+                    const atinge = alcance.get(l.numero - 2);
+                    if (!atinge) return <span className="text-white/30">1 produto</span>;
+                    return (
+                      <span
+                        className="text-amber-300"
+                        title={atinge.join(", ")}
+                      >
+                        {atinge.length} produtos
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2">
                   {l.custo === null ? (

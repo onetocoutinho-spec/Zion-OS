@@ -939,6 +939,7 @@ export default function ClienteProdutos() {
       {conferindo && (
         <ConferirPlanilha
           planilha={conferindo}
+          nomesDoCatalogo={(produtos ?? []).map((p) => p.nome)}
           ocupado={importandoCusto}
           onCancelar={() => setConferindo(null)}
           onConfirmar={(mapa) => void gravarCustos(mapa)}

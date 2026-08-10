@@ -875,6 +875,7 @@ export function ChatDaOperacao({
                    denuncia, e recusa importar quando os sinais são ruins. */
                 <ConferirPlanilha
                   planilha={t.planilha}
+                  nomesDoCatalogo={produtos.map((p) => p.nome)}
                   ocupado={t.importandoPlanilha}
                   onCancelar={() =>
                     setTurnos((ts) =>

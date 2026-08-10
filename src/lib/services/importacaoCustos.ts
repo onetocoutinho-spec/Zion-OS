@@ -146,6 +146,68 @@ interface EntradaNome {
  * sugestão, deixar a pessoa corrigir, e passar o resultado aqui — foi adivinhar
  * em silêncio que gravou 87 referências de modelo como se fossem dinheiro.
  */
+/**
+ * QUANTOS produtos cada linha da planilha vai atingir, PELO NOME.
+ *
+ * ===========================================================================
+ * O CASO QUE PRODUZIU ISTO
+ * ===========================================================================
+ *
+ * Medido em 10/08/2026, importando duas linhas na conta real: o relatório disse
+ * "3 produto(s)". A linha era "Babuche Yvate **Feminina** Eva 1816 Conforto" e
+ * `mesmaIdentidade` casou também com o **Masculino** — mesmo modelo, mesma
+ * numeração, uma palavra de diferença.
+ *
+ * Naquele caso os dois tinham o mesmo custo e não houve estrago. Foi sorte: uma
+ * planilha com "Feminina — R$ 31,00" daria 31,00 ao Masculino, calado.
+ *
+ * O importador já recusa o CONFLITO (duas linhas brigando pelo mesmo produto,
+ * com custos diferentes). O oposto — uma linha se espalhando por produtos
+ * demais — passava sem nenhum aviso, porque do ponto de vista dele nada está
+ * em disputa.
+ *
+ * ===========================================================================
+ * POR QUE MOSTRAR EM VEZ DE RECUSAR
+ * ===========================================================================
+ *
+ * Espalhar às vezes é o que ela QUER: o mesmo modelo em várias cores, uma linha
+ * de custo para todos. Recusar transformaria o caso legítimo em trabalho
+ * manual. Mostrar deixa a decisão com quem conhece o catálogo — que é a mesma
+ * razão de `ConferirPlanilha` existir.
+ *
+ * ===========================================================================
+ * A MESMA REGRA DA IMPORTAÇÃO, NÃO UMA PARECIDA
+ * ===========================================================================
+ *
+ * Usa `normNome` e `mesmaIdentidade` — as funções que `custoPorNome` usa lá
+ * embaixo. Uma segunda regra de casamento divergiria em silêncio e a prévia
+ * passaria a prometer um alcance que a gravação não cumpre, que é pior que não
+ * mostrar nada.
+ *
+ * SÓ O NOME: quem casa por SKU ou EAN atinge a variante exata, e ali não há
+ * espalhamento a avisar.
+ */
+export function alcancePorNome(
+  linhas: readonly Record<string, string>[],
+  colunaNome: string | null,
+  nomesDoCatalogo: readonly string[]
+): Map<number, string[]> {
+  const alcance = new Map<number, string[]>();
+  if (!colunaNome) return alcance;
+
+  linhas.forEach((row, i) => {
+    const daPlanilha = (row[colunaNome] ?? "").trim();
+    if (!daPlanilha) return;
+    const exato = normNome(daPlanilha);
+    const atingidos = nomesDoCatalogo.filter(
+      (n) => normNome(n) === exato || mesmaIdentidade(daPlanilha, n)
+    );
+    // A linha que atinge UM produto é o caso normal e não precisa de aviso.
+    if (atingidos.length > 1) alcance.set(i, atingidos);
+  });
+  return alcance;
+}
+
 export async function importarCustos(
   clienteId: string,
   planilha: PlanilhaLida,
