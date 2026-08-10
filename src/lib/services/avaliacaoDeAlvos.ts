@@ -35,6 +35,7 @@
 // ao ML) e, portanto, nunca é o bloqueio. Conferido em `precificacaoDoCopilot`.
 
 import { getSupabaseAdmin } from "../supabase/admin";
+import { lerTudoPorIds } from "../supabase/paginado";
 import { avaliar, type EntradasDoPreco } from "../../modules/pricing/domain/conversaDePreco";
 import { TAXAS_PADRAO } from "../../modules/pricing/domain/modeloPreco";
 import {
@@ -60,47 +61,6 @@ interface LinhaDeProduto {
 
 interface LinhaDeVariante extends MedidasDaVariante {
   produto_id: string;
-}
-
-/** Quantos ids cabem num `in` sem produzir URL de quilômetros. */
-const IDS_POR_LOTE = 200;
-/** O corte do PostgREST. Pedir mais numa página não adianta: ele para aqui. */
-const PAGINA = 1000;
-/** Trava de segurança contra laço infinito, não limite de negócio. */
-const TETO_DE_PAGINAS = 200;
-
-type Resposta<T> = PromiseLike<{ data: unknown; error: { message: string } | null }> & {
-  __linha?: T;
-};
-
-/**
- * Lê TODAS as linhas: em lotes de ids, e paginando dentro de cada lote.
- *
- * `montar` recebe o lote de ids e a janela, e devolve a consulta pronta. Manter
- * a montagem com quem chama é o que evita um wrapper genérico que esconderia o
- * `select` e o escopo de tenant — os dois precisam continuar visíveis na
- * chamada.
- *
- * LANÇA em erro, e isso é deliberado: preserva a distinção que este módulo já
- * defendia — leitura que falhou não é leitura que deu vazio.
- */
-async function lerTudo<T>(
-  oQue: string,
-  montar: (lote: string[], de: number, ate: number) => Resposta<T>,
-  ids: readonly string[]
-): Promise<T[]> {
-  const todas: T[] = [];
-  for (let i = 0; i < ids.length; i += IDS_POR_LOTE) {
-    const lote = ids.slice(i, i + IDS_POR_LOTE) as string[];
-    for (let pagina = 0; pagina < TETO_DE_PAGINAS; pagina++) {
-      const { data, error } = await montar(lote, pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
-      if (error) throw new Error(`consequencia: leitura de ${oQue} falhou — ${error.message}`);
-      const linhas = (data ?? []) as T[];
-      todas.push(...linhas);
-      if (linhas.length < PAGINA) break;
-    }
-  }
-  return todas;
 }
 
 /**
@@ -149,7 +109,7 @@ export async function avaliacaoDeAlvos(
   // O lote de ids também é recortado: `in` com milhares de uuids produz URL de
   // quilômetros, e o corte de 1.000 valeria para `produtos` do mesmo jeito.
   const [produtos, variantes, config] = await Promise.all([
-    lerTudo<LinhaDeProduto>("produtos", (lote, de, ate) =>
+    lerTudoPorIds<LinhaDeProduto>("produtos", ids, (lote, de, ate) =>
       admin
         .from("produtos")
         .select("id, nome, marca, custo, preco_venda, vendedor_paga_frete")
@@ -157,8 +117,8 @@ export async function avaliacaoDeAlvos(
         .in("id", lote)
         .order("id", { ascending: true })
         .range(de, ate)
-    , ids),
-    lerTudo<LinhaDeVariante>("variantes", (lote, de, ate) =>
+    ),
+    lerTudoPorIds<LinhaDeVariante>("variantes", ids, (lote, de, ate) =>
       admin
         .from("produto_variantes")
         .select("produto_id, peso, altura, largura, comprimento")
@@ -166,7 +126,7 @@ export async function avaliacaoDeAlvos(
         .in("produto_id", lote)
         .order("id", { ascending: true })
         .range(de, ate)
-    , ids),
+    ),
     configuracaoDoLojista(clienteId),
   ]);
 

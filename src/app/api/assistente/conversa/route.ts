@@ -49,6 +49,7 @@ import {
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { lerTudoPorIds } from "@/lib/supabase/paginado";
 import { definirEstadoDoItem, mlbsComInfracao, renovarToken } from "@/lib/marketplaces/mercadolivre";
 import {
   atualizarRefreshTokenServidor,
@@ -232,21 +233,32 @@ async function idsElegiveisPorProduto(
 ): Promise<Map<string, string[]>> {
   const mapa = new Map<string, string[]>();
   if (alvos.length === 0) return mapa;
-  const { data, error } = await getSupabaseAdmin()
-    .from("produto_variantes")
-    .select("id, produto_id")
-    .in("produto_id", alvos)
-    .eq("cliente_id", clienteId)
-    .lte("peso", 0)
-    .order("id", { ascending: true });
-  // Falha de leitura NÃO vira conjunto vazio — viraria uma proposta que não
-  // escreve em lugar nenhum, com cara de normal. Sem ids, a proposta nasce sob
-  // o contrato legacy, que é o comportamento de antes deste ciclo.
-  if (error) {
-    console.error("[copilot] falha ao congelar o conjunto aprovado do lote:", error);
+  // PAGINADO: `alvos` não tem teto — um lote "aplique em todos" alcança o
+  // catálogo inteiro, e a média medida é de 12,1 variantes por produto.
+  // Truncado, o conjunto aprovado nasceria MENOR do que o lojista aprovou.
+  let linhas: { id: string; produto_id: string }[];
+  try {
+    linhas = await lerTudoPorIds<{ id: string; produto_id: string }>(
+      "variantes elegíveis do lote",
+      alvos,
+      (lote, de, ate) =>
+        getSupabaseAdmin()
+          .from("produto_variantes")
+          .select("id, produto_id")
+          .in("produto_id", lote)
+          .eq("cliente_id", clienteId)
+          .lte("peso", 0)
+          .order("id", { ascending: true })
+          .range(de, ate)
+    );
+  } catch (e) {
+    // Falha de leitura NÃO vira conjunto vazio — viraria uma proposta que não
+    // escreve em lugar nenhum, com cara de normal. Sem ids, a proposta nasce
+    // sob o contrato legacy, que é o comportamento de antes deste ciclo.
+    console.error("[copilot] falha ao congelar o conjunto aprovado do lote:", e);
     return mapa;
   }
-  for (const v of (data ?? []) as { id: string; produto_id: string }[]) {
+  for (const v of linhas) {
     const lista = mapa.get(v.produto_id) ?? [];
     lista.push(v.id);
     mapa.set(v.produto_id, lista);

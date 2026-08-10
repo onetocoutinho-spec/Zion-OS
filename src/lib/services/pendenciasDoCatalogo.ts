@@ -13,6 +13,7 @@
 // outro", simplesmente não existe do ponto de vista de quem perguntou.
 
 import { getSupabaseAdmin } from "../supabase/admin";
+import { lerTudoPorIds } from "../supabase/paginado";
 import type {
   ProdutoParaAnalise,
   VarianteParaAnalise,
@@ -77,17 +78,32 @@ export async function catalogoParaAnalise(clienteId: string): Promise<CatalogoPa
   }
   const ids = produtos.map((p) => p.id);
 
+  // PAGINADO. `LIMITE_DE_PRODUTOS` é 500, e a média medida é de 12,1 variantes
+  // por produto: 6.000 linhas, cortadas em 1.000 pelo PostgREST sem erro. Hoje
+  // a base tem 80 produtos e 970 variantes — passa raspando, e o dia em que não
+  // passar não vem com aviso.
   const [variantes, imagens] = await Promise.all([
-    admin
-      .from("produto_variantes")
-      .select("id, produto_id, sku, ean, cor, tamanho, peso")
-      .eq("cliente_id", clienteId)
-      .in("produto_id", ids),
-    admin.from("imagens_produto").select("produto_id").in("produto_id", ids),
+    lerTudoPorIds<LinhaDeVariante>("variantes do catálogo", ids, (lote, de, ate) =>
+      admin
+        .from("produto_variantes")
+        .select("id, produto_id, sku, ean, cor, tamanho, peso")
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    ),
+    lerTudoPorIds<{ produto_id: string }>("imagens do catálogo", ids, (lote, de, ate) =>
+      admin
+        .from("imagens_produto")
+        .select("produto_id")
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    ),
   ]);
 
   const porProduto = new Map<string, VarianteParaAnalise[]>();
-  for (const v of (variantes.data ?? []) as LinhaDeVariante[]) {
+  for (const v of variantes) {
     const lista = porProduto.get(v.produto_id) ?? [];
     lista.push({
       id: v.id,
@@ -102,7 +118,7 @@ export async function catalogoParaAnalise(clienteId: string): Promise<CatalogoPa
   }
 
   const comImagem = new Set(
-    ((imagens.data ?? []) as { produto_id: string | null }[])
+    (imagens as { produto_id: string | null }[])
       .map((i) => i.produto_id)
       .filter((id): id is string => Boolean(id))
   );

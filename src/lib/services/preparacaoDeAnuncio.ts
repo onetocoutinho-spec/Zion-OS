@@ -14,6 +14,7 @@
 // banco.
 
 import { getSupabaseAdmin } from "../supabase/admin";
+import { lerTudoPorIds } from "../supabase/paginado";
 import type {
   AnuncioJaGerado,
   ProdutoParaPreparar,
@@ -178,6 +179,8 @@ export async function produtoParaPreparar(
   const linhasDeVariante = (variantes.data ?? []) as LinhaDeVariante[];
   return {
     produto: montar(p, linhasDeVariante, ((imagens.data ?? []) as unknown[]).length),
+    // UM produto: no maximo 41 variantes medidas, e `.limit(1)` no anuncio.
+    // Nao pagina porque nao ha o que paginar.
     anuncio: anuncioMaisRecente((anuncios.data ?? []) as LinhaDeAnuncio[]).get(produtoId) ?? null,
   };
 }
@@ -197,29 +200,55 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
   }
   const ids = produtos.map((p) => p.id);
 
+  // PAGINADO. `LIMITE_DE_PRODUTOS` é 300, e a média medida é de 12,1 variantes
+  // por produto: ~3.600 linhas, cortadas em 1.000 sem erro. As três leituras
+  // filhas têm o mesmo problema — `anuncios_gerados` são 880 para 80 produtos.
+  //
+  // A ordem de `anuncios_gerados` é `criado_em desc` E `id`: sem o desempate,
+  // linhas gravadas no mesmo instante — que é o caso da importação em lote —
+  // podem vir duas vezes numa página e nenhuma na outra.
   const [variantes, imagens, anuncios] = await Promise.all([
-    admin.from("produto_variantes").select(CAMPOS_VARIANTE).eq("cliente_id", clienteId).in("produto_id", ids),
-    admin.from("imagens_produto").select("produto_id").in("produto_id", ids),
-    admin
-      .from("anuncios_gerados")
-      .select(CAMPOS_ANUNCIO)
-      .eq("cliente_id", clienteId)
-      .in("produto_id", ids)
-      .order("criado_em", { ascending: false }),
+    lerTudoPorIds<LinhaDeVariante>("variantes do catálogo", ids, (lote, de, ate) =>
+      admin
+        .from("produto_variantes")
+        .select(CAMPOS_VARIANTE)
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    ),
+    lerTudoPorIds<{ produto_id: string }>("imagens do catálogo", ids, (lote, de, ate) =>
+      admin
+        .from("imagens_produto")
+        .select("produto_id")
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+    ),
+    lerTudoPorIds<LinhaDeAnuncio>("anúncios do catálogo", ids, (lote, de, ate) =>
+      admin
+        .from("anuncios_gerados")
+        .select(CAMPOS_ANUNCIO)
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("criado_em", { ascending: false })
+        .order("id", { ascending: true })
+        .range(de, ate)
+    ),
   ]);
 
   const porProduto = new Map<string, LinhaDeVariante[]>();
-  for (const v of (variantes.data ?? []) as LinhaDeVariante[]) {
+  for (const v of variantes) {
     const lista = porProduto.get(v.produto_id) ?? [];
     lista.push(v);
     porProduto.set(v.produto_id, lista);
   }
   const contagemDeImagens = new Map<string, number>();
-  for (const i of (imagens.data ?? []) as { produto_id: string | null }[]) {
+  for (const i of imagens as { produto_id: string | null }[]) {
     if (!i.produto_id) continue;
     contagemDeImagens.set(i.produto_id, (contagemDeImagens.get(i.produto_id) ?? 0) + 1);
   }
-  const porAnuncio = anuncioMaisRecente((anuncios.data ?? []) as LinhaDeAnuncio[]);
+  const porAnuncio = anuncioMaisRecente(anuncios);
 
   return {
     itens: produtos.map((p) => ({

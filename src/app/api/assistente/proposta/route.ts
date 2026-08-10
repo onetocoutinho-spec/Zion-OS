@@ -46,6 +46,7 @@ import {
 } from "@/modules/assistant/domain/propostaPersistida";
 import { escritaDePeso } from "@/modules/assistant/domain/conjuntoAprovado";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { lerTudoPorIds } from "@/lib/supabase/paginado";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { buscarDraft, marcarDraftCriado } from "@/lib/services/copilotCadastros";
 import { criarProdutoDoDraft, CadastroInvalido } from "@/lib/services/criacaoDeProduto";
@@ -285,17 +286,19 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   const porAlvo = [...campos].filter((c) => c.startsWith("variacoesSemPeso:"));
   if (porAlvo.length > 0) {
     const idsDaProposta = porAlvo.map((c) => c.slice("variacoesSemPeso:".length));
-    const { data: doTenant } = await admin
-      .from("produtos")
-      .select("id")
-      .in("id", idsDaProposta)
-      .eq("cliente_id", p.clienteId);
-    const permitidos = new Set(((doTenant ?? []) as { id: string }[]).map((r) => r.id));
+    // PAGINADOS: `idsDaProposta` acompanha os alvos, que não têm teto.
+    const doTenant = await lerTudoPorIds<{ id: string }>(
+      "produtos da proposta", idsDaProposta, (lote, de, ate) =>
+        admin.from("produtos").select("id").in("id", lote)
+          .eq("cliente_id", p.clienteId).order("id", { ascending: true }).range(de, ate)
+    );
+    const permitidos = new Set(doTenant.map((r) => r.id));
 
-    const { data: vars } = await admin
-      .from("produto_variantes")
-      .select("produto_id, peso")
-      .in("produto_id", idsDaProposta);
+    const vars = await lerTudoPorIds<{ produto_id: string; peso: number | null }>(
+      "variantes da proposta", idsDaProposta, (lote, de, ate) =>
+        admin.from("produto_variantes").select("produto_id, peso").in("produto_id", lote)
+          .order("id", { ascending: true }).range(de, ate)
+    );
     const semPeso = new Map<string, number>();
     // As pesadas, por produto — para reconstituir a REFERENCIA de agora.
     const pesadas = new Map<string, Set<number>>();
@@ -437,17 +440,25 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
   }
 
   if (p.alvos.length > 1) {
-    const { data } = await admin
-      .from("produto_variantes")
-      .select("id, produto_id, peso, altura, largura, comprimento")
-      .in("produto_id", p.alvos);
-    const linhas = (data ?? []) as { peso: number | null }[];
+    // PAGINADO: `p.alvos` não tem teto.
+    const linhas = await lerTudoPorIds<{
+      id: string;
+      produto_id: string;
+      peso: number | null;
+      altura: number | null;
+      largura: number | null;
+      comprimento: number | null;
+    }>("variantes do retrato", p.alvos, (lote, de, ate) =>
+        admin.from("produto_variantes")
+          .select("id, produto_id, peso, altura, largura, comprimento")
+          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+    );
     return {
       antes: {
         variacoesLidas: linhas.length,
         semPesoAntes: linhas.filter((v) => !v.peso || v.peso <= 0).length,
       },
-      medidasAntes: agruparPorProduto(data),
+      medidasAntes: agruparPorProduto(linhas),
     };
   }
   const { data } = await admin
@@ -600,10 +611,15 @@ async function gravar(p: PropostaPersistida): Promise<{
     //
     // A escrita não toca dimensão nenhuma; elas entram no retrato, não na
     // mutação. O payload de auditoria abaixo continua exatamente o mesmo.
-    const { data: antesLote } = await admin
-      .from("produto_variantes")
-      .select("id, produto_id, peso, altura, largura, comprimento")
-      .in("produto_id", p.alvos);
+    // PAGINADO. Este é o SNAPSHOT que vira `MedidasAnteriores`: truncado, os
+    // produtos que faltassem entrariam em `avaliacaoDeAlvos` como "não
+    // avaliado" — o mesmo silêncio, uma camada acima.
+    const antesLote = await lerTudoPorIds<Record<string, unknown>>(
+      "snapshot anterior do lote", p.alvos, (lote, de, ate) =>
+        admin.from("produto_variantes")
+          .select("id, produto_id, peso, altura, largura, comprimento")
+          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+    );
     // ELEGIVEIS conta dentro do conjunto APROVADO. Contar fora dele faria a
     // ressalva do desfecho comparar a escrita com um universo que o lojista
     // nunca viu — e dizer "escrevi em 2 de 5" quando ele aprovou 3.

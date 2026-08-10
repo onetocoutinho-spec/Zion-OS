@@ -66,13 +66,18 @@ test("o porto escopa TODA leitura de produto pelos ids recebidos", () => {
     2,
     `esperava 2 leituras escopadas por ids, achei ${escopadas.length}`
   );
-  // E `lote` PRECISA sair de `ids`. Sem esta linha, aceitar o nome novo abriria
-  // a porta para um `lote` que viesse de qualquer outro lugar — que é
-  // exatamente a varredura de catálogo que este teste existe para impedir.
-  assert.match(
-    PORTO_CODIGO,
-    /const lote = ids\.slice\(/,
-    "`lote` deixou de ser um recorte de `ids` — o escopo pode ter sido perdido"
+  // E `lote` PRECISA sair de `ids`.
+  //
+  // O recorte mora em `lerTudoPorIds` desde 10/08/2026, quando o laço virou
+  // helper compartilhado — a quarta cópia dele seria a divergência que ele
+  // existe para impedir. Então o que este teste exige aqui é que as duas
+  // leituras passem `ids` AO helper; quem garante que o helper só olha para
+  // `ids.slice()` é o teste dele.
+  const porIds = PORTO_CODIGO.match(/lerTudoPorIds<[^>]+>\(\s*"[^"]+"\s*,\s*ids\s*,/g) ?? [];
+  assert.equal(
+    porIds.length,
+    2,
+    `esperava as 2 leituras passando \`ids\` a lerTudoPorIds, achei ${porIds.length}`
   );
 });
 
@@ -107,15 +112,30 @@ test("leitura que FALHOU não vira leitura VAZIA — as duas queries são confer
   // Quem prova o COMPORTAMENTO é `variantesAlemDoCorte.test.ts`, com o
   // PostgREST recusando de verdade. Aqui fica a garantia estrutural de que o
   // caminho do erro não sumiu e de que ele ainda diz QUAL leitura falhou.
+  // O `throw` DESCEU DUAS VEZES, e a segunda foi para fora do arquivo.
+  //
+  //   até 10/08  `if (produtos.error) throw` / `if (variantes.error) throw`
+  //   depois     desceu para o laço de páginas (checar só a última resposta
+  //              deixaria passar a falha de uma página do meio)
+  //   depois     virou `lerTudoPaginado`, compartilhado — o laço estava na
+  //              quarta cópia e a divergência era questão de tempo
+  //
+  // Perseguir a forma pela terceira vez seria repetir o erro. O que este teste
+  // exige agora é que o porto NÃO leia por fora do helper: nenhuma consulta
+  // crua, nenhum `.data ?? []` para engolir a diferença entre falhar e vir
+  // vazio.
+  //
+  // Quem prova o COMPORTAMENTO é `variantesAlemDoCorte.test.ts`, com o
+  // PostgREST recusando de verdade (42501 e 57014), inclusive na segunda
+  // página.
   assert.match(
     PORTO_CODIGO,
-    /if\s*\(error\)\s*throw/,
-    "o caminho de erro sumiu do porto: uma falha de leitura vira número plausível"
+    /lerTudoPorIds/,
+    "o porto voltou a montar consulta por fora do helper — o caminho de erro se perde aí"
   );
-  assert.match(
-    PORTO_CODIGO,
-    /leitura de \$\{oQue\} falhou/,
-    "a mensagem deixou de dizer QUAL leitura falhou"
+  assert.ok(
+    !/\.\s*error\b/.test(PORTO_CODIGO),
+    "o porto voltou a inspecionar `error` por conta própria: ou ele lê pelo helper, ou a conferência divergiu de novo"
   );
   assert.ok(
     !/\.data\s*\?\?\s*\[\]/.test(PORTO_CODIGO),

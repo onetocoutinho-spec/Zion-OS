@@ -24,6 +24,7 @@
 // camada, a conta é a mesma e só a procedência muda de `tabela` para `api`.
 
 import { getSupabaseAdmin } from "../supabase/admin";
+import { lerTudoPorIds } from "../supabase/paginado";
 import {
   MARGEM_MINIMA_PADRAO,
   TAXAS_PADRAO,
@@ -258,16 +259,22 @@ export async function catalogoParaTriagem(clienteId: string): Promise<CatalogoPa
     };
   }
 
-  const { data: vars } = await admin
-    .from("produto_variantes")
-    .select("produto_id, peso, altura, largura, comprimento")
-    .eq("cliente_id", clienteId)
-    .in(
-      "produto_id",
-      linhas.map((l) => l.id)
-    );
+  // PAGINADO: `linhas` acompanha o recorte do catálogo, e 12,1 variantes por
+  // produto passam de 1.000 com menos de 83 produtos.
+  const vars = await lerTudoPorIds<LinhaDeVariante>(
+    "variantes do copiloto",
+    linhas.map((l) => l.id),
+    (lote, de, ate) =>
+      admin
+        .from("produto_variantes")
+        .select("produto_id, peso, altura, largura, comprimento")
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+  );
   const porProduto = new Map<string, LinhaDeVariante[]>();
-  for (const v of (vars ?? []) as LinhaDeVariante[]) {
+  for (const v of vars) {
     const lista = porProduto.get(v.produto_id) ?? [];
     lista.push(v);
     porProduto.set(v.produto_id, lista);

@@ -8,6 +8,7 @@
 // Sem gravar, é impossível dizer "ontem eram 460, hoje são 430" — e essa é a
 // única frase que prova trabalho feito.
 
+import { lerTudoPaginado } from "../supabase/paginado";
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { semHtml, type Infracao } from "../../modules/integration/domain/infracoesDaConta";
 
@@ -124,32 +125,28 @@ export async function infracoesPorAnuncioDoCliente(
   clienteId: string
 ): Promise<Record<string, { motivo: string; remedio: string }[]>> {
   if (!supabaseConfigurado) return {};
-  const PAGINA = 1000;
-  const TETO_PAGINAS = 200; // trava de segurança, não limite real
-  const mapa: Record<string, { motivo: string; remedio: string }[]> = {};
-  for (let pagina = 0; pagina < TETO_PAGINAS; pagina++) {
-    const { data, error } = await getSupabase()
+  const linhas = await lerTudoPaginado<{
+    related_item_id: string;
+    motivo: string | null;
+    remedio: string | null;
+  }>("infrações do Mercado Livre", (de, ate) =>
+    getSupabase()
       .from("infracoes_marketplace")
       .select("related_item_id, motivo, remedio")
       .eq("cliente_id", clienteId)
       .not("related_item_id", "is", null)
       .order("id", { ascending: true })
-      .range(pagina * PAGINA, pagina * PAGINA + PAGINA - 1);
-    if (error) return mapa;
-    const lote = (data ?? []) as {
-      related_item_id: string;
-      motivo: string | null;
-      remedio: string | null;
-    }[];
-    for (const l of lote) {
-      (mapa[l.related_item_id] ??= []).push({
-        motivo: l.motivo ?? "",
-        // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
-        // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.
-        remedio: semHtml(l.remedio ?? ""),
-      });
-    }
-    if (lote.length < PAGINA) break;
+      .range(de, ate)
+  ).catch(() => []);
+
+  const mapa: Record<string, { motivo: string; remedio: string }[]> = {};
+  for (const l of linhas) {
+    (mapa[l.related_item_id] ??= []).push({
+      motivo: l.motivo ?? "",
+      // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
+      // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.
+      remedio: semHtml(l.remedio ?? ""),
+    });
   }
   return mapa;
 }
@@ -164,12 +161,27 @@ export async function retratoDasInfracoes(
   clienteId: string
 ): Promise<{ infracoes: number; anuncios: number }> {
   if (!supabaseConfigurado) return { infracoes: 0, anuncios: 0 };
-  const { data, error } = await getSupabase()
-    .from("infracoes_marketplace")
-    .select("related_item_id")
-    .eq("cliente_id", clienteId);
-  if (error) return { infracoes: 0, anuncios: 0 };
-  const linhas = (data ?? []) as { related_item_id: string | null }[];
+  // PAGINADO desde 10/08/2026, e este estava QUEBRADO EM PRODUÇÃO: são 1.060
+  // infrações gravadas, e uma consulta só devolvia 1.000. A função que existe
+  // justamente para dizer "1.060 em 460 anúncios" dizia "1.000 em ~440" — os
+  // dois números errados, em silêncio, na tela que a lojista abre para saber o
+  // tamanho do problema.
+  //
+  // Consertei a irmã (`infracoesPorAnuncioDoCliente`) sem olhar para esta, no
+  // mesmo arquivo. É por isso que a varredura existe.
+  const linhas = await lerTudoPaginado<{ related_item_id: string | null }>(
+    "retrato das infrações",
+    (de, ate) =>
+      getSupabase()
+        .from("infracoes_marketplace")
+        .select("related_item_id")
+        .eq("cliente_id", clienteId)
+        .order("id", { ascending: true })
+        .range(de, ate)
+  ).catch(() => null);
+  // Leitura que falhou não vira retrato vazio: zero é um FATO na tela ("nenhuma
+  // infração"), e afirmá-lo sem ter lido é a mentira que esta classe produz.
+  if (linhas === null) return { infracoes: 0, anuncios: 0 };
   const itens = new Set(linhas.map((l) => l.related_item_id).filter(Boolean));
   return { infracoes: linhas.length, anuncios: itens.size };
 }
