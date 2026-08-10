@@ -464,3 +464,103 @@ test("entra em receita: 416 peças paradas não é 'bom saber'", () => {
   assert.equal(r.itens.find((x) => x.tipo === "pausado-por-voce")!.gravidade, "receita");
   assert.equal(r.estoqueTravado, 416);
 });
+
+// ---------------------------------------------------------------------------
+// O ML SEGURANDO O ANÚNCIO — medido em produção em 10/08/2026
+// ---------------------------------------------------------------------------
+//
+// Dos 127 anúncios em `waiting_for_patch`, 127 tinham infração registrada. Cem
+// por cento. E o mesmo anúncio produzia DUAS linhas: uma com o remédio do ML e
+// outra, logo abaixo, dizendo "só o painel diz qual".
+//
+// É o mesmo defeito que o caso `bloqueado` já tinha consertado — mandar a
+// lojista buscar fora uma resposta que está no nosso banco desde a 052.
+
+const REMEDIO_DO_ML = {
+  motivo: "A foto de capa não cumpre os requisitos.",
+  remedio: "Corrija suas fotos: descumpre o tamanho mínimo.",
+};
+
+test("anúncio segurado COM infração dá UMA linha, e é a que traz o remédio", () => {
+  const r = pendenciasDaConta(
+    [an("MLB1", { status: "under_review", estoque: 352, subStatus: ["waiting_for_patch"], familia: "Papete" })],
+    25,
+    { MLB1: [REMEDIO_DO_ML] }
+  );
+  assert.equal(r.itens.length, 1, "o anúncio voltou a aparecer duas vezes");
+  assert.equal(r.itens[0].tipo, "infracao-do-ml");
+  assert.match(r.itens[0].oQueFazer, /Corrija suas fotos/);
+});
+
+test("e a tela não mostra o mesmo produto em dois grupos", () => {
+  // O agrupamento é por `tipo|familia`: duas linhas viravam dois grupos, e os
+  // 15 produtos travados viravam 30 linhas na tela dela.
+  const r = pendenciasDaConta(
+    [
+      an("MLB1", { status: "under_review", estoque: 352, subStatus: ["waiting_for_patch"], familia: "Papete" }),
+      an("MLB2", { status: "under_review", estoque: 100, subStatus: ["waiting_for_patch"], familia: "Papete" }),
+    ],
+    25,
+    { MLB1: [REMEDIO_DO_ML], MLB2: [REMEDIO_DO_ML] }
+  );
+  assert.equal(r.grupos.length, 1, "um produto virou mais de uma linha na tela");
+  assert.equal(r.grupos[0].quantos, 2);
+  assert.equal(r.grupos[0].estoque, 452);
+});
+
+test("NUNCA manda procurar no painel do ML o que já temos", () => {
+  // A frase que este conserto existe para matar.
+  const r = pendenciasDaConta(
+    [an("MLB1", { status: "under_review", estoque: 352, subStatus: ["waiting_for_patch"] })],
+    25,
+    { MLB1: [REMEDIO_DO_ML] }
+  );
+  for (const p of r.itens) {
+    assert.doesNotMatch(
+      p.oQueFazer,
+      /só o painel diz qual/i,
+      "voltou a mandar buscar fora uma resposta que está no nosso banco"
+    );
+  }
+});
+
+test("segurado é PREJUÍZO EM CURSO, e o texto diz isso", () => {
+  // A diferença entre "há uma infração e você continua vendendo" e "ele tirou
+  // do ar" é o que decide o que ela faz primeiro. Sem isso as duas viravam a
+  // mesma linha.
+  const segurado = pendenciasDaConta(
+    [an("PARADO", { status: "under_review", estoque: 352, subStatus: ["waiting_for_patch"] })],
+    25,
+    { PARADO: [REMEDIO_DO_ML] }
+  );
+  const vendendo = pendenciasDaConta([an("VENDENDO", { status: "active", estoque: 352 })], 25, {
+    VENDENDO: [REMEDIO_DO_ML],
+  });
+  assert.match(segurado.itens[0].porque, /TIROU o anúncio do ar/);
+  assert.doesNotMatch(vendendo.itens[0].porque, /TIROU o anúncio do ar/);
+});
+
+test("quando o ML NÃO falou, a linha 'abra no painel' continua saindo", () => {
+  // Ela só é mentira quando temos a resposta. Sem infração registrada, o painel
+  // dele É a única fonte — e apagar a linha esconderia um anúncio fora do ar.
+  const r = pendenciasDaConta(
+    [an("MUDO", { status: "under_review", estoque: 10, subStatus: ["waiting_for_patch"] })],
+    25,
+    {}
+  );
+  assert.equal(r.itens.length, 1);
+  assert.equal(r.itens[0].tipo, "em-revisao");
+  assert.match(r.itens[0].oQueFazer, /só o painel diz qual/);
+});
+
+test("o estoque segurado entra no total de receita — 800 peças não somem", () => {
+  const r = pendenciasDaConta(
+    [
+      an("A", { status: "under_review", estoque: 352, subStatus: ["waiting_for_patch"] }),
+      an("B", { status: "under_review", estoque: 448, subStatus: ["waiting_for_patch"] }),
+    ],
+    25,
+    { A: [REMEDIO_DO_ML], B: [REMEDIO_DO_ML] }
+  );
+  assert.equal(r.estoqueTravado, 800);
+});

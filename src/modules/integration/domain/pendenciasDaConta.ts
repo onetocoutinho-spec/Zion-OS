@@ -235,6 +235,17 @@ export function pendenciasDaConta(
     // e é específico: "Corrija suas fotos: não mostra apenas uma unidade do
     // produto". Nenhuma inferência nossa chega a esse nível de instrução.
     if (doML.length > 0) {
+      // ELE ESTÁ SEGURANDO O ANÚNCIO, ou só anotou a infração?
+      //
+      // `waiting_for_patch` é o Mercado Livre dizendo "tirei do ar e só volta
+      // quando você corrigir". Sem ele, a infração existe e o anúncio continua
+      // vendendo. É a diferença entre risco e prejuízo em curso, e ela decide o
+      // que a lojista faz primeiro.
+      //
+      // Medido em 03/08/2026 na conta dela: 460 anúncios com infração, dos
+      // quais 127 segurados — e nesses 127 estavam 800 peças que não podiam
+      // vender de jeito nenhum.
+      const segurado = temSub(a, "waiting_for_patch");
       todas.push({
         ...base,
         gravidade: "receita",
@@ -245,9 +256,12 @@ export function pendenciasDaConta(
             ? remedios.join(" ")
             : "O Mercado Livre registrou uma infração e não disse o que fazer. Abra o anúncio no painel dele.",
         porque:
-          acusacoes.length > 0
+          (acusacoes.length > 0
             ? `O Mercado Livre registrou ${doML.length} infração(ões) neste anúncio: ${acusacoes.join(" · ")}`
-            : `O Mercado Livre registrou ${doML.length} infração(ões) neste anúncio, sem informar o motivo.`,
+            : `O Mercado Livre registrou ${doML.length} infração(ões) neste anúncio, sem informar o motivo.`) +
+          (segurado
+            ? ". E ele TIROU o anúncio do ar até a correção — este estoque não vende enquanto isso."
+            : ""),
       });
     }
 
@@ -341,7 +355,25 @@ export function pendenciasDaConta(
     }
 
     // 3) ATENÇÃO — ela precisa saber, e não há ação imediata clara.
-    if (temSub(a, "waiting_for_patch")) {
+    //
+    // SÓ QUANDO NÃO SABEMOS QUAL É A CORREÇÃO. Este é o mesmo defeito que o
+    // caso `bloqueado` já consertou algumas linhas acima, e que ficou de fora
+    // aqui: mandar a lojista procurar no painel do ML uma resposta que está no
+    // NOSSO banco desde a 052.
+    //
+    // Medido em 10/08/2026 contra produção: dos 127 anúncios em
+    // `waiting_for_patch`, 127 tinham infração registrada — cem por cento. A
+    // linha abaixo era emitida em TODOS eles, ao lado da linha que já trazia o
+    // remédio do ML. O mesmo anúncio aparecia duas vezes, e a segunda dizia "só
+    // o painel diz qual" logo abaixo da primeira, que dizia qual.
+    //
+    // Na tela o estrago era maior que a duplicata: o agrupamento é por
+    // `tipo|familia`, então os 15 produtos viravam 30 linhas, metade delas
+    // mandando a lojista para fora do Zion.
+    //
+    // Onde ele NÃO falou, esta linha continua certa e continua saindo — é o
+    // único caso em que o painel dele é mesmo a única fonte.
+    if (temSub(a, "waiting_for_patch") && doML.length === 0) {
       todas.push({
         ...base,
         gravidade: "atencao",
