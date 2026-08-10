@@ -132,6 +132,28 @@ function Precificacao() {
       if (!vivo) return;
       setCategoriaPorProduto(porProduto);
 
+      // UM PREÇO REPRESENTATIVO POR CATEGORIA, e o "por quê" foi medido.
+      //
+      // `/api/ml/custos` só pede a tarifa quando recebe categoria E PREÇO — a
+      // primeira versão disto mandou só a categoria e as seis chamadas
+      // voltaram com `tarifa: null`. Erro meu, e invisível: a tela continuava
+      // funcionando com a tabela.
+      //
+      // Um par (categoria, preço) por produto seriam 49 chamadas nesta conta.
+      // Medido em 10/08/2026 na categoria MLB273770, a R$ 40 / 79 / 150 / 400:
+      // o PERCENTUAL não muda (19%) e a taxa fixa é 0 nos quatro. Então o preço
+      // serve para o ML aceitar a pergunta, não para variar a resposta — e um
+      // preço real da categoria é mais honesto que uma constante inventada.
+      //
+      // O dia em que a taxa fixa deixar de ser 0 (o ML cobra por faixa abaixo
+      // de R$ 79 em contas com outro modo de envio), isto precisa voltar a ser
+      // por faixa. `procedencia` continua dizendo de onde veio o número.
+      const precoDaCategoria = new Map<string, number>();
+      for (const prod of produtos ?? []) {
+        const cat = porProduto.get(prod.id);
+        if (!cat || precoDaCategoria.has(cat)) continue;
+        if (prod.precoVenda > 0) precoDaCategoria.set(cat, prod.precoVenda);
+      }
       const categorias = [...new Set(porProduto.values())];
       // A base SEM categoria continua sendo pedida: é ela que traz a reputação,
       // e é o que vale para produto que não tem anúncio publicado.
@@ -148,7 +170,11 @@ function Precificacao() {
       const porCategoria = new Map<string, ModeloTaxas>();
       await Promise.all(
         categorias.map(async (categoryId) => {
-          const c = await custosDoCliente({ clienteId, marketplace, categoryId }).catch(() => null);
+          const preco = precoDaCategoria.get(categoryId);
+          // Sem preço conhecido não dá para perguntar: o ML recusa e a resposta
+          // volta `null`. Cair na base é o certo, e não custa a chamada.
+          if (!preco) return;
+          const c = await custosDoCliente({ clienteId, marketplace, categoryId, preco }).catch(() => null);
           // Falha de UMA categoria não derruba as outras: as que vierem usam a
           // tarifa exata, as que não vierem caem na base — e `procedencia` já
           // sabe dizer qual é qual.
@@ -160,7 +186,7 @@ function Precificacao() {
     return () => {
       vivo = false;
     };
-  }, [clienteId, marketplace]);
+  }, [clienteId, marketplace, produtos]);
 
   /** Peso e medidas por produto — vêm das variantes, não do produto pai. */
   const embalagemPorProduto = useMemo(() => {
