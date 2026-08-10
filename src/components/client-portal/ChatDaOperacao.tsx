@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   Loader2,
   MessagesSquare,
+  Paperclip,
 } from "lucide-react";
 import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
 import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
@@ -93,10 +94,75 @@ import {
   ehSaudacao,
   RESPOSTA_DA_SAUDACAO,
 } from "@/modules/assistant/domain/saudacaoDaConversa";
+import { formatBRLExato } from "@/lib/format";
+import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
+import { importarCustos, type ResultadoCustos } from "@/lib/services/importacaoCustos";
+import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
+
+/**
+ * O desfecho da importação de custos, dito por inteiro.
+ *
+ * As QUATRO contagens aparecem sempre, inclusive as zeradas. "42 produtos
+ * atualizados" sozinho lê-se como sucesso completo; com "8 não encontrados" ao
+ * lado, ela sabe que sobrou trabalho — e o número que falta é o que a faria
+ * procurar.
+ *
+ * Os ambíguos vêm com NOME e com os custos que brigaram: recusar de propósito
+ * só é honesto se a pessoa puder resolver.
+ */
+function ResultadoDaPlanilha({ r }: { r: ResultadoCustos }) {
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm">
+      <p className="text-zinc-200">
+        Gravei o custo em <strong>{r.produtos}</strong> produto(s) e{" "}
+        <strong>{r.variantes}</strong> variação(ões), de {r.linhasCsv} linha(s) na planilha.
+      </p>
+      {r.naoEncontrados > 0 && (
+        <p className="text-amber-300">
+          {r.naoEncontrados} linha(s) não casaram com nenhum produto — provavelmente o nome
+          está diferente do que está aqui. Elas não foram gravadas.
+        </p>
+      )}
+      {r.ambiguos > 0 && (
+        <div className="text-amber-300">
+          <p>
+            {r.ambiguos} produto(s) ficaram de fora porque a planilha trouxe custos
+            DIFERENTES para eles. Gravar qualquer um seria chutar:
+          </p>
+          <ul className="mt-1 list-inside list-disc text-xs text-zinc-400">
+            {r.detalhesAmbiguos.slice(0, 5).map((a) => (
+              <li key={a.produtoId}>
+                {a.produto} — {a.candidatos.map((c) => formatBRLExato(c.custo)).join(" · ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {r.aviso && <p className="text-xs text-zinc-500">{r.aviso}</p>}
+    </div>
+  );
+}
 
 /** Um turno da conversa. A pergunta é do operador; a resposta é do domínio. */
 interface Turno {
   pergunta: string;
+  /**
+   * A planilha que ela largou no chat, ainda NÃO importada.
+   *
+   * Mora no turno pelo mesmo motivo que a `proposta`: a confirmação pertence
+   * ao turno. Se ela perguntar outra coisa antes de confirmar, a conferência
+   * continua no lugar dela em vez de um botão "Importar" flutuando apontando
+   * para um arquivo que saiu de vista.
+   *
+   * NÃO atravessa o recarregamento — `paraGuardar` copia campos nomeados e
+   * este não está lá. É o certo: um arquivo que a pessoa não confirmou não
+   * deve reaparecer autorizado depois de um F5.
+   */
+  planilha?: PlanilhaLida;
+  /** O que a importação fez. Presente = já gravou, e a conferência sai. */
+  custosImportados?: ResultadoCustos;
+  importandoPlanilha?: boolean;
   /** O que o modelo entendeu. Mostrado em cinza — é auditoria, não resposta. */
   interpretacao?: string;
   resposta?: RespostaDaOperacao;
@@ -668,6 +734,69 @@ export function ChatDaOperacao({
     );
   }, []);
 
+  /**
+   * A planilha chegou. O QUE ACONTECE AQUI É DETERMINÍSTICO, e é de propósito.
+   *
+   * `lerPlanilha` e `sugerirMapeamento` são funções puras e testadas. Mandar os
+   * cabeçalhos para o modelo adivinhar a coluna de custo trocaria uma regra
+   * conferível por um palpite — e o mapeamento decide para onde vai dinheiro.
+   * Numa planilha real, a versão que adivinhava gravou 87 "custos" que eram
+   * referências de modelo, um deles de R$ 30.277.872,00.
+   *
+   * O chat é a porta; quem entende a planilha continua sendo o domínio.
+   */
+  async function receberPlanilha(arquivo: File) {
+    try {
+      const planilha = await lerPlanilha(arquivo);
+      setTurnos((t) => [
+        ...t,
+        { pergunta: `Enviei a planilha ${arquivo.name}`, planilha },
+      ]);
+    } catch (e) {
+      setTurnos((t) => [
+        ...t,
+        {
+          pergunta: `Enviei a planilha ${arquivo.name}`,
+          erro:
+            e instanceof Error
+              ? `Não consegui ler esse arquivo: ${e.message}`
+              : "Não consegui ler esse arquivo.",
+        },
+      ]);
+    }
+  }
+
+  async function confirmarPlanilha(indice: number, mapa: Mapeamento) {
+    const alvo = turnos[indice];
+    if (!alvo?.planilha || !clienteId) return;
+    setTurnos((t) =>
+      t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
+    );
+    try {
+      const r = await importarCustos(clienteId, alvo.planilha, mapa);
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? { ...turno, custosImportados: r, planilha: undefined, importandoPlanilha: false }
+            : turno
+        )
+      );
+      aoGravar?.();
+    } catch (e) {
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                importandoPlanilha: false,
+                erro: e instanceof Error ? e.message : "Falha ao importar os custos.",
+              }
+            : turno
+        )
+      );
+    }
+  }
+
   const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
 
   return (
@@ -739,6 +868,25 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
+              ) : t.planilha ? (
+                /* A CONFERÊNCIA É A MESMA DA TELA DE IMPORTAR — o componente,
+                   não uma cópia dele. Ele mostra o texto CRU do custo ao lado
+                   do valor interpretado, que é onde a coluna trocada se
+                   denuncia, e recusa importar quando os sinais são ruins. */
+                <ConferirPlanilha
+                  planilha={t.planilha}
+                  ocupado={t.importandoPlanilha}
+                  onCancelar={() =>
+                    setTurnos((ts) =>
+                      ts.map((turno, j) =>
+                        j === i ? { ...turno, planilha: undefined, texto: "Descartei a planilha. Nada foi gravado." } : turno
+                      )
+                    )
+                  }
+                  onConfirmar={(mapa) => void confirmarPlanilha(i, mapa)}
+                />
+              ) : t.custosImportados ? (
+                <ResultadoDaPlanilha r={t.custosImportados} />
               ) : t.texto !== undefined ||
                 t.proposta ||
                 t.cadastro ||
@@ -846,12 +994,34 @@ export function ChatDaOperacao({
       )}
 
       <form
-        className={`flex gap-2 ${alturaCheia ? "mt-3 shrink-0" : "mt-4"}`}
+        className={`flex items-center gap-2 ${alturaCheia ? "mt-3 shrink-0" : "mt-4"}`}
         onSubmit={(e) => {
           e.preventDefault();
           void perguntar(frase);
         }}
       >
+        {/* A PLANILHA ENTRA PELO CHAT.
+            Antes ela só entrava por Produtos → Importar. A tela continua lá e
+            continua certa; isto é a mesma porta no lugar onde a lojista já
+            está pedindo ajuda. */}
+        <label
+          className="flex shrink-0 cursor-pointer items-center rounded-lg border border-white/10 px-2.5 py-2 text-zinc-400 transition hover:border-violet-400/40 hover:text-violet-300"
+          title="Enviar planilha de custos (CSV ou Excel)"
+        >
+          <Paperclip size={15} />
+          <span className="sr-only">Enviar planilha de custos</span>
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls,text/csv"
+            className="hidden"
+            disabled={ocupado}
+            onChange={(e) => {
+              const arquivo = e.target.files?.[0];
+              e.target.value = ""; // permite reenviar o mesmo arquivo
+              if (arquivo) void receberPlanilha(arquivo);
+            }}
+          />
+        </label>
         <input
           value={frase}
           onChange={(e) => setFrase(e.target.value)}
