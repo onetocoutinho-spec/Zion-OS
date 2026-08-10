@@ -50,6 +50,10 @@ import type {
 
 const ROTULO: Record<PendenciaDaConta["tipo"], string> = {
   bloqueado: "Bloqueados pelo Mercado Livre",
+  // Separado de `bloqueado` de propósito: aqui o anúncio ainda NÃO caiu, e o
+  // aviso é o momento de agir. Misturar os dois esconderia a diferença entre
+  // "já perdi este" e "posso não perder os outros".
+  "propriedade-intelectual": "Acusação de propriedade intelectual",
   // O ML falou. O rótulo diz de quem é a palavra — porque logo abaixo há dois
   // grupos que são SUSPEITA nossa, e misturar os dois seria dar à nossa
   // inferência (29% de acerto) a autoridade dele.

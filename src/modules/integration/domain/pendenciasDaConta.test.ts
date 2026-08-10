@@ -564,3 +564,106 @@ test("o estoque segurado entra no total de receita — 800 peças não somem", (
   );
   assert.equal(r.estoqueTravado, 800);
 });
+
+// ---------------------------------------------------------------------------
+// PROPRIEDADE INTELECTUAL — medido em produção em 10/08/2026
+// ---------------------------------------------------------------------------
+//
+// Sete infrações em `PI_FAKES`, dois produtos (Vizzano 6371.367 e Babuche Yvate
+// 1816), punidos em 30-31/07. O `remedio` vem NULO nas sete: nas de foto o ML
+// escreve o que fazer, nesta ele não escreve nada.
+//
+// Duas coisas as separavam de tudo o mais e nenhuma chegava à tela:
+//
+//   1. `filter_subgroup` era lido do banco e jogado fora na borda
+//   2. os dois Yvate estão em `under_review` SEM `forbidden` — caíam no balde
+//      "está impedindo de vender", ordenado por estoque, e com estoque ZERO
+//      iam para o fim da lista. Contrafação no rodapé da fila de fotos.
+
+const PI = {
+  categoria: "PI_FAKES",
+  motivo: "Os dados do produto não correspondem ao produto original.",
+  remedio: "",
+};
+const FOTO = {
+  categoria: "FOTOS",
+  motivo: "A foto de capa não cumpre os requisitos.",
+  remedio: "Corrija suas fotos: descumpre o tamanho mínimo.",
+};
+
+test("acusação de PI sem cancelamento sobe para gravidade de CONTA", () => {
+  // O caso do Babuche Yvate: `under_review`, sem `forbidden`, estoque 0.
+  const r = pendenciasDaConta(
+    [an("YVATE", { status: "under_review", estoque: 0, familia: "Babuche Yvate 1816" })],
+    25,
+    { YVATE: [PI] }
+  );
+  assert.equal(r.itens.length, 1);
+  assert.equal(r.itens[0].tipo, "propriedade-intelectual");
+  assert.equal(r.itens[0].gravidade, "conta");
+});
+
+test("e ela vem ANTES de um anúncio de foto com muito estoque", () => {
+  // A ordem é por gravidade primeiro. Sem isso, 0 peças perdiam para 800.
+  const r = pendenciasDaConta(
+    [
+      an("FOTO_GRANDE", { status: "active", estoque: 800, fotoCapaMaxSize: "165x93" }),
+      an("PI_SEM_ESTOQUE", { status: "under_review", estoque: 0 }),
+    ],
+    25,
+    { PI_SEM_ESTOQUE: [PI], FOTO_GRANDE: [FOTO] }
+  );
+  assert.equal(r.itens[0].mlb, "PI_SEM_ESTOQUE", "a contrafação foi parar atrás da fila de fotos");
+});
+
+test("PI NÃO manda editar — editar e republicar é reincidência", () => {
+  const r = pendenciasDaConta([an("X", { status: "under_review" })], 25, { X: [PI] });
+  assert.match(r.itens[0].oQueFazer, /NÃO edite e republique/);
+  assert.match(r.itens[0].oQueFazer, /origem do produto/);
+  assert.doesNotMatch(r.itens[0].oQueFazer, /foto/i, "mandou mexer na foto numa acusação de contrafação");
+});
+
+test("um anúncio com PI dá UMA linha — não repete no balde comum", () => {
+  // Mesmo defeito do `em-revisao` consertado hoje mais cedo: a mesma acusação
+  // aparecendo duas vezes, com dois conselhos diferentes.
+  const r = pendenciasDaConta([an("X", { status: "under_review", estoque: 5 })], 25, {
+    X: [PI, FOTO],
+  });
+  assert.equal(r.itens.length, 1, "o anúncio apareceu em dois baldes");
+  assert.equal(r.itens[0].tipo, "propriedade-intelectual");
+});
+
+test("o anúncio JÁ CANCELADO por PI nomeia a acusação", () => {
+  // O caso do Vizzano: `forbidden` + PI_FAKES. O balde continua sendo
+  // `bloqueado`, mas o texto passa a dizer de que tipo de acusação se trata.
+  const r = pendenciasDaConta([an("VIZZANO", { subStatus: ["forbidden"] })], 25, {
+    VIZZANO: [PI],
+  });
+  assert.equal(r.itens[0].tipo, "bloqueado");
+  assert.match(r.itens[0].oQueFazer, /PROPRIEDADE INTELECTUAL/);
+  assert.match(r.itens[0].oQueFazer, /Não se resolve trocando a foto/);
+});
+
+test("infração comum NÃO vira propriedade intelectual", () => {
+  const r = pendenciasDaConta([an("X", { status: "active", estoque: 5 })], 25, { X: [FOTO] });
+  assert.equal(r.itens[0].tipo, "infracao-do-ml");
+  assert.equal(r.itens[0].gravidade, "receita");
+});
+
+test("qualquer PI_ desconhecido entra pelo caminho grave", () => {
+  // Falha FECHADA: o ML pode criar `PI_BRAND`, `PI_COPYRIGHT`. Tratar um PI
+  // desconhecido como pendência de rotina é o erro caro; o contrário só
+  // incomoda.
+  const r = pendenciasDaConta([an("X", { status: "under_review" })], 25, {
+    X: [{ categoria: "PI_ALGO_NOVO", motivo: "Reivindicação de marca.", remedio: "" }],
+  });
+  assert.equal(r.itens[0].gravidade, "conta");
+});
+
+test("sem `categoria`, tudo se comporta como antes", () => {
+  // A leitura antiga não trazia o campo. Ausência não pode virar PI.
+  const r = pendenciasDaConta([an("X", { status: "active", estoque: 5 })], 25, {
+    X: [{ motivo: "A foto de capa não cumpre os requisitos.", remedio: "Corrija." }],
+  });
+  assert.equal(r.itens[0].tipo, "infracao-do-ml");
+});

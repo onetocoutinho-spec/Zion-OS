@@ -123,25 +123,35 @@ export async function gravarInfracoes(
  */
 export async function infracoesPorAnuncioDoCliente(
   clienteId: string
-): Promise<Record<string, { motivo: string; remedio: string }[]>> {
+): Promise<Record<string, { motivo: string; remedio: string; categoria: string }[]>> {
   if (!supabaseConfigurado) return {};
+  // `filter_subgroup` É A CLASSIFICAÇÃO DO PRÓPRIO ML, e ela vinha sendo jogada
+  // fora aqui — guardada na 052 e perdida na borda de leitura.
+  //
+  // Medido em 10/08/2026: sete infrações em `PI_FAKES` (propriedade
+  // intelectual) chegavam à tela indistinguíveis das de FOTOS. São problemas de
+  // natureza diferente: foto se conserta refotografando, acusação de produto
+  // falsificado não se conserta editando — e editar-e-republicar conta como
+  // reincidência.
   const linhas = await lerTudoPaginado<{
     related_item_id: string;
     motivo: string | null;
     remedio: string | null;
+    filter_subgroup: string | null;
   }>("infrações do Mercado Livre", (de, ate) =>
     getSupabase()
       .from("infracoes_marketplace")
-      .select("related_item_id, motivo, remedio")
+      .select("related_item_id, motivo, remedio, filter_subgroup")
       .eq("cliente_id", clienteId)
       .not("related_item_id", "is", null)
       .order("id", { ascending: true })
       .range(de, ate)
   ).catch(() => []);
 
-  const mapa: Record<string, { motivo: string; remedio: string }[]> = {};
+  const mapa: Record<string, { motivo: string; remedio: string; categoria: string }[]> = {};
   for (const l of linhas) {
     (mapa[l.related_item_id] ??= []).push({
+      categoria: l.filter_subgroup ?? "",
       motivo: l.motivo ?? "",
       // Limpo AQUI, na borda de leitura: o banco guarda a palavra do ML
       // verbatim (HTML incluso) e a tela não deve mostrar `<div><strong>`.

@@ -67,7 +67,26 @@ export interface InfracaoDoAnuncio {
   motivo: string;
   /** O que ele manda fazer. Chega em HTML e deve vir limpo. */
   remedio: string;
+  /**
+   * A CLASSIFICAÇÃO DO ML — `filter_subgroup` na 052.
+   *
+   * Opcional porque a leitura antiga não a trazia; ausente, tudo se comporta
+   * como antes. Os valores vistos na conta em 10/08/2026: FOTOS, PQT, DOMAIN e
+   * PI_FAKES.
+   */
+  categoria?: string;
 }
+
+/**
+ * O ML classifica propriedade intelectual no espaço `PI_*`.
+ *
+ * Só `PI_FAKES` foi observado (sete infrações, dois produtos, 30-31/07). O
+ * prefixo é deliberado: uma acusação de PI nova entra pelo caminho grave por
+ * omissão, que é o lado certo para errar. O contrário — tratar PI desconhecido
+ * como pendência de rotina — é o defeito que este ramo existe para impedir.
+ */
+const ehPropriedadeIntelectual = (i: InfracaoDoAnuncio) =>
+  (i.categoria ?? "").toUpperCase().startsWith("PI_");
 
 /** As infrações por MLB. Ausente = o ML não falou deste anúncio. */
 export type InfracoesPorAnuncio = Readonly<Record<string, readonly InfracaoDoAnuncio[]>>;
@@ -77,6 +96,7 @@ export interface PendenciaDaConta {
   /** Chave para agrupar na tela. */
   tipo:
     | "bloqueado"
+    | "propriedade-intelectual"
     | "infracao-do-ml"
     | "pausado-por-voce"
     | "capa-pequena"
@@ -203,6 +223,7 @@ export function pendenciasDaConta(
     const doML = infracoes[txt(a.mlb)] ?? [];
     const acusacoes = [...new Set(doML.map((i) => i.motivo).filter(Boolean))];
     const remedios = [...new Set(doML.map((i) => i.remedio).filter(Boolean))];
+    const dePI = doML.some(ehPropriedadeIntelectual);
 
     // 1) CONTA — bloqueio é política, e reincidência custa a conta inteira.
     if (temSub(a, "forbidden")) {
@@ -220,6 +241,9 @@ export function pendenciasDaConta(
           (acusacoes.length > 0
             ? `O Mercado Livre diz: ${acusacoes.join(" · ")}. `
             : "Abra no Mercado Livre, em Infrações, e veja a acusação. ") +
+          (dePI
+            ? "Esta é uma acusação de PROPRIEDADE INTELECTUAL: o Mercado Livre diz que o anúncio não corresponde ao produto original. Não se resolve trocando a foto nem corrigindo o título — é caso de comprovar a origem com ele. "
+            : "") +
           "NÃO republique: republicar o que foi cancelado conta como reincidência, e reincidência é o que leva à suspensão da conta." +
           (irmaos > 0
             ? ` Há ${irmaos} anúncio(s) do mesmo produto ainda no ar — se a acusação for sobre o PRODUTO, eles são os próximos. Pausar é reversível.`
@@ -227,6 +251,37 @@ export function pendenciasDaConta(
         porque: "O Mercado Livre cancelou este anúncio por descumprir uma política.",
       });
       continue; // bloqueio manda; não polui a lista com o resto
+    }
+
+    // 1a) ACUSAÇÃO DE PROPRIEDADE INTELECTUAL, ainda sem cancelamento.
+    //
+    // Medido em 10/08/2026: dois anúncios do Babuche Yvate 1816 com `PI_FAKES`,
+    // em `under_review`, SEM `forbidden`. Eles caíam no balde 1b — "está
+    // impedindo de vender agora", ordenado por estoque parado — e como o
+    // estoque deles é ZERO, iam para o FIM da lista.
+    //
+    // Uma acusação de contrafação no rodapé da fila de fotos. A gravidade não
+    // vem do estoque: vem de reincidência custar a conta inteira, e ela chega
+    // com o primeiro aviso, não com o cancelamento.
+    if (dePI) {
+      const irmaos = ativosPorFamilia.get(txt(a.familia)) ?? 0;
+      todas.push({
+        ...base,
+        gravidade: "conta",
+        tipo: "propriedade-intelectual",
+        oQueFazer:
+          "NÃO edite e republique — isso conta como reincidência. O Mercado Livre não informou remédio para este tipo; o caminho é comprovar a origem do produto com ele (nota fiscal do distribuidor)." +
+          (irmaos > 0
+            ? ` Há ${irmaos} anúncio(s) do mesmo produto ainda no ar — se a reivindicação for sobre o PRODUTO, eles são os próximos. Pausar é reversível.`
+            : ""),
+        porque:
+          acusacoes.length > 0
+            ? `O Mercado Livre acusou este anúncio de propriedade intelectual: ${acusacoes.join(" · ")}`
+            : "O Mercado Livre registrou uma infração de propriedade intelectual neste anúncio.",
+      });
+      // Não segue para 1b: é a MESMA acusação, e a de PI manda. Duas linhas
+      // para um anúncio foi o defeito consertado hoje mais cedo no `em-revisao`.
+      continue;
     }
 
     // 1b) O ML FALOU, e não é cancelamento — é punição que trava a venda.
