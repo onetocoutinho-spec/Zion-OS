@@ -4,7 +4,7 @@
 
 import { formatBRL, formatDate } from "./format";
 import { montarTabelaMedidas } from "../modules/catalog/domain/tabelasMedidas";
-import type { Anuncio, Cliente, Produto, ProdutoVariante, TabelaMedida } from "./types";
+import type { Cliente, Produto, ProdutoVariante, TabelaMedida } from "./types";
 
 export function contextoDoCliente(c: Cliente): string {
   return [
@@ -87,22 +87,6 @@ export function contextoDoKit(produto: Produto): string {
   ].join("\n");
 }
 
-export function contextoDoAnuncio(a: Anuncio): string {
-  return [
-    `## Anúncio`,
-    `- Produto anunciado: ${a.produto}`,
-    `- Marketplace: ${a.marketplace}`,
-    a.link !== "—" ? `- Link: ${a.link}` : null,
-    `- Título atual: ${a.tituloAtual}`,
-    `- Título otimizado (proposto): ${a.tituloOtimizado}`,
-    `- Esteira: SEO ${a.statusSeo} · descrição ${a.statusDescricao} · imagens ${a.statusImagens} · precificação ${a.statusPrecificacao} · concorrência ${a.statusConcorrencia} · revisão ${a.statusRevisao} · publicação ${a.statusPublicacao}`,
-    `- Próxima ação: ${a.proximaAcao}`,
-    `- Responsável na agência: ${a.responsavel}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 export interface EntidadesContexto {
   cliente?: Cliente | null;
   /**
@@ -125,7 +109,6 @@ export interface EntidadesContexto {
    */
   atributosObrigatorios?: string | null;
   produto?: Produto | null;
-  anuncio?: Anuncio | null;
   variantes?: ProdutoVariante[] | null;
   /** Tabelas de medidas do cliente (por marca) — têm prioridade. */
   tabelasMedidas?: TabelaMedida[] | null;
@@ -166,7 +149,6 @@ export function contextoDaTabelaMedidas(
 export function montarContexto({
   cliente,
   produto,
-  anuncio,
   variantes,
   tabelasMedidas,
   quantidadeFotos,
@@ -184,15 +166,14 @@ export function montarContexto({
     produto ? contextoDoKit(produto) || null : null,
     vs.length > 0 ? contextoDasVariacoes(vs) : null,
     produto ? contextoDaTabelaMedidas(produto, vs, tabelasMedidas ?? []) || null : null,
-    anuncio ? contextoDoAnuncio(anuncio) : null,
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
 /** Resumo curto do contexto para exibir na tela e gravar no histórico. */
-export function resumoDoContexto({ cliente, produto, anuncio }: EntidadesContexto): string {
-  return [cliente?.empresa, produto?.nome ?? anuncio?.produto]
+export function resumoDoContexto({ cliente, produto }: EntidadesContexto): string {
+  return [cliente?.empresa, produto?.nome]
     .filter(Boolean)
     .join(" · ");
 }

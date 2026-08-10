@@ -4,7 +4,7 @@
 
 import { listarClientes } from "./clientes";
 import { listarProdutos } from "./produtos";
-import { listarAnuncios } from "./anuncios";
+import { listarResumoDeAnuncios } from "./anunciosGerados";
 import { listarAgentes } from "./agentes";
 
 export interface ResultadoBusca {
@@ -25,7 +25,7 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
   const [clientes, produtos, anuncios, agentes] = await Promise.all([
     listarClientes(),
     listarProdutos(),
-    listarAnuncios(),
+    listarResumoDeAnuncios(),
     listarAgentes(),
   ]);
 
@@ -53,13 +53,16 @@ export async function buscarGlobal(consulta: string): Promise<ResultadoBusca[]> 
     }
   });
 
+  // O anuncio vive na esteira, e o resumo nao traz o JSONB do conteudo — entao
+  // a busca casa pelo que a lista TEM: produto, loja e o id do ML. Procurar
+  // dentro do titulo gerado exigiria puxar 1 MB de JSONB a cada tecla.
   anuncios.forEach((a) => {
-    if (contem(a.produto, termo) || contem(a.tituloAtual, termo) || contem(a.tituloOtimizado, termo) || contem(a.cliente, termo)) {
+    if (contem(a.produto, termo) || contem(a.cliente, termo) || contem(a.mlItemId, termo)) {
       resultados.push({
         tipo: "Anúncio",
-        titulo: a.produto,
-        descricao: `${a.cliente} · ${a.marketplace} · ${a.statusPublicacao}`,
-        href: `/anuncios/${a.id}`,
+        titulo: a.produto ?? a.mlItemId ?? "Anúncio sem produto vinculado",
+        descricao: `${a.cliente} · ${a.marketplace} · nota ${a.notaDiagnostico}`,
+        href: a.mlPermalink ?? `/clientes/${a.clienteId}`,
       });
     }
   });

@@ -271,34 +271,6 @@ export interface ImagemProduto {
   observacoes: string;
 }
 
-export interface Anuncio {
-  id: string;
-  clienteId: string;
-  /** Nome de exibição (join com clientes). */
-  cliente: string;
-  produtoId: string;
-  /** Nome de exibição (join com produtos). */
-  produto: string;
-  marketplace: Marketplace;
-  link: string;
-  tituloAtual: string;
-  tituloOtimizado: string;
-  statusSeo: EtapaStatus;
-  statusDescricao: EtapaStatus;
-  statusImagens: EtapaStatus;
-  statusPrecificacao: EtapaStatus;
-  statusConcorrencia: EtapaStatus;
-  statusRevisao: EtapaStatus;
-  statusPublicacao: "Pendente" | "Agendado" | "Publicado";
-  proximaAcao: string;
-  responsavel: string;
-  // ---- v1.7: modelagem marketplace ----
-  categoriaMarketplace?: string;
-  descricao?: string;
-  idExternoMarketplace?: string;
-  observacoes?: string;
-}
-
 export type AreaAgente =
   | "Agência"
   | "Comercial"

@@ -2,7 +2,6 @@ import {
   LayoutDashboard,
   Users,
   Package,
-  Megaphone,
   Bot,
   AlertCircle,
   BarChart3,
@@ -32,7 +31,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Novo Usuário", href: "/usuarios/novo", icon: UserPlus },
   { label: "Produtos", href: "/produtos", icon: Package },
   { label: "Templates", href: "/templates", icon: Layers },
-  { label: "Anúncios", href: "/anuncios", icon: Megaphone },
   { label: "Esteira de Anúncio", href: "/esteira", icon: Workflow },
   { label: "Otimizar em Massa", href: "/otimizar-lote", icon: Sparkles },
   { label: "Aprovações", href: "/esteira/aprovacoes", icon: ShieldCheck },
@@ -72,6 +70,14 @@ export const NAV_ITEMS: NavItem[] = [
  *
  *   Configurações               é a configuração da Zion, não a da agência.
  *
+ * ANÚNCIOS TAMBÉM SAIU, e por um motivo diferente: a tela existia e estava
+ * CERTA, mas lia `anuncios` — a tabela da era agência, com zero linhas desde
+ * que a esteira nasceu. Os 790 anúncios publicados da loja vivem em
+ * `anuncios_gerados`, que 18 arquivos usam. Quem quer VER anúncio vai em
+ * /cliente/anuncios, que mostra o estado no marketplace na palavra do ML. O
+ * CRUD do modelo velho (7 colunas de checklist: SEO, concorrência, revisão…)
+ * não tinha para onde ser reapontado — os campos não existem no modelo novo.
+ *
  * TRÊS SAÍRAM DO PRODUTO INTEIRO em 07/08 — Tarefas, Reuniões e Financeiro. O
  * filtro chegou a excluí-las daqui, mas o motivo era mais fundo do que "a
  * agência não vê": eram herança de agência de marketing, tinham ZERO linhas no
@@ -85,7 +91,6 @@ export const NAV_ITEMS: NavItem[] = [
 const DA_AGENCIA = new Set<string>([
   "/clientes",
   "/produtos",
-  "/anuncios",
   "/esteira",
   "/otimizar-lote",
   "/esteira/aprovacoes",

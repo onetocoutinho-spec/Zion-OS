@@ -15,7 +15,11 @@ import { AbaPrecificacao } from "@/components/produtos/AbaPrecificacao";
 import { AbaImagens } from "@/components/produtos/AbaImagens";
 import { useLiveQuery } from "@/lib/hooks";
 import { buscarProduto, excluirProduto } from "@/lib/services/produtos";
-import { listarAnunciosDoProduto } from "@/lib/services/anuncios";
+import {
+  listarResumoDeAnunciosDoProduto,
+  rotuloStatusMarketplace,
+  ROTULO_STATUS_ANUNCIO_GERADO,
+} from "@/lib/services/anunciosGerados";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { formatBRL } from "@/lib/format";
 
@@ -37,7 +41,7 @@ export default function ProdutoDetalhePage() {
   const [aba, setAba] = useState<Aba>("Geral");
 
   const { data: produto, carregando } = useLiveQuery(() => buscarProduto(id), [id]);
-  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoProduto(id), [id]);
+  const { data: anuncios } = useLiveQuery(() => listarResumoDeAnunciosDoProduto(id), [id]);
   const { data: variantes } = useLiveQuery(() => listarVariantesDoProduto(id), [id]);
 
   if (carregando) return null;
@@ -203,18 +207,34 @@ export default function ProdutoDetalhePage() {
         <Card title={`Anúncios deste produto (${anuncios?.length ?? 0})`}>
           {anuncios && anuncios.length > 0 ? (
             <ul className="divide-y divide-white/[0.04]">
-              {anuncios.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/anuncios/${a.id}`} className="min-w-0">
-                    <p className="truncate text-sm text-zinc-200 hover:text-violet-300">{a.marketplace}</p>
-                    <p className="truncate text-xs text-zinc-500">{a.proximaAcao}</p>
-                  </Link>
-                  <Badge>{a.statusPublicacao}</Badge>
-                </li>
-              ))}
+              {anuncios.map((a) => {
+                const noMarketplace = rotuloStatusMarketplace(a.statusMarketplace);
+                return (
+                  <li key={a.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      {a.mlPermalink ? (
+                        <a
+                          href={a.mlPermalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="truncate text-sm text-zinc-200 hover:text-violet-300"
+                        >
+                          {a.marketplace} · {a.mlItemId}
+                        </a>
+                      ) : (
+                        <p className="truncate text-sm text-zinc-200">{a.marketplace}</p>
+                      )}
+                      <p className="truncate text-xs text-zinc-500">
+                        nota {a.notaDiagnostico} · {noMarketplace.texto}
+                      </p>
+                    </div>
+                    <Badge>{ROTULO_STATUS_ANUNCIO_GERADO[a.status]}</Badge>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <EmptyState compacto mensagem="Nenhum anúncio criado para este produto." acaoLabel="Criar anúncio" acaoHref={`/anuncios/novo${qs}`} />
+            <EmptyState compacto mensagem="Este produto ainda não gerou anúncio na esteira." />
           )}
         </Card>
       )}

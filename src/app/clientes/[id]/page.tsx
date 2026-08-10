@@ -11,7 +11,11 @@ import { ExecutarComAgente } from "@/components/agentes/ExecutarComAgente";
 import { useLiveQuery } from "@/lib/hooks";
 import { alterarStatusCliente, buscarCliente, excluirCliente } from "@/lib/services/clientes";
 import { listarProdutosDoCliente } from "@/lib/services/produtos";
-import { listarAnunciosDoCliente } from "@/lib/services/anuncios";
+import {
+  listarResumoDeAnunciosDoCliente,
+  rotuloStatusMarketplace,
+  ROTULO_STATUS_ANUNCIO_GERADO,
+} from "@/lib/services/anunciosGerados";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
 import { formatBRL, formatDate } from "@/lib/format";
 
@@ -30,7 +34,7 @@ export default function ClienteDetalhePage() {
 
   const { data: cliente, carregando } = useLiveQuery(() => buscarCliente(id), [id]);
   const { data: produtos } = useLiveQuery(() => listarProdutosDoCliente(id), [id]);
-  const { data: anuncios } = useLiveQuery(() => listarAnunciosDoCliente(id), [id]);
+  const { data: anuncios } = useLiveQuery(() => listarResumoDeAnunciosDoCliente(id), [id]);
   const { data: relatorios } = useLiveQuery(() => listarRelatoriosDoCliente(id), [id]);
 
   if (carregando) return null;
@@ -131,22 +135,34 @@ export default function ClienteDetalhePage() {
           )}
         </Card>
 
-        {/* Anúncios vinculados */}
+        {/* Anúncios da loja — os 20 mais recentes.
+            Vem de `anuncios_gerados`, a tabela que a esteira alimenta. Antes vinha
+            de `anuncios`, que tem zero linhas desde que a esteira nasceu: o card
+            dizia "nenhum anúncio" para uma loja com 790 publicados.
+            O selo mostra o estado NO MARKETPLACE — a palavra do ML, incluindo
+            "estado desconhecido", que é diferente de "no ar". */}
         <Card title={`Anúncios (${anuncios?.length ?? 0})`}>
           {anuncios && anuncios.length > 0 ? (
             <ul className="divide-y divide-white/[0.04]">
-              {anuncios.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <Link href={`/anuncios/${a.id}`} className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-200 hover:text-violet-300">{a.produto}</p>
-                    <p className="text-xs text-zinc-500">{a.marketplace} · {a.proximaAcao}</p>
-                  </Link>
-                  <Badge>{a.statusPublicacao}</Badge>
-                </li>
-              ))}
+              {anuncios.slice(0, 20).map((a) => {
+                const noMarketplace = rotuloStatusMarketplace(a.statusMarketplace);
+                return (
+                  <li key={a.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-200">
+                        {a.produto ?? "Produto não vinculado"}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {a.marketplace} · nota {a.notaDiagnostico} · {noMarketplace.texto}
+                      </p>
+                    </div>
+                    <Badge>{ROTULO_STATUS_ANUNCIO_GERADO[a.status]}</Badge>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
-            <EmptyState compacto mensagem="Nenhum anúncio vinculado a este cliente." acaoLabel="Criar anúncio" acaoHref={`/anuncios/novo${qs}`} />
+            <EmptyState compacto mensagem="Esta loja ainda não tem anúncios na esteira." />
           )}
         </Card>
 

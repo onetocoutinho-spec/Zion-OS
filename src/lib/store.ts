@@ -7,7 +7,6 @@
 
 import { clientes as seedClientes } from "./data/clientes";
 import { produtos as seedProdutos } from "./data/produtos";
-import { anuncios as seedAnuncios } from "./data/anuncios";
 import { agentes as seedAgentes } from "./data/agentes";
 import { relatorios as seedRelatorios } from "./data/relatorios";
 import { execucoes as seedExecucoes } from "./data/execucoes";
@@ -29,7 +28,6 @@ import {
 export type CollectionName =
   | "clientes"
   | "produtos"
-  | "anuncios"
   | "agentes"
   | "relatorios"
   | "execucoes"
@@ -64,7 +62,6 @@ const storageKey = (c: CollectionName) => `zion-os:${VERSAO}:${c}`;
 const SEEDS: Record<CollectionName, { id: string }[]> = {
   clientes: seedClientes,
   produtos: seedProdutos,
-  anuncios: seedAnuncios,
   agentes: seedAgentes,
   relatorios: seedRelatorios,
   execucoes: seedExecucoes,

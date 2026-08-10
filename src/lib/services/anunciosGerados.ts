@@ -111,6 +111,26 @@ export async function listarResumoDeAnunciosDoCliente(
   );
 }
 
+/**
+ * O mesmo resumo, sem recorte de cliente — para quem CONTA a operação inteira.
+ *
+ * Usada pelo painel da Zion. Sem o JSONB de propósito: contar 880 anúncios não
+ * pode custar 1 MB de conteúdo de esteira que ninguém vai ler.
+ */
+export async function listarResumoDeAnuncios(): Promise<ResumoDoAnuncio[]> {
+  return repo.listar(undefined, COLUNAS_DO_RESUMO);
+}
+
+/** Os anúncios de UM produto, sem o JSONB. Para a aba Anúncios da ficha. */
+export async function listarResumoDeAnunciosDoProduto(
+  produtoId: string
+): Promise<ResumoDoAnuncio[]> {
+  return repo.listar(
+    { coluna: "produto_id", valor: produtoId, campoLocal: "produtoId" },
+    COLUNAS_DO_RESUMO
+  );
+}
+
 export async function buscarAnuncioGerado(
   id: string
 ): Promise<AnuncioGeradoRegistro | null> {

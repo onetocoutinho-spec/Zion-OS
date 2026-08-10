@@ -33,6 +33,21 @@
 // motivo certo volta. Por isso a asserção delas mudou de lugar: agora é contra
 // `NAV_ITEMS`, e diz "não voltou ao produto", que é mais forte do que "não
 // aparece para a agência".
+//
+// ===========================================================================
+// A QUINTA SAIU POR OUTRO MOTIVO, E ELE IMPORTA
+// ===========================================================================
+//
+// /anuncios não estava morta por falta de uso: ela LIA a tabela errada. O
+// painel apontava para `anuncios` (era agência, zero linhas desde que a esteira
+// nasceu) enquanto os 790 anúncios publicados da loja viviam em
+// `anuncios_gerados`. A tela era um zero convincente.
+//
+// O CRUD não tinha para onde ser reapontado — o modelo velho tem 7 colunas de
+// checklist (SEO, descrição, imagens, precificação, concorrência, revisão,
+// publicação) que simplesmente não existem no novo. As LEITURAS embutidas em
+// outras telas (contagem no painel, card do cliente, aba do produto, busca)
+// foram reapontadas, porque contar e listar têm substituto direto.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -54,7 +69,7 @@ test("a agência vê MENOS, e o que ela vê é o que ela opera", () => {
   assert.ok(itens.length >= 8, `só ${itens.length} itens — o painel ficou inútil`);
 });
 
-test("as quatro telas apagadas não voltaram ao menu de NINGUÉM", () => {
+test("as cinco telas apagadas não voltaram ao menu de NINGUÉM", () => {
   // Contra NAV_ITEMS, não contra o menu da agência: a rota não existe mais, e
   // o que precisa ser guardado agora é a volta dela — por qualquer papel.
   //
@@ -62,7 +77,7 @@ test("as quatro telas apagadas não voltaram ao menu de NINGUÉM", () => {
   // o cliente. Se a tela voltar um dia, que seja de propósito e com esta linha
   // vermelha no caminho.
   const hrefs = new Set(NAV_ITEMS.map((i) => i.href));
-  for (const apagada of ["/tarefas", "/reunioes", "/financeiro", "/onboarding"]) {
+  for (const apagada of ["/tarefas", "/reunioes", "/financeiro", "/onboarding", "/anuncios"]) {
     assert.ok(!hrefs.has(apagada), `${apagada} voltou ao produto — foi apagada em 07/08`);
   }
 });
@@ -87,7 +102,6 @@ test("o que É operação de loja continua lá", () => {
   for (const preciso of [
     "/clientes", // as lojas dela
     "/produtos",
-    "/anuncios",
     "/esteira",
     "/otimizar-lote",
     "/auditoria-massa",

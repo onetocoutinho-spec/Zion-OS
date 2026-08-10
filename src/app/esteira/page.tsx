@@ -8,8 +8,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
-  Wand2,
-  Check,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -20,7 +18,6 @@ import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
-import { listarAnuncios, atualizarAnuncio } from "@/lib/services/anuncios";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { rodarEsteira } from "@/lib/services/esteira";
 import { rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
@@ -53,7 +50,6 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 export default function EsteiraPage() {
   const [clienteId, setClienteId] = useState("");
   const [produtoId, setProdutoId] = useState("");
-  const [anuncioId, setAnuncioId] = useState("");
   const [briefing, setBriefing] = useState("");
   const [modo, setModo] = useState<"rapido" | "aprofundado">("rapido");
   const [passos, setPassos] = useState<PassoCadeia[]>([]);
@@ -63,25 +59,21 @@ export default function EsteiraPage() {
   const [tipo, setTipo] = useState<"IA" | "Simulada" | null>(null);
   const [anuncio, setAnuncio] = useState<AnuncioGerado | null>(null);
   const [aprovado, setAprovado] = useState(false);
-  const [tituloAplicado, setTituloAplicado] = useState(false);
   /** Id do registro persistido (fila de aprovação); null = não salvo (sem cliente). */
   const [registroId, setRegistroId] = useState<string | null>(null);
 
   const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
-  const { data: anuncios } = useLiveQuery(listarAnuncios);
 
   const produtosFiltrados = (produtos ?? []).filter((p) => !clienteId || p.clienteId === clienteId);
-  const anunciosFiltrados = (anuncios ?? []).filter((a) => !clienteId || a.clienteId === clienteId);
   const cliente = (clientes ?? []).find((c) => c.id === clienteId) ?? null;
   const produto = produtosFiltrados.find((p) => p.id === produtoId) ?? null;
-  const anuncioSel = anunciosFiltrados.find((a) => a.id === anuncioId) ?? null;
 
   const contexto = useMemo(
-    () => montarContexto({ cliente, produto, anuncio: anuncioSel }),
-    [cliente, produto, anuncioSel]
+    () => montarContexto({ cliente, produto }),
+    [cliente, produto]
   );
-  const resumo = resumoDoContexto({ cliente, produto, anuncio: anuncioSel });
+  const resumo = resumoDoContexto({ cliente, produto });
   const podeRodar = Boolean(briefing.trim() || contexto);
 
   const bloqueiaAprovacao =
@@ -90,7 +82,6 @@ export default function EsteiraPage() {
   function selecionarCliente(id: string) {
     setClienteId(id);
     setProdutoId("");
-    setAnuncioId("");
   }
   function selecionarProduto(id: string) {
     setProdutoId(id);
@@ -106,7 +97,6 @@ export default function EsteiraPage() {
     setAnuncio(null);
     setTipo(null);
     setAprovado(false);
-    setTituloAplicado(false);
     setRegistroId(null);
     setPassos([]);
     try {
@@ -145,7 +135,7 @@ export default function EsteiraPage() {
             produtoId: produto?.id ?? null,
             produto: produto?.nome ?? null,
             auditoriaId: null,
-            marketplace: anuncioSel?.marketplace ?? produto?.marketplace ?? "Mercado Livre",
+            marketplace: produto?.marketplace ?? "Mercado Livre",
             origem: "esteira",
             tipoExecucao: r.tipo,
             notaDiagnostico: r.anuncio.notaDiagnostico,
@@ -179,11 +169,11 @@ export default function EsteiraPage() {
     setAprovado(true);
   }
 
-  async function aplicarTitulo() {
-    if (!anuncio || !anuncioSel) return;
-    await atualizarAnuncio(anuncioSel.id, { tituloOtimizado: anuncio.tituloOtimizado });
-    setTituloAplicado(true);
-  }
+  // "Aplicar no anuncio" saiu em 07/08. Ele escrevia o titulo em `anuncios` — a
+  // tabela da era agencia, ZERO linhas desde que esta esteira nasceu. O seletor
+  // que o alimentava estava sempre vazio em producao, entao o botao nunca podia
+  // aparecer. O anuncio que a esteira produz ja e gravado em `anuncios_gerados`,
+  // e e de la que a publicacao no ML sai.
 
   return (
     <div className="space-y-6">
@@ -215,15 +205,6 @@ export default function EsteiraPage() {
               <option value="">Nenhum</option>
               {produtosFiltrados.map((p) => (
                 <option key={p.id} value={p.id}>{clienteId ? p.nome : `${p.nome} (${p.cliente})`}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-medium text-zinc-500">Anúncio (p/ aplicar título)</span>
-            <select className={SELECT} value={anuncioId} onChange={(e) => setAnuncioId(e.target.value)}>
-              <option value="">Nenhum</option>
-              {anunciosFiltrados.map((a) => (
-                <option key={a.id} value={a.id}>{`${a.produto} · ${a.marketplace}`}</option>
               ))}
             </select>
           </label>
@@ -394,15 +375,6 @@ export default function EsteiraPage() {
                   <p className="text-[11px] text-zinc-500">Título otimizado ({anuncio.tituloOtimizado.length}/60)</p>
                   <p className="text-sm font-medium text-zinc-100">{anuncio.tituloOtimizado}</p>
                 </div>
-                {anuncioSel && (
-                  <Button
-                    variant={tituloAplicado ? "success" : "ghost"}
-                    onClick={aplicarTitulo}
-                    disabled={tituloAplicado}
-                  >
-                    {tituloAplicado ? (<><Check size={14} /> Aplicado</>) : (<><Wand2 size={14} /> Aplicar no anúncio</>)}
-                  </Button>
-                )}
               </div>
 
               <Secao titulo="Palavras-chave">

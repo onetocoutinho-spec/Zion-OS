@@ -5,13 +5,11 @@ import { useParams, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Bot,
-  Check,
   History,
   Link2,
   Pencil,
   Play,
   Sparkles,
-  Wand2,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -29,7 +27,6 @@ import {
 } from "@/lib/services/agentes";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
-import { atualizarAnuncio, listarAnuncios } from "@/lib/services/anuncios";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { formatDateTime } from "@/lib/format";
 
@@ -78,21 +75,18 @@ export default function AgenteDetalhePage() {
   const [entrada, setEntrada] = useState("");
   const [clienteId, setClienteId] = useState(params.get("cliente") ?? "");
   const [produtoId, setProdutoId] = useState(params.get("produto") ?? "");
-  const [anuncioId, setAnuncioId] = useState(params.get("anuncio") ?? "");
   const [executando, setExecutando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
   const [tipoResultado, setTipoResultado] = useState<"IA" | "Simulada" | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [tituloSugerido, setTituloSugerido] = useState<string | null>(null);
-  const [tituloAplicado, setTituloAplicado] = useState(false);
   const [tarefasSugeridas, setTarefasSugeridas] = useState<TarefaSugerida[]>([]);
 
   const { data: agente, carregando } = useLiveQuery(() => buscarAgente(id), [id]);
   const { data: execucoes } = useLiveQuery(() => listarExecucoesDoAgente(id), [id]);
   const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
-  const { data: anuncios } = useLiveQuery(listarAnuncios);
 
   if (carregando) return null;
   if (!agente)
@@ -101,12 +95,10 @@ export default function AgenteDetalhePage() {
   // Entidades selecionadas para o contexto
   const cliente = (clientes ?? []).find((c) => c.id === clienteId) ?? null;
   const produtosFiltrados = (produtos ?? []).filter((p) => !clienteId || p.clienteId === clienteId);
-  const anunciosFiltrados = (anuncios ?? []).filter((a) => !clienteId || a.clienteId === clienteId);
   const produto = produtosFiltrados.find((p) => p.id === produtoId) ?? null;
-  const anuncio = anunciosFiltrados.find((a) => a.id === anuncioId) ?? null;
 
-  const contexto = montarContexto({ cliente, produto, anuncio });
-  const resumoContexto = resumoDoContexto({ cliente, produto, anuncio });
+  const contexto = montarContexto({ cliente, produto });
+  const resumoContexto = resumoDoContexto({ cliente, produto });
   const podeExecutar = Boolean(entrada.trim() || contexto);
 
   function selecionarProduto(idSel: string) {
@@ -115,16 +107,9 @@ export default function AgenteDetalhePage() {
     if (p && !clienteId) setClienteId(p.clienteId);
   }
 
-  function selecionarAnuncio(idSel: string) {
-    setAnuncioId(idSel);
-    const a = (anuncios ?? []).find((x) => x.id === idSel);
-    if (a && !clienteId) setClienteId(a.clienteId);
-  }
-
   function selecionarCliente(idSel: string) {
     setClienteId(idSel);
     setProdutoId("");
-    setAnuncioId("");
   }
 
   async function executar(e: React.FormEvent) {
@@ -136,13 +121,12 @@ export default function AgenteDetalhePage() {
     setResultado(null);
     setTipoResultado(null);
     setTituloSugerido(null);
-    setTituloAplicado(false);
     setTarefasSugeridas([]);
     try {
       const retorno = await executarAgenteIA(agente, entrada.trim(), {
         contexto: contexto || undefined,
         resumoContexto: resumoContexto || undefined,
-        contemAnuncio: Boolean(anuncio),
+        contemAnuncio: false,
       });
       setResultado(retorno.resultado);
       setTipoResultado(retorno.tipo);
@@ -156,11 +140,9 @@ export default function AgenteDetalhePage() {
     }
   }
 
-  async function aplicarTitulo() {
-    if (!anuncio || !tituloSugerido) return;
-    await atualizarAnuncio(anuncio.id, { tituloOtimizado: tituloSugerido });
-    setTituloAplicado(true);
-  }
+  // "Aplicar no anuncio" saiu em 07/08 pelo mesmo motivo da esteira: escrevia em
+  // `anuncios`, tabela com zero linhas. O titulo sugerido continua VISIVEL — o
+  // agente ainda serve para pensar; so nao ha mais para onde gravar por aqui.
 
   return (
     <div className="space-y-6">
@@ -220,17 +202,6 @@ export default function AgenteDetalhePage() {
                   nome: clienteId ? p.nome : `${p.nome} (${p.cliente})`,
                 }))}
                 onChange={selecionarProduto}
-              />
-              <SelectContexto
-                label="Anúncio"
-                valor={anuncioId}
-                opcoes={anunciosFiltrados.map((a) => ({
-                  id: a.id,
-                  nome: clienteId
-                    ? `${a.produto} · ${a.marketplace}`
-                    : `${a.produto} · ${a.marketplace} (${a.cliente})`,
-                }))}
-                onChange={selecionarAnuncio}
               />
             </div>
             {contexto && (
@@ -301,32 +272,13 @@ export default function AgenteDetalhePage() {
             {(tituloSugerido || tarefasSugeridas.length > 0) && (
               <div className="mt-4 space-y-3 border-t border-white/5 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Aplicar no sistema
+                  O que o agente sugeriu
                 </p>
 
-                {tituloSugerido && anuncio && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white/[0.03] p-3">
-                    <div className="min-w-0">
-                      <p className="text-[11px] text-zinc-500">
-                        Título otimizado para “{anuncio.produto}”
-                      </p>
-                      <p className="truncate text-sm text-zinc-200">{tituloSugerido}</p>
-                    </div>
-                    <Button
-                      variant={tituloAplicado ? "success" : "primary"}
-                      onClick={aplicarTitulo}
-                      disabled={tituloAplicado}
-                    >
-                      {tituloAplicado ? (
-                        <>
-                          <Check size={14} /> Aplicado no anúncio
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 size={14} /> Aplicar no anúncio
-                        </>
-                      )}
-                    </Button>
+                {tituloSugerido && (
+                  <div className="rounded-lg bg-white/[0.03] p-3">
+                    <p className="text-[11px] text-zinc-500">Título otimizado</p>
+                    <p className="text-sm text-zinc-200">{tituloSugerido}</p>
                   </div>
                 )}
 

@@ -15,13 +15,13 @@ import { Badge } from "@/components/ui/Badge";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
-import { listarAnuncios } from "@/lib/services/anuncios";
+import { listarResumoDeAnuncios } from "@/lib/services/anunciosGerados";
 import { listarRelatorios } from "@/lib/services/relatorios";
 
 export default function DashboardPage() {
   const { data: clientesData } = useLiveQuery(listarClientes);
   const { data: produtosData } = useLiveQuery(listarProdutos);
-  const { data: anunciosData } = useLiveQuery(listarAnuncios);
+  const { data: anunciosData } = useLiveQuery(listarResumoDeAnuncios);
   const { data: relatoriosData } = useLiveQuery(listarRelatorios);
 
   const clientes = clientesData ?? [];
@@ -36,14 +36,30 @@ export default function DashboardPage() {
   // as três telas que sustentavam esses números saíram em 07/08, com zero linhas
   // no banco depois de meses. Número que só existe se um humano digitar é
   // número que fica desatualizado em silêncio.
+  //
+  // OS ANÚNCIOS VÊM DE `anuncios_gerados`, e essa troca é o conserto de um
+  // defeito meu: quando reescrevi este painel algumas horas antes, apontei os
+  // cartões para `anuncios` — a tabela da era agência, com ZERO linhas. Dois
+  // cartões mostravam zero numa loja com 790 anúncios publicados. A tabela viva
+  // é a da esteira, e é ela que o resto do produto usa (18 arquivos contra um).
+  //
+  // `listarResumoDeAnuncios` não traz o JSONB do conteúdo: contar não pode
+  // custar 1 MB de anúncio que ninguém vai abrir nesta tela.
+  //
+  // O CUSTO QUE SOBRA, medido e aceito: mesmo sem o JSONB, são ~322 kB por
+  // carga (1.377 kB menos os 1.055 do JSONB, em 880 anúncios) para produzir
+  // DOIS inteiros. Aceito porque esta tela é só da equipe — a agência não tem
+  // "/" no menu (`navDoPapel`) e a lojista vive em /cliente. São dois usuários.
+  //
+  // O gatilho para trocar por um `count: "exact", head: true` é claro: no dia
+  // em que o painel abrir para a agência, ou em que os anúncios passarem de
+  // alguns milhares. Egress é a parede mais próxima do plano Free.
   const clientesAtivos = clientes.filter((c) => c.status === "Ativo").length;
   const emOnboarding = clientes.filter((c) => c.status === "Onboarding").length;
   const produtosEmCadastro = produtos.filter(
     (p) => p.statusCadastro === "Em cadastro" || p.statusCadastro === "Não iniciado"
   ).length;
-  const anunciosEmOtimizacao = anuncios.filter(
-    (a) => a.statusRevisao !== "Concluído" || a.statusPublicacao !== "Publicado"
-  ).length;
+  const anunciosEmOtimizacao = anuncios.filter((a) => a.status !== "publicado").length;
   const relatoriosPendentes = relatorios.filter(
     (r) => r.status === "Pendente" || r.status === "Em elaboração"
   ).length;
@@ -55,9 +71,7 @@ export default function DashboardPage() {
     (c) => c.risco !== "Baixo" || c.status === "Em risco"
   );
 
-  const anunciosPublicados = anuncios.filter(
-    (a) => a.statusPublicacao === "Publicado"
-  ).length;
+  const anunciosPublicados = anuncios.filter((a) => a.status === "publicado").length;
 
   return (
     <div className="space-y-6">
@@ -75,7 +89,7 @@ export default function DashboardPage() {
         <StatCard label="Clientes ativos" value={clientesAtivos} icon={Users} tone="green" hint="Contratos em operação" />
         <StatCard label="Clientes em onboarding" value={emOnboarding} icon={Rocket} tone="violet" hint="Entrando na operação" />
         <StatCard label="Produtos em cadastro" value={produtosEmCadastro} icon={Package} tone="blue" hint="Aguardando publicação" />
-        <StatCard label="Anúncios em otimização" value={anunciosEmOtimizacao} icon={Megaphone} tone="cyan" hint="Na esteira de otimização" />
+        <StatCard label="Anúncios em produção" value={anunciosEmOtimizacao} icon={Megaphone} tone="cyan" hint="Na esteira, ainda não publicados" />
         <StatCard label="Relatórios pendentes" value={relatoriosPendentes} icon={FileWarning} tone="yellow" hint="A elaborar ou enviar" />
         <StatCard label="Clientes em risco" value={clientesEmRisco} icon={ShieldAlert} tone="orange" hint="Exigem atenção imediata" />
       </div>
@@ -111,7 +125,7 @@ export default function DashboardPage() {
             </div>
             <div className="rounded-lg bg-white/[0.03] p-3">
               <p className="text-lg font-semibold text-white">{anunciosEmOtimizacao}</p>
-              <p className="text-xs text-zinc-500">Anúncios em otimização</p>
+              <p className="text-xs text-zinc-500">Na esteira</p>
             </div>
             <div className="rounded-lg bg-white/[0.03] p-3">
               <p className="text-lg font-semibold text-white">{produtos.length}</p>

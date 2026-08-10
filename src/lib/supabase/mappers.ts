@@ -5,7 +5,6 @@
 
 import type {
   AgenteIA,
-  Anuncio,
   AnuncioGeradoRegistro,
   AnuncioVariante,
   AuditoriaAnuncio,
@@ -28,7 +27,6 @@ import type {
 import type {
   AgenteRow,
   AnuncioGeradoRow,
-  AnuncioRow,
   AnuncioVarianteRow,
   AuditoriaAnuncioRow,
   CategoriaTemplateRow,
@@ -186,59 +184,6 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.confiancaCusto !== undefined) r.confianca_custo = d.confiancaCusto;
   if (d.tabelaMedidasOverride !== undefined) r.tabela_medidas = d.tabelaMedidasOverride;
   if (d.componentes !== undefined) r.componentes = d.componentes;
-  return r;
-}
-
-// ---- Anúncios ----
-
-export function anuncioParaApp(row: AnuncioRow): Anuncio {
-  return {
-    id: row.id,
-    clienteId: row.cliente_id,
-    cliente: row.clientes?.empresa ?? "—",
-    produtoId: row.produto_id,
-    produto: row.produtos?.nome ?? "—",
-    marketplace: (row.marketplace ?? "Mercado Livre") as Anuncio["marketplace"],
-    link: row.link ?? "—",
-    tituloAtual: row.titulo_atual ?? "—",
-    tituloOtimizado: row.titulo_otimizado ?? "",
-    statusSeo: row.status_seo as Anuncio["statusSeo"],
-    statusDescricao: row.status_descricao as Anuncio["statusDescricao"],
-    statusImagens: row.status_imagens as Anuncio["statusImagens"],
-    statusPrecificacao: row.status_precificacao as Anuncio["statusPrecificacao"],
-    statusConcorrencia: row.status_concorrencia as Anuncio["statusConcorrencia"],
-    statusRevisao: row.status_revisao as Anuncio["statusRevisao"],
-    statusPublicacao: row.status_publicacao as Anuncio["statusPublicacao"],
-    proximaAcao: row.proxima_acao ?? "",
-    responsavel: row.responsavel ?? "",
-    categoriaMarketplace: row.categoria_marketplace ?? "",
-    descricao: row.descricao ?? "",
-    idExternoMarketplace: row.id_externo_marketplace ?? "",
-    observacoes: row.observacoes ?? "",
-  };
-}
-
-export function anuncioParaBanco(d: Partial<Anuncio>): Record<string, unknown> {
-  const r: Record<string, unknown> = {};
-  if (d.clienteId !== undefined) r.cliente_id = d.clienteId;
-  if (d.produtoId !== undefined) r.produto_id = d.produtoId;
-  if (d.marketplace !== undefined) r.marketplace = d.marketplace;
-  if (d.link !== undefined) r.link = d.link;
-  if (d.tituloAtual !== undefined) r.titulo_atual = d.tituloAtual;
-  if (d.tituloOtimizado !== undefined) r.titulo_otimizado = d.tituloOtimizado;
-  if (d.statusSeo !== undefined) r.status_seo = d.statusSeo;
-  if (d.statusDescricao !== undefined) r.status_descricao = d.statusDescricao;
-  if (d.statusImagens !== undefined) r.status_imagens = d.statusImagens;
-  if (d.statusPrecificacao !== undefined) r.status_precificacao = d.statusPrecificacao;
-  if (d.statusConcorrencia !== undefined) r.status_concorrencia = d.statusConcorrencia;
-  if (d.statusRevisao !== undefined) r.status_revisao = d.statusRevisao;
-  if (d.statusPublicacao !== undefined) r.status_publicacao = d.statusPublicacao;
-  if (d.proximaAcao !== undefined) r.proxima_acao = d.proximaAcao;
-  if (d.responsavel !== undefined) r.responsavel = d.responsavel;
-  if (d.categoriaMarketplace !== undefined) r.categoria_marketplace = d.categoriaMarketplace;
-  if (d.descricao !== undefined) r.descricao = d.descricao;
-  if (d.idExternoMarketplace !== undefined) r.id_externo_marketplace = d.idExternoMarketplace;
-  if (d.observacoes !== undefined) r.observacoes = d.observacoes;
   return r;
 }
 
