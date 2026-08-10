@@ -779,6 +779,9 @@ export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegist
     subStatusMarketplace: row.sub_status_marketplace ?? null,
     fotoCapaMaxSize: row.foto_capa_max_size ?? null,
     estoqueMarketplace: row.estoque_marketplace ?? null,
+    // 056. `?? null` e nao `?? ""`: string vazia seria uma categoria que nao
+    // existe, e quem pedir a tarifa com ela recebe erro em vez de ausencia.
+    categoriaMl: row.categoria_ml ?? null,
   };
 }
 
@@ -807,6 +810,7 @@ export function anuncioGeradoParaBanco(
   if (d.subStatusMarketplace !== undefined) r.sub_status_marketplace = d.subStatusMarketplace;
   if (d.fotoCapaMaxSize !== undefined) r.foto_capa_max_size = d.fotoCapaMaxSize;
   if (d.estoqueMarketplace !== undefined) r.estoque_marketplace = d.estoqueMarketplace;
+  if (d.categoriaMl !== undefined) r.categoria_ml = d.categoriaMl;
   // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }

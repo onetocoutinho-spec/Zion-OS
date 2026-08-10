@@ -92,7 +92,7 @@ export const COLUNAS_DO_RESUMO =
   "id, cliente_id, produto_id, auditoria_id, marketplace, origem, tipo_execucao, " +
   "nota_diagnostico, veredito_a10, qtd_pendencias, status, aprovado_por, aprovado_em, " +
   "observacoes, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, " +
-  "sub_status_marketplace, foto_capa_max_size, estoque_marketplace, created_at, " +
+  "sub_status_marketplace, foto_capa_max_size, estoque_marketplace, categoria_ml, created_at, " +
   "clientes(empresa), produtos(nome)";
 
 /**
@@ -228,6 +228,7 @@ export async function atualizarEstadoNoMarketplaceBulk(
     subStatusMarketplace?: string[];
     fotoCapaMaxSize?: string | null;
     estoqueMarketplace?: number | null;
+    categoriaMl?: string | null;
   }[]
 ): Promise<{ atualizados: number; falharam: number }> {
   if (atualizacoes.length === 0) return { atualizados: 0, falharam: 0 };

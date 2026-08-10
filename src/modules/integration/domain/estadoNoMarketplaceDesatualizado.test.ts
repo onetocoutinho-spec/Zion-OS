@@ -18,9 +18,10 @@ test("linha sem estado conhecido recebe o que o ML disse", () => {
     [{ mlb: "MLB1", status: "paused" }],
     AGORA
   );
-  // deepEqual da forma INTEIRA: a 051 acrescentou três campos, e eles precisam
-  // sair explícitos aqui. Afrouxar para `assert.equal(r[0].id, "a1")` deixaria
-  // um campo novo nascer com lixo sem ninguém ver.
+  // deepEqual da forma INTEIRA: a 051 acrescentou três campos e a 056 um
+  // quinto, e eles precisam sair explícitos aqui. Afrouxar para
+  // `assert.equal(r[0].id, "a1")` deixaria um campo novo nascer com lixo sem
+  // ninguém ver — e foi esta asserção que pegou a `categoriaMl` chegando.
   assert.deepEqual(r, [
     {
       id: "a1",
@@ -29,6 +30,7 @@ test("linha sem estado conhecido recebe o que o ML disse", () => {
       subStatusMarketplace: [],
       fotoCapaMaxSize: null,
       estoqueMarketplace: null,
+      categoriaMl: null,
     },
   ]);
 });
@@ -124,6 +126,7 @@ test("o eixo da esteira não aparece na saída — esta função não toca em `s
     AGORA
   );
   assert.deepEqual(Object.keys(r[0]).sort(), [
+    "categoriaMl",
     "estoqueMarketplace",
     "fotoCapaMaxSize",
     "id",
@@ -225,4 +228,44 @@ test("estoque ZERO é fato; ausente é silêncio", () => {
     AGORA
   );
   assert.deepEqual(ausente, [], "campo não lido não pode virar escrita");
+});
+
+// ---------------------------------------------------------------------------
+// A CATEGORIA — o quinto fato (056)
+// ---------------------------------------------------------------------------
+//
+// Medido em 10/08/2026: sem `category_id`, `/sites/MLB/listing_prices` devolve
+// null e a precificação inteira cai na tabela. A tabela cobra 19% em tudo; as
+// bolsas dela são MLB7022, onde o ML cobra 15% — quatro pontos de comissão
+// inventada, que fazem a margem parecer pior e o preço ideal sair mais alto.
+
+test("mudança só na CATEGORIA já é motivo de escrita", () => {
+  const r = estadosDesatualizados(
+    [{ id: "a1", mlItemId: "MLB1", statusMarketplace: "active", categoriaMl: "MLB273770" }],
+    [{ mlb: "MLB1", status: "active", categoriaMl: "MLB7022" }],
+    AGORA
+  );
+  assert.equal(r.length, 1, "a categoria mudou e ninguém gravou");
+  assert.equal(r[0].categoriaMl, "MLB7022");
+});
+
+test("categoria em branco NÃO apaga a que sabíamos", () => {
+  // Mesma regra do `status` em branco: o ML não disse, e sobrescrever com
+  // "não sabemos" perde informação. Aqui perderia a tarifa exata.
+  const r = estadosDesatualizados(
+    [{ id: "a1", mlItemId: "MLB1", statusMarketplace: "active", categoriaMl: "MLB7022" }],
+    [{ mlb: "MLB1", status: "paused" }],
+    AGORA
+  );
+  assert.equal(r.length, 1);
+  assert.equal(r[0].categoriaMl, "MLB7022", "a categoria conhecida foi apagada por uma leitura que não a trouxe");
+});
+
+test("a mesma categoria não vira escrita", () => {
+  const r = estadosDesatualizados(
+    [{ id: "a1", mlItemId: "MLB1", statusMarketplace: "active", categoriaMl: "MLB7022" }],
+    [{ mlb: "MLB1", status: "active", categoriaMl: "MLB7022" }],
+    AGORA
+  );
+  assert.deepEqual(r, []);
 });

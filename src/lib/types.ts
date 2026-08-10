@@ -548,6 +548,13 @@ export interface AnuncioGeradoRegistro {
   criadoEm: string; // ISO datetime
   observacoes: string;
   // ---- Fase 3: publicação no marketplace ----
+  /**
+   * A categoria do item NO MERCADO LIVRE — migração 056.
+   *
+   * `null` = nunca lida. É ela que permite pedir a tarifa exata; sem ela o ML
+   * devolve `null` e a precificação cai na tabela, que erra por categoria.
+   */
+  categoriaMl?: string | null;
   /** ID do item no Mercado Livre (ex.: MLB123...), após publicar. */
   mlItemId?: string | null;
   /** Link público do anúncio no ML. */

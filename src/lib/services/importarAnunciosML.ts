@@ -713,6 +713,8 @@ export async function importarAnunciosDoCliente(
         subStatus: a.subStatus ?? [],
         fotoCapaMaxSize: a.fotoCapaMaxSize,
         estoque: a.estoque,
+        // 056: o `category_id` ja vinha em toda leitura e era descartado.
+        categoriaMl: a.categoria,
       })),
       new Date().toISOString()
     );
@@ -830,6 +832,8 @@ export async function importarAnunciosDoCliente(
         subStatus: a.subStatus ?? [],
         fotoCapaMaxSize: a.fotoCapaMaxSize,
         estoque: a.estoque,
+        // 056: o `category_id` ja vinha em toda leitura e era descartado.
+        categoriaMl: a.categoria,
       })),
       new Date().toISOString()
     );

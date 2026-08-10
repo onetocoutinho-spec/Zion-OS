@@ -30,6 +30,7 @@ export interface AnuncioConhecido {
   subStatusMarketplace?: string[] | null;
   fotoCapaMaxSize?: string | null;
   estoqueMarketplace?: number | null;
+  categoriaMl?: string | null;
 }
 
 export interface EstadoLidoNoMarketplace {
@@ -41,6 +42,14 @@ export interface EstadoLidoNoMarketplace {
   fotoCapaMaxSize?: string;
   /** O estoque NO MARKETPLACE — é ele que ordena o trabalho. */
   estoque?: number;
+  /**
+   * O `category_id` do item — o QUINTO fato desta mesma leitura (056).
+   *
+   * Sem ele `/sites/MLB/listing_prices` devolve `null` e a precificação inteira
+   * cai na tabela. Medido em 10/08/2026: a tabela cobra 19% em tudo, e as
+   * bolsas dela são MLB7022, onde o ML cobra 15%.
+   */
+  categoriaMl?: string;
 }
 
 export interface AtualizacaoDeEstado {
@@ -50,6 +59,7 @@ export interface AtualizacaoDeEstado {
   subStatusMarketplace: string[];
   fotoCapaMaxSize: string | null;
   estoqueMarketplace: number | null;
+  categoriaMl: string | null;
 }
 
 /**
@@ -87,13 +97,18 @@ export function estadosDesatualizados(
     const subStatus = [...(lido.subStatus ?? [])].sort();
     const capa = (lido.fotoCapaMaxSize ?? "").trim();
     const estoque = typeof lido.estoque === "number" ? lido.estoque : null;
+    const categoria = (lido.categoriaMl ?? "").trim();
 
     const mesmoStatus = (a.statusMarketplace ?? "").trim() === status;
     const mesmoSub =
       JSON.stringify([...(a.subStatusMarketplace ?? [])].sort()) === JSON.stringify(subStatus);
     const mesmaCapa = (a.fotoCapaMaxSize ?? "").trim() === capa;
     const mesmoEstoque = (a.estoqueMarketplace ?? null) === estoque;
-    if (mesmoStatus && mesmoSub && mesmaCapa && mesmoEstoque) continue;
+    // Categoria VAZIA não conta como diferença: o ML não a devolveu nesta
+    // leitura, e sobrescrever o que sabíamos com "não sabemos" é a mesma perda
+    // que o `status` em branco já evita acima.
+    const mesmaCategoria = !categoria || (a.categoriaMl ?? "").trim() === categoria;
+    if (mesmoStatus && mesmoSub && mesmaCapa && mesmoEstoque && mesmaCategoria) continue;
 
     saida.push({
       id: a.id,
@@ -102,6 +117,8 @@ export function estadosDesatualizados(
       subStatusMarketplace: subStatus,
       fotoCapaMaxSize: capa || null,
       estoqueMarketplace: estoque,
+      // Preserva o que já sabíamos quando a leitura veio sem categoria.
+      categoriaMl: categoria || (a.categoriaMl ?? null),
     });
   }
   return saida;

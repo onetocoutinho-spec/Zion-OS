@@ -392,6 +392,7 @@ export interface PendenciaRow {
 // ---- v1.9: Anúncios gerados pela Esteira (rodar a migração 004) ----
 
 export interface AnuncioGeradoRow {
+  categoria_ml?: string | null;
   id: string;
   cliente_id: string;
   produto_id: string | null;
