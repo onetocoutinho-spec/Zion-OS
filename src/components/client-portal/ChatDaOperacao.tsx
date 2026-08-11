@@ -737,9 +737,14 @@ export function ChatDaOperacao({
       const alvo = turnos[indice];
       // O cadastro carrega o próprio id: os dois cartões podem coexistir num
       // turno, e confundir os dois confirmaria a proposta errada.
+      // A LISTA É NOMINAL, e por isso é armadilha: um cartão novo cujo id não
+      // entre aqui renderiza o botão e o clique não faz NADA — sem erro, sem
+      // requisição, sem pista. Foi o que aconteceu com `propostaDeTextoId` em
+      // 10/08/2026, e a sentinela `todoCartaoConfirma` guarda a lista agora.
       const id =
         alvo?.cadastro?.propostaId ??
         alvo?.propostaDeTituloId ??
+        alvo?.propostaDeTextoId ??
         alvo?.propostaDePrecoId ??
         alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);

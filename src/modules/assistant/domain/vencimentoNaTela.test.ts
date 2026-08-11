@@ -150,3 +150,38 @@ test("`chegouEm` NÃO atravessa o recarregamento", () => {
   );
   assert.ok(!/chegouEm/.test(guardada), "`chegouEm` entrou no que é persistido");
 });
+
+// ---------------------------------------------------------------------------
+// TODO CARTÃO QUE MOSTRA BOTÃO SABE CONFIRMAR
+// ---------------------------------------------------------------------------
+//
+// `confirmar` resolve o id da proposta a partir de uma LISTA NOMINAL. Um cartão
+// novo cujo id não entre nela renderiza o botão normalmente — e o clique não
+// faz NADA: sem erro, sem requisição, sem pista.
+//
+// Medido em produção em 10/08/2026: o cartão de descrição aparecia completo, o
+// botão "Trocar a descrição" respondia ao clique, e nenhuma chamada saía. A
+// proposta ficava `pendente` para sempre.
+//
+// A guarda liga as três pontas: o campo de id no Turno, a lista do `confirmar`,
+// e o carimbo de chegada.
+
+test("todo `propostaDe*Id` do Turno entra na resolução do `confirmar`", () => {
+  const doTurno = [...CHAT.matchAll(/^\s{2}(proposta\w*Id)\?:/gm)].map((m) => m[1]);
+  assert.ok(doTurno.length >= 3, `esperava 3+ ids de proposta no Turno, achei ${doTurno.length}`);
+
+  // A RESOLUÇÃO, e só ela.
+  //
+  // `indexOf("const id =")` pega a PRIMEIRA ocorrência do arquivo, e a fatia
+  // acabava englobando a própria declaração do Turno — onde os campos estão
+  // listados. A guarda casava consigo mesma e passava verde sobre o defeito.
+  // Sexta vez nesta sessão que uma fatia minha abrange mais do que devia.
+  const fim = CHAT.indexOf("const ehCadastro");
+  const resolucao = CHAT.slice(CHAT.lastIndexOf("const id =", fim), fim);
+  const foraDaLista = doTurno.filter((c) => !resolucao.includes(c));
+  assert.deepEqual(
+    foraDaLista,
+    [],
+    `id declarado no Turno e ausente do \`confirmar\`: ${foraDaLista.join(", ")} — o botão aparece e o clique não faz nada`
+  );
+});
