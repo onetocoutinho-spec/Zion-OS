@@ -737,13 +737,28 @@ export async function executarFerramenta(
             produto: g.familia,
             tipo: g.tipo,
             gravidade: g.gravidade,
-            quantos: g.quantos,
+            // O NOME DO CAMPO É O ROTULO, e aqui ele já custou uma resposta.
+            //
+            // Nasceu `quantos`, e na primeira pergunta em produção (11/08/2026)
+            // o modelo escreveu "Infrações: 40" para o Chinelo Havaianas Top
+            // Liso. O 40 estava certo — são 40 ANÚNCIOS com infração — mas as
+            // infrações dele são 97. Somando a coluna, ele anunciou "419
+            // infrações" numa conta que tem 1.066.
+            //
+            // É a mesma lição que `contar` aprendeu antes: número sem
+            // significado ao lado é convite à leitura errada, e o modelo lê o
+            // nome do campo como se fosse a definição.
+            anunciosAfetados: g.quantos,
             estoqueParado: g.estoque,
             oQueFazer: g.oQueFazer,
             porque: g.porque,
             exemplos: g.exemplos.slice(0, 3),
           })),
           gruposOmitidos: Math.max(0, grupos.length - LIMITE_DE_GRUPOS),
+          significado:
+            "`anunciosAfetados` conta ANÚNCIOS com esta pendência, NUNCA infrações — " +
+            "um anúncio pode acumular várias. Se a lojista perguntar quantas infrações, " +
+            "use `contar` com assunto `infracao`; somar esta coluna dá outro número.",
           comoResponder:
             "`oQueFazer` e `porque` são a palavra do Mercado Livre, já limpa de HTML — use como estão, não reescreva. " +
             "Se aparecer `propriedade-intelectual`, avise que editar e republicar conta como reincidência e pode custar a conta, e NÃO proponha edição.",
