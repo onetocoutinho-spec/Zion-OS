@@ -21,6 +21,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolverObrigatorios } from "./atributosDoMarketplace.ts";
 
 const EXIGE_GENERO = [{ id: "GENDER", nome: "Gênero" }];
@@ -83,4 +84,34 @@ test("quem NÃO passa atributos continua funcionando como antes", () => {
     EXIGE_GENERO
   );
   assert.equal(r.find((a) => a.id === "GENDER")?.origem, "nome");
+});
+
+// ---------------------------------------------------------------------------
+// O ATALHO DAS VARIANTES VAZIAS, e a premissa que o sustenta
+// ---------------------------------------------------------------------------
+//
+// `propor_publicacao` traduz `ProdutoParaPreparar` para `ProdutoParaAnalise` e
+// passa `variantes: []`. Isso só é honesto enquanto NENHUMA pendência de
+// variante bloquear publicar.
+//
+// Se um dia `peso_variante` passar a bloquear, o atalho silenciaria a trava —
+// e a lojista publicaria o que não devia. Esta guarda quebra antes.
+
+test("SÓ preço e foto bloqueiam publicar — as duas são de produto", () => {
+  const fonte = readFileSync(
+    new URL("../../catalog/domain/pendenciasDoCatalogo.ts", import.meta.url),
+    "utf8"
+  );
+  const bloco = fonte.slice(fonte.indexOf("const BLOQUEIOS"), fonte.indexOf("const IMPEDE"));
+
+  const bloqueiam = [...bloco.matchAll(/^\s*(\w+):\s*\[([^\]]*)\]/gm)]
+    .filter(([, , caps]) => caps.includes('"publicar"'))
+    .map(([, tipo]) => tipo)
+    .sort();
+
+  assert.deepEqual(
+    bloqueiam,
+    ["foto", "preco"],
+    "mudou quem bloqueia publicar — o atalho de `variantes: []` em `propor_publicacao` deixou de ser honesto"
+  );
 });

@@ -1472,8 +1472,43 @@ async function proporPublicacao(
 
   // O CRITÉRIO É DO DOMÍNIO. Ver o cabeçalho.
   const item = await a.doProduto(produtoId);
+  // ===================================================================
+  // A TRADUÇÃO ENTRE OS DOIS TIPOS, ESCRITA À MÃO E DE PROPÓSITO
+  // ===================================================================
+  //
+  // `ProdutoParaPreparar` conta imagens (`quantidadeImagens`);
+  // `ProdutoParaAnalise` quer um booleano (`temFoto`). São perguntas
+  // diferentes sobre o mesmo produto, e nenhum dos dois tipos está errado.
+  //
+  // A primeira versão daqui usava `as never` para calar o compilador. Ele
+  // estava certo: `temFoto` chegava `undefined` — falsy —, então TODO produto
+  // era "sem foto", e `propor_publicacao` recusava dizendo que faltava imagem
+  // num produto com dez.
+  //
+  // Medido em produção em 11/08/2026, na Sapatilha Modare. Um cast que silencia
+  // o compilador silencia justamente o aviso que existia para isto.
   const travas = item
-    ? pendenciasDoProduto(item.produto as never).filter((p) => p.bloqueia.includes("publicar"))
+    ? pendenciasDoProduto({
+        id: produtoId,
+        nome: item.produto.nome,
+        marca: item.produto.marca,
+        modelo: item.produto.modelo,
+        custo: item.produto.custo,
+        precoVenda: item.produto.precoVenda,
+        temFoto: item.produto.quantidadeImagens > 0,
+        ...(item.produto.vendedorPagaFrete === false ? { vendedorPagaFrete: false } : {}),
+        // VARIANTES VAZIAS, e isto é uma afirmação verificável, não preguiça:
+        // das sete pendências, só `preco` e `foto` bloqueiam publicar, e as
+        // duas são de PRODUTO. As de variante (`peso_variante`, `sku_variante`,
+        // `ean_variante`) têm lista de bloqueio vazia de propósito.
+        //
+        // `VarianteDaBase` não tem `id` nem `pesoGramas`, então traduzir exigiria
+        // inventar os dois — e inventar id é como se troca dado de lugar.
+        //
+        // A sentinela `soPrecoEFotoBloqueiamPublicar` quebra se isso mudar, para
+        // o atalho não sobreviver à premissa.
+        variantes: [],
+      }).filter((p) => p.bloqueia.includes("publicar"))
     : [];
   if (travas.length > 0) {
     return {
