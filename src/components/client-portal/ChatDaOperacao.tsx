@@ -645,6 +645,39 @@ export function ChatDaOperacao({
             : // A resposta é montada AQUI, contra o estado real. O que voltou do
               // servidor foi só a intenção.
               { resposta: responder(criterio, contexto) };
+
+        // ===================================================================
+        // A SEGUNDA PORTA DA ESCALADA: entendeu, mas não sei responder
+        // ===================================================================
+        //
+        // A escalada acima cobre `!entendeu` — a frase que não cabe em assunto
+        // nenhum. Ela NÃO cobre o caso oposto e mais comum: o modelo entendeu
+        // perfeitamente, escreveu a interpretação, e a lista fechada não tinha
+        // balde.
+        //
+        // Medido em 10/08/2026, em produção: "quanto sai de mim em cada venda?"
+        // voltou com a interpretação correta ("você quer saber quanto sai do
+        // seu bolso") seguida da lista "o que eu consigo responder". A
+        // ferramenta `meus_custos` existia e respondia essa pergunta — atrás de
+        // um botão desligado que a lojista não tem como saber que existe.
+        //
+        // É estrutural, não um caso: `nao_sei` nasce em QUATRO lugares (intenção
+        // fora da lista, produto não aberto, assunto desconhecido, capacidade
+        // desconhecida), e o caminho do fio resolve os quatro — inclusive "não
+        // há produto aberto", porque lá existe `achar_produto`.
+        //
+        // Toda capacidade nova cai aqui. A lista fechada responde seis coisas;
+        // o fio tem dezoito ferramentas. Sem esta porta, cada ferramenta nova
+        // nasce inalcançável pelo caminho padrão.
+        //
+        // O CUSTO: uma classificação desperdiçada — Gemini Flash, teto de 400
+        // tokens. É o preço de a lojista nunca ver a parede, e ele não cresce:
+        // a maioria das perguntas continua sendo resolvida pela via rápida.
+        if ("resposta" in encerra && encerra.resposta?.tipo === "nao_sei") {
+          await responderConversando(pergunta);
+          return;
+        }
+
         setTurnos((t) =>
           t.map((turno, i) =>
             i === t.length - 1
