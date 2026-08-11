@@ -225,6 +225,12 @@ export async function conversar(
           ...(e.preparacao
             ? { preparacao: e.preparacao as RespostaDaConversa["preparacao"] }
             : {}),
+          ...(e.propostaDeTexto
+            ? { propostaDeTexto: e.propostaDeTexto as RespostaDaConversa["propostaDeTexto"] }
+            : {}),
+          ...(typeof e.propostaDeTextoId === "string"
+            ? { propostaDeTextoId: e.propostaDeTextoId }
+            : {}),
           ...(e.propostaDeTitulo
             ? { propostaDeTitulo: e.propostaDeTitulo as RespostaDaConversa["propostaDeTitulo"] }
             : {}),
