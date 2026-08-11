@@ -111,3 +111,73 @@ test("o desfecho diz as QUATRO contagens, inclusive as que doem", () => {
     "os ambíguos voltaram a ser só um número — recusar só é honesto se ela puder resolver"
   );
 });
+
+// ---------------------------------------------------------------------------
+// O CLIPE DEIXA DE SER "A PORTA DOS CUSTOS"
+// ---------------------------------------------------------------------------
+//
+// Até 10/08/2026 todo arquivo largado no chat era tratado como planilha de
+// custo. Uma planilha de peso caía na conferência de custos, não achava coluna
+// de custo, e a lojista recebia uma tela pedindo para apontar uma coluna que a
+// planilha não tem.
+//
+// Quem decide agora é `oQueEssaPlanilhaE`, pelos CABEÇALHOS. Cada espécie
+// segue para o domínio dela, com a disciplina dela — e as disciplinas são
+// diferentes de propósito.
+
+test("o roteador decide a espécie, e não o clipe", () => {
+  assert.match(
+    CAMINHO_DA_PLANILHA,
+    /oQueEssaPlanilhaE\(planilha\.headers\)/,
+    "o clipe voltou a assumir que todo arquivo é planilha de custo"
+  );
+});
+
+test("AMBÍGUA e NENHUMA viram frase, não palpite", () => {
+  // Uma planilha com custo E peso é legítima. Escolher por ela gravaria metade
+  // do que trouxe, em silêncio, sem dizer qual metade.
+  assert.match(CAMINHO_DA_PLANILHA, /especie === "nenhuma"/);
+  assert.match(CAMINHO_DA_PLANILHA, /especie === "ambigua"/);
+  assert.ok(
+    CAMINHO_DA_PLANILHA.indexOf('especie === "nenhuma"') <
+      CAMINHO_DA_PLANILHA.indexOf("planilha, especie:"),
+    "a recusa passou a acontecer depois de a planilha já estar na tela"
+  );
+});
+
+test("PESO não passa pela conferência de MAPEAMENTO — mas passa pelo clique", () => {
+  // A conferência de custo existe porque coluna de custo é ambígua. Peso é o
+  // oposto por regra do domínio: só "peso_kg"/"peso_g", só SKU/EAN. Pedir para
+  // confirmar uma escolha que não existe é cerimônia, e cerimônia ensina a
+  // clicar sem ler.
+  //
+  // O que continua valendo é a outra metade: largar NÃO é autorizar.
+  assert.match(FONTE, /<ConferirPeso/, "a conferência de peso sumiu do chat");
+  const recebimento = FONTE.slice(
+    FONTE.indexOf("async function receberPlanilha("),
+    FONTE.indexOf("async function confirmarPeso(")
+  );
+  assert.ok(
+    !recebimento.includes("importarPeso("),
+    "largar uma planilha de peso no chat passou a gravar sozinho"
+  );
+  assert.match(FONTE, /onConfirmar=\{\(\) => void confirmarPeso\(/, "o clique deixou de ser o gatilho");
+});
+
+test("a UNIDADE aparece na prévia do peso", () => {
+  // 800 em kg e 800 em g diferem por mil vezes, e o erro sairia como preço de
+  // frete em vez de aviso. É o campo que mais importa nessa tela.
+  const previa = readFileSync(new URL("./ConferirPeso.tsx", import.meta.url), "utf8");
+  assert.match(previa, /c\.unidade/, "a unidade sumiu da prévia do peso");
+  assert.match(previa, /row\[c\.peso\]/, "o texto cru do peso sumiu — é onde a coluna trocada se denuncia");
+});
+
+test("o relatório do peso diz as contagens que doem", () => {
+  const gravacao = FONTE.slice(
+    FONTE.indexOf("async function confirmarPeso("),
+    FONTE.indexOf("async function confirmarPlanilha(")
+  );
+  for (const campo of ["r.produtos", "r.variantes", "r.linhasCsv", "r.naoEncontrados", "r.semPeso"]) {
+    assert.ok(gravacao.includes(campo), `${campo} sumiu do relatório do peso`);
+  }
+});

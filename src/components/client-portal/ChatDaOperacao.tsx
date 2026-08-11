@@ -95,7 +95,10 @@ import {
   RESPOSTA_DA_SAUDACAO,
 } from "@/modules/assistant/domain/saudacaoDaConversa";
 import { formatBRLExato } from "@/lib/format";
+import { importarPeso } from "@/lib/services/importacaoPeso";
+import { oQueEssaPlanilhaE } from "@/modules/catalog/domain/oQueEssaPlanilhaE";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { ConferirPeso } from "./ConferirPeso";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import { importarCustos, type ResultadoCustos } from "@/lib/services/importacaoCustos";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
@@ -160,6 +163,8 @@ interface Turno {
    * deve reaparecer autorizado depois de um F5.
    */
   planilha?: PlanilhaLida;
+  /** O que o roteador decidiu que ela é. Decide qual conferência a tela mostra. */
+  especie?: "custo" | "peso";
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -781,9 +786,47 @@ export function ChatDaOperacao({
   async function receberPlanilha(arquivo: File) {
     try {
       const planilha = await lerPlanilha(arquivo);
+
+      // ===================================================================
+      // O CLIPE DEIXA DE SER "A PORTA DOS CUSTOS"
+      // ===================================================================
+      //
+      // Até 10/08/2026 todo arquivo largado aqui era tratado como planilha de
+      // CUSTO. Uma planilha de peso caía na conferência de custos, não achava
+      // coluna de custo, e a lojista recebia uma tela pedindo para ela apontar
+      // uma coluna que a planilha não tem.
+      //
+      // Quem decide agora é `oQueEssaPlanilhaE`, pelos CABEÇALHOS — mesma
+      // decisão toda vez, sem modelo. Cada espécie segue para o domínio dela,
+      // com a disciplina dela:
+      //
+      //   custo  → conferência do mapeamento antes de gravar (colunas de custo
+      //            são ambíguas: já gravaram R$ 30.277.872,00 como custo)
+      //   peso   → detecção estrita, sem conferência de mapeamento: ou os
+      //            cabeçalhos são inequívocos, ou o domínio recusa com
+      //            instrução ("renomeie para peso_kg")
+      //
+      // AMBÍGUA e NENHUMA não viram palpite: viram frase. Uma planilha com
+      // custo E peso é legítima, e escolher por ela gravaria metade do que ela
+      // trouxe sem dizer qual metade.
+      const especie = oQueEssaPlanilhaE(planilha.headers);
+      if (especie.especie === "nenhuma" || especie.especie === "ambigua") {
+        setTurnos((t) => [
+          ...t,
+          {
+            pergunta: `Enviei a planilha ${arquivo.name}`,
+            erro:
+              especie.especie === "nenhuma"
+                ? especie.mensagem
+                : `${especie.porque} Me diga qual das duas você quer importar e mande de novo só com essa coluna.`,
+          },
+        ]);
+        return;
+      }
+
       setTurnos((t) => [
         ...t,
-        { pergunta: `Enviei a planilha ${arquivo.name}`, planilha },
+        { pergunta: `Enviei a planilha ${arquivo.name}`, planilha, especie: especie.especie },
       ]);
     } catch (e) {
       setTurnos((t) => [
@@ -796,6 +839,61 @@ export function ChatDaOperacao({
               : "Não consegui ler esse arquivo.",
         },
       ]);
+    }
+  }
+
+  /**
+   * A gravação do PESO. Irmã de `confirmarPlanilha`, e por isso mesmo separada.
+   *
+   * Poderia ser um `if` dentro da outra. Não é, porque as duas gravam em
+   * lugares diferentes com relatórios diferentes, e um parâmetro a mais numa
+   * função que já grava dinheiro é onde o próximo defeito mudo entra.
+   */
+  async function confirmarPeso(indice: number) {
+    const alvo = turnos[indice];
+    if (!alvo?.planilha || !clienteId) return;
+    setTurnos((t) =>
+      t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
+    );
+    try {
+      const r = await importarPeso(clienteId, alvo.planilha);
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                planilha: undefined,
+                importandoPlanilha: false,
+                // AS QUATRO CONTAGENS, como no relatório de custos. "84
+                // variações" sozinho lê-se como sucesso completo; o número que
+                // falta é justamente o que a faria procurar o que ficou para
+                // trás.
+                texto:
+                  `Gravei o peso em ${r.produtos} produto(s) e ${r.variantes} variação(ões), ` +
+                  `de ${r.linhasCsv} linha(s) na planilha.` +
+                  (r.naoEncontrados > 0
+                    ? ` ${r.naoEncontrados} linha(s) não casaram com nenhuma variação — o SKU ou EAN não existe aqui.`
+                    : "") +
+                  (r.semPeso > 0
+                    ? ` ${r.semPeso} linha(s) vieram sem peso utilizável (vazio, zero ou texto) e ficaram de fora.`
+                    : ""),
+              }
+            : turno
+        )
+      );
+      aoGravar?.();
+    } catch (e) {
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                importandoPlanilha: false,
+                erro: e instanceof Error ? e.message : "Não consegui gravar o peso.",
+              }
+            : turno
+        )
+      );
     }
   }
 
@@ -906,6 +1004,30 @@ export function ChatDaOperacao({
                    não uma cópia dele. Ele mostra o texto CRU do custo ao lado
                    do valor interpretado, que é onde a coluna trocada se
                    denuncia, e recusa importar quando os sinais são ruins. */
+                t.especie === "peso" ? (
+                  /* PESO NÃO PASSA PELA CONFERÊNCIA DE MAPEAMENTO, e isso é
+                     desenho, não atalho. O domínio do peso RECUSA casar por
+                     nome e RECUSA coluna sem unidade no cabeçalho — se a
+                     planilha chegou até aqui, os cabeçalhos já são
+                     inequívocos. Pedir para ela apontar colunas que o domínio
+                     já identificou com certeza seria cerimônia, e cerimônia
+                     ensina a clicar sem ler.
+
+                     O que continua valendo é a outra metade da regra: largar o
+                     arquivo NÃO é autorizar. Nada é gravado até o clique. */
+                  <ConferirPeso
+                    planilha={t.planilha}
+                    ocupado={t.importandoPlanilha}
+                    onCancelar={() =>
+                      setTurnos((ts) =>
+                        ts.map((turno, j) =>
+                          j === i ? { ...turno, planilha: undefined, texto: "Descartei a planilha. Nada foi gravado." } : turno
+                        )
+                      )
+                    }
+                    onConfirmar={() => void confirmarPeso(i)}
+                  />
+                ) : (
                 <ConferirPlanilha
                   planilha={t.planilha}
                   nomesDoCatalogo={produtos.map((p) => p.nome)}
@@ -919,6 +1041,7 @@ export function ChatDaOperacao({
                   }
                   onConfirmar={(mapa) => void confirmarPlanilha(i, mapa)}
                 />
+                )
               ) : t.custosImportados ? (
                 <ResultadoDaPlanilha r={t.custosImportados} />
               ) : t.texto !== undefined ||
