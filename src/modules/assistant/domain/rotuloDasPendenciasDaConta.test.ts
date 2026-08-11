@@ -70,6 +70,32 @@ test("o significado viaja junto do número", () => {
   );
 });
 
+test("a lista de MLBs se declara curta — `reativar_anuncio` age sem clique", () => {
+  const corpo = corpoDoCase();
+  // Medido em produção em 11/08/2026: com 3 MLBs de um grupo de 26, o modelo
+  // ofereceu "quer que eu reative algum grupo específico, ou todos?". Aceitar
+  // "todos" reativaria 3 e a frase seguinte diria que o grupo voltou ao ar —
+  // e como esta ferramenta não pede clique, o engano não fica na tela: fica
+  // em anúncio que ela pensa que está vendendo.
+  assert.match(
+    corpo,
+    /mlbsOmitidos:/,
+    "o recorte de MLBs voltou a ser calado — o modelo passa a achar que tem " +
+      "os códigos do grupo inteiro"
+  );
+  assert.match(
+    corpo,
+    /g\.quantos - Math\.min\(/,
+    "os omitidos voltaram a ser contados contra `exemplos`, que o domínio já " +
+      "recortou — a conta esconde justamente o que sobrou"
+  );
+  assert.match(
+    corpo,
+    /nunca ofereça reativar/,
+    "sumiu a instrução que impede oferecer o grupo inteiro sem ter os códigos"
+  );
+});
+
 test("o total verdadeiro continua viajando ao lado do recorte", () => {
   const corpo = corpoDoCase();
   // Recortar em silêncio é o que transforma "mostrei 20" em "só existem 20".

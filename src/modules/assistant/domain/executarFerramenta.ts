@@ -98,6 +98,16 @@ type ResumoDaConta = ResumoDePendencias & {
  * transforma "mostrei 20" em "só existem 20".
  */
 const LIMITE_DE_GRUPOS = 20;
+
+/**
+ * Quantos MLBs de cada grupo viajam na resposta.
+ *
+ * Eles não são ilustração: `reativar_anuncio` age por MLB, então esta lista é
+ * o que o modelo tem em mãos para agir. Três era pouco demais para grupos de
+ * 26 — e o perigo não é a lista curta, é ela não se declarar curta. Por isso
+ * `mlbsOmitidos` viaja ao lado.
+ */
+const MLBS_POR_GRUPO = 3;
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -752,7 +762,25 @@ export async function executarFerramenta(
             estoqueParado: g.estoque,
             oQueFazer: g.oQueFazer,
             porque: g.porque,
-            exemplos: g.exemplos.slice(0, 3),
+            exemplos: g.exemplos.slice(0, MLBS_POR_GRUPO),
+            // O RECORTE SE DECLARA, aqui mais que em qualquer outro lugar.
+            //
+            // Medido em produção em 11/08/2026: perguntado pelos pausados, o
+            // modelo listou os 9 grupos certos e ofereceu "quer que eu reative
+            // algum grupo específico, ou todos?" — tendo em mãos 3 MLBs de um
+            // grupo de 26. Aceitar "todos" reativaria 3 e a frase seguinte
+            // diria que o grupo voltou ao ar.
+            //
+            // `reativar_anuncio` age SEM clique. Um recorte calado aqui não
+            // vira um número errado na tela: vira anúncio que ela pensa que
+            // está vendendo e não está.
+            // Contra o TAMANHO DO GRUPO, não contra `exemplos` — o domínio já
+            // recorta os exemplos antes de chegarem aqui, e subtrair sobre o
+            // que já veio cortado esconderia justamente o que sobrou.
+            mlbsOmitidos: Math.max(
+              0,
+              g.quantos - Math.min(g.exemplos.length, MLBS_POR_GRUPO)
+            ),
           })),
           gruposOmitidos: Math.max(0, grupos.length - LIMITE_DE_GRUPOS),
           significado:
@@ -761,7 +789,9 @@ export async function executarFerramenta(
             "use `contar` com assunto `infracao`; somar esta coluna dá outro número.",
           comoResponder:
             "`oQueFazer` e `porque` são a palavra do Mercado Livre, já limpa de HTML — use como estão, não reescreva. " +
-            "Se aparecer `propriedade-intelectual`, avise que editar e republicar conta como reincidência e pode custar a conta, e NÃO proponha edição.",
+            "Se aparecer `propriedade-intelectual`, avise que editar e republicar conta como reincidência e pode custar a conta, e NÃO proponha edição. " +
+            "`exemplos` traz SÓ ALGUNS MLBs do grupo e `mlbsOmitidos` diz quantos ficaram de fora: nunca ofereça reativar \"o grupo todo\" " +
+            "com base nesta lista — você não tem os códigos dos que faltam. Diga quantos consegue e mande ela abrir a tela de Anúncios para o resto.",
         },
       };
     }
