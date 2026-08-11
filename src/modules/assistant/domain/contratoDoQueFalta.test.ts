@@ -339,8 +339,23 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // E não publica: quem publica é `/api/ml/publicar`, a MESMA rota da tela da
   // equipe, com a trava de infração que falha fechada. Um caminho próprio até o
   // ML seria uma segunda cópia daquela trava.
-  assert.equal(FERRAMENTAS.length, 21);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
+  //
+  // De 21 para 22 em 11/08/2026: `tabela_de_medidas`, LEITURA.
+  //
+  // Entra na PRIMEIRA AÇÃO porque é leitura pura: o pior caso de um "obrigado"
+  // dispará-la é a lojista ver a tabela de tamanhos sem ter pedido. Mesmo dano
+  // de `estado_da_loja` — nenhum.
+  //
+  // A decisão: medida errada não é erro de texto, é DEVOLUÇÃO, e devolução
+  // aparece direto no custo dela. Era a porta fechada com a consequência mais
+  // concreta das três.
+  //
+  // E ela lê o DOMÍNIO, não um agente. `montarTabelaMedidas` resolve
+  // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
+  // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
+  // justamente para o modelo não afirmar as três com a mesma confiança.
+  assert.equal(FERRAMENTAS.length, 22);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -353,7 +368,7 @@ test("T17: o C1R continua intacto", () => {
   // 11 desde 10/08/2026. O que o C1R garante NÃO mudou e é o que a linha
   // seguinte prova: toda ferramenta da primeira ação tem efeito `le`. O número
   // trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 11);
+  assert.equal(PRIMEIRA_ACAO.length, 12);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

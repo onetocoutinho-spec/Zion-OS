@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 11 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 12 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 11);
+  assert.equal(PRIMEIRA_ACAO.length, 12);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas onze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -89,6 +89,7 @@ test("T2: são exatamente estas onze — a matriz que autorizou a decisão", () 
     "pricing",
     "procedencia",
     "proximo_passo",
+    "tabela_de_medidas",
   ]);
 });
 
@@ -238,8 +239,23 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // E não publica: quem publica é `/api/ml/publicar`, a MESMA rota da tela da
   // equipe, com a trava de infração que falha fechada. Um caminho próprio até o
   // ML seria uma segunda cópia daquela trava.
-  assert.equal(FERRAMENTAS.length, 21);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
+  //
+  // De 21 para 22 em 11/08/2026: `tabela_de_medidas`, LEITURA.
+  //
+  // Entra na PRIMEIRA AÇÃO porque é leitura pura: o pior caso de um "obrigado"
+  // dispará-la é a lojista ver a tabela de tamanhos sem ter pedido. Mesmo dano
+  // de `estado_da_loja` — nenhum.
+  //
+  // A decisão: medida errada não é erro de texto, é DEVOLUÇÃO, e devolução
+  // aparece direto no custo dela. Era a porta fechada com a consequência mais
+  // concreta das três.
+  //
+  // E ela lê o DOMÍNIO, não um agente. `montarTabelaMedidas` resolve
+  // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
+  // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
+  // justamente para o modelo não afirmar as três com a mesma confiança.
+  assert.equal(FERRAMENTAS.length, 22);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

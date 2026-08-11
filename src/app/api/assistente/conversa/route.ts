@@ -97,6 +97,7 @@ import {
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
 import { montarPreviewML } from "@/lib/services/publicacaoML";
+import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
@@ -405,6 +406,52 @@ export async function POST(request: Request) {
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
       gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
       textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
+      // A TABELA VEM DO DOMÍNIO, não de agente.
+      //
+      // `montarTabelaMedidas` resolve override → marca → padrão BR, nessa
+      // ordem, e diz qual usou. Rodar o A7 aqui trocaria dado por palpite
+      // sobre uma coisa que já é sabida — e medida errada é devolução.
+      medidasDoProduto: async (produtoId) => {
+        const admin = getSupabaseAdmin();
+        const [{ data: prod }, { data: vars }, { data: tabelas }] = await Promise.all([
+          admin
+            .from("produtos")
+            .select("nome, marca, tabela_medidas_override")
+            .eq("cliente_id", clienteDaSessao)
+            .eq("id", produtoId)
+            .maybeSingle(),
+          admin
+            .from("produto_variantes")
+            .select("tamanho")
+            .eq("cliente_id", clienteDaSessao)
+            .eq("produto_id", produtoId),
+          admin
+            .from("tabelas_medidas")
+            .select("marca, como_medir, linhas")
+            .eq("cliente_id", clienteDaSessao),
+        ]);
+        const p = prod as { nome?: string; marca?: string; tabela_medidas_override?: string } | null;
+        if (!p) return null;
+        const r = montarTabelaMedidas({
+          marca: p.marca ?? "",
+          tamanhos: [
+            ...new Set(
+              ((vars ?? []) as { tamanho?: string }[])
+                .map((v) => (v.tamanho ?? "").trim())
+                .filter(Boolean)
+            ),
+          ],
+          override: p.tabela_medidas_override ?? "",
+          tabelasCliente: ((tabelas ?? []) as { marca?: string; como_medir?: string; linhas?: unknown }[]).map(
+            (t) => ({
+              marca: t.marca ?? "",
+              comoMedir: t.como_medir ?? "",
+              linhas: (Array.isArray(t.linhas) ? t.linhas : []) as never[],
+            })
+          ),
+        });
+        return { nome: p.nome ?? "", marca: p.marca ?? "", ...r };
+      },
       // O ENSAIO usa o MESMO montador da publicação real. Um resumo feito à
       // parte mostraria uma coisa e publicaria outra.
       ensaioDaPublicacao: async (produtoId) => {

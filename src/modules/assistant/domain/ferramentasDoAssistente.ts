@@ -258,6 +258,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "tabela_de_medidas",
+    efeito: "le",
+    descricao:
+      "A tabela de medidas de um produto — a grade de tamanhos com as medidas em centímetros, e DE ONDE ela veio. " +
+      "Use quando ela perguntar sobre numeração, tamanho, medida, ou o que responder a um comprador que pergunta se serve. " +
+      "IMPORTANTE: a resposta traz `fonte`. Override é a tabela que ELA cadastrou; `marca` é referência da fabricante; `padrao` é o BR genérico e pode não bater com a marca. Diga qual está usando — tabela errada vira devolução.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
     nome: "procedencia",
     efeito: "le",
     descricao:

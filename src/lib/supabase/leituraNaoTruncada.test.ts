@@ -40,6 +40,13 @@ const RAIZ = join(process.cwd(), "src");
  * sozinho — todos os números abaixo foram medidos em produção em 10/08/2026.
  */
 const DISPENSADAS: Record<string, string> = {
+  // ---- Tabelas de medidas do CLIENTE: 14 medidas ----
+  //
+  // Uma por marca, e o catálogo tem menos de vinte marcas. Cresce com o
+  // fornecedor novo, não com o produto novo.
+  "src/app/api/assistente/conversa/route.ts::tabelas_medidas":
+    "eq(cliente_id) — uma tabela por marca. Total medido: 14 (11/08/2026).",
+
   // ---- Fotos de UM produto: no máximo 10 medidas (média 8,1) ----
   //
   // O ensaio da publicação lê as imagens de um produto só. O ML aceita 12 por

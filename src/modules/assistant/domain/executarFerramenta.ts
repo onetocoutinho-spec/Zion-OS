@@ -293,6 +293,22 @@ export interface ContextoDoAnuncio {
     jaPublicado: boolean;
     mlItemId: string | null;
   } | null>;
+  /**
+   * A tabela de medidas do produto, com a PROCEDÊNCIA dela.
+   *
+   * `null` quando o produto não existe. `fonte` diz de onde veio — override da
+   * lojista, tabela da marca, ou o padrão BR — porque as três têm autoridade
+   * diferente e ela precisa saber qual está lendo.
+   */
+  medidasDoProduto?: (produtoId: string) => Promise<{
+    nome: string;
+    marca: string;
+    tabela: string;
+    comoMedir: string;
+    confiavel: boolean;
+    oficial: boolean;
+    fonte: "override" | "marca" | "padrao" | "vazio";
+  } | null>;
   gerarPalavras?: (entrada: {
     nome: string;
     marca: string;
@@ -1023,6 +1039,42 @@ export async function executarFerramenta(
 
     case "propor_titulo":
       return proporTitulo(args, ctx);
+
+    case "tabela_de_medidas": {
+      const a = ctx.anuncio;
+      if (!a?.medidasDoProduto) {
+        return { saida: { erro: "Não consigo ver a tabela de medidas por aqui agora." } };
+      }
+      const produtoId = texto(args, "produtoId");
+      if (!produtoId) return { saida: { erro: "Preciso saber de qual produto." } };
+      const m = await a.medidasDoProduto(produtoId);
+      if (!m) return { saida: { erro: "Não achei esse produto." } };
+
+      // A PROCEDÊNCIA VIAJA JUNTO, e é o ponto desta ferramenta.
+      //
+      // "35 = 22,5 cm" tem peso diferente se veio da tabela oficial da Modare
+      // ou do padrão BR genérico. Devolver o número sem a fonte deixaria o
+      // modelo afirmar as três com a mesma confiança — e tabela de medida
+      // errada não é erro de texto: é devolução, que aparece no custo dela.
+      return {
+        saida: {
+          produto: m.nome,
+          marca: m.marca,
+          tabela: m.tabela,
+          comoMedir: m.comoMedir,
+          fonte: m.fonte,
+          confiavel: m.confiavel,
+          comoResponder:
+            m.fonte === "override"
+              ? "Esta é a tabela que ELA cadastrou. Trate como definitiva."
+              : m.fonte === "marca"
+                ? `Esta é a tabela da marca ${m.marca}. É referência da fabricante, não medição do produto dela.`
+                : m.fonte === "padrao"
+                  ? "Isto é o padrão BR genérico, NÃO a tabela da marca. Diga isso: se a numeração da marca for diferente, a tabela está errada e vira devolução."
+                  : "Não há tabela para este produto. Não invente medidas.",
+        },
+      };
+    }
 
     case "propor_publicacao":
       return proporPublicacao(args, ctx);

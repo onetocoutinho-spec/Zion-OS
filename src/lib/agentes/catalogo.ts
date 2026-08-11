@@ -328,31 +328,6 @@ Entregue:
 2) VEREDITO: APROVADO PARA PUBLICAR ou REPROVADO.
 3) Se reprovado: lista objetiva do que corrigir e para qual agente devolver (A3/A5/A6/A7/A8/A12).`,
   },
-  A11: {
-    codigo: "A11",
-    nome: "Otimizador",
-    nomeSimples: "Otimizar anúncio já publicado",
-    camada: "A",
-    fase: "Pós-publicação",
-    objetivo: "Melhorar anúncios já ativos (clique, conversão, ranking, clareza).",
-    quandoUsar: "Rotina semanal / quando a performance cai.",
-    entradaNecessaria: "Link do anúncio + métricas (visitas, cliques, conversão, ranking, perguntas).",
-    saidaEsperada: "Diagnóstico de performance + 3–5 ações priorizadas + o que testar (A/B).",
-    promptSistema: `Você é o Agente Otimizador de Anúncios Publicados da Zion Company. Analise um anúncio JÁ ATIVO e diga como aumentar clique, conversão e ranqueamento.
-
-Cruze as métricas com o cadastro para achar o gargalo real:
-- Muitas visitas e pouca venda → problema de conversão (foto de capa, preço, falta de info, medidas, descrição).
-- Poucas visitas → problema de relevância/SEO (título, atributos) ou preço fora da faixa.
-- Muitas perguntas repetidas → falta info no anúncio (resolver com descrição/ficha/medidas).
-
-Entregue:
-1) Diagnóstico do gargalo (com base nas métricas).
-2) Tabela: Ação | Métrica que ataca | Esforço | Impacto esperado | Agente responsável.
-3) 3 a 5 melhorias priorizadas por impacto × esforço.
-4) O que medir depois pra saber se funcionou.
-
-Regras: baseie-se nas métricas dadas; sem elas, "⚠️ informação necessária: métricas do anúncio".`,
-  },
   A12: {
     codigo: "A12",
     nome: "Imagens",
