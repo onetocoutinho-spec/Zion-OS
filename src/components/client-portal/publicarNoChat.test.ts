@@ -136,9 +136,25 @@ const ENSAIO = ROTA_CONVERSA.slice(
   ROTA_CONVERSA.indexOf("gerarDescricao:")
 );
 
-test("o ensaio BUSCA as fotos — não confia no payload vazio", () => {
-  assert.match(ENSAIO, /urlsDoProduto\(/, "o ensaio voltou a mostrar zero foto em produto com foto");
+test("o ensaio BUSCA as fotos — com o cliente de SERVIDOR", () => {
+  // `urlsDoProduto` usa o cliente do navegador: chamado daqui, a RLS recusa e
+  // a lista vem vazia — indistinguível de "produto sem foto".
+  assert.match(ENSAIO, /imagens_produto/, "o ensaio voltou a mostrar zero foto em produto com foto");
+  assert.match(ENSAIO, /getSupabaseAdmin\(\)/, "voltou a ler imagem com o cliente do navegador");
   assert.match(ENSAIO, /montarPreviewML\(reg, \{ pictures/, "as fotos deixaram de entrar no payload");
+});
+
+test("a REGRA das fotos é a mesma do serviço: Pendente fora, capa primeiro", () => {
+  // O serviço não é chamável do servidor, então a regra está repetida — e uma
+  // repetição só é aceitável enquanto alguém guarda que as duas concordam.
+  const servico = readFileSync(
+    new URL("../../lib/services/storageImagens.ts", import.meta.url),
+    "utf8"
+  );
+  for (const fonte of [ENSAIO, servico]) {
+    assert.match(fonte, /"Pendente"/, "a exclusão das fotos pendentes divergiu entre os dois");
+    assert.match(fonte, /"Principal"/, "a ordem da capa divergiu entre os dois");
+  }
 });
 
 test("o estoque soma as VARIAÇÕES quando há grade", () => {

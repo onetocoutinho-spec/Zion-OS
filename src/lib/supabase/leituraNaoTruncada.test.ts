@@ -40,6 +40,13 @@ const RAIZ = join(process.cwd(), "src");
  * sozinho — todos os números abaixo foram medidos em produção em 10/08/2026.
  */
 const DISPENSADAS: Record<string, string> = {
+  // ---- Fotos de UM produto: no máximo 10 medidas (média 8,1) ----
+  //
+  // O ensaio da publicação lê as imagens de um produto só. O ML aceita 12 por
+  // anúncio, então o teto é do marketplace, não da base.
+  "src/app/api/assistente/conversa/route.ts::imagens_produto":
+    "eq(produto_id) — um produto. Máximo medido: 10 fotos (11/08/2026); o ML aceita 12.",
+
   // ---- Atributos de UM produto: no máximo 14 medidos (média 7,6) ----
   //
   // O caminho do CATÁLOGO pagina — lá são 80 produtos × ~8 atributos, bem

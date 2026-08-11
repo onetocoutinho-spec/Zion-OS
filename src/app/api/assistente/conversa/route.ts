@@ -97,7 +97,6 @@ import {
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
 import { montarPreviewML } from "@/lib/services/publicacaoML";
-import { urlsDoProduto } from "@/lib/services/storageImagens";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
@@ -420,7 +419,38 @@ export async function POST(request: Request) {
         //
         // Medido em produção em 11/08/2026, no cartão da Sapatilha Modare — e
         // só apareceu porque o cartão mostra o zero em âmbar.
-        const fotos = reg.produtoId ? await urlsDoProduto(reg.produtoId).catch(() => []) : [];
+        // AS FOTOS, COM O CLIENTE DE SERVIDOR.
+        //
+        // `urlsDoProduto` usa `getSupabase()` — o cliente do NAVEGADOR. Chamado
+        // daqui ele não tem sessão, a RLS recusa, e o resultado é uma lista
+        // vazia indistinguível de "produto sem foto". Foi o segundo motivo de
+        // o cartão mostrar FOTOS 0 num produto com dez.
+        //
+        // A REGRA continua sendo a de lá: "Pendente" fora (a lojista tirou do
+        // envio) e a capa primeiro. Repeti-la aqui seria a segunda fonte que
+        // este repositório passou o dia removendo — mas o serviço não é
+        // chamável do servidor, então a regra vem em comentário e a sentinela
+        // guarda as duas.
+        let fotos: string[] = [];
+        if (reg.produtoId) {
+          try {
+            const { data } = await getSupabaseAdmin()
+              .from("imagens_produto")
+              .select("url, tipo_imagem, status")
+              .eq("produto_id", reg.produtoId);
+            fotos = ((data ?? []) as { url: string; tipo_imagem?: string; status?: string }[])
+              .filter((i) => i.status !== "Pendente")
+              .sort((a, b) =>
+                a.tipo_imagem === "Principal" ? -1 : b.tipo_imagem === "Principal" ? 1 : 0
+              )
+              .map((i) => i.url);
+          } catch (e) {
+            // Falhar aqui NÃO é "produto sem foto": é não saber. O cartão
+            // mostraria 0 e ela publicaria achando que sobe sem imagem.
+            console.error("[conversa] falha ao ler as fotos do ensaio:", e);
+            throw e;
+          }
+        }
         const payload = montarPreviewML(reg, { pictures: fotos }) as Record<string, unknown>;
         const pics = payload.pictures;
         return {
