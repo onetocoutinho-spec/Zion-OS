@@ -97,6 +97,7 @@ import {
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
 import { montarPreviewML } from "@/lib/services/publicacaoML";
+import { urlsDoProduto } from "@/lib/services/storageImagens";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
@@ -410,15 +411,44 @@ export async function POST(request: Request) {
       ensaioDaPublicacao: async (produtoId) => {
         const reg = await registroDoProduto(clienteDaSessao, produtoId);
         if (!reg) return null;
-        const payload = montarPreviewML(reg) as Record<string, unknown>;
+        // AS FOTOS PRECISAM ENTRAR AQUI.
+        //
+        // `montarPreviewML(reg)` sem opções passa `pictures: undefined` — só
+        // `executarPublicacao` busca as URLs. O ensaio mostrava FOTOS 0 num
+        // produto com dez, e um ensaio que mente sobre a foto é pior que
+        // nenhum: ela confirmaria achando que o anúncio sobe com imagem.
+        //
+        // Medido em produção em 11/08/2026, no cartão da Sapatilha Modare — e
+        // só apareceu porque o cartão mostra o zero em âmbar.
+        const fotos = reg.produtoId ? await urlsDoProduto(reg.produtoId).catch(() => []) : [];
+        const payload = montarPreviewML(reg, { pictures: fotos }) as Record<string, unknown>;
         const pics = payload.pictures;
         return {
           anuncioId: reg.id,
           nome: reg.produto ?? "",
           titulo: String(payload.title ?? ""),
           preco: typeof payload.price === "number" ? payload.price : null,
-          estoque:
-            typeof payload.available_quantity === "number" ? payload.available_quantity : null,
+          // O ESTOQUE MORA EM DOIS LUGARES, e ler só um mostrava "—" para
+          // todo produto com grade — que é a maioria de um catálogo de calçado.
+          //
+          // `montarItemML` põe `available_quantity` no TOPO só quando NÃO há
+          // variações; com grade, cada variação carrega o seu. Somar é o que
+          // responde "quantas peças vão para o ar".
+          estoque: (() => {
+            const vars = payload.variations;
+            if (Array.isArray(vars) && vars.length > 0) {
+              return vars.reduce(
+                (t: number, v) =>
+                  t + (typeof (v as { available_quantity?: number }).available_quantity === "number"
+                    ? ((v as { available_quantity?: number }).available_quantity as number)
+                    : 0),
+                0
+              );
+            }
+            return typeof payload.available_quantity === "number"
+              ? payload.available_quantity
+              : null;
+          })(),
           fotos: Array.isArray(pics) ? pics.length : 0,
           categoria: String(payload.category_id ?? ""),
           jaPublicado: reg.status === "publicado" || !!reg.mlItemId,

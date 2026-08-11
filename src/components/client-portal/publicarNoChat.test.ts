@@ -108,3 +108,40 @@ test("sem link, sem afirmar que está no ar", () => {
 test("o segundo clique não publica de novo", () => {
   assert.match(PUBLICAR, /alvo\?\.publicando\) return/, "o duplo clique voltou a poder publicar duas vezes");
 });
+
+// ---------------------------------------------------------------------------
+// O ENSAIO TEM QUE MOSTRAR O QUE SOBE — inclusive foto e estoque
+// ---------------------------------------------------------------------------
+//
+// Medido em produção em 11/08/2026, no cartão da Sapatilha Modare:
+//
+//   FOTOS    0     ← o produto tem dez
+//   ESTOQUE  —     ← o produto tem grade com estoque
+//
+// `montarPreviewML(reg)` sem opções passa `pictures: undefined` — só
+// `executarPublicacao` busca as URLs. E `available_quantity` só existe no TOPO
+// quando NÃO há variações; com grade, cada variação carrega o seu.
+//
+// Um ensaio que mente sobre a foto é PIOR que nenhum: ela confirmaria achando
+// que o anúncio sobe com imagem. Só apareceu porque o cartão mostra o zero em
+// âmbar — a decisão de destacar pegou o defeito de quem a escreveu.
+
+const ROTA_CONVERSA = readFileSync(
+  new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
+  "utf8"
+);
+
+const ENSAIO = ROTA_CONVERSA.slice(
+  ROTA_CONVERSA.indexOf("ensaioDaPublicacao: async (produtoId)"),
+  ROTA_CONVERSA.indexOf("gerarDescricao:")
+);
+
+test("o ensaio BUSCA as fotos — não confia no payload vazio", () => {
+  assert.match(ENSAIO, /urlsDoProduto\(/, "o ensaio voltou a mostrar zero foto em produto com foto");
+  assert.match(ENSAIO, /montarPreviewML\(reg, \{ pictures/, "as fotos deixaram de entrar no payload");
+});
+
+test("o estoque soma as VARIAÇÕES quando há grade", () => {
+  assert.match(ENSAIO, /payload\.variations/, "o estoque voltou a ler só o topo — '—' em todo produto com grade");
+  assert.match(ENSAIO, /available_quantity/);
+});
