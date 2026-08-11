@@ -354,8 +354,19 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
-  assert.equal(FERRAMENTAS.length, 22);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
+  // A 23ª entrou em 11/08/2026: `pendencias_da_conta`, leitura pura.
+  //
+  // A decisão: o Mercado Livre já tinha DITO o que está errado em 460 anúncios
+  // — 1.034 remédios escritos por ele, guardados na 052 — e o assistente
+  // respondia "não tenho acesso ao conteúdo delas". Das três portas fechadas
+  // que sobravam, era a única em que a informação já estava dentro de casa; as
+  // outras dependem de leitura nova.
+  //
+  // E ela lê o DOMÍNIO: `pendenciasDaConta` já classificava gravidade, tipo e
+  // o que fazer para as duas telas, inclusive o ramo grave de propriedade
+  // intelectual. Nenhuma regra nasceu com a ferramenta — só a porta.
+  assert.equal(FERRAMENTAS.length, 23);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -365,10 +376,10 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  // 11 desde 10/08/2026. O que o C1R garante NÃO mudou e é o que a linha
-  // seguinte prova: toda ferramenta da primeira ação tem efeito `le`. O número
-  // trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 12);
+  // 13 desde 11/08/2026 (`pendencias_da_conta`). O que o C1R garante NÃO mudou
+  // e é o que a linha seguinte prova: toda ferramenta da primeira ação tem
+  // efeito `le`. O número trava o tamanho; o laço trava a natureza.
+  assert.equal(PRIMEIRA_ACAO.length, 13);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

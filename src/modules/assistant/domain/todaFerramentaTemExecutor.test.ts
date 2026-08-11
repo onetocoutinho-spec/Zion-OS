@@ -52,12 +52,38 @@ test("toda ferramenta anunciada ao modelo tem quem a execute", () => {
   );
 });
 
-test("o catálogo não encolheu sem alguém decidir", () => {
+test("o catálogo não muda sem alguém decidir", () => {
   // O número é medido, não estimado. Se mudar, foi um ato — atualize aqui e
   // escreva a decisão no commit.
+  //
+  // 22 → 23 em 11/08/2026: entrou `pendencias_da_conta`. O motivo, medido em
+  // produção: perguntado o que o ML manda fazer, o chat respondia "tenho a
+  // contagem, mas não tenho acesso ao conteúdo delas" — e o banco tinha 1.034
+  // remédios escritos pelo próprio Mercado Livre, mais 131 anúncios pausados
+  // e 155 em revisão. Nenhuma regra nova nasceu com ela: `pendenciasDaConta`
+  // já classificava tudo isso para as duas telas. Faltava a porta.
   assert.equal(
     FERRAMENTAS.length,
-    22,
+    23,
     "o número de ferramentas mudou; isso é um ato, não um efeito colateral"
+  );
+});
+
+test("`proximo_passo` continua caindo em `estado_da_loja`, não num vizinho novo", () => {
+  // Este switch tem fallthrough, e fallthrough é armadilha para quem insere.
+  // Escrevendo `pendencias_da_conta` entre os dois, o `case "proximo_passo":`
+  // passou a apontar para o corpo ERRADO — uma ferramenta verificada no mesmo
+  // dia viraria leitora de infrações, sem erro e sem pista. Só não passou
+  // porque uma comparação virou impossível e o compilador reclamou; com outro
+  // corpo, teria passado.
+  const semComentarios = FONTE.replace(/\/\*[\s\S]*?\*\//g, "").replace(
+    /^\s*\/\/.*$/gm,
+    ""
+  );
+  assert.match(
+    semComentarios,
+    /case "proximo_passo":\s*case "estado_da_loja":/,
+    "`proximo_passo` deixou de cair em `estado_da_loja` — alguém inseriu um " +
+      "case entre os dois e sequestrou o fallthrough"
   );
 });

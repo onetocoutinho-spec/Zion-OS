@@ -161,6 +161,38 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    // =====================================================================
+    // A 23ª FERRAMENTA — 11/08/2026, e ela é um ATO
+    // =====================================================================
+    //
+    // `contar` com assunto `infracao` diz QUANTAS. Esta diz O QUÊ, EM QUAL
+    // ANÚNCIO e O QUE O ML MANDA FAZER — que é o que a lojista precisa para
+    // consertar.
+    //
+    // Medido em produção antes de existir: perguntado o remédio, o chat
+    // respondeu "tenho a contagem, mas não tenho acesso ao conteúdo delas".
+    // Era verdade, e o banco tinha 1.034 remédios escritos pelo próprio ML,
+    // mais 131 anúncios pausados e 155 em revisão, todos com MLB.
+    //
+    // Nenhuma regra nova nasceu com ela: `pendenciasDaConta` já classificava
+    // gravidade, tipo e o que fazer — inclusive o ramo grave de propriedade
+    // intelectual — e as duas telas já a usavam. O que faltava era a porta.
+    nome: "pendencias_da_conta",
+    efeito: "le",
+    descricao:
+      "O que o Mercado Livre disse sobre os anúncios DESTA conta: infrações com o motivo e o remédio na palavra dele, anúncios pausados, em revisão e bloqueados — cada um com o MLB e o que fazer. Use para \"o que o ML está cobrando?\", \"por que meu anúncio caiu?\", \"quais estão pausados?\" e sempre que for propor conserto de anúncio. ATENÇÃO: acusação de propriedade intelectual (categoria PI_*) NÃO se resolve editando — editar e republicar conta como reincidência e arrisca a conta. Nesses casos, diga isso e não proponha edição.",
+    parametros: {
+      type: "object",
+      properties: {
+        tipo: {
+          type: "string",
+          description:
+            "Filtra por um tipo só. Omita para o panorama. Valores: bloqueado, propriedade-intelectual, infracao-do-ml, pausado-por-voce, em-revisao, capa-pequena, capa-nao-quadrada, sem-estoque, sem-motivo.",
+        },
+      },
+    },
+  },
+  {
     nome: "o_que_impede",
     efeito: "le",
     descricao: "O que impede a loja de precificar, anunciar ou publicar hoje. Use para \"por que não consigo publicar?\" e \"o que está travando?\".",

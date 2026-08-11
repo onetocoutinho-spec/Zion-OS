@@ -89,6 +89,7 @@ import {
   margemDoCliente,
   produtoParaPreparar,
 } from "@/lib/services/preparacaoDeAnuncio";
+import { pendenciasDaContaDoCliente } from "@/lib/services/pendenciasDaContaDoAssistente";
 import {
   CAMPO_TITULO_ATUAL,
   CAMPO_TEXTO_ATUAL,
@@ -392,6 +393,11 @@ export async function POST(request: Request) {
     // varredura em toda pergunta. E tudo com o tenant da SESSÃO — o que antes
     // vinha em `paraAnunciar`, montado pela tela, agora vem do banco.
     anuncio: {
+      // A palavra do ML sobre ESTES anúncios — infração, pausa, revisão. Vem
+      // do tenant da SESSÃO, como todo o resto, e é lida com a credencial do
+      // servidor: a função equivalente do portal usa o cliente do navegador e
+      // aqui devolveria vazio em silêncio.
+      pendenciasDaConta: () => pendenciasDaContaDoCliente(clienteDaSessao),
       doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
       catalogo: async () => {
         const c = await catalogoParaPreparar(clienteDaSessao);

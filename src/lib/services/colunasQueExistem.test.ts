@@ -29,9 +29,27 @@ import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
 
 const DIR = new URL("./", import.meta.url);
+
+/**
+ * COMENTÁRIO NÃO É CÓDIGO — e aqui isso importa mais que o normal.
+ *
+ * Em 11/08/2026 esta sentinela reprovou um arquivo novo cujo único pecado era
+ * CITAR `criado_em` num comentário, explicando o defeito histórico para quem
+ * viesse depois. Punir a documentação do erro é o caminho mais curto para
+ * ninguém mais escrevê-la — e a lição some junto.
+ *
+ * O que a sentinela guarda é a coluna usada numa CONSULTA. Comentários saem
+ * antes da varredura; strings de `.select(...)` continuam inteiras.
+ */
+const semComentarios = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
 const FONTES = readdirSync(DIR)
   .filter((f) => f.endsWith(".ts") && !f.includes(".test."))
-  .map((f) => ({ nome: f, texto: readFileSync(new URL(f, DIR), "utf8") }));
+  .map((f) => ({
+    nome: f,
+    texto: semComentarios(readFileSync(new URL(f, DIR), "utf8")),
+  }));
 
 test("`criado_em` NÃO aparece em nenhum arquivo que toca `anuncios_gerados`", () => {
   // O nome errado, agora conhecido. Se voltar, volta com o mesmo silêncio.

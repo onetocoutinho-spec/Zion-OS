@@ -75,6 +75,29 @@ import {
   type ConjuntoApresentado,
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
+import type { ResumoDePendencias } from "../../integration/domain/pendenciasDaConta";
+
+/**
+ * O resumo mais o QUANDO da leitura.
+ *
+ * Escrito aqui em vez de importado de `lib/client-portal`: o domínio não
+ * desce para a camada de aplicação. `lidoEm` viaja junto porque um retrato de
+ * três dias atrás respondido como se fosse de agora é pior que nenhum.
+ */
+type ResumoDaConta = ResumoDePendencias & {
+  lidos: number;
+  lidoEm: string | null;
+};
+
+/**
+ * Quantos grupos de pendência da conta cabem numa resposta.
+ *
+ * Medido em 11/08/2026: 460 anúncios com infração se agrupam em bem menos que
+ * isso por produto, mas o recorte existe para o dia em que não se agruparem —
+ * e ele vem acompanhado de `gruposOmitidos`, porque cortar em silêncio é o que
+ * transforma "mostrei 20" em "só existem 20".
+ */
+const LIMITE_DE_GRUPOS = 20;
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -224,6 +247,17 @@ export interface ContextoDoPreco {
 }
 
 export interface ContextoDoAnuncio {
+  /**
+   * O QUE O MERCADO LIVRE DISSE — infração, pausa, revisão, bloqueio.
+   *
+   * `null` quando nenhum anúncio tem leitura gravada. "Não lemos" e "não há"
+   * são respostas diferentes, e só a segunda autoriza dizer que a conta está
+   * limpa — a mesma distinção que o caminho barato já faz na contagem.
+   *
+   * Opcional porque as telas que montam este contexto à mão não o carregam;
+   * ausente, a ferramenta diz que não alcança em vez de dizer que não há.
+   */
+  pendenciasDaConta?: () => Promise<ResumoDaConta | null>;
   /** Um produto, com o anúncio que já existir para ele. */
   doProduto: (
     produtoId: string
@@ -660,6 +694,60 @@ export async function executarFerramenta(
                 onde: r.href ?? null,
               }
             : { erro: "Não sei contar isso.", frase: r.frase },
+      };
+    }
+
+    // CUIDADO AO INSERIR CASOS AQUI: `proximo_passo` cai por fallthrough em
+    // `estado_da_loja`, logo abaixo. Escrevi este case entre os dois e o
+    // fallthrough passou a trazer `proximo_passo` para cá — uma ferramenta
+    // verificada hoje viraria leitora de infrações, calada. Só não passou
+    // porque o `nome === "proximo_passo"` de lá virou comparação impossível e
+    // o compilador reclamou.
+    case "pendencias_da_conta": {
+      const porta = ctx.anuncio?.pendenciasDaConta;
+      if (!porta) {
+        return { saida: { erro: "Não alcanço o que o Mercado Livre disse nesta tela." } };
+      }
+      const r = await porta();
+      // `null` é "ninguém leu o ML ainda" — diferente de "está tudo certo". A
+      // segunda frase, dita sobre a primeira situação, é a mentira mais cara
+      // que este software pode contar sobre uma conta com 1.066 infrações.
+      if (!r) {
+        return {
+          saida: {
+            lido: false,
+            frase:
+              "Ainda não li os anúncios desta conta no Mercado Livre. Abra Meus Produtos → Importar → \"Anúncios do Mercado Livre\" para eu passar a saber.",
+          },
+        };
+      }
+      const filtro = texto(args, "tipo");
+      const grupos = filtro ? r.grupos.filter((g) => g.tipo === filtro) : r.grupos;
+      return {
+        saida: {
+          lido: true,
+          lidoEm: r.lidoEm,
+          anunciosLidos: r.lidos,
+          // Os TOTAIS vêm inteiros mesmo quando a lista é recortada: mostrar
+          // 20 de 535 é útil, dizer que são 20 é mentira. É a regra que
+          // `pendenciasDaConta` já aplica, e ela não pode morrer na borda.
+          totaisPorTipo: r.totais,
+          estoqueTravado: r.estoqueTravado,
+          grupos: grupos.slice(0, LIMITE_DE_GRUPOS).map((g) => ({
+            produto: g.familia,
+            tipo: g.tipo,
+            gravidade: g.gravidade,
+            quantos: g.quantos,
+            estoqueParado: g.estoque,
+            oQueFazer: g.oQueFazer,
+            porque: g.porque,
+            exemplos: g.exemplos.slice(0, 3),
+          })),
+          gruposOmitidos: Math.max(0, grupos.length - LIMITE_DE_GRUPOS),
+          comoResponder:
+            "`oQueFazer` e `porque` são a palavra do Mercado Livre, já limpa de HTML — use como estão, não reescreva. " +
+            "Se aparecer `propriedade-intelectual`, avise que editar e republicar conta como reincidência e pode custar a conta, e NÃO proponha edição.",
+        },
       };
     }
 

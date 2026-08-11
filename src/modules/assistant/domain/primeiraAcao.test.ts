@@ -47,19 +47,36 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 12 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 13 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 12);
+  assert.equal(PRIMEIRA_ACAO.length, 13);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas treze — a matriz que autorizou a decisão", () => {
+  // A DÉCIMA TERCEIRA entrou em 11/08/2026: `pendencias_da_conta`.
+  //
+  // Ela lê o que o Mercado Livre disse sobre os anúncios DESTA conta —
+  // infração com motivo e remédio, pausa, revisão, bloqueio. Sem escrita, sem
+  // chamada externa (a leitura do ML já aconteceu e está no banco), e o tenant
+  // vem da sessão como nas outras doze.
+  //
+  // Por que ela pode ser a PRIMEIRA ação: o pior caso de um "obrigado"
+  // disparando-a é a lojista ver o que o ML está cobrando dela sem ter
+  // pedido. Mesmo dano de `estado_da_loja` — nenhum.
+  //
+  // E há razão para ela estar entre as primeiras, a mesma de `meus_custos`:
+  // 460 dos anúncios têm infração e 131 estão pausados. Quando a lojista
+  // pergunta por que algo não vende, esta é a causa mais provável, e obrigá-la
+  // a uma pergunta preliminar para chegar nela seria esconder a resposta atrás
+  // de um passo.
+  //
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -85,6 +102,7 @@ test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () 
     "o_que_falta_no_produto",
     "o_que_impede",
     "pendencias",
+    "pendencias_da_conta",
     "preparacao_de_anuncio",
     "pricing",
     "procedencia",
@@ -254,8 +272,23 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
-  assert.equal(FERRAMENTAS.length, 22);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
+  //
+  // De 22 para 23 em 11/08/2026: `pendencias_da_conta`, LEITURA. O poder de
+  // agir não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão: o Mercado Livre já tinha dito o que está errado em 460 anúncios
+  // e o Zion já tinha guardado — 1.060 motivos e 1.034 remédios na 052, mais
+  // 131 anúncios `paused` e 155 `under_review` na 050. Perguntado sobre isso,
+  // o chat respondia "tenho a contagem, mas não tenho acesso ao conteúdo
+  // delas". A informação estava dentro de casa e a porta, fechada.
+  //
+  // Ela lê o DOMÍNIO: `pendenciasDaConta` já classificava gravidade, tipo e o
+  // que fazer para as duas telas — inclusive o ramo grave de propriedade
+  // intelectual, onde editar-e-republicar conta como reincidência. Nenhuma
+  // regra nova nasceu com a ferramenta, e é por isso que ela é `le`: dizer o
+  // que o ML mandou não é agir sobre o anúncio.
+  assert.equal(FERRAMENTAS.length, 23);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
