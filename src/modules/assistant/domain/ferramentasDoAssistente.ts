@@ -350,6 +350,19 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "propor_publicacao",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de PUBLICAR um anúncio no Mercado Livre. Devolve o ENSAIO — o que subiria: título, preço, estoque, quantas fotos, categoria. NÃO publica: quem publica é a lojista, clicando. " +
+      "Recusa sozinha quando falta o que o domínio exige (preço, foto) ou quando o anúncio já está no ar. " +
+      "IMPORTANTE: esta é a única ação que muda o que o COMPRADOR vê. Nunca diga que o anúncio está no ar — diga que a proposta está pronta para ela confirmar.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
     nome: "propor_descricao",
     efeito: "propoe",
     descricao:

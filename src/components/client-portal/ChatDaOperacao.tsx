@@ -102,6 +102,8 @@ import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
+import { publicarNoML } from "@/lib/services/publicacaoML";
+import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
 import {
   analisarProdutosCsv,
@@ -267,6 +269,19 @@ interface Turno {
   /** O estado da preparação de anúncio — de um produto ou do catálogo. */
   preparacao?: PreparacaoNaTela;
   /** Título atual e proposto, lado a lado. */
+  /** O ensaio da publicação. Sem `anuncioId` não há o que publicar. */
+  propostaDePublicacao?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    titulo: string;
+    preco: number | null;
+    estoque: number | null;
+    fotos: number;
+    categoria: string;
+  };
+  /** Já publicou? Impede o segundo clique antes de a rota precisar recusar. */
+  publicando?: boolean;
   propostaDeTexto?: TextoNaTela;
   /** Sem ele, não há botão: proposta não persistida não pode ser confirmada. */
   propostaDeTextoId?: string;
@@ -564,6 +579,10 @@ export function ChatDaOperacao({
                     r.propostaDePrecoId ||
                     r.propostaDeTituloId ||
                     r.propostaDeTextoId ||
+                    // O ENSAIO TAMBÉM VENCE, e aqui vencer importa MAIS: ele
+                    // mostra preço e estoque, e publicar um ensaio velho põe no
+                    // ar um preço que já não é o dela.
+                    r.propostaDePublicacao ||
                     r.cadastro?.propostaId
                       ? { chegouEm: Date.now() }
                       : {}),
@@ -584,6 +603,9 @@ export function ChatDaOperacao({
                     ...(r.pendencias ? { pendencias: r.pendencias } : {}),
                     ...(r.procedencia ? { procedencia: r.procedencia } : {}),
                     ...(r.preparacao ? { preparacao: r.preparacao } : {}),
+                    ...(r.propostaDePublicacao
+                      ? { propostaDePublicacao: r.propostaDePublicacao }
+                      : {}),
                     ...(r.propostaDeTexto
                       ? {
                           propostaDeTexto: r.propostaDeTexto,
@@ -980,6 +1002,66 @@ export function ChatDaOperacao({
    * de Imagens — a capa promovida aqui rebaixa a anterior lá, porque é a mesma
    * função que faz as duas coisas.
    */
+  /**
+   * PUBLICAR — a única ação do chat que o comprador vê.
+   *
+   * ===================================================================
+   * PASSA PELA ROTA, NÃO AO REDOR DELA
+   * ===================================================================
+   *
+   * `publicarNoML` faz `fetch("/api/ml/publicar")` — a MESMA rota da tela da
+   * equipe, com as MESMAS guardas (conexão, credencial e a trava de infração
+   * que falha fechada). Um caminho próprio até o ML seria uma segunda cópia
+   * daquelas guardas, e a trava de infração é a última coisa neste repositório
+   * que pode ter duas versões: republicar o que o ML cancelou é reincidência.
+   *
+   * O cartão é a autorização; a rota é o guarda. Nenhum dos dois substitui o
+   * outro.
+   */
+  async function publicar(indice: number) {
+    const alvo = turnos[indice];
+    const p = alvo?.propostaDePublicacao;
+    if (!p || !clienteId || alvo?.publicando) return;
+    setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, publicando: true } : turno)));
+    try {
+      const reg = await registroDeAnuncio(p.anuncioId);
+      if (!reg) throw new Error("Não achei o anúncio preparado. Peça de novo e eu refaço.");
+      const r = await publicarNoML(reg, true);
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                propostaDePublicacao: undefined,
+                publicando: false,
+                // O QUE ACONTECEU, com o link. Sem link, sem afirmação de que
+                // está no ar — foi o erro que eu cometi três vezes em 03/08.
+                texto: r.permalink
+                  ? `Publiquei "${p.nome}" no Mercado Livre. Está no ar: ${r.permalink}`
+                  : `Publiquei "${p.nome}" no Mercado Livre${r.id ? ` (${r.id})` : ""}.`,
+              }
+            : turno
+        )
+      );
+      aoGravar?.();
+    } catch (e) {
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                publicando: false,
+                // A RECUSA DA ROTA CHEGA INTEIRA. "Não consegui publicar" no
+                // lugar de "o ML já cancelou 2 anúncios deste produto por
+                // infração" esconderia justamente o que ela precisa resolver.
+                erro: e instanceof Error ? e.message : "Não consegui publicar agora.",
+              }
+            : turno
+        )
+      );
+    }
+  }
+
   async function confirmarFoto(indice: number, comoCapa: boolean) {
     const alvo = turnos[indice];
     const produto = contexto?.produto;
@@ -1353,6 +1435,23 @@ export function ChatDaOperacao({
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.propostaDePublicacao && (
+                    <CartaoDePublicacao
+                      p={t.propostaDePublicacao}
+                      ocupado={!!t.publicando}
+                      desfecho={desfechoNaTela(t, agora)}
+                      aoConfirmar={() => void publicar(i)}
+                      aoDescartar={() =>
+                        setTurnos((ts) =>
+                          ts.map((turno, j) =>
+                            j === i
+                              ? { ...turno, propostaDePublicacao: undefined, texto: "Descartei. Nada foi publicado." }
+                              : turno
+                          )
+                        )
+                      }
                     />
                   )}
                   {t.propostaDeTexto && (
@@ -1836,6 +1935,105 @@ function PainelDaPreparacao({ p }: { p: PreparacaoNaTela }) {
  * ACRESCENTAM. Um "Aplicar" genérico faria ela achar que as palavras atuais
  * seriam removidas, e recusar uma melhoria que não tira nada.
  */
+/**
+ * O cartão de PUBLICAR — o mais forte dos seis, e por um motivo só.
+ *
+ * As outras cinco confirmações mudam o catálogo DELA: um custo errado, um
+ * título ruim, uma foto trocada — tudo visível só para ela, e reversível
+ * editando de novo.
+ *
+ * Esta muda o que o COMPRADOR vê. Um anúncio no ar com preço errado vende com
+ * preço errado, e desfazer é encerrar o anúncio e perder o histórico dele.
+ *
+ * Por isso o cartão mostra os quatro números que decidem — título, preço,
+ * estoque, fotos — em vez de "tudo certo, publicar?". Ela não confirma uma
+ * intenção; confirma um conteúdo.
+ */
+function CartaoDePublicacao({
+  p,
+  ocupado,
+  desfecho,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: {
+    nome: string;
+    titulo: string;
+    preco: number | null;
+    estoque: number | null;
+    fotos: number;
+    categoria: string;
+  };
+  ocupado: boolean;
+  desfecho?: { ok: boolean; mensagem: string };
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (desfecho) {
+    return (
+      <p className={`mt-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-rose-300"}`}>
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-3">
+      <p className="text-xs uppercase tracking-wide text-amber-300/80">
+        publicar no Mercado Livre — {p.nome}
+      </p>
+
+      <p className="mt-2 text-sm text-white/85">{p.titulo}</p>
+
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-white/40">Preço</dt>
+          <dd className="text-white/80">
+            {p.preco === null ? "—" : `R$ ${p.preco.toFixed(2).replace(".", ",")}`}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-white/40">Estoque</dt>
+          <dd className="text-white/80">{p.estoque ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-white/40">Fotos</dt>
+          {/* ZERO FOTO EM ÂMBAR: o anúncio sobe, e sobe sem imagem. */}
+          <dd className={p.fotos === 0 ? "text-amber-300" : "text-white/80"}>{p.fotos}</dd>
+        </div>
+        <div>
+          <dt className="text-xs uppercase tracking-wide text-white/40">Categoria</dt>
+          <dd className="truncate text-white/60">{p.categoria || "o ML escolhe"}</dd>
+        </div>
+      </dl>
+
+      {/* A CONSEQUÊNCIA, dita antes do clique e sem eufemismo. */}
+      <p className="mt-3 text-xs text-amber-300">
+        Isto coloca o anúncio no ar. O comprador passa a ver exatamente o que está acima, e desfazer
+        significa encerrar o anúncio.
+      </p>
+
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={aoConfirmar}
+          disabled={ocupado}
+          className="rounded-md bg-amber-500/15 px-3 py-1.5 text-sm text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+        >
+          {ocupado ? "Publicando…" : "Publicar no Mercado Livre"}
+        </button>
+        <button
+          type="button"
+          onClick={aoDescartar}
+          disabled={ocupado}
+          className="rounded-md px-3 py-1.5 text-sm text-white/60 hover:text-white disabled:opacity-50"
+        >
+          Descartar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CartaoDeTexto({
   t,
   propostaId,

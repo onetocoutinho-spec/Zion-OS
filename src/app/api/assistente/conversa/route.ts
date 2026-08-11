@@ -84,6 +84,7 @@ import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connector
 import {
   anuncioParaTitulo,
   textoDoAnuncio,
+  registroDoProduto,
   catalogoParaPreparar,
   margemDoCliente,
   produtoParaPreparar,
@@ -95,6 +96,7 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
+import { montarPreviewML } from "@/lib/services/publicacaoML";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
@@ -403,6 +405,26 @@ export async function POST(request: Request) {
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
       gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
       textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
+      // O ENSAIO usa o MESMO montador da publicação real. Um resumo feito à
+      // parte mostraria uma coisa e publicaria outra.
+      ensaioDaPublicacao: async (produtoId) => {
+        const reg = await registroDoProduto(clienteDaSessao, produtoId);
+        if (!reg) return null;
+        const payload = montarPreviewML(reg) as Record<string, unknown>;
+        const pics = payload.pictures;
+        return {
+          anuncioId: reg.id,
+          nome: reg.produto ?? "",
+          titulo: String(payload.title ?? ""),
+          preco: typeof payload.price === "number" ? payload.price : null,
+          estoque:
+            typeof payload.available_quantity === "number" ? payload.available_quantity : null,
+          fotos: Array.isArray(pics) ? pics.length : 0,
+          categoria: String(payload.category_id ?? ""),
+          jaPublicado: reg.status === "publicado" || !!reg.mlItemId,
+          mlItemId: reg.mlItemId ?? null,
+        };
+      },
       // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
       // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
       gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada),
@@ -518,6 +540,9 @@ export async function POST(request: Request) {
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["preparacao"]>
         | undefined;
       /** A proposta de trocar o título: atual e proposto, lado a lado. */
+      let propostaDePublicacao:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePublicacao"]>
+        | undefined;
       let propostaDeTexto:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTexto"]>
         | undefined;
@@ -942,6 +967,11 @@ export async function POST(request: Request) {
               ...(preparacaoDeAnuncio ? { preparacao: preparacaoDeAnuncio } : {}),
               // A proposta de título só vai com ID. Sem ID, a tela mostra os
               // dois títulos e nenhum botão.
+              // SEM PROPOSAL PERSISTIDA, de propósito: quem guarda esta ação é
+              // `/api/ml/publicar`, que tem log próprio, trava de infração e a
+              // recusa de republicar. Uma Proposal aqui seria um segundo
+              // registro de autorização para uma ação que já tem o seu.
+              ...(propostaDePublicacao ? { propostaDePublicacao } : {}),
               ...(propostaDeTexto && propostaDeTextoId
                 ? { propostaDeTexto, propostaDeTextoId }
                 : {}),
@@ -1154,6 +1184,7 @@ export async function POST(request: Request) {
             if (r.preparacao) preparacaoDeAnuncio = r.preparacao;
             if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
             if (r.propostaDeTexto) propostaDeTexto = r.propostaDeTexto;
+            if (r.propostaDePublicacao) propostaDePublicacao = r.propostaDePublicacao;
             if (r.pricing) pricing = r.pricing;
             if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {

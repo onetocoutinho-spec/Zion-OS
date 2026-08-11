@@ -106,7 +106,8 @@ test("TODOS os cartões passam pelo desfecho computado — nenhum ficou de fora"
   // desfecho computado passaria despercebido se aqui só se checasse "existe
   // pelo menos um".
   const computados = (CHAT.match(/desfecho=\{desfechoNaTela\(t, agora\)\}/g) ?? []).length;
-  assert.equal(computados, 6, `esperava 6 cartões computando o desfecho, achei ${computados}`);
+  // SETE desde 11/08/2026: o cartão de PUBLICAR entrou.
+  assert.equal(computados, 7, `esperava 7 cartões computando o desfecho, achei ${computados}`);
 });
 
 test("o desfecho REAL tem precedência sobre o vencimento", () => {
@@ -123,6 +124,7 @@ test("o carimbo de chegada só existe quando veio AUTORIZAÇÃO", () => {
     "r.propostaDePrecoId",
     "r.propostaDeTituloId",
     "r.propostaDeTextoId",
+    "r.propostaDePublicacao",
     "r.cadastro?.propostaId",
   ]) {
     assert.ok(bloco.includes(id), `o carimbo deixou de considerar ${id}`);

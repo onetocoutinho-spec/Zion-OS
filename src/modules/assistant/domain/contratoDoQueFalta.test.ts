@@ -323,9 +323,25 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // de a função existir em produção: uma ferramenta que monta proposta sem
   // cartão para confirmar é pior que uma ausente, porque a ausente o modelo diz
   // que não sabe e a inacabada ele anuncia como feita.
-  assert.equal(FERRAMENTAS.length, 20);
+  //
+  // De 20 para 21 em 11/08/2026: `propor_publicacao`, PROPOSTA.
+  //
+  // A decisão: era a última capacidade do portal fora do alcance do chat, e a
+  // ÚNICA que muda o que o COMPRADOR vê. Por isso entrou por último, e por isso
+  // é proposta e nunca ação: `reativar_anuncio` age sem clique porque o pior
+  // caso dela é um anúncio dela mesma voltando ao ar; o pior caso desta é um
+  // anúncio errado sendo visto por quem compra.
+  //
+  // Ela ENSAIA. O que ela devolve é o payload que a publicação real montaria
+  // (`montarPreviewML`) — mostrar um resumo feito à parte seria mostrar uma
+  // coisa e publicar outra.
+  //
+  // E não publica: quem publica é `/api/ml/publicar`, a MESMA rota da tela da
+  // equipe, com a trava de infração que falha fechada. Um caminho próprio até o
+  // ML seria uma segunda cópia daquela trava.
+  assert.equal(FERRAMENTAS.length, 21);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 7);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.

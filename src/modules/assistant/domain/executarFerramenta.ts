@@ -274,6 +274,25 @@ export interface ContextoDoAnuncio {
     modelo: string;
     atual: string;
   }) => Promise<{ descricao: string; justificativa: string } | null>;
+  /**
+   * O que subiria se ela publicasse AGORA — o ensaio, sem tocar no ML.
+   *
+   * `null` quando não há anúncio preparado. O payload é o mesmo que a
+   * publicação real montaria (`montarPreviewML`), porque mostrar um resumo
+   * feito à parte seria mostrar uma coisa e publicar outra.
+   */
+  ensaioDaPublicacao?: (produtoId: string) => Promise<{
+    anuncioId: string;
+    nome: string;
+    titulo: string;
+    preco: number | null;
+    estoque: number | null;
+    fotos: number;
+    categoria: string;
+    /** Já publicado? Então não há o que publicar. */
+    jaPublicado: boolean;
+    mlItemId: string | null;
+  } | null>;
   gerarPalavras?: (entrada: {
     nome: string;
     marca: string;
@@ -453,6 +472,17 @@ export interface ResultadoDaFerramenta {
    * confirmação. Duplicar o tipo duplicaria também a persistência e a rota que
    * aplica — e é ali que a divergência apareceria.
    */
+  /** O ensaio da publicação — o que subiria, para ela confirmar. */
+  propostaDePublicacao?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    titulo: string;
+    preco: number | null;
+    estoque: number | null;
+    fotos: number;
+    categoria: string;
+  };
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
     anuncioId: string;
@@ -994,6 +1024,9 @@ export async function executarFerramenta(
     case "propor_titulo":
       return proporTitulo(args, ctx);
 
+    case "propor_publicacao":
+      return proporPublicacao(args, ctx);
+
     case "propor_descricao":
       return proporTexto(args, ctx, "descricao");
 
@@ -1383,6 +1416,96 @@ async function avaliarAnuncio(
  * O que NÃO é comum, e por isso está explícito: palavras-chave ACRESCENTAM, e
  * descrição SUBSTITUI. Confundir os dois apagaria termos que já vendiam.
  */
+/**
+ * A proposta de PUBLICAR — a única ação do chat que o COMPRADOR vê.
+ *
+ * ===========================================================================
+ * ELA ENSAIA, NÃO PUBLICA
+ * ===========================================================================
+ *
+ * O que sai daqui é o payload que a publicação REAL montaria, lido do mesmo
+ * `montarPreviewML`. Um resumo feito à parte mostraria uma coisa e publicaria
+ * outra — e é justamente aqui que essa diferença chega ao comprador.
+ *
+ * ===========================================================================
+ * QUEM RECUSA É O DOMÍNIO
+ * ===========================================================================
+ *
+ * `pendenciasDoProduto` já sabe o que trava `publicar` — preço ausente, foto
+ * ausente. A ferramenta não reimplementa o critério: pergunta, e devolve a
+ * frase que o domínio escreveu.
+ *
+ * E as guardas do Mercado Livre (conexão, credencial, INFRAÇÃO) NÃO rodam
+ * aqui: elas rodam na publicação real, em `/api/ml/publicar`, com o token vivo.
+ * Antecipá-las seria uma segunda cópia — e a trava de infração é a última coisa
+ * neste repositório que pode ter duas versões.
+ */
+async function proporPublicacao(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.anuncio;
+  if (!a?.ensaioDaPublicacao) {
+    return { saida: { erro: "Não consigo publicar por aqui agora." } };
+  }
+  const produtoId = texto(args, "produtoId");
+  if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+
+  const ensaio = await a.ensaioDaPublicacao(produtoId);
+  if (!ensaio) {
+    return {
+      saida: {
+        montada: false,
+        motivo:
+          "Esse produto ainda não tem anúncio preparado — não há o que publicar. Posso preparar o anúncio primeiro.",
+      },
+    };
+  }
+  if (ensaio.jaPublicado) {
+    return {
+      saida: {
+        montada: false,
+        motivo: `Esse anúncio já está no ar${ensaio.mlItemId ? ` (${ensaio.mlItemId})` : ""}. Publicar de novo criaria um anúncio duplicado.`,
+      },
+    };
+  }
+
+  // O CRITÉRIO É DO DOMÍNIO. Ver o cabeçalho.
+  const item = await a.doProduto(produtoId);
+  const travas = item
+    ? pendenciasDoProduto(item.produto as never).filter((p) => p.bloqueia.includes("publicar"))
+    : [];
+  if (travas.length > 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: `Ainda não dá para publicar: ${travas.map((t) => t.impede).join(" ")}`,
+        travas: travas.map((t) => t.tipo),
+      },
+    };
+  }
+
+  return {
+    propostaDePublicacao: {
+      anuncioId: ensaio.anuncioId,
+      produtoId,
+      nome: ensaio.nome,
+      titulo: ensaio.titulo,
+      preco: ensaio.preco,
+      estoque: ensaio.estoque,
+      fotos: ensaio.fotos,
+      categoria: ensaio.categoria,
+    },
+    saida: {
+      montada: true,
+      // O TEXTO NÃO REPETE O CARTÃO. E a frase abaixo existe porque eu já
+      // afirmei o passo seguinte no lugar do resultado três vezes em 03/08.
+      aviso:
+        "PUBLICAR NÃO ACONTECEU. O cartão espera o clique dela. Não diga que o anúncio está no ar — diga que a proposta está pronta para ela confirmar.",
+    },
+  };
+}
+
 async function proporTexto(
   args: Record<string, unknown>,
   ctx: ContextoDasFerramentas,

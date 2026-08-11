@@ -91,6 +91,17 @@ export interface RespostaDaConversa {
     produto?: Preparacao;
     selecao?: ReturnType<typeof selecionarParaPreparar>;
   };
+  /** O ensaio da publicação — o que subiria, para ela confirmar. */
+  propostaDePublicacao?: {
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    titulo: string;
+    preco: number | null;
+    estoque: number | null;
+    fotos: number;
+    categoria: string;
+  };
   /**
    * Descrição ou palavras-chave, atual e proposta lado a lado.
    *
@@ -224,6 +235,12 @@ export async function conversar(
           ...(e.procedencia ? { procedencia: e.procedencia as HistoricoDeCampo } : {}),
           ...(e.preparacao
             ? { preparacao: e.preparacao as RespostaDaConversa["preparacao"] }
+            : {}),
+          ...(e.propostaDePublicacao
+            ? {
+                propostaDePublicacao:
+                  e.propostaDePublicacao as RespostaDaConversa["propostaDePublicacao"],
+              }
             : {}),
           ...(e.propostaDeTexto
             ? { propostaDeTexto: e.propostaDeTexto as RespostaDaConversa["propostaDeTexto"] }

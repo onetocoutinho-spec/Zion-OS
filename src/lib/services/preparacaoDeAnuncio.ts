@@ -13,6 +13,7 @@
 // o que o servidor acredita. Agora o tenant vem da sessão e os dados vêm do
 // banco.
 
+import type { AnuncioGeradoRegistro } from "../types";
 import { getSupabaseAdmin } from "../supabase/admin";
 import { lerTudoPorIds } from "../supabase/paginado";
 import type {
@@ -315,6 +316,46 @@ export interface TextoDoAnuncio {
  * principais e secundárias. Ler só um deixaria metade fora, e a lojista veria o
  * assistente propor algo que já está lá.
  */
+/**
+ * O REGISTRO completo do anúncio mais recente de um produto.
+ *
+ * `anuncioParaTitulo` e `textoDoAnuncio` leem PEDAÇOS do mesmo registro, cada
+ * um o que precisa. Este devolve o objeto inteiro porque quem o chama —
+ * `montarPreviewML` — monta o payload do ML a partir dele, e um pedaço não
+ * serve: publicar com meio registro publicaria meio anúncio.
+ */
+export async function registroDoProduto(
+  clienteId: string,
+  produtoId: string
+): Promise<AnuncioGeradoRegistro | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("anuncios_gerados")
+      .select("*, produtos(nome)")
+      .eq("cliente_id", clienteId)
+      .eq("produto_id", produtoId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const linha = ((data ?? []) as Record<string, unknown>[])[0];
+    if (!linha) return null;
+    const pai = Array.isArray(linha.produtos) ? linha.produtos[0] : linha.produtos;
+    return {
+      ...(linha as unknown as AnuncioGeradoRegistro),
+      id: String(linha.id),
+      clienteId: String(linha.cliente_id ?? clienteId),
+      produtoId: (linha.produto_id as string) ?? produtoId,
+      produto: ((pai as { nome?: string } | null)?.nome ?? null) as string | null,
+      anuncio: (linha.anuncio ?? {}) as AnuncioGeradoRegistro["anuncio"],
+      status: linha.status as AnuncioGeradoRegistro["status"],
+      mlItemId: (linha.ml_item_id as string) ?? null,
+      mlPermalink: (linha.ml_permalink as string) ?? null,
+    };
+  } catch (e) {
+    console.error("[preparacao] falha ao ler o registro do anúncio:", e);
+    return null;
+  }
+}
+
 export async function textoDoAnuncio(
   clienteId: string,
   produtoId: string
