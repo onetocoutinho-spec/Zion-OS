@@ -153,3 +153,60 @@ test("as ferramentas viram o formato da Anthropic sem perder o schema", () => {
     properties: { q: { type: "string" } },
   });
 });
+
+// ---------------------------------------------------------------------------
+// A JANELA NÃO PODE COMEÇAR NUM RESULTADO DE FERRAMENTA
+// ---------------------------------------------------------------------------
+//
+// Neste dialeto o `tool_result` viaja como mensagem de papel `user` — é a forma
+// da API. `semParesPartidos` procurava a primeira mensagem `user` para começar,
+// e achava o CARREGADOR de resultado, deixando o `tool_use` que o gerou do lado
+// de fora.
+//
+// Medido em produção em 10/08/2026: a conversa inteira voltava 400 —
+// "unexpected tool_use_id found in tool_result blocks: toolu_0_0" — e a lojista
+// lia "Não consegui responder agora". Bastava a janela deslizante parar num par
+// chamada→resposta, o que acontece em toda conversa longa o bastante.
+
+test("janela que começa em assistant(tool_use) → user(tool_result) não vira 400", () => {
+  // O par completo está na janela. O corte não pode parti-lo.
+  const falas = [
+    { role: "model", parts: [{ functionCall: { name: "contar", args: {} } }] },
+    { role: "user", parts: [{ functionResponse: { name: "contar", response: { n: 3 } } }] },
+    { role: "user", parts: [{ text: "e agora?" }] },
+  ] as never;
+  const m = mensagensDaConversa(falas);
+
+  const primeiro = Array.isArray(m[0]?.content) ? (m[0].content as { type: string }[])[0] : null;
+  assert.notEqual(
+    primeiro?.type,
+    "tool_result",
+    "a conversa começa num tool_result órfão: 400 na conversa inteira"
+  );
+});
+
+test("TODO tool_result tem o tool_use dele numa mensagem anterior", () => {
+  // A regra que a API cobra, dita como invariante e não como caso.
+  const falas = [
+    { role: "model", parts: [{ functionCall: { name: "contar", args: {} } }] },
+    { role: "user", parts: [{ functionResponse: { name: "contar", response: { n: 3 } } }] },
+    { role: "model", parts: [{ functionCall: { name: "pricing", args: {} } }] },
+    { role: "user", parts: [{ functionResponse: { name: "pricing", response: { p: 1 } } }] },
+    { role: "user", parts: [{ text: "obrigada" }] },
+  ] as never;
+  const m = mensagensDaConversa(falas);
+
+  const usos = new Set<string>();
+  for (const msg of m) {
+    const bs = Array.isArray(msg.content) ? (msg.content as { type: string; id?: string; tool_use_id?: string }[]) : [];
+    for (const b of bs) {
+      if (b.type === "tool_use" && b.id) usos.add(b.id);
+      if (b.type === "tool_result") {
+        assert.ok(
+          b.tool_use_id && usos.has(b.tool_use_id),
+          `tool_result ${b.tool_use_id} sem tool_use anterior — 400 na conversa inteira`
+        );
+      }
+    }
+  }
+});

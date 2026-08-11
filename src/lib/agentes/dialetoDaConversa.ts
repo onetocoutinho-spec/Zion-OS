@@ -129,7 +129,23 @@ function semParesPartidos(
   const blocos = (m: Anthropic.MessageParam): Anthropic.ContentBlockParam[] =>
     Array.isArray(m.content) ? (m.content as Anthropic.ContentBlockParam[]) : [];
 
-  const inicio = mensagens.findIndex((m) => m.role === "user");
+  // O COMEÇO É UM TURNO DE VERDADE, não qualquer mensagem `user`.
+  //
+  // Neste dialeto o `tool_result` viaja como mensagem de papel `user` — é a
+  // forma da API. Procurar só por `role === "user"` acha o CARREGADOR de
+  // resultado e começa ali, deixando o `tool_use` que o gerou do lado de fora.
+  //
+  // Medido em produção em 10/08/2026: a conversa inteira voltava 400 —
+  // "unexpected tool_use_id found in tool_result blocks: toolu_0_0" — e a
+  // lojista lia "Não consegui responder agora". Bastava a janela deslizante
+  // parar num par chamada→resposta, o que acontece em toda conversa longa o
+  // bastante.
+  //
+  // A limpeza de órfãos acima não pega este caso: lá o `tool_use` ESTAVA na
+  // janela e foi casado; quem o descartou foi este corte, depois.
+  const inicio = mensagens.findIndex(
+    (m) => m.role === "user" && !blocos(m).some((b) => b.type === "tool_result")
+  );
   if (inicio < 0) return [];
   let fim = mensagens.length;
 
