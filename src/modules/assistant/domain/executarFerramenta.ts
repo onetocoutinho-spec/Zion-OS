@@ -112,6 +112,8 @@ import { lerDinheiroEmCentavos, centavosParaReais } from "./fatosDoCadastro";
 import {
   avaliarPreparacao,
   avaliarTituloProposto,
+  avaliarDescricaoProposta,
+  avaliarPalavrasChave,
   dadosDoProduto,
   escreverEstado,
   oQueFalta as oQueFaltaNaPreparacao,
@@ -252,6 +254,32 @@ export interface ContextoDoAnuncio {
     nome: string;
     tituloAtual: string;
   } | null>;
+
+  /**
+   * O TEXTO do anúncio — descrição e palavras-chave de hoje.
+   *
+   * Um porto só para os dois, e não dois portos: eles vêm da mesma linha de
+   * `anuncios_gerados`, e separá-los faria duas leituras do mesmo registro
+   * para responder uma pergunta.
+   */
+  textoDoAnuncio?: (produtoId: string) => Promise<{
+    anuncioId: string;
+    nome: string;
+    descricaoAtual: string;
+    palavrasAtuais: readonly string[];
+  } | null>;
+  gerarDescricao?: (entrada: {
+    nome: string;
+    marca: string;
+    modelo: string;
+    atual: string;
+  }) => Promise<{ descricao: string; justificativa: string } | null>;
+  gerarPalavras?: (entrada: {
+    nome: string;
+    marca: string;
+    modelo: string;
+    atuais: readonly string[];
+  }) => Promise<{ palavras: string[]; justificativa: string } | null>;
 }
 
 /** Os portos da análise de pendências. Tudo com o tenant já preso pela rota. */
@@ -417,6 +445,26 @@ export interface ResultadoDaFerramenta {
    * A rota persiste como Proposal; sem id não há botão. O objeto aqui só
    * desenha o cartão.
    */
+  /**
+   * A proposta de TEXTO — descrição ou palavras-chave.
+   *
+   * Um tipo para os dois, com `campo` discriminando, e não dois tipos: eles
+   * gravam na MESMA linha de `anuncios_gerados` e percorrem o mesmo caminho de
+   * confirmação. Duplicar o tipo duplicaria também a persistência e a rota que
+   * aplica — e é ali que a divergência apareceria.
+   */
+  propostaDeTexto?: {
+    campo: "descricao" | "palavras_chave";
+    anuncioId: string;
+    produtoId: string;
+    nome: string;
+    /** O que está lá hoje. Lista, quando o campo é palavras-chave. */
+    atual: string;
+    /** O que se propõe. Para palavras-chave, os termos NOVOS, já limpos. */
+    proposto: string;
+    justificativa: string;
+    autoridade: "nao_se_aplica";
+  };
   propostaDeTitulo?: {
     anuncioId: string;
     produtoId: string;
@@ -946,6 +994,12 @@ export async function executarFerramenta(
     case "propor_titulo":
       return proporTitulo(args, ctx);
 
+    case "propor_descricao":
+      return proporTexto(args, ctx, "descricao");
+
+    case "propor_palavras_chave":
+      return proporTexto(args, ctx, "palavras_chave");
+
     case "pricing":
       return consultarPricing(args, ctx);
 
@@ -1319,6 +1373,101 @@ async function avaliarAnuncio(
  * agente e repassa. E nada é gravado — trocar o título de um anúncio é
  * alteração operacional, então passa por Proposal e clique.
  */
+/**
+ * A proposta de DESCRIÇÃO ou de PALAVRAS-CHAVE.
+ *
+ * Uma função para os dois porque o caminho é o mesmo — ler o que existe, gerar,
+ * deixar o DOMÍNIO julgar, montar a proposta — e o que muda é qual agente roda
+ * e qual juiz decide. Duas cópias divergiriam no primeiro conserto.
+ *
+ * O que NÃO é comum, e por isso está explícito: palavras-chave ACRESCENTAM, e
+ * descrição SUBSTITUI. Confundir os dois apagaria termos que já vendiam.
+ */
+async function proporTexto(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas,
+  campo: "descricao" | "palavras_chave"
+): Promise<ResultadoDaFerramenta> {
+  const a = ctx.anuncio;
+  if (!a?.textoDoAnuncio || !a.gerarDescricao || !a.gerarPalavras) {
+    return { saida: { erro: "Não consigo mexer no texto do anúncio nesta tela." } };
+  }
+  const produtoId = texto(args, "produtoId");
+  if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+
+  const alvo = await a.textoDoAnuncio(produtoId);
+  if (!alvo) {
+    return {
+      saida: {
+        montada: false,
+        motivo:
+          "Esse produto ainda não tem anúncio gerado — não há texto para melhorar. Posso preparar o anúncio primeiro.",
+      },
+    };
+  }
+
+  const item = await a.doProduto(produtoId);
+  const base = {
+    nome: item?.produto.nome ?? alvo.nome,
+    marca: item?.produto.marca ?? "",
+    modelo: item?.produto.modelo ?? "",
+  };
+
+  if (campo === "descricao") {
+    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual });
+    const veredicto = avaliarDescricaoProposta(gerado?.descricao ?? "", alvo.descricaoAtual);
+    if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
+    return {
+      propostaDeTexto: {
+        campo,
+        anuncioId: alvo.anuncioId,
+        produtoId,
+        nome: alvo.nome,
+        atual: alvo.descricaoAtual,
+        proposto: veredicto.descricao,
+        justificativa: gerado?.justificativa ?? "",
+        autoridade: "nao_se_aplica",
+      },
+      saida: {
+        montada: true,
+        campo,
+        caracteresAtuais: alvo.descricaoAtual.length,
+        caracteresPropostos: veredicto.descricao.length,
+        // O TEXTO NÃO VAI NA SAÍDA do modelo, e isso é deliberado: ele já
+        // escreveu a descrição uma vez, e devolvê-la aqui só faria ele
+        // reescrevê-la na resposta — com variação. Quem mostra os dois lados é
+        // o cartão, com o texto que a proposta guardou.
+        aviso: "A lojista lê a atual e a proposta no cartão e decide. Não repita o texto na resposta.",
+      },
+    };
+  }
+
+  const gerado = await a.gerarPalavras({ ...base, atuais: alvo.palavrasAtuais });
+  const veredicto = avaliarPalavrasChave(gerado?.palavras ?? [], alvo.palavrasAtuais);
+  if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
+  return {
+    propostaDeTexto: {
+      campo,
+      anuncioId: alvo.anuncioId,
+      produtoId,
+      nome: alvo.nome,
+      atual: alvo.palavrasAtuais.join(", "),
+      proposto: veredicto.palavras.join(", "),
+      justificativa: gerado?.justificativa ?? "",
+      autoridade: "nao_se_aplica",
+    },
+    saida: {
+      montada: true,
+      campo,
+      quantasJaTem: alvo.palavrasAtuais.length,
+      quantasNovas: veredicto.palavras.length,
+      // ACRESCENTA, não substitui. Se o modelo disser "vou trocar suas
+      // palavras-chave", ela entende errado o que o botão faz.
+      aviso: "Estas ACRESCENTAM às que já existem. Nenhuma palavra atual é removida.",
+    },
+  };
+}
+
 async function proporTitulo(
   args: Record<string, unknown>,
   ctx: ContextoDasFerramentas

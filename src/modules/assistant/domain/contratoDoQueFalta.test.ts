@@ -308,6 +308,20 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // margem mínima entram em toda conta de preço e só se acertavam em duas
   // telas — dar voz a eles não dá poder novo a ninguém. Nenhuma das outras
   // dezessete mudou de efeito.
+  //
+  // CONTINUAM 18. `propor_descricao` e `propor_palavras_chave` foram
+  // construídas em 10/08/2026 até a metade — juízes, agentes, portos e o
+  // executor existem e são testados — e NÃO estão registradas aqui de
+  // propósito.
+  //
+  // Falta a metade que grava: a aplicação do título passa por função atômica no
+  // banco (`copilot_executar_titulo`, migração 048), e as duas novas precisam
+  // da mesma disciplina. Registrá-las antes disso daria ao modelo uma
+  // ferramenta que monta proposta sem cartão para confirmar — texto na tela e
+  // nenhum botão.
+  //
+  // Uma ferramenta que o modelo alcança e não conclui é pior que uma ausente:
+  // a ausente ele diz que não sabe; a inacabada ele anuncia como feita.
   assert.equal(FERRAMENTAS.length, 18);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);

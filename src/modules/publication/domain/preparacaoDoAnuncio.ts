@@ -593,6 +593,130 @@ export type VeredictoDoTitulo =
  * trocar) e acima do limite do ML (o anúncio seria recusado na publicação).
  * O modelo escreve; o domínio decide se aquilo pode virar proposta.
  */
+/**
+ * O limite de descrição do Mercado Livre.
+ *
+ * 50.000 caracteres em texto plano. Na prática nenhuma descrição útil chega
+ * perto — o valor está aqui para a recusa ser do DOMÍNIO e não do provedor:
+ * um texto acima disso é rejeitado pela API do ML no meio da publicação, e
+ * falhar ali é pior que falhar aqui, porque o anúncio já começou a subir.
+ */
+export const LIMITE_DE_DESCRICAO = 50000;
+
+/**
+ * O piso de uma descrição que vale a troca.
+ *
+ * Não é regra do ML — é do Zion. Uma descrição de duas linhas é pior que a
+ * atual em quase todo caso, e trocar uma descrição existente por uma mais
+ * pobre é dano que ninguém pediu. Quando o agente devolve algo assim, a recusa
+ * é honesta: "não consegui gerar algo melhor".
+ */
+export const MINIMO_DE_DESCRICAO = 120;
+
+export type VeredictoDaDescricao =
+  | { ok: true; descricao: string }
+  | { ok: false; motivo: string };
+
+/**
+ * A descrição proposta pode virar proposta?
+ *
+ * Mesma forma do juiz do título, e pelo mesmo motivo: quem decide se um texto
+ * gerado merece chegar à lojista é o DOMÍNIO, não o modelo que o gerou. Vazio,
+ * igual ao atual, curto demais ou acima do limite do ML são recusas — e a
+ * recusa vira frase que ela lê, não erro silencioso.
+ */
+export function avaliarDescricaoProposta(
+  proposta: string,
+  atual: string
+): VeredictoDaDescricao {
+  const d = (proposta ?? "").trim();
+  if (!d) return { ok: false, motivo: "Não consegui gerar uma descrição agora." };
+  if (d.length > LIMITE_DE_DESCRICAO) {
+    return {
+      ok: false,
+      motivo: `A descrição proposta tem ${d.length} caracteres e o Mercado Livre aceita ${LIMITE_DE_DESCRICAO}.`,
+    };
+  }
+  if (d.length < MINIMO_DE_DESCRICAO) {
+    return {
+      ok: false,
+      motivo:
+        `A descrição que eu geraria tem só ${d.length} caracteres — mais pobre que a atual. ` +
+        "Trocar por algo pior não ajuda a vender.",
+    };
+  }
+  if (d === (atual ?? "").trim()) {
+    return { ok: false, motivo: "A descrição que eu proporia é igual à atual. Não há o que trocar." };
+  }
+  return { ok: true, descricao: d };
+}
+
+/**
+ * O teto de palavras-chave que vale mandar.
+ *
+ * O ML indexa o título e os atributos; palavra-chave em excesso não melhora
+ * busca e come espaço. Vinte é folgado para calçado — acima disso é o modelo
+ * enchendo lista, não achando termo.
+ */
+export const MAXIMO_DE_PALAVRAS_CHAVE = 20;
+
+export type VeredictoDasPalavras =
+  | { ok: true; palavras: readonly string[] }
+  | { ok: false; motivo: string };
+
+/**
+ * As palavras-chave propostas podem virar proposta?
+ *
+ * Diferente do título e da descrição em uma coisa: aqui o domínio também
+ * LIMPA, porque a limpeza é objetiva — vazias, repetidas (sem acento e sem
+ * caixa) e as que já estão lá não acrescentam nada, e mantê-las faria a lojista
+ * conferir ruído.
+ *
+ * O que ele NÃO faz é escolher quais valem: isso seria opinião, e opinião sobre
+ * o que vende é dela.
+ */
+export function avaliarPalavrasChave(
+  propostas: readonly string[],
+  atuais: readonly string[]
+): VeredictoDasPalavras {
+  const norm = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .trim()
+      .toLowerCase();
+
+  const jaTem = new Set((atuais ?? []).map(norm).filter(Boolean));
+  const vistas = new Set<string>();
+  const limpas: string[] = [];
+  for (const bruta of propostas ?? []) {
+    const p = (bruta ?? "").trim();
+    if (!p) continue;
+    const chave = norm(p);
+    if (!chave || vistas.has(chave) || jaTem.has(chave)) continue;
+    vistas.add(chave);
+    limpas.push(p);
+  }
+
+  if (limpas.length === 0) {
+    return {
+      ok: false,
+      motivo:
+        (atuais ?? []).length > 0
+          ? "As palavras-chave que eu proporia já estão todas no anúncio. Não há o que acrescentar."
+          : "Não consegui gerar palavras-chave agora.",
+    };
+  }
+  if (limpas.length > MAXIMO_DE_PALAVRAS_CHAVE) {
+    // Cortar em silêncio esconderia que o modelo encheu lista. Recusar diz.
+    return {
+      ok: false,
+      motivo: `Vieram ${limpas.length} palavras-chave, e acima de ${MAXIMO_DE_PALAVRAS_CHAVE} é lista cheia, não termo achado.`,
+    };
+  }
+  return { ok: true, palavras: limpas };
+}
+
 export function avaliarTituloProposto(
   proposto: string,
   atual: string

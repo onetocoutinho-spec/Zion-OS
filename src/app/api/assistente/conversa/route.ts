@@ -83,6 +83,7 @@ import { anomaliasDoCatalogo } from "@/modules/catalog/domain/anomaliasDoCatalog
 import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connectors/shared/capacidades";
 import {
   anuncioParaTitulo,
+  textoDoAnuncio,
   catalogoParaPreparar,
   margemDoCliente,
   produtoParaPreparar,
@@ -93,6 +94,7 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
+import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 
@@ -399,6 +401,11 @@ export async function POST(request: Request) {
       // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
       gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
+      textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
+      // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
+      // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
+      gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada),
+      gerarPalavras: (entrada) => gerarPalavrasChave(entrada),
     },
     // ---- O PRICING ----
     //

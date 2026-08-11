@@ -294,6 +294,62 @@ export interface AnuncioParaTitulo {
  * que melhorar, e gerar um anúncio inteiro para isso seria outra intenção, com
  * outro custo.
  */
+export interface TextoDoAnuncio {
+  anuncioId: string;
+  nome: string;
+  descricaoAtual: string;
+  palavrasAtuais: readonly string[];
+}
+
+/**
+ * A descrição e as palavras-chave que o anúncio tem HOJE.
+ *
+ * Uma leitura só para os dois: eles moram na mesma linha de `anuncios_gerados`,
+ * e separá-los faria duas consultas ao mesmo registro.
+ *
+ * `descricaoCompleta` e não `descricaoCurta`: a curta é a chamada do topo, a
+ * completa é o que o comprador lê. Melhorar a errada seria melhorar o que
+ * ninguém reclama.
+ *
+ * As palavras-chave vêm de DOIS campos que a esteira gera separados —
+ * principais e secundárias. Ler só um deixaria metade fora, e a lojista veria o
+ * assistente propor algo que já está lá.
+ */
+export async function textoDoAnuncio(
+  clienteId: string,
+  produtoId: string
+): Promise<TextoDoAnuncio | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("anuncios_gerados")
+      .select("id, produto_id, produtos(nome), anuncio, status, criado_em")
+      .eq("cliente_id", clienteId)
+      .eq("produto_id", produtoId)
+      .order("criado_em", { ascending: false })
+      .limit(1);
+    const linha = ((data ?? []) as LinhaComAnuncio[])[0];
+    if (!linha) return null;
+    const pai = Array.isArray(linha.produtos) ? linha.produtos[0] : linha.produtos;
+    // O `anuncio` é JSON solto na coluna: o tipo estreito de `LinhaComAnuncio`
+    // só declara o título, porque era só isso que se lia antes daqui.
+    const a = (linha.anuncio ?? {}) as Record<string, unknown>;
+    const lista = (v: unknown): string[] =>
+      Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+    return {
+      anuncioId: linha.id,
+      nome: pai?.nome ?? "",
+      descricaoAtual: String(a.descricaoCompleta ?? ""),
+      palavrasAtuais: [
+        ...lista(a.palavrasChavePrincipais),
+        ...lista(a.palavrasChaveSecundarias),
+      ],
+    };
+  } catch (e) {
+    console.error("[preparacao] falha ao ler o texto do anúncio:", e);
+    return null;
+  }
+}
+
 export async function anuncioParaTitulo(
   clienteId: string,
   produtoId: string
