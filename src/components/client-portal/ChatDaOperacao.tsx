@@ -100,6 +100,8 @@ import { formatBRLExato } from "@/lib/format";
 import { importarPeso } from "@/lib/services/importacaoPeso";
 import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
+import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
+import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
 import {
   analisarProdutosCsv,
@@ -180,6 +182,8 @@ interface Turno {
   pdf?: File;
   /** A análise do catálogo em planilha — a única importação que CRIA. */
   catalogo?: AnaliseProdutos;
+  /** Uma foto largada no clipe, já medida — o veredicto vem antes de subir. */
+  foto?: { arquivo: File; medida: FotoMedida };
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -832,6 +836,36 @@ export function ChatDaOperacao({
     // mostrar o custo → ela decide → extrair → conferir → gravar continua
     // acontecendo em um lugar só. O que mudou foi ele aceitar um arquivo já
     // escolhido, para ela não ter que escolher duas vezes.
+    // ===================================================================
+    // FOTO: o veredicto ANTES do upload
+    // ===================================================================
+    //
+    // 127 anúncios desta lojista estão travados por capa pequena. Uma foto que
+    // não é quadrada com 1200 de lado NÃO destrava nada — e subir primeiro
+    // para descobrir depois gastaria a viagem dela ao fabricante, o upload e a
+    // espera, para o anúncio continuar onde estava.
+    //
+    // O navegador sabe a dimensão antes de qualquer byte subir. Medir aqui é
+    // barato e é a única coisa que muda a decisão dela.
+    if (arquivo.type.startsWith("image/")) {
+      const medida = await medirFoto(arquivo);
+      if (!medida) {
+        setTurnos((t) => [
+          ...t,
+          {
+            pergunta: `Enviei a foto ${arquivo.name}`,
+            erro: "Não consegui abrir esse arquivo como imagem. Ele pode estar corrompido ou num formato que o navegador não lê.",
+          },
+        ]);
+        return;
+      }
+      setTurnos((t) => [
+        ...t,
+        { pergunta: `Enviei a foto ${arquivo.name}`, foto: { arquivo, medida } },
+      ]);
+      return;
+    }
+
     if (arquivo.type === "application/pdf" || /\.pdf$/i.test(arquivo.name)) {
       setTurnos((t) => [...t, { pergunta: `Enviei o catálogo ${arquivo.name}`, pdf: arquivo }]);
       return;
@@ -939,6 +973,72 @@ export function ChatDaOperacao({
    * em lugares diferentes com relatórios diferentes. Aqui o relatório diz
    * "criei", não "importei" — porque é o que aconteceu com a base dela.
    */
+  /**
+   * O envio da FOTO. Irmã das outras confirmações, e separada pelo mesmo motivo.
+   *
+   * `uploadImagemProduto` e `promoverImagemACapa` são os MESMOS serviços da tela
+   * de Imagens — a capa promovida aqui rebaixa a anterior lá, porque é a mesma
+   * função que faz as duas coisas.
+   */
+  async function confirmarFoto(indice: number, comoCapa: boolean) {
+    const alvo = turnos[indice];
+    const produto = contexto?.produto;
+    if (!alvo?.foto || !clienteId || !produto) return;
+    setTurnos((t) =>
+      t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
+    );
+    try {
+      const img = await uploadImagemProduto({
+        clienteId,
+        produtoId: produto.id,
+        file: alvo.foto.arquivo,
+      });
+      // A CAPA É UM SEGUNDO PASSO, e falhar nele não desfaz o upload: a foto
+      // está lá, e dizer "não subiu" seria mentira. Por isso o catch separado.
+      let virouCapa = false;
+      if (comoCapa) {
+        try {
+          await promoverImagemACapa(produto.id, img.id);
+          virouCapa = true;
+        } catch (e) {
+          console.error("[chat/foto] subiu mas não virou capa:", e);
+        }
+      }
+      const m = alvo.foto.medida;
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                foto: undefined,
+                importandoPlanilha: false,
+                texto:
+                  `Subi a foto para ${produto.nome} (${m.largura} × ${m.altura}).` +
+                  (comoCapa
+                    ? virouCapa
+                      ? " Ela é a capa agora."
+                      : " Subiu, mas não consegui marcá-la como capa — dá para fazer isso na tela de Imagens."
+                    : ""),
+              }
+            : turno
+        )
+      );
+      aoGravar?.();
+    } catch (e) {
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                importandoPlanilha: false,
+                erro: e instanceof Error ? e.message : "Não consegui subir a foto.",
+              }
+            : turno
+        )
+      );
+    }
+  }
+
   async function confirmarCatalogo(indice: number) {
     const alvo = turnos[indice];
     if (!alvo?.catalogo || !clienteId) return;
@@ -1141,6 +1241,24 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
+              ) : t.foto ? (
+                /* A CONFERÊNCIA DA FOTO julga ANTES de subir: 127 anúncios
+                   desta conta estão travados por capa pequena, e uma foto que
+                   não é quadrada com 1200 de lado não destrava nada. */
+                <ConferirFoto
+                  arquivo={t.foto.arquivo}
+                  medida={t.foto.medida}
+                  produto={contexto?.produto ?? null}
+                  ocupado={t.importandoPlanilha}
+                  onCancelar={() =>
+                    setTurnos((ts) =>
+                      ts.map((turno, j) =>
+                        j === i ? { ...turno, foto: undefined, texto: "Descartei a foto. Nada foi enviado." } : turno
+                      )
+                    )
+                  }
+                  onConfirmar={(comoCapa) => void confirmarFoto(i, comoCapa)}
+                />
               ) : t.catalogo ? (
                 /* O CATÁLOGO É O ÚNICO QUE CRIA — e a tela diz o verbo. Custo e
                    peso atualizam o que já existe; errar ali escreve um número
@@ -1350,7 +1468,7 @@ export function ChatDaOperacao({
           <span className="sr-only">Enviar planilha de custos</span>
           <input
             type="file"
-            accept=".csv,.xlsx,.xls,text/csv,.pdf,application/pdf"
+            accept=".csv,.xlsx,.xls,text/csv,.pdf,application/pdf,image/*"
             className="hidden"
             disabled={ocupado}
             onChange={(e) => {
