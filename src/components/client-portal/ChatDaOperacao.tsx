@@ -735,6 +735,32 @@ export function ChatDaOperacao({
           return;
         }
 
+        // ===================================================================
+        // A TERCEIRA PORTA: entendi o valor, mas quem autoriza é o servidor
+        // ===================================================================
+        //
+        // `montarProposta` roda AQUI, no navegador, e por isso não pode gravar
+        // nada: uma proposta sem autorização persistida é só um texto bonito.
+        // Desde 29/07 o cartão de `pronta` exige `propostaId` para existir — e
+        // está certo, é a primitiva que impede o clique de virar escrita sem
+        // passar pelo servidor.
+        //
+        // O que faltou foi ALGUÉM criar esse id no caminho barato. Resultado
+        // medido em produção em 11/08/2026, três vezes seguidas: a lojista diz
+        // "o custo do Chinelo Havaianas Top Liso e 28,40", o classificador
+        // acerta tudo (`preencher` / `custo` / `28,40` / termos do alvo), o
+        // domínio monta a proposta certa — e a tela fica MUDA. Treze dias
+        // assim, na única frase que a lojista escreve sozinha sem ser
+        // perguntada.
+        //
+        // O fio resolve porque lá a proposta nasce no servidor: `propor_gravacao`
+        // persiste, revalida a precondição e devolve o id. Custa uma chamada a
+        // mais; ditar um custo é raro e gravar errado é caro.
+        if ("proposta" in encerra && encerra.proposta?.tipo === "pronta") {
+          await responderConversando(pergunta);
+          return;
+        }
+
         setTurnos((t) =>
           t.map((turno, i) =>
             i === t.length - 1
@@ -1494,7 +1520,17 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.proposta && t.propostaId && (
+                  {/* A EXIGÊNCIA DO ID VALE PARA QUEM CARREGA BOTÃO.
+                      `pronta` é a única que grava, e ela só aparece com uma
+                      autorização persistida atrás — é a primitiva de 29/07.
+                      As outras (`recusada`, `sem_alvo`, `ambigua`,
+                      `falta_dado`) são RECADO: dizem por que não dá, ou
+                      perguntam qual produto. Não gravam nada, não têm botão, e
+                      exigir id delas foi o que calou o chat por treze dias —
+                      a lojista ditava "o custo do X é 28,40", o software
+                      entendia (medido: intencao `preencher`, campo `custo`,
+                      valor `28,40`) e a tela não mostrava NADA. */}
+                  {t.proposta && (t.propostaId || t.proposta.tipo !== "pronta") && (
                     <CartaoDaProposta
                       p={t.proposta}
                       desfecho={desfechoNaTela(t, agora)}
