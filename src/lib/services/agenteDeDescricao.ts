@@ -28,6 +28,27 @@ import {
   MAXIMO_DE_PALAVRAS_CHAVE,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 
+/**
+ * O único jeito de sair daqui sem resposta — e ele SEMPRE diz por quê.
+ *
+ * ===========================================================================
+ * Medido em 11/08/2026, investigando o incidente de 01:57
+ * ===========================================================================
+ *
+ * A lojista leu "a ferramenta não conseguiu montar o comparativo — deu erro
+ * sem detalhar o motivo". A frase era honesta: quatro causas diferentes
+ * (provedor ausente, agente ausente, JSON sem o campo, exceção) devolviam o
+ * MESMO `null`, e três delas não deixavam registro nenhum. Descobrir qual
+ * tinha sido exigiu datar a mensagem no banco e cruzar com o log do git.
+ *
+ * Com a causa escrita, a mesma investigação leva o tempo de abrir o log. O
+ * comportamento não muda — quem julga vazio continua sendo o domínio.
+ */
+function semResposta(causa: string, detalhe?: unknown): null {
+  console.error(`[copilot/texto] sem resposta: ${causa}`, detalhe ?? "");
+  return null;
+}
+
 const SEM_INVENTAR =
   "Use SOMENTE os dados acima. Não afirme material, tecnologia, garantia, origem, " +
   "certificação nem qualquer característica que não esteja listada. Se um dado não " +
@@ -60,9 +81,9 @@ export interface EntradaDoTexto {
 export async function gerarDescricaoOtimizada(
   e: EntradaDoTexto
 ): Promise<{ descricao: string; justificativa: string } | null> {
-  if (!provedorConfigurado()) return null;
+  if (!provedorConfigurado()) return semResposta("provedor de IA não configurado");
   const agente = agentePorFerramenta("descricao");
-  if (!agente) return null;
+  if (!agente) return semResposta('agente "descricao" ausente do catálogo');
 
   const dados = [
     `Produto: ${e.nome}`,
@@ -97,11 +118,15 @@ export async function gerarDescricaoOtimizada(
       maxTokens: 8000,
     });
     const r = JSON.parse(json) as { descricao?: string; justificativa?: string };
-    if (!r.descricao) return null;
+    if (!r.descricao) {
+      return semResposta("JSON válido, mas sem o campo `descricao`", json.slice(0, 200));
+    }
     return { descricao: r.descricao, justificativa: r.justificativa ?? "" };
   } catch (err) {
-    console.error("[copilot/descricao] falha ao gerar:", err);
-    return null;
+    // O CASO DE 10/08: `JSON.parse` estourando num JSON cortado pelo teto de
+    // saída. Sem a mensagem do erro aqui, o corte é indistinguível de uma
+    // queda de rede.
+    return semResposta("a chamada ao agente de descrição falhou", err);
   }
 }
 
@@ -133,11 +158,11 @@ export interface EntradaDasPalavras {
 export async function gerarPalavrasChave(
   e: EntradaDasPalavras
 ): Promise<{ palavras: string[]; justificativa: string } | null> {
-  if (!provedorConfigurado()) return null;
+  if (!provedorConfigurado()) return semResposta("provedor de IA não configurado");
   // O agente de SEO é quem sabe de busca. Reusar o de descrição aqui daria
   // termo bonito em vez de termo procurado.
   const agente = agentePorFerramenta("seo");
-  if (!agente) return null;
+  if (!agente) return semResposta('agente "seo" ausente do catálogo');
 
   const dados = [
     `Produto: ${e.nome}`,
@@ -159,10 +184,11 @@ export async function gerarPalavrasChave(
       maxTokens: 600,
     });
     const r = JSON.parse(json) as { palavras?: string[]; justificativa?: string };
-    if (!Array.isArray(r.palavras) || r.palavras.length === 0) return null;
+    if (!Array.isArray(r.palavras) || r.palavras.length === 0) {
+      return semResposta("JSON válido, mas `palavras` veio vazio", json.slice(0, 200));
+    }
     return { palavras: r.palavras, justificativa: r.justificativa ?? "" };
   } catch (err) {
-    console.error("[copilot/seo] falha ao gerar:", err);
-    return null;
+    return semResposta("a chamada ao agente de SEO falhou", err);
   }
 }
