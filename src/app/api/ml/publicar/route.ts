@@ -15,7 +15,6 @@ import {
   preverCategoria,
   criarItem,
   criarGuiaTamanhos,
-  RenovacaoRecusadaError,
   atributosObrigatorios,
 } from "@/lib/marketplaces/mercadolivre";
 import {
