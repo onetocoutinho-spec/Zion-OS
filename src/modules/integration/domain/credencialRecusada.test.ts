@@ -65,9 +65,20 @@ test("TODA rota que renova token trata a recusa da credencial", () => {
   // ML. Passar pelo helper é o que garante o 409 com `motivo: "reconectar"`.
   const soltas = rotasQueRenovam()
     .filter((r) => !/renovarTokenDaRota/.test(r.fonte))
-    // `publicar` trata em linha, com o seu próprio try/catch e um log de
-    // bloqueio que as outras não têm. O que importa é o desfecho, não a forma.
+    // `publicar` tratava em linha, com try/catch próprio e um log de bloqueio
+    // que as outras não têm. O que importa é o DESFECHO, não a forma.
     .filter((r) => !/motivo: "reconectar"/.test(r.fonte))
+    // TERCEIRA FORMA, desde 11/08/2026: delegar para `guardasDaPublicacao`.
+    //
+    // As guardas saíram da rota para que um segundo caminho até o ML (a
+    // confirmação de uma proposta do chat) as tenha também — guarda que mora na
+    // rota é guarda que o segundo caminho não tem.
+    //
+    // Aceitar a delegação aqui só é honesto porque o delegado tem sentinela
+    // própria provando o desfecho: `guardasDaPublicacao.test.ts` verifica o 409
+    // com `reconectar`, que só 4xx entra nele, e que a trava de infração falha
+    // FECHADA. Sem aquele arquivo, este filtro seria um buraco.
+    .filter((r) => !/conferirGuardasDaPublicacao\(/.test(r.fonte))
     .map((r) => r.nome);
   assert.deepEqual(
     soltas,

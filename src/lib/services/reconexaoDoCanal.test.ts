@@ -227,21 +227,44 @@ const ROTA = readFileSync(
   "utf8"
 );
 
+// AS GUARDAS MUDARAM DE CASA EM 11/08/2026, e estas três asserções mudaram
+// com elas. O que elas garantem é o MESMO — mudou onde olhar.
+//
+// Elas moravam em linha dentro de `/api/ml/publicar`, e por isso pertenciam
+// àquele caminho e a nenhum outro. Agora vivem em `guardasDaPublicacao`, que a
+// rota chama e um segundo caminho até o ML poderá chamar também.
+//
+// Reancorar em vez de afrouxar: a garantia não pode depender de onde o código
+// está, ou a próxima mudança de casa a apaga em silêncio.
+const GUARDAS = readFileSync(
+  new URL("../../modules/integration/domain/guardasDaPublicacao.ts", import.meta.url),
+  "utf8"
+);
+
 test("a renovação tem catch PRÓPRIO, e ele devolve `reconectar`", () => {
-  const i = ROTA.indexOf("tokens = await renovarToken(");
-  const bloco = ROTA.slice(i, ROTA.indexOf("// 3)", i));
-  assert.match(bloco, /catch \(e\)/, "o passo da renovação voltou a cair no catch genérico");
+  const i = GUARDAS.indexOf("tokens = await portos.renovar(");
+  const bloco = GUARDAS.slice(i, GUARDAS.indexOf("// ---- 3)", i));
+  assert.match(bloco, /catch \(e\)/, "a renovação voltou a cair no catch genérico");
   assert.match(bloco, /motivo: "reconectar"/);
   assert.match(bloco, /status: 409/);
 });
 
-test("só 4xx vira `reconectar` — 5xx e rede seguem para o catch genérico", () => {
-  const i = ROTA.indexOf("tokens = await renovarToken(");
-  const bloco = ROTA.slice(i, ROTA.indexOf("// 3)", i));
+test("a ROTA continua traduzindo o veredicto para HTTP, sem inventar campo", () => {
+  // A extração não pode ter mudado o que vai pelo fio: os clientes de hoje leem
+  // `motivo`, `infracao`, `itensComInfracao` e `infracaoNaoConferida`.
+  assert.match(ROTA, /conferirGuardasDaPublicacao\(/, "a rota parou de usar as guardas extraídas");
+  for (const campo of ["motivo", "infracao", "itensComInfracao", "infracaoNaoConferida"]) {
+    assert.ok(ROTA.includes(campo), `o campo \`${campo}\` sumiu da resposta da rota`);
+  }
+});
+
+test("só 4xx vira `reconectar` — 5xx e rede sobem", () => {
+  // O ML fora do ar não diz nada sobre a validade do token, e mandar reconectar
+  // seria afirmar o que não se sabe.
   assert.match(
-    bloco,
-    /if \(!\(e instanceof RenovacaoRecusadaError\) \|\| !e\.credencialRecusada\) throw e/,
-    "a rota passou a tratar qualquer falha de renovação como credencial morta"
+    GUARDAS,
+    /if \(!ehCredencialRecusada\(e\)\) throw e/,
+    "as guardas passaram a tratar qualquer falha de renovação como credencial morta"
   );
 });
 
@@ -255,7 +278,7 @@ test("a rota NÃO escreve `ativo` — o flag é a intenção do lojista", () => 
 test("a guarda de `nunca conectou` continua existindo, e separada", () => {
   // Os dois estados seguem distinguíveis: 400 para quem nunca conectou, 409
   // para quem conectou e teve a credencial recusada.
-  assert.match(ROTA, /if \(!canal\?\.refreshToken\)[\s\S]{0,200}status: 400/);
+  assert.match(GUARDAS, /if \(!canal\?\.refreshToken\)[\s\S]{0,260}status: 400/);
 });
 
 // ---------------------------------------------------------------------------

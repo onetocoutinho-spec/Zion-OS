@@ -29,6 +29,7 @@ import {
   dominioDaCategoria,
 } from "@/modules/integration/domain/exigenciaModeloCanal";
 import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guardasDaPublicacao";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 // 60s = limite do plano grátis da Vercel.
@@ -126,88 +127,40 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    // 1) Busca o refresh_token do canal NO SERVIDOR (via RLS).
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
-    if (!canal?.refreshToken) {
-      return Response.json(
-        { erro: "Cliente não conectado ao Mercado Livre. Conecte a conta antes de publicar." },
-        { status: 400 }
-      );
-    }
+    // ---- AS TRÊS GUARDAS: conexão, credencial, infração.
+    //
+    // Elas moravam AQUI, em linha, e por isso pertenciam a este caminho e a
+    // nenhum outro. Agora vivem em `guardasDaPublicacao` e esta rota é um
+    // TRADUTOR: veredicto → HTTP. Um segundo caminho até o ML (a confirmação
+    // de uma proposta do chat) traduz o mesmo veredicto para cartão.
+    //
+    // Nada do que vai pelo fio mudou: `motivo`, `infracao`, `itensComInfracao`
+    // e `infracaoNaoConferida` são os mesmos campos, com as mesmas frases.
+    const veredicto = await conferirGuardasDaPublicacao(
+      {
+        lerCanal: () => lerCanalServidor(ctx.supabase!, corpo.clienteId, marketplace),
+        renovar: (refreshToken) => renovarToken({ clientId, clientSecret, refreshToken }),
+        guardarRefresh: (rt) =>
+          atualizarRefreshTokenServidor(ctx.supabase!, corpo.clienteId, rt, marketplace),
+        mlbsComInfracao,
+      },
+      { marketplace, go: corpo.go === true, mlbsDoProduto: corpo.mlbsDoProduto ?? [] }
+    );
 
-    // 2) Renova o token (e captura o refresh_token rotacionado).
-    //
-    // Este passo tem `catch` PRÓPRIO de propósito. Uma credencial que o ML
-    // recusa não é "falha ao publicar": não há o que tentar de novo, e o único
-    // caminho é reconectar a conta. Caindo no catch genérico lá embaixo, ela
-    // virava um 502 com a mensagem crua do ML — em inglês, e sem rota de saída
-    // na tela, porque o aviso de "conectar" está atrás de `ativo === false` e
-    // aqui `ativo` é true: existe conexão, o que não vale é a credencial.
-    //
-    // Só 4xx entra aqui. 5xx e falha de rede seguem para o catch genérico: o
-    // ML fora do ar não diz nada sobre a validade do token, e mandar o lojista
-    // reconectar seria afirmar o que não se sabe.
-    //
-    // NÃO marcamos o canal como inativo. `ativo` é a intenção do lojista, e uma
-    // indisponibilidade do ML derrubaria a conexão de quem está bem — a
-    // validade da credencial continua sendo apurada no uso.
-    let tokens: Awaited<ReturnType<typeof renovarToken>>;
-    try {
-      tokens = await renovarToken({ clientId, clientSecret, refreshToken: canal.refreshToken });
-    } catch (e) {
-      if (!(e instanceof RenovacaoRecusadaError) || !e.credencialRecusada) throw e;
-      log("warn", "bloqueio", { status: "bloqueado", motivo: "reconectar", http: e.status });
+    if (!veredicto.liberado) {
+      const r = veredicto;
+      if (r.registro) log(r.registro.nivel, r.registro.evento, { ...r.registro.dados, http: r.status });
       return Response.json(
         {
-          erro: `O ${marketplace} recusou a credencial salva desta conta. Reconecte a conta para publicar.`,
-          motivo: "reconectar",
-          detalhe: e.message,
+          erro: r.erro,
+          ...(r.motivo ? { motivo: r.motivo } : {}),
+          ...(r.infracao ? { infracao: true, itensComInfracao: r.itensComInfracao } : {}),
+          ...(r.infracaoNaoConferida ? { infracaoNaoConferida: true } : {}),
         },
-        { status: 409 }
+        { status: r.status }
       );
     }
-    // Persiste o refresh_token rotacionado imediatamente (mesmo se publicar falhar depois).
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
-
-    // 2.5) TRAVA DE INFRAÇÃO.
-    //
-    // 31/07/2026: o ML cancelou 6 anúncios da lojista por infração de
-    // propriedade intelectual. Em 03/08 eu quase mandei republicar um deles —
-    // e republicar o que foi cancelado é REINCIDÊNCIA, que é o que leva à
-    // suspensão da conta.
-    //
-    // FALHA FECHADA, ao contrário do resto do sistema: se a consulta ao ML
-    // falhar, NÃO publica. Um item a menos no ar é reversível com um clique;
-    // uma reincidência de propriedade intelectual não é.
-    const mlbsDoProduto = (corpo.mlbsDoProduto ?? []).filter(Boolean);
-    if (corpo.go && mlbsDoProduto.length > 0) {
-      let bloqueados: string[];
-      try {
-        bloqueados = await mlbsComInfracao(tokens.accessToken, mlbsDoProduto);
-      } catch (e) {
-        log("error", "infracao", { status: "nao_conferido" });
-        return Response.json(
-          {
-            erro:
-              "Não consegui conferir no Mercado Livre se este produto tem anúncio cancelado por infração, e por isso não publiquei. " +
-              (e instanceof Error ? e.message : ""),
-            infracaoNaoConferida: true,
-          },
-          { status: 503 }
-        );
-      }
-      if (bloqueados.length > 0) {
-        log("warn", "infracao", { status: "bloqueado", itens: bloqueados });
-        return Response.json(
-          {
-            erro: `O Mercado Livre já cancelou ${bloqueados.length} anúncio(s) deste produto por infração (${bloqueados.join(", ")}). Publicar de novo conta como reincidência e pode custar a conta. Resolva a infração no painel do ML antes.`,
-            infracao: true,
-            itensComInfracao: bloqueados,
-          },
-          { status: 409 }
-        );
-      }
-    }
+    const { tokens, canal } = veredicto;
 
     // 3) Categoria — Learning Loop (PR-006): SEMPRE prevê quando há título.
     //    A previsão é a PROPOSTA DO AMBIENTE, usada para comparação com a
