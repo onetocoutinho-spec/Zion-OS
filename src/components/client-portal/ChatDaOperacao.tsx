@@ -99,6 +99,7 @@ import { importarPeso } from "@/lib/services/importacaoPeso";
 import { oQueEssaPlanilhaE } from "@/modules/catalog/domain/oQueEssaPlanilhaE";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { ConferirPeso } from "./ConferirPeso";
+import { ImportarCatalogoPdf } from "./ImportarCatalogoPdf";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import { importarCustos, type ResultadoCustos } from "@/lib/services/importacaoCustos";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
@@ -165,6 +166,8 @@ interface Turno {
   planilha?: PlanilhaLida;
   /** O que o roteador decidiu que ela é. Decide qual conferência a tela mostra. */
   especie?: "custo" | "peso";
+  /** Um PDF de catálogo do fornecedor largado no clipe. Outro caminho inteiro. */
+  pdf?: File;
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -784,6 +787,28 @@ export function ChatDaOperacao({
    * O chat é a porta; quem entende a planilha continua sendo o domínio.
    */
   async function receberPlanilha(arquivo: File) {
+    // ===================================================================
+    // PDF NÃO É PLANILHA, E O CAMINHO É OUTRO INTEIRO
+    // ===================================================================
+    //
+    // Planilha se lê no navegador, de graça, e o mapeamento é decidido por
+    // função pura. Catálogo em PDF precisa de um MODELO para transcrever, e
+    // isso custa dinheiro proporcional ao tamanho do arquivo — por isso a tela
+    // de Importar MEDE antes e mostra o custo para a lojista decidir.
+    //
+    // Tentar ler um PDF com `lerPlanilha` daria "não consegui ler esse
+    // arquivo", que é verdade e inútil: ela largou o catálogo do fornecedor,
+    // que é exatamente o que o Zion sabe transcrever.
+    //
+    // O componente é O MESMO da tela de Importar, não uma cópia: medir →
+    // mostrar o custo → ela decide → extrair → conferir → gravar continua
+    // acontecendo em um lugar só. O que mudou foi ele aceitar um arquivo já
+    // escolhido, para ela não ter que escolher duas vezes.
+    if (arquivo.type === "application/pdf" || /\.pdf$/i.test(arquivo.name)) {
+      setTurnos((t) => [...t, { pergunta: `Enviei o catálogo ${arquivo.name}`, pdf: arquivo }]);
+      return;
+    }
+
     try {
       const planilha = await lerPlanilha(arquivo);
 
@@ -999,6 +1024,16 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
+              ) : t.pdf ? (
+                /* O COMPONENTE DA TELA DE IMPORTAR, não uma cópia dele. Ele
+                   traz junto a medição do custo ANTES de gastar, a conferência
+                   item a item com a página de origem declarada, e o descarte
+                   do que ela não quer.
+
+                   Fica FORA do ramo de `t.planilha` porque um turno de PDF não
+                   tem planilha nenhuma — aninhá-lo ali deixaria o ramo
+                   inalcançável, e a lojista veria o turno vazio. */
+                <ImportarCatalogoPdf arquivoInicial={t.pdf} onImportado={aoGravar} />
               ) : t.planilha ? (
                 /* A CONFERÊNCIA É A MESMA DA TELA DE IMPORTAR — o componente,
                    não uma cópia dele. Ele mostra o texto CRU do custo ao lado
@@ -1169,7 +1204,7 @@ export function ChatDaOperacao({
           <span className="sr-only">Enviar planilha de custos</span>
           <input
             type="file"
-            accept=".csv,.xlsx,.xls,text/csv"
+            accept=".csv,.xlsx,.xls,text/csv,.pdf,application/pdf"
             className="hidden"
             disabled={ocupado}
             onChange={(e) => {

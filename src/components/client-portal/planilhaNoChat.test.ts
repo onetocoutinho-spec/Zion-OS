@@ -181,3 +181,68 @@ test("o relatório do peso diz as contagens que doem", () => {
     assert.ok(gravacao.includes(campo), `${campo} sumiu do relatório do peso`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// PDF DO FORNECEDOR — outro caminho inteiro, e o mesmo componente
+// ---------------------------------------------------------------------------
+//
+// Planilha se lê no navegador, de graça, e o mapeamento é função pura. Catálogo
+// em PDF precisa de um MODELO para transcrever, e isso custa dinheiro
+// proporcional ao tamanho do arquivo — por isso a tela de Importar MEDE antes
+// e mostra o custo para a lojista decidir.
+//
+// Antes de 10/08/2026 largar um PDF no clipe dava "não consegui ler esse
+// arquivo": verdade e inútil, porque ela largou exatamente o que o Zion sabe
+// transcrever.
+
+test("o clipe aceita PDF", () => {
+  assert.match(FONTE, /accept="[^"]*\.pdf[^"]*"/, "o clipe deixou de aceitar PDF");
+});
+
+test("PDF é desviado ANTES de tentar ler como planilha", () => {
+  const recebimento = FONTE.slice(
+    FONTE.indexOf("async function receberPlanilha("),
+    FONTE.indexOf("async function confirmarPeso(")
+  );
+  const iDesvio = recebimento.indexOf('.pdf$/i.test(arquivo.name)');
+  const iLer = recebimento.indexOf("await lerPlanilha(arquivo)");
+  assert.ok(iDesvio > 0, "o desvio do PDF sumiu");
+  assert.ok(iDesvio < iLer, "o PDF passou a ser lido como planilha antes de ser reconhecido");
+});
+
+test("a transcrição é O COMPONENTE da tela de Importar, não uma cópia", () => {
+  // Reescrever a transcrição aqui criaria duas — divergindo no primeiro
+  // conserto que passasse só por uma. É a classe de defeito que este repo mais
+  // encontrou.
+  assert.match(FONTE, /<ImportarCatalogoPdf arquivoInicial=\{t\.pdf\}/, "o chat parou de reusar o importador de PDF");
+  for (const proibido of ["/api/catalogo/extrair", "SYSTEM_CATALOGO_PDF"]) {
+    assert.ok(!FONTE.includes(proibido), `${proibido} foi reimplementado no chat`);
+  }
+});
+
+test("o ramo do PDF fica FORA do ramo da planilha", () => {
+  // Aninhado dentro de `t.planilha ?`, ele seria inalcançável: um turno de PDF
+  // não tem planilha nenhuma, e a lojista veria o turno vazio. Foi assim na
+  // primeira escrita desta feature.
+  // A FORMA EXATA, sem nada entre o `:` e o `t.pdf`.
+  //
+  // A primeira versão procurava a substring "t.pdf ? (" e passou VERDE sobre o
+  // defeito: `t.planilha && t.pdf ? (` CONTÉM essa substring. Quarta sentinela
+  // desta sessão a casar mais do que devia — procurar substring quando o que
+  // importa é a condição inteira é o erro que se repete.
+  assert.match(
+    FONTE,
+    /\)\s*:\s*t\.pdf \? \(/,
+    "o ramo do PDF ganhou condição extra — se depender de `t.planilha`, fica inalcançável"
+  );
+  const iPdf = FONTE.search(/\)\s*:\s*t\.pdf \? \(/);
+  const iPlanilha = FONTE.search(/\)\s*:\s*t\.planilha \? \(/);
+  assert.ok(iPdf > 0 && iPlanilha > 0, "um dos ramos sumiu");
+  assert.ok(iPdf < iPlanilha, "o ramo do PDF voltou para depois do da planilha");
+});
+
+test("a medição roda UMA vez — remedir é pagar duas vezes pela mesma decisão", () => {
+  const pdf = readFileSync(new URL("./ImportarCatalogoPdf.tsx", import.meta.url), "utf8");
+  assert.match(pdf, /jaRecebeu\.current/, "a guarda de medição única sumiu");
+  assert.match(pdf, /useRef\(false\)/, "a guarda virou estado — um re-render remediria, subindo o PDF de novo");
+});

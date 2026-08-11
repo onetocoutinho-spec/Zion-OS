@@ -27,7 +27,7 @@
 // A conferência é DESMARCAR, não corrigir — o erro típico do modelo é promover
 // um cabeçalho de seção a produto. Ver `conferenciaDoCatalogo`.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -73,7 +73,19 @@ async function chamarExtracao(corpo: FormData): Promise<Record<string, unknown>>
   return json;
 }
 
-export function ImportarCatalogoPdf({ onImportado }: { onImportado?: () => void }) {
+export function ImportarCatalogoPdf({
+  onImportado,
+  arquivoInicial,
+}: {
+  onImportado?: () => void;
+  /**
+   * Um PDF já escolhido em outro lugar — hoje, o clipe do chat.
+   *
+   * Quando vem preenchido, a medição começa sozinha: a lojista já escolheu o
+   * arquivo uma vez, e pedir de novo seria a tela desfazendo o que ela fez.
+   */
+  arquivoInicial?: File | null;
+}) {
   const { clienteId, nome } = useClientPortal();
 
   const [etapa, setEtapa] = useState<Etapa>("arquivo");
@@ -84,6 +96,15 @@ export function ImportarCatalogoPdf({ onImportado }: { onImportado?: () => void 
   const [descartados, setDescartados] = useState<ReadonlySet<number>>(new Set());
   const [ocupado, setOcupado] = useState<null | "medindo" | "lendo" | "gravando">(null);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  /**
+   * O PDF que já veio escolhido roda a medição UMA vez.
+   *
+   * `useRef` e não estado: um re-render não pode remedir. Medir é uma chamada
+   * de rede que sobe o PDF inteiro, e remedir em silêncio seria pagar duas
+   * vezes pela mesma decisão.
+   */
+  const jaRecebeu = useRef(false);
+
 
   const selecao = useMemo(() => resumoDaSelecao(itens, descartados), [itens, descartados]);
 
@@ -99,6 +120,18 @@ export function ImportarCatalogoPdf({ onImportado }: { onImportado?: () => void 
   async function aoEscolher(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
+    await receber(f);
+  }
+
+  /**
+   * O mesmo caminho, a partir de um File — não de um evento de input.
+   *
+   * Separado para o CHAT poder entregar um PDF que a lojista largou no clipe,
+   * sem ter que escolher o arquivo duas vezes. O componente é o mesmo, não uma
+   * cópia dele: medir → mostrar o custo → ela decide → extrair → conferir →
+   * gravar continua acontecendo em um lugar só.
+   */
+  async function receber(f: File) {
     setMsg(null);
     setArquivo(f);
     setMedicao(null);
@@ -122,6 +155,16 @@ export function ImportarCatalogoPdf({ onImportado }: { onImportado?: () => void 
       setOcupado(null);
     }
   }
+
+  // Roda DEPOIS de `receber` estar declarada — declaração de função é
+  // içada, mas o lint (com razão) exige a ordem legível.
+  useEffect(() => {
+    if (!arquivoInicial || jaRecebeu.current) return;
+    jaRecebeu.current = true;
+    void receber(arquivoInicial);
+    // `arquivoInicial` só: a guarda acima já garante uma execução única, e o
+    // lint confirmou que `receber` não precisa entrar aqui.
+  }, [arquivoInicial]);
 
   async function ler() {
     if (!medicao || ocupado) return;
