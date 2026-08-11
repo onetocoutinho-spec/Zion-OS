@@ -350,6 +350,32 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "propor_descricao",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de MELHORAR A DESCRIÇÃO de um anúncio que já existe. Devolve a descrição ATUAL e a PROPOSTA, lado a lado. NÃO grava: a lojista lê as duas e confirma clicando. " +
+      "Use quando ela pedir para melhorar, reescrever ou completar a descrição. Se o produto ainda não tem anúncio gerado, não há descrição para melhorar — a ferramenta diz isso. " +
+      "Não repita o texto proposto na sua resposta: o cartão já mostra os dois lados, e reescrevê-lo faria aparecer uma terceira versão.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
+    nome: "propor_palavras_chave",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de ACRESCENTAR palavras-chave a um anúncio que já existe. Devolve só os termos NOVOS — os que o anúncio já tem são descartados antes de você ver. NÃO grava: a lojista confirma clicando. " +
+      "Use quando ela falar em busca, SEO, ser achada, aparecer nas pesquisas. " +
+      "IMPORTANTE: ACRESCENTA, não substitui. Nenhuma palavra atual é removida, e dizer que vai 'trocar' faria ela recusar uma melhoria que não tira nada.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:

@@ -554,6 +554,15 @@ export function oQueFalta(p: Preparacao): readonly { etapa: EtapaDaPreparacao; f
 export const CAMPO_TITULO_ATUAL = "impressaoDoTitulo";
 
 /**
+ * A precondição do TEXTO do anúncio — descrição ou palavras-chave de hoje.
+ *
+ * Nome próprio, e não reuso de `CAMPO_TITULO_ATUAL`: se as duas precondições
+ * dividissem a chave, uma proposta de título e uma de descrição no mesmo
+ * anúncio invalidariam uma à outra sem motivo.
+ */
+export const CAMPO_TEXTO_ATUAL = "impressaoDoTextoDoAnuncio";
+
+/**
  * A impressão de um título — para a revalidação saber se ele mudou.
  *
  * As precondições da Proposal são numéricas (`valorNaCriacao: number | null`),

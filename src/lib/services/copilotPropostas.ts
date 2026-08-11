@@ -356,6 +356,31 @@ export type DesfechoDoTituloAtomico = DesfechoDoCustoAtomico | "sem_texto";
  * porte de regra de negócio: é a mesma operação estrutural, escrita onde o dado
  * mora.
  */
+/**
+ * A execução atômica do TEXTO do anúncio — descrição e palavras-chave.
+ *
+ * Uma função para os dois, como a do banco: eles gravam na mesma linha e
+ * percorrem a mesma transição. Qual chave do jsonb é tocada, a função decide
+ * pelo `tipo` da proposta persistida — não por parâmetro daqui, que poderia
+ * divergir do que a lojista confirmou.
+ */
+export async function executarTextoAtomico(
+  propostaId: string,
+  clienteId: string
+): Promise<{ motivo: DesfechoDoTituloAtomico; afetados: number }> {
+  const { data, error } = await getSupabaseAdmin().rpc("copilot_executar_texto_do_anuncio", {
+    p_proposta: propostaId,
+    p_cliente: clienteId,
+  });
+  if (error) throw new Error(`Não consegui executar a proposta de texto: ${error.message}`);
+  const linha = (Array.isArray(data) ? data[0] : data) as
+    | { motivo: string; afetados: number }
+    | null
+    | undefined;
+  if (!linha) throw new Error("A execução de texto não devolveu desfecho.");
+  return { motivo: linha.motivo as DesfechoDoTituloAtomico, afetados: Number(linha.afetados ?? 0) };
+}
+
 export async function executarTituloAtomico(
   propostaId: string,
   clienteId: string

@@ -309,22 +309,23 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // telas — dar voz a eles não dá poder novo a ninguém. Nenhuma das outras
   // dezessete mudou de efeito.
   //
-  // CONTINUAM 18. `propor_descricao` e `propor_palavras_chave` foram
-  // construídas em 10/08/2026 até a metade — juízes, agentes, portos e o
-  // executor existem e são testados — e NÃO estão registradas aqui de
-  // propósito.
+  // De 18 para 20 em 10/08/2026: `propor_descricao` e `propor_palavras_chave`,
+  // as duas PROPOSTA. Nenhuma leitura virou proposta e nenhuma proposta virou
+  // ação — continuam 11 de leitura, 1 rascunho e 1 execução.
   //
-  // Falta a metade que grava: a aplicação do título passa por função atômica no
-  // banco (`copilot_executar_titulo`, migração 048), e as duas novas precisam
-  // da mesma disciplina. Registrá-las antes disso daria ao modelo uma
-  // ferramenta que monta proposta sem cartão para confirmar — texto na tela e
-  // nenhum botão.
+  // A decisão: o chat melhorava o TÍTULO e não alcançava o resto do texto do
+  // anúncio. Título é o que aparece na busca; descrição é o que o comprador lê
+  // antes de comprar; palavra-chave é como ele chega. Faltavam dois terços do
+  // mesmo anúncio.
   //
-  // Uma ferramenta que o modelo alcança e não conclui é pior que uma ausente:
-  // a ausente ele diz que não sabe; a inacabada ele anuncia como feita.
-  assert.equal(FERRAMENTAS.length, 18);
+  // Elas gravam pela migração 057 — `copilot_executar_texto_do_anuncio`, a
+  // MESMA disciplina atômica do título (048). Foram registradas aqui só depois
+  // de a função existir em produção: uma ferramenta que monta proposta sem
+  // cartão para confirmar é pior que uma ausente, porque a ausente o modelo diz
+  // que não sabe e a inacabada ele anuncia como feita.
+  assert.equal(FERRAMENTAS.length, 20);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 11);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 5);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 7);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.

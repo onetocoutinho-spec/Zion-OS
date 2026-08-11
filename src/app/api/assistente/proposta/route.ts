@@ -30,6 +30,7 @@ import {
   executarPesoAtomico,
   executarPrecoAtomico,
   executarTituloAtomico,
+  executarTextoAtomico,
   type DesfechoDoPrecoAtomico,
   reservarParaExecucao,
 } from "@/lib/services/copilotPropostas";
@@ -119,6 +120,22 @@ function rastroDaEscrita(
         valor: String(p.valor),
       },
     ];
+  }
+  if (p.tipo === "descricao" || p.tipo === "palavras_chave") {
+    // MESMA razão do título: quem escreveu foi o agente da Zion, não a lojista.
+    // Chamar isso de `cliente` atribuiria a ela um texto que ela apenas aprovou.
+    const d = depois as { texto?: string } | null;
+    return d?.texto
+      ? [
+          {
+            ...comum,
+            origem: "zion" as const,
+            entidade: { tipo: "produto", id: p.alvos[0] },
+            campo: p.tipo === "descricao" ? "descricaoAnuncio" : "palavrasChaveAnuncio",
+            valor: d.texto,
+          },
+        ]
+      : [];
   }
   if (p.tipo === "titulo") {
     // O TÍTULO é a única coisa que o Copilot grava e que o lojista NÃO afirmou:
@@ -411,6 +428,33 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
     return { antes: anuncio ? { titulo: String(anuncio.tituloOtimizado ?? "") } : null };
   }
 
+  // TEXTO DO ANÚNCIO: o que estava lá antes da troca. Para a descrição é o
+  // texto; para palavras-chave é a lista de hoje — e ela importa MAIS aqui,
+  // porque o acréscimo só se entende sabendo o que já havia.
+  if (p.tipo === "descricao" || p.tipo === "palavras_chave") {
+    const { data } = await admin
+      .from("anuncios_gerados")
+      .select("anuncio")
+      .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
+      .maybeSingle();
+    const anuncio = (data as { anuncio?: Record<string, unknown> } | null)?.anuncio;
+    if (!anuncio) return { antes: null };
+    const lista = (v: unknown): string[] =>
+      Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+    return {
+      antes:
+        p.tipo === "descricao"
+          ? { descricao: String(anuncio.descricaoCompleta ?? "") }
+          : {
+              palavrasChave: [
+                ...lista(anuncio.palavrasChavePrincipais),
+                ...lista(anuncio.palavrasChaveSecundarias),
+              ].join(", "),
+            },
+    };
+  }
+
   // PREÇO: o preço e a margem anteriores — a MESMA forma que `aplicarPreco`
   // devolvia, porque `antesDoPreco` e o rastro de procedência a leem.
   if (p.tipo === "preco") {
@@ -522,6 +566,15 @@ async function gravar(p: PropostaPersistida): Promise<{
     // CAMINHO ANTIGO REMOVIDO — título passa pela 048, atomicamente. Lança pelo
     // mesmo motivo do preço: os ramos abaixo terminam no write de PESO.
     throw new Error("título não passa mais por `gravar`: use copilot_executar_titulo (048)");
+  }
+
+  if (p.tipo === "descricao" || p.tipo === "palavras_chave") {
+    // Nunca houve caminho antigo: nasceram atômicas na 057. A guarda existe
+    // pela mesma razão das irmãs — os ramos abaixo terminam no write de PESO, e
+    // uma proposta de texto que chegasse aqui gravaria peso num produto.
+    throw new Error(
+      "texto do anúncio não passa por `gravar`: use copilot_executar_texto_do_anuncio (057)"
+    );
   }
 
   // ---- PREÇO: grava no CATÁLOGO DO ZION, e só nele.
@@ -876,7 +929,13 @@ export async function POST(request: Request) {
   // não idempotente e valida em TypeScript — forçá-lo aqui exigiria reescrever
   // `validarRascunho` em SQL. T1 continua aberto para os três, e isso está dito.
   const atomico =
-    p.tipo === "peso" || p.tipo === "custo" || p.tipo === "preco" || p.tipo === "titulo";
+    p.tipo === "peso" ||
+    p.tipo === "custo" ||
+    p.tipo === "preco" ||
+    p.tipo === "titulo" ||
+    // TEXTO DO ANÚNCIO nasce atômico — não há caminho antigo para manter.
+    p.tipo === "descricao" ||
+    p.tipo === "palavras_chave";
   const retrato = atomico ? await retratoAntesDaEscrita(p) : null;
   const rpc = !atomico
     ? null
@@ -886,7 +945,9 @@ export async function POST(request: Request) {
         ? { ...(await executarCustoAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
         : p.tipo === "titulo"
           ? { ...(await executarTituloAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
-          : { ...(await executarPrecoNaTransacao(p, clienteDaSessao)), elegiveis: undefined };
+          : p.tipo === "descricao" || p.tipo === "palavras_chave"
+            ? { ...(await executarTextoAtomico(p.id, clienteDaSessao)), elegiveis: undefined, margem: undefined }
+            : { ...(await executarPrecoNaTransacao(p, clienteDaSessao)), elegiveis: undefined };
 
   // `nada_gravado` NÃO é corrida perdida: a transação reverteu a transição e a
   // proposta continua `pendente`. Ela segue o fluxo abaixo para ser auditada
@@ -931,7 +992,14 @@ export async function POST(request: Request) {
                 ? { id: p.alvos[0], custo: p.valor }
                 : p.tipo === "titulo"
                   ? { titulo: (p.texto ?? "").trim() }
-                  : { preco: p.valor, margem: rpc!.margem ?? null },
+                  : p.tipo === "descricao" || p.tipo === "palavras_chave"
+                    ? // O TEXTO QUE ELA CONFIRMOU, e não o estado final do
+                      // campo. Nas palavras-chave a diferença é real: o campo
+                      // fica com as antigas MAIS estas, e registrar o campo
+                      // inteiro faria a auditoria dizer que o assistente
+                      // escreveu termos que já estavam lá.
+                      { texto: (p.texto ?? "").trim() }
+                    : { preco: p.valor, margem: rpc!.margem ?? null },
           medidasAntes: retrato!.medidasAntes,
           // `undefined` em custo: `ressalvaDoPreenchimento` devolve string vazia
           // e a mensagem continua a de antes.

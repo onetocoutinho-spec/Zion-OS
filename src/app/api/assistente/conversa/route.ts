@@ -90,6 +90,7 @@ import {
 } from "@/lib/services/preparacaoDeAnuncio";
 import {
   CAMPO_TITULO_ATUAL,
+  CAMPO_TEXTO_ATUAL,
   impressaoDoTitulo,
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
@@ -517,6 +518,9 @@ export async function POST(request: Request) {
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["preparacao"]>
         | undefined;
       /** A proposta de trocar o título: atual e proposto, lado a lado. */
+      let propostaDeTexto:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTexto"]>
+        | undefined;
       let propostaDeTitulo:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTitulo"]>
         | undefined;
@@ -765,6 +769,46 @@ export async function POST(request: Request) {
             // entre a proposta e o clique, a impressão muda e nada é
             // sobrescrito. `alvos` carrega o ID DO ANÚNCIO — é ele que muda,
             // não o produto.
+            let propostaDeTextoId: string | null = null;
+            if (propostaDeTexto && conversaId) {
+              try {
+                const t = propostaDeTexto;
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: t.campo,
+                  // alvos[1] É O ID DO ANÚNCIO, como no título — a função do
+                  // banco lê daí, e trocar para o produto gravaria em nada.
+                  alvos: [t.anuncioId],
+                  // O número que importa aqui é TAMANHO na descrição e
+                  // QUANTIDADE nas palavras-chave. As duas coisas são "quanto",
+                  // e é o que a auditoria mostra depois.
+                  valor:
+                    t.campo === "descricao"
+                      ? t.proposto.length
+                      : t.proposto.split(",").filter((x) => x.trim()).length,
+                  texto: t.proposto,
+                  autoridade: t.autoridade,
+                  resumo:
+                    t.campo === "descricao"
+                      ? `Trocar a descrição de "${t.nome}".`
+                      : `Acrescentar palavras-chave em "${t.nome}": ${t.proposto}.`,
+                  // A PRECONDIÇÃO É O QUE ESTÁ LÁ HOJE. Se mudar entre a
+                  // proposta e o clique, a rota recusa — o mesmo cuidado do
+                  // título, e aqui vale mais: descrição SUBSTITUI, então
+                  // aplicar sobre um texto que já não é o mostrado apagaria
+                  // uma edição que ela fez no meio.
+                  precondicoes: [
+                    { campo: CAMPO_TEXTO_ATUAL, valorNaCriacao: impressaoDoTitulo(t.atual) },
+                  ],
+                });
+                propostaDeTextoId = gravada.id;
+              } catch (e) {
+                console.error("[conversa] falha ao gravar a proposta de texto:", e);
+              }
+            }
+
             let propostaDeTituloId: string | null = null;
             if (propostaDeTitulo && conversaId) {
               try {
@@ -898,6 +942,9 @@ export async function POST(request: Request) {
               ...(preparacaoDeAnuncio ? { preparacao: preparacaoDeAnuncio } : {}),
               // A proposta de título só vai com ID. Sem ID, a tela mostra os
               // dois títulos e nenhum botão.
+              ...(propostaDeTexto && propostaDeTextoId
+                ? { propostaDeTexto, propostaDeTextoId }
+                : {}),
               ...(propostaDeTitulo && propostaDeTituloId
                 ? { propostaDeTitulo, propostaDeTituloId }
                 : {}),
@@ -1106,6 +1153,7 @@ export async function POST(request: Request) {
             if (r.procedencia) procedenciaConsultada = r.procedencia;
             if (r.preparacao) preparacaoDeAnuncio = r.preparacao;
             if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
+            if (r.propostaDeTexto) propostaDeTexto = r.propostaDeTexto;
             if (r.pricing) pricing = r.pricing;
             if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {

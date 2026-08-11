@@ -99,8 +99,14 @@ test("TODOS os cartões passam pelo desfecho computado — nenhum ficou de fora"
     !/desfecho=\{t\.desfecho\}/.test(CHAT),
     "um cartão voltou a ler `t.desfecho` direto: ele oferece botão depois da validade"
   );
+  // SEIS desde 10/08/2026: o cartão de TEXTO do anúncio (descrição e
+  // palavras-chave) entrou e computa o desfecho como os outros cinco.
+  //
+  // O número é o que faz esta guarda funcionar: um cartão novo que esqueça o
+  // desfecho computado passaria despercebido se aqui só se checasse "existe
+  // pelo menos um".
   const computados = (CHAT.match(/desfecho=\{desfechoNaTela\(t, agora\)\}/g) ?? []).length;
-  assert.equal(computados, 5, `esperava 5 cartões computando o desfecho, achei ${computados}`);
+  assert.equal(computados, 6, `esperava 6 cartões computando o desfecho, achei ${computados}`);
 });
 
 test("o desfecho REAL tem precedência sobre o vencimento", () => {
@@ -112,7 +118,13 @@ test("o carimbo de chegada só existe quando veio AUTORIZAÇÃO", () => {
   // Carimbar todo turno faria o relógio tiquetaquear numa tela sem nada a
   // expirar, e `temCartaoVivo` deixaria de significar o que diz.
   const bloco = CHAT.slice(CHAT.indexOf("chegouEm: Date.now()") - 400, CHAT.indexOf("chegouEm: Date.now()"));
-  for (const id of ["r.propostaId", "r.propostaDePrecoId", "r.propostaDeTituloId", "r.cadastro?.propostaId"]) {
+  for (const id of [
+    "r.propostaId",
+    "r.propostaDePrecoId",
+    "r.propostaDeTituloId",
+    "r.propostaDeTextoId",
+    "r.cadastro?.propostaId",
+  ]) {
     assert.ok(bloco.includes(id), `o carimbo deixou de considerar ${id}`);
   }
 });

@@ -150,6 +150,56 @@ export interface TituloNaTela {
   justificativa: string;
 }
 
+/** O cartão do TEXTO do anúncio — descrição ou palavras-chave. */
+export interface TextoNaTela {
+  campo: "descricao" | "palavras_chave";
+  nome: string;
+  atual: string;
+  proposto: string;
+  justificativa: string;
+}
+
+export type EstadoDoCartaoDeTexto =
+  | {
+      estado: "pendente";
+      /** O verbo do botão. É onde substituir e acrescentar se distinguem. */
+      rotuloBotao: string;
+      /** O que a troca faz, em uma linha, antes do clique. */
+      efeito: string;
+    }
+  | { estado: "concluido"; ok: boolean; mensagem: string };
+
+/**
+ * O estado do cartão de texto.
+ *
+ * O VERBO MUDA COM O CAMPO, e essa é a única coisa que não pode ser genérica:
+ * descrição SUBSTITUI o que existe; palavras-chave ACRESCENTAM ao que existe.
+ * Um botão "Aplicar" nos dois casos deixaria a lojista achar que as palavras
+ * atuais seriam trocadas — e ela recusaria uma melhoria que não tira nada.
+ *
+ * Sem `propostaId` não há botão: uma proposta que não foi persistida não tem
+ * como ser confirmada, e mostrar o botão prometeria o que a rota recusaria.
+ */
+export function estadoDoCartaoDeTexto(
+  t: TextoNaTela,
+  propostaId?: string,
+  desfecho?: { ok: boolean; mensagem: string }
+): EstadoDoCartaoDeTexto {
+  if (desfecho) return { estado: "concluido", ok: desfecho.ok, mensagem: desfecho.mensagem };
+  const ehDescricao = t.campo === "descricao";
+  return {
+    estado: "pendente",
+    rotuloBotao: propostaId
+      ? ehDescricao
+        ? "Trocar a descrição"
+        : "Acrescentar as palavras-chave"
+      : "",
+    efeito: ehDescricao
+      ? "A descrição atual será substituída por esta."
+      : "Estas ACRESCENTAM às que já existem. Nenhuma palavra atual é removida.",
+  };
+}
+
 export type EstadoDoCartaoDeTitulo =
   | { estado: "pendente"; caracteresAtual: number; caracteresProposto: number; rotuloBotao: string }
   | { estado: "concluido"; ok: boolean; mensagem: string };

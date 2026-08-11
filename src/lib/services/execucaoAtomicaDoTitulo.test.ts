@@ -113,7 +113,15 @@ const ROTA = lerFonte(
 );
 
 test("TÍTULO entrou no caminho atômico", () => {
-  assert.match(ROTA, /p\.tipo === "peso" \|\| p\.tipo === "custo" \|\| p\.tipo === "preco" \|\| p\.tipo === "titulo"/);
+  // O QUE IMPORTA é `titulo` estar dentro do `const atomico =`, não a forma
+  // de uma linha.
+  //
+  // A primeira versão casava a expressão inteira numa linha só, e reprovou em
+  // 10/08/2026 quando `descricao` e `palavras_chave` entraram no mesmo `const`
+  // e o quebraram em várias linhas — sem que nada sobre o título mudasse. Uma
+  // guarda que reprova por quebra de linha treina quem lê a ignorar.
+  const bloco = ROTA.slice(ROTA.indexOf("const atomico ="), ROTA.indexOf("const retrato ="));
+  assert.match(bloco, /p\.tipo === "titulo"/, "título saiu do caminho atômico");
   assert.match(ROTA, /executarTituloAtomico\(p\.id, clienteDaSessao\)/);
 });
 

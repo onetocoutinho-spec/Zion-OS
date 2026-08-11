@@ -58,7 +58,17 @@ export type NivelDeRisco = "leitura" | "baixo" | "medio" | "alto" | "critico";
  * Nele, `alvos` carrega o ID DO DRAFT — o que está sendo autorizado é a
  * materialização daquele cadastro, e não uma escrita num produto que já existe.
  */
-export type TipoDeProposta = "peso" | "custo" | "cadastro" | "titulo" | "preco";
+export type TipoDeProposta =
+  | "peso"
+  | "custo"
+  | "cadastro"
+  | "titulo"
+  | "preco"
+  // TEXTO DO ANÚNCIO, desde 10/08/2026. Dois tipos e não um: a auditoria
+  // precisa distinguir "trocou a descrição" de "acrescentou palavras-chave",
+  // e a função do banco decide a chave do jsonb por eles.
+  | "descricao"
+  | "palavras_chave";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -208,6 +218,16 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Custo é a base de lucro, margem e piso. Esta base já recebeu R$ 30 milhões
   // de custo por escrita que ninguém revisou.
   custo: "alto",
+  // TEXTO DO ANÚNCIO: `medio`, o mesmo do título, e pelo mesmo motivo — nada
+  // aqui muda dinheiro. Descrição errada custa venda, não margem, e é
+  // reversível reescrevendo.
+  //
+  // Palavras-chave é o MENOS arriscado dos dois: ACRESCENTA, então nada do que
+  // já vendia é apagado. Fica em `medio` junto com a descrição porque um nível
+  // a menos só existiria para este caso, e um nível por caso deixa de ser
+  // escala.
+  descricao: "medio",
+  palavras_chave: "medio",
   // Criar produto é a única escrita que ADICIONA linha ao catálogo. Um produto
   // duplicado não dispara alarme nenhum: ele fica lá, recebe anúncio, recebe
   // estoque, e só aparece quando alguém tenta conciliar.

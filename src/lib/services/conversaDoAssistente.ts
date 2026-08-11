@@ -91,6 +91,20 @@ export interface RespostaDaConversa {
     produto?: Preparacao;
     selecao?: ReturnType<typeof selecionarParaPreparar>;
   };
+  /**
+   * Descrição ou palavras-chave, atual e proposta lado a lado.
+   *
+   * Sem `propostaDeTextoId` não há botão: proposta que não foi persistida não
+   * pode ser confirmada, e oferecer o botão prometeria o que a rota recusaria.
+   */
+  propostaDeTexto?: {
+    campo: "descricao" | "palavras_chave";
+    nome: string;
+    atual: string;
+    proposto: string;
+    justificativa: string;
+  };
+  propostaDeTextoId?: string;
   /** Título atual e proposto, lado a lado. Sem `propostaDeTituloId`, sem botão. */
   propostaDeTitulo?: {
     anuncioId: string;

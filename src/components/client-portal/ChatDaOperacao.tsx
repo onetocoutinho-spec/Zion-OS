@@ -64,6 +64,8 @@ import {
   tomDaEtapa,
   type PreparacaoNaTela,
   type TituloNaTela,
+  type TextoNaTela,
+  estadoDoCartaoDeTexto,
 } from "@/modules/assistant/domain/cartaoDaPreparacao";
 import {
   estadoDoCartaoDePreco,
@@ -261,6 +263,9 @@ interface Turno {
   /** O estado da preparação de anúncio — de um produto ou do catálogo. */
   preparacao?: PreparacaoNaTela;
   /** Título atual e proposto, lado a lado. */
+  propostaDeTexto?: TextoNaTela;
+  /** Sem ele, não há botão: proposta não persistida não pode ser confirmada. */
+  propostaDeTextoId?: string;
   propostaDeTitulo?: TituloNaTela;
   /** O id que AUTORIZA a troca do título. Sem ele, não há botão. */
   propostaDeTituloId?: string;
@@ -554,6 +559,7 @@ export function ChatDaOperacao({
                     ...(r.propostaId ||
                     r.propostaDePrecoId ||
                     r.propostaDeTituloId ||
+                    r.propostaDeTextoId ||
                     r.cadastro?.propostaId
                       ? { chegouEm: Date.now() }
                       : {}),
@@ -574,6 +580,12 @@ export function ChatDaOperacao({
                     ...(r.pendencias ? { pendencias: r.pendencias } : {}),
                     ...(r.procedencia ? { procedencia: r.procedencia } : {}),
                     ...(r.preparacao ? { preparacao: r.preparacao } : {}),
+                    ...(r.propostaDeTexto
+                      ? {
+                          propostaDeTexto: r.propostaDeTexto,
+                          propostaDeTextoId: r.propostaDeTextoId,
+                        }
+                      : {}),
                     ...(r.propostaDeTitulo
                       ? {
                           propostaDeTitulo: r.propostaDeTitulo,
@@ -1220,6 +1232,16 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
+                  {t.propostaDeTexto && (
+                    <CartaoDeTexto
+                      t={t.propostaDeTexto}
+                      propostaId={t.propostaDeTextoId}
+                      desfecho={desfechoNaTela(t, agora)}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() => descartar(i)}
+                    />
+                  )}
                   {t.propostaDeTitulo && (
                     <CartaoDeTitulo
                       t={t.propostaDeTitulo}
@@ -1680,6 +1702,93 @@ function PainelDaPreparacao({ p }: { p: PreparacaoNaTela }) {
  * porque o limite de 60 caracteres do Mercado Livre é a razão de o agente de
  * título existir.
  */
+/**
+ * O cartão do TEXTO do anúncio.
+ *
+ * OS DOIS LADOS, SEMPRE. O que existe hoje e o que se propõe, um sobre o outro,
+ * porque é comparando que ela decide — e porque uma proposta mostrada sozinha
+ * parece melhor do que é.
+ *
+ * O verbo do botão muda com o campo: descrição TROCA, palavras-chave
+ * ACRESCENTAM. Um "Aplicar" genérico faria ela achar que as palavras atuais
+ * seriam removidas, e recusar uma melhoria que não tira nada.
+ */
+function CartaoDeTexto({
+  t,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  t: TextoNaTela;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  const e = estadoDoCartaoDeTexto(t, propostaId, desfecho);
+  if (e.estado === "concluido") {
+    return (
+      <p className={`mt-2 text-sm ${e.ok ? "text-emerald-300" : "text-rose-300"}`}>{e.mensagem}</p>
+    );
+  }
+  const rotulo = t.campo === "descricao" ? "descrição" : "palavras-chave";
+  return (
+    <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+      <p className="text-xs uppercase tracking-wide text-white/40">
+        {rotulo} — {t.nome}
+      </p>
+
+      <div className="mt-2 space-y-2">
+        <div>
+          <p className="text-xs text-white/40">Hoje</p>
+          <p className="whitespace-pre-wrap text-sm text-white/50">
+            {t.atual || <span className="italic">vazio</span>}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-white/40">
+            {t.campo === "descricao" ? "Proposta" : "A acrescentar"}
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-white/85">{t.proposto}</p>
+        </div>
+      </div>
+
+      {t.justificativa && <p className="mt-2 text-xs text-white/50">{t.justificativa}</p>}
+      {/* O EFEITO ANTES DO CLIQUE: substituir e acrescentar não são a mesma
+          coisa, e o cartão não pode deixar isso implícito. */}
+      <p className="mt-2 text-xs text-amber-300/80">{e.efeito}</p>
+
+      {propostaId ? (
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={aoConfirmar}
+            disabled={ocupado}
+            className="rounded-md bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15 disabled:opacity-50"
+          >
+            {e.rotuloBotao}
+          </button>
+          <button
+            type="button"
+            onClick={aoDescartar}
+            disabled={ocupado}
+            className="rounded-md px-3 py-1.5 text-sm text-white/60 hover:text-white disabled:opacity-50"
+          >
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-white/40">
+          Não consegui registrar esta proposta agora, então não há botão. Peça de novo em instantes.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CartaoDeTitulo({
   t,
   propostaId,
