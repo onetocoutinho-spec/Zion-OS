@@ -28,11 +28,33 @@ import { readFileSync } from "node:fs";
 
 const FONTE = readFileSync(new URL("./ChatDaOperacao.tsx", import.meta.url), "utf8");
 
-/** O trecho entre a classificação e a gravação do turno. */
+/**
+ * O trecho entre a classificação e a gravação do turno.
+ *
+ * A âncora era `const criterio = await classificarPergunta(`. Em 11/08/2026 a
+ * classificação ganhou um `try/catch` em volta — a quarta porta, para quando o
+ * provedor da via rápida cai — e a declaração virou `let criterio`. O
+ * `indexOf` passou a devolver -1, a fatia virou string vazia e QUATRO testes
+ * deste arquivo reprovaram de uma vez.
+ *
+ * Reprovar foi o comportamento certo: janela vazia não pode passar por
+ * "invariante mantido". A âncora agora é a declaração, que é o começo real do
+ * bloco de decisão e não se move quando a chamada é embrulhada.
+ */
+const INICIO = "let criterio: CriterioDaPergunta;";
 const DECISAO = FONTE.slice(
-  FONTE.indexOf("const criterio = await classificarPergunta("),
-  FONTE.indexOf("      } catch (e) {", FONTE.indexOf("const criterio = await classificarPergunta("))
+  FONTE.indexOf(INICIO),
+  FONTE.indexOf("      } catch (e) {", FONTE.indexOf(INICIO))
 );
+
+test("a janela da decisão não está vazia — âncora viva", () => {
+  // Sem isto, mover a âncora de novo faz os testes abaixo passarem sobre nada.
+  assert.ok(
+    DECISAO.length > 500,
+    `a fatia da decisão tem ${DECISAO.length} chars — a âncora "${INICIO}" ` +
+      "saiu do lugar e os testes seguintes estão olhando para o vazio"
+  );
+});
 
 test("PORTA 1 — a frase que não cabe em assunto nenhum escala", () => {
   assert.match(
@@ -63,10 +85,20 @@ test("a escalada acontece ANTES de a resposta chegar na tela", () => {
   );
 });
 
-test("PREENCHER não escala — ditar um valor vira proposta, não pergunta", () => {
-  // "o chinelo pesa 300 g" é o lojista INFORMANDO. Mandar isso para o fio
-  // trocaria um cartão de confirmação por uma conversa, e o cartão é o que
-  // garante que nada é gravado sem alguém clicar.
+test("PREENCHER vira proposta, não vira pergunta", () => {
+  // "o chinelo pesa 300 g" é o lojista INFORMANDO. Isso NUNCA vira conversa:
+  // trocar o cartão de confirmação por um diálogo tiraria a única garantia de
+  // que nada é gravado sem alguém clicar.
+  //
+  // O nome deste teste era "PREENCHER não escala", e desde 11/08/2026 isso é
+  // meia verdade. A proposta continua nascendo AQUI, no domínio — o que mudou
+  // é que a `pronta` passa pelo fio antes de aparecer, porque só o servidor
+  // emite a autorização persistida que o cartão exige para ter botão. As
+  // outras (recusa, "não achei", "qual destes?") não gravam nada e seguem
+  // diretas para a tela. Ver `ditarValorNoChat.test.ts`.
+  //
+  // O que este teste guarda continua igual: o caminho da proposta existe e
+  // vem ANTES de qualquer escalada de pergunta.
   assert.match(
     DECISAO,
     /criterio\.intencao === "preencher"[\s\S]{0,400}montarProposta\(/,

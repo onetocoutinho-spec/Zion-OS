@@ -90,6 +90,7 @@ import {
   responder,
   POSSO_RESPONDER,
   type ContextoDaPergunta,
+  type CriterioDaPergunta,
   type RespostaDaOperacao,
 } from "@/modules/assistant/domain/perguntaDaOperacao";
 import {
@@ -660,7 +661,36 @@ export function ChatDaOperacao({
           return;
         }
 
-        const criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
+        // ===================================================================
+        // A VIA RÁPIDA CAINDO NÃO É MOTIVO PARA A LOJISTA FICAR SEM RESPOSTA
+        // ===================================================================
+        //
+        // A rota `/api/assistente` classifica com Gemini Flash. Quando o
+        // provedor falha ela devolve 502 com "Não consegui entender agora.
+        // Tente de novo em instantes" — e a rota está certa: registra a causa
+        // no log e não vaza configuração do servidor para a tela.
+        //
+        // O que estava errado era o CLIENTE tratar isso como fim de linha.
+        // Medido em produção em 11/08/2026: a pergunta voltou 502, a lojista
+        // leu a desculpa, e a repetição idêntica funcionou — sintoma clássico
+        // de falha transitória do provedor.
+        //
+        // O fio roda em OUTRO provedor (Anthropic) e tem as 22 ferramentas.
+        // Enquanto ele responde, a via rápida cair é um detalhe de custo, não
+        // uma parede. As três portas de escalada já existiam para "não
+        // entendi" e "não sei"; esta é a quarta, para "não consegui perguntar".
+        //
+        // Se o fio TAMBÉM falhar, o erro dele sobe normalmente pelo catch de
+        // baixo — dois provedores fora do ar é uma parede de verdade, e aí a
+        // desculpa é honesta.
+        let criterio: CriterioDaPergunta;
+        try {
+          criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
+        } catch (falhaDaViaRapida) {
+          console.error("[chat] via rápida indisponível, escalando:", falhaDaViaRapida);
+          await responderConversando(pergunta);
+          return;
+        }
 
         // ESCALADA AUTOMÁTICA — o interruptor vira roteamento.
         //
