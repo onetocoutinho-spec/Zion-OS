@@ -81,6 +81,14 @@ export interface ProdutoParaPreparar {
   vendedorPagaFrete?: boolean;
   /** A grade cadastrada. É dela que saem cor, tamanho, SKU e EAN do anúncio. */
   variantes: readonly VarianteDaBase[];
+  /**
+   * Os atributos que a lojista preencheu, por nome exibido ("Gênero").
+   *
+   * OPCIONAL de propósito: quem não passa continua funcionando como antes —
+   * cai no palpite pelo nome. Tornar obrigatório quebraria todo chamador de
+   * uma vez, e o conserto ficaria parado esperando o refactor inteiro.
+   */
+  atributos?: ReadonlyMap<string, string>;
 }
 
 /** O anúncio que já existe para este produto, no mínimo que a decisão precisa. */
@@ -393,6 +401,9 @@ export function dadosDoProduto(p: ProdutoParaPreparar): DadosDoProduto {
     modelo: p.modelo,
     cores: distintos(p.variantes.map((v) => v.cor)),
     tamanhos: distintos(p.variantes.map((v) => v.tamanho)),
+    // O QUE ELA JÁ PREENCHEU. Sem isto, o resolvedor cai no palpite pelo nome
+    // e acusa de ausente o que está no cadastro — 26 produtos desta base.
+    atributos: p.atributos,
   };
 }
 

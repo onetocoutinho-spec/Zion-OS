@@ -109,10 +109,24 @@ function embalagemDoProduto(variantes: readonly LinhaDeVariante[]): {
   };
 }
 
+/** Os atributos de um produto, por nome exibido. Vazio quando não há. */
+function atributosPorNome(
+  linhas: readonly { produto_id?: string | null; nome_atributo?: string | null; valor_atributo?: string | null }[]
+): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const l of linhas) {
+    const nome = (l.nome_atributo ?? "").trim();
+    const valor = (l.valor_atributo ?? "").trim();
+    if (nome && valor) m.set(nome, valor);
+  }
+  return m;
+}
+
 function montar(
   p: LinhaDeProduto,
   variantes: readonly LinhaDeVariante[],
-  imagens: number
+  imagens: number,
+  atributos?: ReadonlyMap<string, string>
 ): ProdutoParaPreparar {
   return {
     id: p.id,
@@ -128,6 +142,9 @@ function montar(
     // dispensaria o peso e inflaria a margem.
     ...(p.vendedor_paga_frete === false ? { vendedorPagaFrete: false } : {}),
     variantes: variantes.map(paraVariante),
+    // O QUE ELA JÁ PREENCHEU. Sem isto o resolvedor cai no palpite pelo nome e
+    // acusa de ausente o que está no cadastro — 26 produtos desta base.
+    ...(atributos && atributos.size > 0 ? { atributos } : {}),
   };
 }
 
@@ -165,9 +182,14 @@ export async function produtoParaPreparar(
   // Produto de outro tenant é indistinguível de inexistente.
   if (!p) return null;
 
-  const [variantes, imagens, anuncios] = await Promise.all([
+  const [variantes, imagens, atributos, anuncios] = await Promise.all([
     admin.from("produto_variantes").select(CAMPOS_VARIANTE).eq("cliente_id", clienteId).eq("produto_id", produtoId),
     admin.from("imagens_produto").select("produto_id").eq("produto_id", produtoId),
+    admin
+      .from("produto_atributos")
+      .select("produto_id, nome_atributo, valor_atributo")
+      .eq("cliente_id", clienteId)
+      .eq("produto_id", produtoId),
     admin
       .from("anuncios_gerados")
       .select(CAMPOS_ANUNCIO)
@@ -179,7 +201,12 @@ export async function produtoParaPreparar(
 
   const linhasDeVariante = (variantes.data ?? []) as LinhaDeVariante[];
   return {
-    produto: montar(p, linhasDeVariante, ((imagens.data ?? []) as unknown[]).length),
+    produto: montar(
+      p,
+      linhasDeVariante,
+      ((imagens.data ?? []) as unknown[]).length,
+      atributosPorNome((atributos.data ?? []) as never[])
+    ),
     // UM produto: no maximo 41 variantes medidas, e `.limit(1)` no anuncio.
     // Nao pagina porque nao ha o que paginar.
     anuncio: anuncioMaisRecente((anuncios.data ?? []) as LinhaDeAnuncio[]).get(produtoId) ?? null,
@@ -208,7 +235,7 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
   // A ordem de `anuncios_gerados` é `created_at desc` E `id`: sem o desempate,
   // linhas gravadas no mesmo instante — que é o caso da importação em lote —
   // podem vir duas vezes numa página e nenhuma na outra.
-  const [variantes, imagens, anuncios] = await Promise.all([
+  const [variantes, imagens, atributos, anuncios] = await Promise.all([
     lerTudoPorIds<LinhaDeVariante>("variantes do catálogo", ids, (lote, de, ate) =>
       admin
         .from("produto_variantes")
@@ -226,6 +253,21 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
         .order("id", { ascending: true })
         .range(de, ate)
     ),
+    // OS ATRIBUTOS DO CADASTRO. Paginado como os outros: 80 produtos com uma
+    // dúzia de atributos cada passa de 1.000 linhas, e a leitura capada é o
+    // defeito mudo que este repositório mais encontrou.
+    lerTudoPorIds<{ produto_id: string; nome_atributo: string; valor_atributo: string }>(
+      "atributos do catálogo",
+      ids,
+      (lote, de, ate) =>
+        admin
+          .from("produto_atributos")
+          .select("produto_id, nome_atributo, valor_atributo")
+          .eq("cliente_id", clienteId)
+          .in("produto_id", lote)
+          .order("id", { ascending: true })
+          .range(de, ate)
+    ),
     lerTudoPorIds<LinhaDeAnuncio>("anúncios do catálogo", ids, (lote, de, ate) =>
       admin
         .from("anuncios_gerados")
@@ -237,6 +279,19 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
         .range(de, ate)
     ),
   ]);
+
+  // Um mapa por produto, montado UMA vez. Filtrar a lista inteira dentro do
+  // laço seria quadrático — 80 produtos × ~900 atributos.
+  const atributosPorProduto = new Map<string, Map<string, string>>();
+  for (const a of atributos as readonly { produto_id?: string | null; nome_atributo?: string | null; valor_atributo?: string | null }[]) {
+    const pid = a.produto_id ?? "";
+    const nome = (a.nome_atributo ?? "").trim();
+    const valor = (a.valor_atributo ?? "").trim();
+    if (!pid || !nome || !valor) continue;
+    const m = atributosPorProduto.get(pid) ?? new Map<string, string>();
+    m.set(nome, valor);
+    atributosPorProduto.set(pid, m);
+  }
 
   const porProduto = new Map<string, LinhaDeVariante[]>();
   for (const v of variantes) {
@@ -253,7 +308,12 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
 
   return {
     itens: produtos.map((p) => ({
-      produto: montar(p, porProduto.get(p.id) ?? [], contagemDeImagens.get(p.id) ?? 0),
+      produto: montar(
+        p,
+        porProduto.get(p.id) ?? [],
+        contagemDeImagens.get(p.id) ?? 0,
+        atributosPorProduto.get(p.id)
+      ),
       anuncio: porAnuncio.get(p.id) ?? null,
     })),
     totalNoCatalogo: count ?? produtos.length,

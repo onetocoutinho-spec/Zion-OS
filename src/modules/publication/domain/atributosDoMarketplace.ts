@@ -139,6 +139,29 @@ export interface DadosDoProduto {
   cores: readonly string[];
   /** Tamanhos distintos das variações, já sem vazios. */
   tamanhos: readonly string[];
+  /**
+   * OS ATRIBUTOS QUE A LOJISTA JÁ PREENCHEU, por nome exibido ("Gênero").
+   *
+   * ===================================================================
+   * O DEFEITO QUE ESTE CAMPO DESFAZ — MEDIDO EM 11/08/2026
+   * ===================================================================
+   *
+   * `dadosDoProduto` passava só nome, marca, modelo, cores e tamanhos. O
+   * cadastro da lojista — `produto_atributos`, com "Gênero" preenchido em 73
+   * de 80 produtos — nunca chegava aqui.
+   *
+   * Resultado: `GENDER` caía direto no palpite pelo NOME. Quando o nome não
+   * traz a palavra ("Sapatilha Modare 7016.461 Napa Floater Nature"), o
+   * software declarava o gênero AUSENTE e travava a publicação — de um
+   * produto cujo cadastro dizia "Feminino".
+   *
+   * São 26 produtos em que SÓ o cadastro sabe. O software acusava a lojista
+   * de não ter preenchido exatamente o que ela preencheu.
+   *
+   * A ordem em `resolver` já estava certa: cadastro, depois marketplace,
+   * depois palpite. Só faltava o cadastro chegar.
+   */
+  atributos?: ReadonlyMap<string, string>;
 }
 
 export interface AtributoResolvido {
@@ -225,7 +248,10 @@ export function resolverObrigatorios(
     doCadastro: string | null,
     doNome: string | null = null
   ): AtributoResolvido => {
-    const cadastro = limpo(doCadastro);
+    // O CADASTRO PRIMEIRO, e agora ele inclui os atributos que ela preencheu.
+    // Antes só chegavam marca e modelo; "Gênero" e os outros passavam direto
+    // para o palpite pelo nome.
+    const cadastro = limpo(doCadastro) ?? limpo(p.atributos?.get(nome));
     if (cadastro) return { id, nome, valor: cadastro, origem: "cadastro" };
     const mercado = limpo(doMarketplace.get(id));
     if (mercado) return { id, nome, valor: mercado, origem: "marketplace" };

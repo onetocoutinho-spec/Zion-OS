@@ -40,6 +40,13 @@ const RAIZ = join(process.cwd(), "src");
  * sozinho — todos os números abaixo foram medidos em produção em 10/08/2026.
  */
 const DISPENSADAS: Record<string, string> = {
+  // ---- Atributos de UM produto: no máximo 14 medidos (média 7,6) ----
+  //
+  // O caminho do CATÁLOGO pagina — lá são 80 produtos × ~8 atributos, bem
+  // acima do corte de 1.000. Aqui é um produto só.
+  "src/lib/services/preparacaoDeAnuncio.ts::produto_atributos":
+    "eq(produto_id) — um produto. Máximo medido: 14 atributos (11/08/2026).",
+
   // ---- Um único produto: no máximo 41 variantes medidas na base ----
   "src/app/api/assistente/conversa/route.ts::produto_variantes":
     "eq(produto_id) — um produto. Máximo medido: 41 variantes.",
