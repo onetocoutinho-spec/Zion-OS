@@ -246,3 +246,53 @@ test("a medição roda UMA vez — remedir é pagar duas vezes pela mesma decis�
   assert.match(pdf, /jaRecebeu\.current/, "a guarda de medição única sumiu");
   assert.match(pdf, /useRef\(false\)/, "a guarda virou estado — um re-render remediria, subindo o PDF de novo");
 });
+
+// ---------------------------------------------------------------------------
+// CATÁLOGO DO ERP — a única importação que CRIA
+// ---------------------------------------------------------------------------
+//
+// Custo e peso ATUALIZAM linhas que já existem: errar escreve um número errado
+// num produto que já era dela. Catálogo CRIA: errar escreve produtos
+// duplicados, e desfazer é trabalho manual, produto a produto.
+
+test("a tela do catálogo diz o VERBO, não 'importar N linhas'", () => {
+  const cat = readFileSync(new URL("./ConferirCatalogo.tsx", import.meta.url), "utf8");
+  assert.match(cat, /criar \{analise\.total\} produto/, "a tela parou de dizer que vai CRIAR");
+  assert.match(cat, /Criar \$\{analise\.total\} produto/, "o botão parou de dizer o que faz");
+});
+
+test("as colunas IGNORADAS aparecem — é onde 'vlr_custo' se denuncia", () => {
+  // `analisarProdutosCsv` reconhece por apelido e ignora o resto em silêncio.
+  // Uma planilha do ERP com "vlr_custo" importa 50 produtos SEM CUSTO, e o
+  // relatório diria "50 criados" — sucesso completo, aparentemente.
+  const cat = readFileSync(new URL("./ConferirCatalogo.tsx", import.meta.url), "utf8");
+  assert.match(cat, /colunasIgnoradas/, "as colunas ignoradas sumiram da conferência");
+  assert.match(cat, /amber/, "as ignoradas deixaram de ser destacadas");
+});
+
+test("faltando obrigatória, o botão NÃO grava", () => {
+  const cat = readFileSync(new URL("./ConferirCatalogo.tsx", import.meta.url), "utf8");
+  assert.match(cat, /faltandoObrigatorias\.length > 0/, "a guarda das obrigatórias sumiu");
+  assert.match(cat, /disabled=\{ocupado \|\| impede\}/, "o botão voltou a poder gravar sem o obrigatório");
+});
+
+test("catálogo em XLSX é RECUSADO com instrução, não convertido às cegas", () => {
+  // A análise lê o TEXTO CRU — é ele que sabe agrupar variações por código do
+  // ERP. Reconstruir CSV das linhas já lidas perderia aspas e vírgulas dentro
+  // de campo, e uma vírgula perdida vira produto com nome cortado.
+  const recebimento = FONTE.slice(
+    FONTE.indexOf("async function receberPlanilha("),
+    FONTE.indexOf("async function confirmarCatalogo(")
+  );
+  assert.match(recebimento, /\.csv\$\/i\.test\(arquivo\.name\)/, "a recusa do xlsx sumiu");
+  assert.match(recebimento, /Salve como CSV/, "a recusa deixou de dizer o que fazer");
+});
+
+test("o relatório do catálogo diz CRIEI, e conta a margem baixa", () => {
+  const gravacao = FONTE.slice(
+    FONTE.indexOf("async function confirmarCatalogo("),
+    FONTE.indexOf("async function confirmarPeso(")
+  );
+  assert.match(gravacao, /Criei \$\{r\.total\}/, "o relatório voltou a dizer 'importei'");
+  assert.match(gravacao, /comMargemBaixa/, "produtos criados com margem apertada deixaram de ser notícia");
+});

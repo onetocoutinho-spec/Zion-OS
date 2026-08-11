@@ -38,9 +38,53 @@
 import { sugerirMapeamento, colunaDoPapel } from "./mapeamentoPlanilha";
 import { detectarColunas } from "./importacaoPeso";
 
+/**
+ * As colunas que SÓ um catálogo tem.
+ *
+ * ===========================================================================
+ * POR QUE A REGRA DO CATÁLOGO É DIFERENTE DAS OUTRAS DUAS
+ * ===========================================================================
+ *
+ * Custo e peso ATUALIZAM linhas que já existem. Catálogo CRIA produtos — é a
+ * única das quatro importações que aumenta a base, e errar aqui não escreve um
+ * número errado: escreve cinquenta produtos duplicados.
+ *
+ * E a ambiguidade é real, não hipotética: `analisarProdutosCsv` exige APENAS
+ * `nome`. A planilha de custos que o próprio Zion gera para a lojista tem nome,
+ * sku, marca, preço e custo — ela passaria como catálogo, e importá-la assim
+ * duplicaria os cinquenta produtos que ela queria atualizar.
+ *
+ * Então catálogo não se reconhece por "tem nome". Reconhece-se por trazer
+ * coluna que uma planilha de custo ou de peso NÃO TERIA MOTIVO de ter: cor,
+ * tamanho, SKU de variação, código do ERP.
+ */
+const SO_DE_CATALOGO = [
+  "cor",
+  "cores",
+  "tamanho",
+  "tamanhos",
+  "numeracao",
+  "numeração",
+  "sku_variacao",
+  "sku variacao",
+  "sku da variacao",
+  "skuvariacao",
+  "cod_erp",
+  "coderp",
+  "codigo erp",
+  "código erp",
+];
+
+function pareceCatalogo(headers: readonly string[]): boolean {
+  const normal = headers.map((h) => h.trim().toLowerCase());
+  return normal.some((h) => SO_DE_CATALOGO.includes(h));
+}
+
 export type EspecieDaPlanilha =
   | { especie: "custo"; porque: string }
   | { especie: "peso"; porque: string }
+  /** Catálogo de produtos. A única espécie que CRIA em vez de atualizar. */
+  | { especie: "catalogo"; porque: string }
   | { especie: "ambigua"; porque: string }
   /** Nem uma coisa nem outra. `mensagem` é o que a lojista lê. */
   | { especie: "nenhuma"; mensagem: string };
@@ -49,6 +93,30 @@ export function oQueEssaPlanilhaE(headers: readonly string[]): EspecieDaPlanilha
   const temCusto = !!colunaDoPapel(sugerirMapeamento(headers), "custo");
   const deteccaoPeso = detectarColunas(headers);
   const temPeso = deteccaoPeso.ok;
+  const temCatalogo = pareceCatalogo(headers);
+
+  // CATÁLOGO NUNCA GANHA NO EMPATE.
+  //
+  // Uma planilha com cor E custo pode ser as duas coisas, e a diferença entre
+  // elas é criar cinquenta produtos ou atualizar cinquenta. Quando há dúvida,
+  // quem decide é a lojista — nunca o desempate silencioso.
+  if (temCatalogo && (temCusto || temPeso)) {
+    return {
+      especie: "ambigua",
+      porque:
+        "Esta planilha tem colunas de catálogo (cor, tamanho ou código do ERP) e também de " +
+        (temCusto ? "custo" : "peso") +
+        ". Importar como catálogo CRIA produtos; como " +
+        (temCusto ? "custo" : "peso") +
+        " atualiza os que já existem. Escolher por conta própria poderia duplicar sua base.",
+    };
+  }
+  if (temCatalogo) {
+    return {
+      especie: "catalogo",
+      porque: "Achei colunas de catálogo — cor, tamanho ou código do ERP.",
+    };
+  }
 
   if (temCusto && temPeso) {
     return {

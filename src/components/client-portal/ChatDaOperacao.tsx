@@ -96,6 +96,14 @@ import {
 } from "@/modules/assistant/domain/saudacaoDaConversa";
 import { formatBRLExato } from "@/lib/format";
 import { importarPeso } from "@/lib/services/importacaoPeso";
+import { useClientPortal } from "./context";
+import { ConferirCatalogo } from "./ConferirCatalogo";
+import { decodificarTexto } from "@/lib/textoDeArquivo";
+import {
+  analisarProdutosCsv,
+  confirmarImportacaoProdutos,
+  type AnaliseProdutos,
+} from "@/lib/services/importacaoProdutos";
 import { oQueEssaPlanilhaE } from "@/modules/catalog/domain/oQueEssaPlanilhaE";
 import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
 import { ConferirPeso } from "./ConferirPeso";
@@ -165,9 +173,11 @@ interface Turno {
    */
   planilha?: PlanilhaLida;
   /** O que o roteador decidiu que ela é. Decide qual conferência a tela mostra. */
-  especie?: "custo" | "peso";
+  especie?: "custo" | "peso" | "catalogo";
   /** Um PDF de catálogo do fornecedor largado no clipe. Outro caminho inteiro. */
   pdf?: File;
+  /** A análise do catálogo em planilha — a única importação que CRIA. */
+  catalogo?: AnaliseProdutos;
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -333,6 +343,7 @@ export function ChatDaOperacao({
   /** Chamado depois de uma gravação, para a tela recarregar o que mudou. */
   aoGravar?: () => void;
 }) {
+  const { nome: nomeDoPortal } = useClientPortal();
   const [frase, setFrase] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [ocupado, setOcupado] = useState(false);
@@ -849,6 +860,36 @@ export function ChatDaOperacao({
         return;
       }
 
+      if (especie.especie === "catalogo") {
+        // ANÁLISE PRECISA DO TEXTO CRU, e isso não é detalhe de implementação.
+        //
+        // `analisarProdutosCsv` lê o texto do arquivo, não a planilha já
+        // interpretada — é ele que sabe agrupar variações por código do ERP.
+        // Reconstruir CSV a partir das linhas lidas perderia aspas e vírgulas
+        // dentro de campo, e uma vírgula perdida vira produto com nome cortado.
+        //
+        // Por isso só CSV entra por aqui. Um .xlsx de catálogo é recusado com
+        // instrução, em vez de importado de um jeito que pode cortar nomes.
+        if (!/\.csv$/i.test(arquivo.name)) {
+          setTurnos((t) => [
+            ...t,
+            {
+              pergunta: `Enviei a planilha ${arquivo.name}`,
+              erro:
+                "Isto parece um catálogo de produtos, e para criar produtos eu preciso do arquivo em CSV. " +
+                "Salve como CSV no Excel (Arquivo → Salvar como → CSV) e mande de novo.",
+            },
+          ]);
+          return;
+        }
+        const analise = analisarProdutosCsv(decodificarTexto(await arquivo.arrayBuffer()).texto);
+        setTurnos((t) => [
+          ...t,
+          { pergunta: `Enviei a planilha ${arquivo.name}`, planilha, especie: "catalogo", catalogo: analise },
+        ]);
+        return;
+      }
+
       setTurnos((t) => [
         ...t,
         { pergunta: `Enviei a planilha ${arquivo.name}`, planilha, especie: especie.especie },
@@ -874,6 +915,65 @@ export function ChatDaOperacao({
    * lugares diferentes com relatórios diferentes, e um parâmetro a mais numa
    * função que já grava dinheiro é onde o próximo defeito mudo entra.
    */
+  /**
+   * A criação do CATÁLOGO. A única das quatro que aumenta a base.
+   *
+   * Separada das irmãs pela mesma razão que elas são separadas entre si: gravam
+   * em lugares diferentes com relatórios diferentes. Aqui o relatório diz
+   * "criei", não "importei" — porque é o que aconteceu com a base dela.
+   */
+  async function confirmarCatalogo(indice: number) {
+    const alvo = turnos[indice];
+    if (!alvo?.catalogo || !clienteId) return;
+    setTurnos((t) =>
+      t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
+    );
+    try {
+      const r = await confirmarImportacaoProdutos({
+        clienteId,
+        // O nome vem do contexto do portal, não de prop nova: quem cria
+        // produto precisa carimbar de quem é, e o portal já sabe.
+        cliente: nomeDoPortal,
+        linhas: alvo.catalogo.linhas,
+      });
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                catalogo: undefined,
+                planilha: undefined,
+                importandoPlanilha: false,
+                // "CRIEI", não "importei" — é o que aconteceu com a base dela.
+                // E a margem baixa vem junto: cinquenta produtos criados com
+                // margem apertada é notícia, não detalhe.
+                texto:
+                  `Criei ${r.total} produto(s)` +
+                  (r.totalVariacoes ? ` e ${r.totalVariacoes} variação(ões)` : "") +
+                  " na sua base." +
+                  (r.comMargemBaixa > 0
+                    ? ` ${r.comMargemBaixa} deles ficaram com margem abaixo do seu mínimo — vale conferir o preço antes de anunciar.`
+                    : ""),
+              }
+            : turno
+        )
+      );
+      aoGravar?.();
+    } catch (e) {
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? {
+                ...turno,
+                importandoPlanilha: false,
+                erro: e instanceof Error ? e.message : "Não consegui criar os produtos.",
+              }
+            : turno
+        )
+      );
+    }
+  }
+
   async function confirmarPeso(indice: number) {
     const alvo = turnos[indice];
     if (!alvo?.planilha || !clienteId) return;
@@ -1024,6 +1124,25 @@ export function ChatDaOperacao({
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   {t.erro}
                 </p>
+              ) : t.catalogo ? (
+                /* O CATÁLOGO É O ÚNICO QUE CRIA — e a tela diz o verbo. Custo e
+                   peso atualizam o que já existe; errar ali escreve um número
+                   errado. Errar aqui escreve produtos duplicados, e desfazer é
+                   trabalho manual, produto a produto. */
+                <ConferirCatalogo
+                  analise={t.catalogo}
+                  ocupado={t.importandoPlanilha}
+                  onCancelar={() =>
+                    setTurnos((ts) =>
+                      ts.map((turno, j) =>
+                        j === i
+                          ? { ...turno, catalogo: undefined, planilha: undefined, texto: "Descartei a planilha. Nada foi criado." }
+                          : turno
+                      )
+                    )
+                  }
+                  onConfirmar={() => void confirmarCatalogo(i)}
+                />
               ) : t.pdf ? (
                 /* O COMPONENTE DA TELA DE IMPORTAR, não uma cópia dele. Ele
                    traz junto a medição do custo ANTES de gastar, a conferência

@@ -73,3 +73,38 @@ test("NENHUMA chamada a modelo", () => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// CATÁLOGO — a única espécie que CRIA
+// ---------------------------------------------------------------------------
+//
+// Custo e peso atualizam linhas que já existem. Catálogo aumenta a base, e
+// errar aqui não escreve um número errado: escreve produtos duplicados.
+
+test("catálogo é reconhecido pelas colunas que só ele tem", () => {
+  const r = oQueEssaPlanilhaE(["nome", "cor", "tamanho", "preco_venda"]);
+  assert.equal(r.especie, "catalogo");
+});
+
+test("A PLANILHA DE CUSTOS DO PRÓPRIO ZION não vira catálogo", () => {
+  // O caso que motivou a regra. `analisarProdutosCsv` exige APENAS `nome` — o
+  // template que o Zion gera para a lojista (nome, sku, marca, preço, custo)
+  // passaria como catálogo, e importá-lo assim duplicaria os cinquenta
+  // produtos que ela queria atualizar.
+  const r = oQueEssaPlanilhaE(["nome", "sku", "marca", "preco_venda", "estoque_no_ml", "custo"]);
+  assert.equal(r.especie, "custo", "a planilha de custos do Zion foi lida como catálogo — duplicaria a base");
+});
+
+test("CATÁLOGO NUNCA GANHA NO EMPATE — cor + custo vira pergunta", () => {
+  // A diferença entre as duas leituras é criar cinquenta produtos ou atualizar
+  // cinquenta. Quando há dúvida, quem decide é a lojista.
+  const r = oQueEssaPlanilhaE(["nome", "cor", "custo"]);
+  assert.equal(r.especie, "ambigua");
+  assert.match(r.especie === "ambigua" ? r.porque : "", /CRIA|duplicar/);
+});
+
+test("cor + peso também vira pergunta, e a frase diz qual é a outra opção", () => {
+  const r = oQueEssaPlanilhaE(["sku", "cor", "peso_kg"]);
+  assert.equal(r.especie, "ambigua");
+  assert.match(r.especie === "ambigua" ? r.porque : "", /peso/);
+});
