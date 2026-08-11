@@ -71,6 +71,7 @@ import { SEM_CUSTOS_DO_LOJISTA } from "@/modules/pricing/domain/custosDoLojista"
 import { pesoCobravelGramas } from "@/modules/pricing/domain/custosML";
 import {
   CAMPO_TITULO_ATUAL,
+  CAMPO_TEXTO_ATUAL,
   impressaoDoTitulo,
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/procedencia";
@@ -277,6 +278,40 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
     // Anúncio sumiu: `null`, que o domínio trata como mudança. Supor "continua
     // o mesmo" gravaria sobre o desconhecido.
     return { [CAMPO_TITULO_ATUAL]: impressaoDoTitulo(titulo ?? "") };
+  }
+
+  // ---- TEXTO DO ANÚNCIO: a descrição ou as palavras-chave de agora ainda
+  //      são o que eu vi quando propus?
+  //
+  // Mesma regra do título, e por aqui ela vale MAIS: descrição SUBSTITUI, então
+  // gravar sobre um texto que já não é o mostrado apagaria a edição que alguém
+  // fez no meio — inclusive a própria lojista, em outra aba.
+  //
+  // ESTE RAMO FALTAVA. Medido em produção em 10/08/2026: sem ele a função caía
+  // no caminho de candidato, devolvia vazio, e a comparação dizia "passou de
+  // 1358399332 para vazio" — a proposta virava obsoleta SEMPRE, e o clique
+  // nunca gravava. O 409 era honesto sobre um mundo que não tinha mudado.
+  if (campos.has(CAMPO_TEXTO_ATUAL)) {
+    const { data } = await admin
+      .from("anuncios_gerados")
+      .select("anuncio")
+      .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
+      .maybeSingle();
+    const anuncio = (data as { anuncio?: Record<string, unknown> } | null)?.anuncio;
+    const lista = (v: unknown): string[] =>
+      Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+    // O MESMO valor que a rota da conversa carimbou ao criar a proposta: o
+    // texto para descrição, a lista junta para palavras-chave. Ler diferente
+    // aqui faria toda proposta nascer obsoleta.
+    const atual =
+      p.tipo === "descricao"
+        ? String(anuncio?.descricaoCompleta ?? "")
+        : [
+            ...lista(anuncio?.palavrasChavePrincipais),
+            ...lista(anuncio?.palavrasChaveSecundarias),
+          ].join(", ");
+    return { [CAMPO_TEXTO_ATUAL]: impressaoDoTitulo(atual) };
   }
 
   const camposDeCandidato = [...campos].filter(ehCampoDeCandidato);

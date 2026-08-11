@@ -126,3 +126,23 @@ test("a procedência marca origem ZION — quem escreveu foi o agente", () => {
 test("o serviço chama a RPC da 057, e não outra", () => {
   assert.match(SERVICO, /rpc\("copilot_executar_texto_do_anuncio"/);
 });
+
+test("a precondição do TEXTO é RELIDA — sem isso a proposta nasce obsoleta", () => {
+  // Medido em produção em 10/08/2026: sem este ramo a revalidação caía no
+  // caminho de candidato, devolvia vazio, e a comparação dizia "passou de
+  // 1358399332 para vazio". A proposta virava obsoleta SEMPRE e o clique nunca
+  // gravava — um 409 honesto sobre um mundo que não tinha mudado.
+  assert.match(ROTA, /campos\.has\(CAMPO_TEXTO_ATUAL\)/, "a releitura da precondição do texto sumiu");
+});
+
+test("a releitura usa a MESMA forma que a criação carimbou", () => {
+  // Descrição: o texto. Palavras-chave: principais + secundárias, juntas.
+  // Ler diferente aqui faria toda proposta nascer obsoleta.
+  const bloco = ROTA.slice(
+    ROTA.indexOf("campos.has(CAMPO_TEXTO_ATUAL)"),
+    ROTA.indexOf("camposDeCandidato")
+  );
+  assert.match(bloco, /descricaoCompleta/);
+  assert.match(bloco, /palavrasChavePrincipais/);
+  assert.match(bloco, /palavrasChaveSecundarias/);
+});
