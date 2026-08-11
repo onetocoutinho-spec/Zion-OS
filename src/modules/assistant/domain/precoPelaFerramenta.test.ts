@@ -82,6 +82,20 @@ function ctxPreco(
         const p = produtos[id];
         return p ? { produtoId: id, nome: p.nome, entradas: p.entradas } : null;
       },
+      // A configuração do lojista é entrada do MESMO cálculo — o contexto falso
+      // precisa dela para o teste exercitar o que a produção exercita.
+      configuracao: async () => ({
+        margemMinima: o.margemMinima ?? 5,
+        custos: {
+          embalagem: 0,
+          etiqueta: 0,
+          informativos: 0,
+          impostoPercentual: 0,
+          comissaoGestorPercentual: 0,
+          comissaoSistemaPercentual: 0,
+          cupomPercentual: 0,
+        },
+      }),
       catalogo: async () => ({
         produtos: o.catalogo ?? [],
         margemMinima: o.margemMinima ?? 5,

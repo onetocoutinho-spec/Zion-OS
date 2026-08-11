@@ -126,13 +126,22 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "contar",
     efeito: "le",
     descricao:
-      "Quantos produtos estão em alguma condição. Use SEMPRE que precisar de um número — você não tem acesso aos dados e qualquer número seu seria inventado.",
+      "Quantos produtos estão em alguma condição. Use SEMPRE que precisar de um número — você não tem acesso aos dados e qualquer número seu seria inventado. `infracao` responde quantas infrações o Mercado Livre registrou na conta e em quantos anúncios — NÃO diga que não enxerga isso.",
     parametros: {
       type: "object",
       properties: {
         assunto: {
           type: "string",
-          enum: ["peso", "custo", "foto", "anuncio", "aprovacao", "publicacao", "precificacao"],
+          enum: [
+            "peso",
+            "custo",
+            "foto",
+            "anuncio",
+            "aprovacao",
+            "publicacao",
+            "precificacao",
+            "infracao",
+          ],
         },
       },
       required: ["assunto"],
