@@ -416,7 +416,7 @@ export async function POST(request: Request) {
         const [{ data: prod }, { data: vars }, { data: tabelas }] = await Promise.all([
           admin
             .from("produtos")
-            .select("nome, marca, tabela_medidas_override")
+            .select("nome, marca, tabela_medidas")
             .eq("cliente_id", clienteDaSessao)
             .eq("id", produtoId)
             .maybeSingle(),
@@ -430,7 +430,7 @@ export async function POST(request: Request) {
             .select("marca, como_medir, linhas")
             .eq("cliente_id", clienteDaSessao),
         ]);
-        const p = prod as { nome?: string; marca?: string; tabela_medidas_override?: string } | null;
+        const p = prod as { nome?: string; marca?: string; tabela_medidas?: string } | null;
         if (!p) return null;
         const r = montarTabelaMedidas({
           marca: p.marca ?? "",
@@ -441,7 +441,12 @@ export async function POST(request: Request) {
                 .filter(Boolean)
             ),
           ],
-          override: p.tabela_medidas_override ?? "",
+          // A COLUNA É `tabela_medidas`. `tabela_medidas_override` — que eu
+          // supus — não existe: PostgREST erra, o `maybeSingle` devolve null, e
+          // a ferramenta responde "não achei esse produto" sobre um produto que
+          // está lá. Terceira vez hoje que um nome suposto vira ausência
+          // afirmada; ver `colunasQueExistem.test.ts`.
+          override: p.tabela_medidas ?? "",
           tabelasCliente: ((tabelas ?? []) as { marca?: string; como_medir?: string; linhas?: unknown }[]).map(
             (t) => ({
               marca: t.marca ?? "",

@@ -45,6 +45,27 @@ test("`criado_em` NÃO aparece em nenhum arquivo que toca `anuncios_gerados`", (
   );
 });
 
+test("NENHUMA coluna `*_override` inventada em `produtos`", () => {
+  // O override da tabela de medidas mora em `produtos.tabela_medidas`. Supus
+  // `tabela_medidas_override` e a ferramenta respondeu "não achei esse produto"
+  // sobre um produto que existe — PostgREST erra na coluna, `maybeSingle`
+  // devolve null, e null é indistinguível de ausência.
+  const rota = readFileSync(
+    new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
+    "utf8"
+  );
+  // SÓ O CÓDIGO. Comentários podem — e devem — nomear o erro para quem lê; o
+  // que não pode é o código voltar a usá-lo. Mesma correção que a sentinela do
+  // roteador de planilhas precisou hoje.
+  const soCodigo = rota
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.ok(
+    !/tabela_medidas_override/.test(soCodigo),
+    "voltou a coluna inexistente `tabela_medidas_override` — a ferramenta diria que o produto não existe"
+  );
+});
+
 test("quem ordena `anuncios_gerados` usa `created_at`", () => {
   const prep = FONTES.find((f) => f.nome === "preparacaoDeAnuncio.ts");
   assert.ok(prep, "preparacaoDeAnuncio.ts sumiu");
