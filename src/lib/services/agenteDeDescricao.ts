@@ -79,7 +79,22 @@ export async function gerarDescricaoOtimizada(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_DESCRICAO,
-      maxTokens: 1600,
+      // ===================================================================
+      // O TETO É DO TAMANHO DA COISA GERADA, NÃO UM NÚMERO REDONDO
+      // ===================================================================
+      //
+      // Estava 1.600, copiado do agente de TÍTULO — onde 400 sobra porque um
+      // título tem 60 caracteres. Descrição não é título.
+      //
+      // Medido em produção em 10/08/2026: o JSON voltou cortado no meio de uma
+      // string, `JSON.parse` estourou, o `catch` devolveu `null`, e a lojista
+      // leu "não consegui gerar uma descrição agora" — uma frase honesta sobre
+      // um defeito que não tinha nada de temporário.
+      //
+      // As descrições reais desta base têm 1.600 a 1.900 caracteres. Com
+      // acentuação, envelope JSON e a justificativa, 8.000 dá folga de sobra
+      // sem chegar perto do limite de 50.000 do ML.
+      maxTokens: 8000,
     });
     const r = JSON.parse(json) as { descricao?: string; justificativa?: string };
     if (!r.descricao) return null;

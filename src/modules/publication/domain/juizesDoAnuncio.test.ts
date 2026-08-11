@@ -7,6 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   avaliarDescricaoProposta,
   avaliarPalavrasChave,
@@ -74,4 +75,43 @@ test("o domínio LIMPA, mas não ESCOLHE quais valem", () => {
   const v = avaliarPalavrasChave(["", "  ", "conforto", "verão"], []);
   assert.equal(v.ok, true);
   assert.deepEqual(v.ok === true ? [...v.palavras] : [], ["conforto", "verão"]);
+});
+
+// ---------------------------------------------------------------------------
+// O TETO DE SAÍDA CABE NO QUE SE PEDE
+// ---------------------------------------------------------------------------
+//
+// Medido em produção em 10/08/2026: `maxTokens: 1600` — copiado do agente de
+// TÍTULO, onde 400 sobra porque um título tem 60 caracteres — cortou o JSON da
+// descrição no meio de uma string. `JSON.parse` estourou, o `catch` devolveu
+// `null`, e a lojista leu "não consegui gerar uma descrição agora": uma frase
+// honesta sobre um defeito que não tinha nada de temporário.
+//
+// As descrições reais desta base têm 1.600 a 1.900 caracteres.
+
+test("o teto de saída da DESCRIÇÃO comporta uma descrição real", () => {
+  const agente = readFileSync(
+    new URL("../../../lib/services/agenteDeDescricao.ts", import.meta.url),
+    "utf8"
+  );
+  const bloco = agente.slice(
+    agente.indexOf("ESQUEMA_DESCRICAO,"),
+    agente.indexOf("ESQUEMA_PALAVRAS")
+  );
+  const teto = Number((bloco.match(/maxTokens:\s*(\d+)/) ?? [])[1] ?? 0);
+  assert.ok(
+    teto >= 4000,
+    `teto de ${teto} tokens: uma descrição de 1.900 caracteres com acentos e envelope JSON volta cortada, e o erro sai como "não consegui gerar agora"`
+  );
+});
+
+test("o teto das PALAVRAS-CHAVE continua modesto — vinte termos não precisam de mais", () => {
+  // O oposto do anterior: aqui um teto grande só convidaria lista cheia.
+  const agente = readFileSync(
+    new URL("../../../lib/services/agenteDeDescricao.ts", import.meta.url),
+    "utf8"
+  );
+  const bloco = agente.slice(agente.indexOf("ESQUEMA_PALAVRAS,"));
+  const teto = Number((bloco.match(/maxTokens:\s*(\d+)/) ?? [])[1] ?? 0);
+  assert.ok(teto > 0 && teto <= 2000, `teto de ${teto} tokens para 20 termos é folga demais`);
 });
