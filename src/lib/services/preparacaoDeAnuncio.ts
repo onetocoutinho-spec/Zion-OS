@@ -61,7 +61,7 @@ interface LinhaDeAnuncio {
   veredito_a10: string | null;
   qtd_pendencias: number | null;
   ml_item_id: string | null;
-  criado_em: string;
+  created_at: string;
 }
 
 export interface ProdutoComAnuncio {
@@ -146,7 +146,7 @@ function anuncioMaisRecente(linhas: readonly LinhaDeAnuncio[]): Map<string, Anun
 }
 
 const CAMPOS_VARIANTE = "id, produto_id, sku, ean, cor, tamanho, estoque, preco_base, peso, altura, largura, comprimento";
-const CAMPOS_ANUNCIO = "produto_id, status, veredito_a10, qtd_pendencias, ml_item_id, criado_em";
+const CAMPOS_ANUNCIO = "produto_id, status, veredito_a10, qtd_pendencias, ml_item_id, created_at";
 
 /** Um produto só, para "prepare a Modare 7178.102" e para o drill-down. */
 export async function produtoParaPreparar(
@@ -172,7 +172,7 @@ export async function produtoParaPreparar(
       .select(CAMPOS_ANUNCIO)
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
-      .order("criado_em", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1),
   ]);
 
@@ -204,7 +204,7 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
   // por produto: ~3.600 linhas, cortadas em 1.000 sem erro. As três leituras
   // filhas têm o mesmo problema — `anuncios_gerados` são 880 para 80 produtos.
   //
-  // A ordem de `anuncios_gerados` é `criado_em desc` E `id`: sem o desempate,
+  // A ordem de `anuncios_gerados` é `created_at desc` E `id`: sem o desempate,
   // linhas gravadas no mesmo instante — que é o caso da importação em lote —
   // podem vir duas vezes numa página e nenhuma na outra.
   const [variantes, imagens, anuncios] = await Promise.all([
@@ -231,7 +231,7 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
         .select(CAMPOS_ANUNCIO)
         .eq("cliente_id", clienteId)
         .in("produto_id", lote)
-        .order("criado_em", { ascending: false })
+        .order("created_at", { ascending: false })
         .order("id", { ascending: true })
         .range(de, ate)
     ),
@@ -322,10 +322,10 @@ export async function textoDoAnuncio(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, criado_em")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
-      .order("criado_em", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1);
     const linha = ((data ?? []) as LinhaComAnuncio[])[0];
     if (!linha) return null;
@@ -357,10 +357,10 @@ export async function anuncioParaTitulo(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, criado_em")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
-      .order("criado_em", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1);
     const linha = ((data ?? []) as LinhaComAnuncio[])[0];
     if (!linha) return null;
