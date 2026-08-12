@@ -206,6 +206,9 @@ export interface ImagemProdutoRow {
   url: string | null;
   status: string;
   observacoes: string | null;
+  /** Migração 059. `null` = não medimos — nunca "não tem". */
+  largura: number | null;
+  altura: number | null;
 }
 
 // ---- v1.8: Auditoria em massa ----

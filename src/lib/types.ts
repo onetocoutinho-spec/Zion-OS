@@ -269,6 +269,19 @@ export interface ImagemProduto {
   url: string;
   status: ImagemStatus;
   observacoes: string;
+  /**
+   * Dimensão em pixels, medida NO UPLOAD (migração 059).
+   *
+   * `null` = não medimos, nunca "não tem". As fotos anteriores a 11/08/2026
+   * nasceram sem medida, e tratá-las como zero faria toda a base parecer
+   * inválida.
+   *
+   * Medir aqui, no arquivo que a lojista escolheu, também evita a armadilha do
+   * CDN: a `url` guardada aponta para a variante de 500px do Mercado Livre, e
+   * medi-la diria "nenhuma foto serve" sobre originais de 1200.
+   */
+  largura: number | null;
+  altura: number | null;
 }
 
 export type AreaAgente =

@@ -29,25 +29,13 @@
 import { useEffect, useState } from "react";
 import { lerMaxSize, LADO_MINIMO_DA_CAPA } from "@/modules/integration/domain/capaForaDoPadrao";
 
-export interface FotoMedida {
-  largura: number;
-  altura: number;
-  url: string;
-}
-
-/** Mede a imagem sem subir nada. `null` quando o arquivo não é imagem legível. */
-export async function medirFoto(arquivo: File): Promise<FotoMedida | null> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(arquivo);
-    const img = new Image();
-    img.onload = () => resolve({ largura: img.naturalWidth, altura: img.naturalHeight, url });
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-    img.src = url;
-  });
-}
+// UMA IMPLEMENTAÇÃO SÓ. A medida nasceu aqui, para o cartão que confere a foto
+// no chat; desde 11/08/2026 o upload do portal também mede, para gravar a
+// dimensão (migração 059). Duas cópias divergiriam no dia em que uma ganhasse
+// tratamento de EXIF ou de HEIC e a outra não.
+export { medirFoto } from "@/lib/imagens/medirArquivo";
+import type { FotoMedida } from "@/lib/imagens/medirArquivo";
+export type { FotoMedida };
 
 export function ConferirFoto({
   arquivo,

@@ -7,6 +7,7 @@
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { atualizarImagem, criarImagem, listarImagensDoProduto } from "./imagensProduto";
 import { capaAtual, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
+import { dimensaoParaGravar } from "../imagens/medirArquivo";
 import type { ImagemProduto, TipoImagem } from "../types";
 
 const BUCKET = "produtos-imagens";
@@ -49,6 +50,12 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     throw new Error("O upload de imagens precisa do Supabase configurado.");
   }
   const { clienteId, produtoId, file } = opcoes;
+
+  // ANTES DE SUBIR, porque depois de subir a única referência é uma url — e
+  // url do CDN do ML serve variante, não original. Medir aqui é o único
+  // momento em que a dimensão é a verdade sem ressalva. Ver migração 059.
+  const dimensao = await dimensaoParaGravar(file);
+
   const caminho = `${clienteId}/${produtoId}/${Date.now()}-${slugArquivo(file.name)}`;
 
   const sb = getSupabase();
@@ -74,6 +81,7 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
+    ...dimensao,
   });
 }
 

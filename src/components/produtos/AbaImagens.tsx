@@ -63,6 +63,12 @@ export function AbaImagens({ produto }: { produto: Produto }) {
       url: url.trim(),
       status,
       observacoes: "",
+      // Este caminho recebe uma URL COLADA, não um arquivo — não há o que
+      // medir sem ir buscar a imagem. O par nulo diz "não medimos"; zero diria
+      // "não tem", e as duas frases levam a decisões opostas sobre trocar a
+      // capa. Quem sobe arquivo (`uploadImagemProduto`) mede.
+      largura: null,
+      altura: null,
     });
     setUrl("");
   }

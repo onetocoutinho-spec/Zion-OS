@@ -517,6 +517,11 @@ export function imagemParaApp(row: ImagemProdutoRow): ImagemProduto {
     url: row.url ?? "",
     status: row.status as ImagemProduto["status"],
     observacoes: row.observacoes ?? "",
+    // SEM `?? 0`. As 780+ fotos anteriores à 059 não têm medida, e zero as
+    // faria parecer inválidas — "não medimos" viraria "não tem". A mesma
+    // distinção que o resto deste sistema já paga caro para manter.
+    largura: row.largura ?? null,
+    altura: row.altura ?? null,
   };
 }
 
@@ -530,6 +535,12 @@ export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unkno
   if (d.url !== undefined) r.url = d.url;
   if (d.status !== undefined) r.status = d.status;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  // `!== undefined` e não `if (d.largura)`: `null` precisa atravessar como o
+  // que é. A checagem por verdade transformaria "não medimos" em "não
+  // mandamos", e a coluna ficaria vazia sem ninguém saber por quê — que é
+  // exatamente a confusão que a 059 existe para acabar.
+  if (d.largura !== undefined) r.largura = d.largura;
+  if (d.altura !== undefined) r.altura = d.altura;
   return r;
 }
 

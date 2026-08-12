@@ -1027,6 +1027,12 @@ export async function importarAnunciosDoCliente(
         url,
         status: "Aprovada", // é a foto real que já está no anúncio
         observacoes: "Importada do Mercado Livre.",
+        // NÃO MEDIMOS, e o par nulo diz isso. Aqui só existe a url do CDN, e
+        // ela serve a variante de 500px — medi-la gravaria 500x500 sobre um
+        // original de 1200 e faria a foto boa parecer imprestável. A medida
+        // honesta destas viria de outra leitura, contra o sufixo `-F`.
+        largura: null,
+        altura: null,
       });
     });
     imagens.push(...doProduto);
