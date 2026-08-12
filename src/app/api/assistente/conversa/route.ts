@@ -677,6 +677,30 @@ export async function POST(request: Request) {
         | undefined;
       const usadas: string[] = [];
 
+      // ===================================================================
+      // UMA REATIVAÇÃO POR PERGUNTA — a folga medida em 11/08/2026
+      // ===================================================================
+      //
+      // `reativar_anuncio` age sem clique, e isso foi decidido em 03/08 com um
+      // argumento que continua de pé: o pior caso de reativar UM anúncio dela
+      // é um anúncio dela mesma voltando ao ar, desfeito com um clique.
+      //
+      // O argumento não cobre o PLURAL. Medido em produção: uma frase — "já
+      // prepara a volta ao ar de todos os 26 do Havaianas Top Liso" — virou
+      // três chamadas seguidas e três anúncios no ar (MLB7048338384,
+      // MLB4820492875, MLB4820581449), sem nada no caminho perguntar nada. O
+      // modelo até avisou que só tinha 3 dos 26 códigos; avisar não é pedir
+      // licença, e o aviso veio DEPOIS de agir.
+      //
+      // A trava é de PLURALIDADE, não de reativação: a primeira passa, como
+      // decidido. Da segunda em diante o pedido volta como recusa que o modelo
+      // lê e transforma em pergunta — e a lojista decide anúncio por anúncio,
+      // ou usa a tela de Anúncios, que existe justamente para o lote.
+      //
+      // Vale para a PERGUNTA inteira, não para o passo: o laço tem até seis
+      // passos e o modelo pode espalhar as chamadas entre eles.
+      let reativadosNestaPergunta = 0;
+
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
           // ---- A FRONTEIRA DO INC-003.
@@ -1136,7 +1160,33 @@ export async function POST(request: Request) {
             // recusar, ele lê a recusa e conta a verdade, em vez de anunciar um
             // sucesso que não houve — que é o erro que eu cometi três vezes em
             // 03/08 afirmando o passo seguinte no lugar do resultado.
+            if (r.acao?.tipo === "reativar" && reativadosNestaPergunta >= 1) {
+              // A RECUSA VOLTA COMO SAÍDA DA FERRAMENTA, não como erro.
+              //
+              // O modelo lê e transforma em pergunta. Se subisse como exceção,
+              // a conversa morreria no meio de um lote — e a lojista ficaria
+              // sem saber quais foram ao ar e quais não.
+              respostas.push({
+                functionResponse: {
+                  name: c.nome,
+                  response: {
+                    reativado: false,
+                    motivo: "limite_de_uma_por_pergunta",
+                    jaReativado: r.acao.mlb,
+                    frase:
+                      "Já reativei um anúncio nesta resposta. Reativar vários de uma vez muda a loja " +
+                      "sem ela conferir — pergunte quais ela quer, um de cada vez, ou mande abrir " +
+                      "Anúncios, onde o lote tem tela própria.",
+                    comoResponder:
+                      "NÃO diga que reativou este. Diga o que já foi ao ar e PERGUNTE antes de seguir.",
+                  },
+                },
+              });
+              continue;
+            }
+
             if (r.acao?.tipo === "reativar") {
+              reativadosNestaPergunta += 1;
               const mlb = r.acao.mlb;
               const t0Acao = Date.now();
               // O RASTRO DA ÚNICA AÇÃO QUE MUDA A LOJA SEM CLIQUE.
