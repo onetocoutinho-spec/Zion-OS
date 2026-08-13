@@ -102,6 +102,8 @@ import { importarPeso } from "@/lib/services/importacaoPeso";
 import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
 import { publicarNoML } from "@/lib/services/publicacaoML";
 import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
@@ -185,8 +187,14 @@ interface Turno {
   pdf?: File;
   /** A análise do catálogo em planilha — a única importação que CRIA. */
   catalogo?: AnaliseProdutos;
-  /** Uma foto largada no clipe, já medida — o veredicto vem antes de subir. */
-  foto?: { arquivo: File; medida: FotoMedida };
+  /**
+   * Uma foto largada no clipe, já medida — o veredicto vem antes de subir.
+   *
+   * `cores` são as do PRODUTO aberto, para o cartão perguntar de qual é.
+   * Vazia quando o produto não tem grade de cor — e aí o cartão não pergunta,
+   * porque perguntar cor de quem não tem cor é ruído.
+   */
+  foto?: { arquivo: File; medida: FotoMedida; cores: string[] };
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -937,9 +945,23 @@ export function ChatDaOperacao({
         ]);
         return;
       }
+      // AS CORES DO PRODUTO, carregadas AQUI e não dentro do cartão.
+      //
+      // Os anúncios desta base são um por cor e tamanho. Sem dizer a cor, a
+      // foto entra sem saber a que anúncio serve — e usá-la depois num anúncio
+      // de outra cor é infração pior que a atual (migração 060).
+      //
+      // A lista sai das VARIANTES, então ela oferece só cores que existem.
+      // Campo livre convidaria a escrever "amarelo claro" para uma variante
+      // chamada "Amarelo", e o casamento falharia sem ninguém entender por quê.
+      const cores = contexto?.produto
+        ? await listarVariantesDoProduto(contexto.produto.id)
+            .then((vs) => coresDoProduto(vs))
+            .catch(() => [])
+        : [];
       setTurnos((t) => [
         ...t,
-        { pergunta: `Enviei a foto ${arquivo.name}`, foto: { arquivo, medida } },
+        { pergunta: `Enviei a foto ${arquivo.name}`, foto: { arquivo, medida, cores } },
       ]);
       return;
     }
@@ -1118,7 +1140,7 @@ export function ChatDaOperacao({
     }
   }
 
-  async function confirmarFoto(indice: number, comoCapa: boolean) {
+  async function confirmarFoto(indice: number, comoCapa: boolean, cor: string | null) {
     const alvo = turnos[indice];
     const produto = contexto?.produto;
     if (!alvo?.foto || !clienteId || !produto) return;
@@ -1130,6 +1152,10 @@ export function ChatDaOperacao({
         clienteId,
         produtoId: produto.id,
         file: alvo.foto.arquivo,
+        // A cor viaja para a COLUNA (migração 060). Ausente quando ela
+        // respondeu "não sei dizer" — e aí a foto fica guardada sem servir de
+        // capa de anúncio, que é o certo: cor errada é pior que cor nenhuma.
+        ...(cor ? { cor } : {}),
       });
       // A CAPA É UM SEGUNDO PASSO, e falhar nele não desfaz o upload: a foto
       // está lá, e dizer "não subiu" seria mentira. Por isso o catch separado.
@@ -1387,6 +1413,7 @@ export function ChatDaOperacao({
                   arquivo={t.foto.arquivo}
                   medida={t.foto.medida}
                   produto={contexto?.produto ?? null}
+                  cores={t.foto.cores}
                   ocupado={t.importandoPlanilha}
                   onCancelar={() =>
                     setTurnos((ts) =>
@@ -1395,7 +1422,7 @@ export function ChatDaOperacao({
                       )
                     )
                   }
-                  onConfirmar={(comoCapa) => void confirmarFoto(i, comoCapa)}
+                  onConfirmar={(comoCapa, cor) => void confirmarFoto(i, comoCapa, cor)}
                 />
               ) : t.catalogo ? (
                 /* O CATÁLOGO É O ÚNICO QUE CRIA — e a tela diz o verbo. Custo e

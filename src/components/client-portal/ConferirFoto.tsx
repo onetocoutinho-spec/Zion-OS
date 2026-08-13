@@ -41,6 +41,7 @@ export function ConferirFoto({
   arquivo,
   medida,
   produto,
+  cores = [],
   ocupado,
   onCancelar,
   onConfirmar,
@@ -49,11 +50,20 @@ export function ConferirFoto({
   medida: FotoMedida;
   /** O produto de destino. `null` = ninguém aberto, e aí não há para onde subir. */
   produto: { id: string; nome: string } | null;
+  /**
+   * As cores DESTE produto, vindas das variantes. Vazia = produto sem grade de
+   * cor, e aí a pergunta não aparece: perguntar cor de quem não tem é ruído.
+   */
+  cores?: readonly string[];
   ocupado?: boolean;
   onCancelar: () => void;
-  onConfirmar: (comoCapa: boolean) => void;
+  onConfirmar: (comoCapa: boolean, cor: string | null) => void;
 }) {
   const [comoCapa, setComoCapa] = useState(true);
+  // COMEÇA VAZIO, de propósito. Pré-selecionar a primeira cor faria a foto do
+  // preto ser gravada como amarela sempre que ela não reparasse no campo — e
+  // uma cor errada é pior que nenhuma, porque `null` pelo menos impede o uso.
+  const [cor, setCor] = useState("");
 
   // A URL do preview é um objeto na memória. Sem revogar, cada foto largada
   // deixa um blob preso até a aba fechar.
@@ -113,10 +123,39 @@ export function ConferirFoto({
             Usar como capa
           </label>
 
+          {/* A COR. Só aparece quando o produto tem grade de cor.
+              Cada anúncio dela é de uma cor — sem esta resposta a foto entra
+              sem saber a que anúncio serve, e usá-la na cor errada troca uma
+              infração de foto por "o anúncio não corresponde ao produto". */}
+          {cores.length > 0 && (
+            <label className="mt-3 block text-sm text-white/70">
+              De qual cor é esta foto?
+              <select
+                value={cor}
+                onChange={(e) => setCor(e.target.value)}
+                disabled={ocupado}
+                className="mt-1 block w-full rounded-md border border-white/10 bg-zinc-900 px-2 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                <option value="">Não sei dizer</option>
+                {cores.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              {!cor && (
+                <span className="mt-1 block text-xs text-amber-300/80">
+                  Sem a cor eu guardo a foto, mas não posso usá-la em anúncio nenhum —
+                  cada anúncio seu é de uma cor.
+                </span>
+              )}
+            </label>
+          )}
+
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              onClick={() => onConfirmar(comoCapa)}
+              onClick={() => onConfirmar(comoCapa, cor.trim() || null)}
               disabled={ocupado}
               className="rounded-md bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/15 disabled:opacity-50"
             >
