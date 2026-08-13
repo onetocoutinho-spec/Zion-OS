@@ -4,7 +4,44 @@ import {
   corDoTitulo,
   ensaiarTrocaDeCapa,
   nenhumaFotoSumiu,
+  idDaFotoNoML,
 } from "./ensaioDaCapa.ts";
+
+// ---------------------------------------------------------------------------
+// O id da foto no ML — o defeito que custou 5 anúncios da lojista
+// ---------------------------------------------------------------------------
+//
+// Medido em 13/08/2026: o envio baixava a url e subia SEMPRE. A url é a
+// variante `-O` (500px), então capas de 1200x1200 viraram cópias de 500x500 —
+// PIORARAM. E como todo upload gera id novo, "já é a capa" nunca reconhecia a
+// mesma imagem reenviada.
+
+test("extrai o id da foto que já vive no ML", () => {
+  assert.equal(
+    idDaFotoNoML("https://http2.mlstatic.com/D_612023-MLB112810638066_072026-O.jpg"),
+    "612023-MLB112810638066_072026"
+  );
+  // O sufixo é a VARIANTE, e nenhuma delas muda o id.
+  assert.equal(
+    idDaFotoNoML("https://http2.mlstatic.com/D_612023-MLB112810638066_072026-F.jpg"),
+    "612023-MLB112810638066_072026"
+  );
+  assert.equal(
+    idDaFotoNoML("https://http2.mlstatic.com/D_730174-MLB114007230609_072026-O.webp"),
+    "730174-MLB114007230609_072026"
+  );
+});
+
+test("foto do Storage dela devolve null — essa precisa subir mesmo", () => {
+  assert.equal(
+    idDaFotoNoML(
+      "https://ouynursknlgtmewcdjzr.supabase.co/storage/v1/object/public/produtos-imagens/x/y/1785851430837-whatsapp.jpeg"
+    ),
+    null
+  );
+  assert.equal(idDaFotoNoML(""), null);
+  assert.equal(idDaFotoNoML("nao-e-url"), null);
+});
 
 // As sete cores REAIS do Chinelo Havaianas Top Liso, lidas do banco em
 // 13/08/2026. `Azul` e `Azul-marinho` juntas não são um caso inventado para o

@@ -34,6 +34,7 @@ import {
   corDoTitulo,
   ensaiarTrocaDeCapa,
   nenhumaFotoSumiu,
+  idDaFotoNoML,
 } from "@/modules/catalog/domain/ensaioDaCapa";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
 
@@ -140,14 +141,42 @@ export async function POST(request: Request) {
     await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
-    // ---- A FOTO SOBE UMA VEZ SÓ, e ainda não entra em anúncio nenhum. ----
-    const arquivo = await fetch(foto.url as string);
-    if (!arquivo.ok) {
-      return Response.json({ erro: "Não consegui baixar a foto do seu cadastro." }, { status: 502 });
+    // ---- A FOTO. Reusar quando ela JÁ vive no ML; subir só quando não vive.
+    //
+    // ===================================================================
+    // O DEFEITO QUE ISTO CONSERTA — cometido por mim em 13/08/2026
+    // ===================================================================
+    //
+    // A primeira versão baixava `foto.url` e subia sempre. Duas falhas de uma
+    // vez, medidas em produção nos 5 anúncios amarelos da lojista:
+    //
+    // 1. `foto.url` é a variante `-O` do CDN do ML, que serve 500px. Subi uma
+    //    cópia de 500x500 de uma imagem cujo original tem 1200x1200 — e as
+    //    capas dela PIORARAM. É exatamente a armadilha que eu tinha escrito na
+    //    migração 059 e na qual entrei mesmo assim.
+    //
+    // 2. Todo upload cria um id NOVO no ML. Então `ja-e-a-capa` nunca dispara
+    //    para a mesma imagem reenviada — e `612023-...`, que já era a capa dos
+    //    cinco, foi "trocada" por uma cópia pior de si mesma.
+    //
+    // Reusar o id resolve os dois: nada é reenviado, nada é reprocessado, e a
+    // foto que já é capa é reconhecida como tal.
+    const idNoML = idDaFotoNoML(foto.url as string);
+    let novaFotoId: string;
+    if (idNoML) {
+      novaFotoId = idNoML;
+      registrar("info", "foto-ja-no-ml", { novaFotoId });
+    } else {
+      // Foto do Storage dela (veio do celular): essa precisa subir mesmo, e o
+      // arquivo lá É o original — não há variante para errar.
+      const arquivo = await fetch(foto.url as string);
+      if (!arquivo.ok) {
+        return Response.json({ erro: "Não consegui baixar a foto do seu cadastro." }, { status: 502 });
+      }
+      const bytes = Buffer.from(await arquivo.arrayBuffer());
+      novaFotoId = await subirFoto(tokens.accessToken, bytes, `${produtoId}-${foto.cor}.jpg`);
+      registrar("info", "foto-no-acervo", { novaFotoId, bytes: bytes.length });
     }
-    const bytes = Buffer.from(await arquivo.arrayBuffer());
-    const novaFotoId = await subirFoto(tokens.accessToken, bytes, `${produtoId}-${foto.cor}.jpg`);
-    registrar("info", "foto-no-acervo", { novaFotoId, bytes: bytes.length });
 
     // ---- UM ANÚNCIO POR VEZ, PARANDO NO PRIMEIRO ERRO ----
     for (const a of daCor) {

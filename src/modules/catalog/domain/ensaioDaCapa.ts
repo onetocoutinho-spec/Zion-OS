@@ -30,6 +30,38 @@
 
 import { normalizarCor } from "./corDaFoto";
 
+/**
+ * O id da foto NO MERCADO LIVRE, extraído da url — ou `null` se ela não vive lá.
+ *
+ * ===========================================================================
+ * POR QUE ISTO EXISTE — defeito medido em 13/08/2026, na conta real
+ * ===========================================================================
+ *
+ * A primeira versão do envio baixava a url e subia a imagem SEMPRE. Duas
+ * falhas de uma vez, nos 5 anúncios amarelos da lojista:
+ *
+ * 1. A url guardada é a variante `-O` do CDN, que serve 500px. Subir a partir
+ *    dela trocou capas de 1200x1200 por cópias de 500x500 — as capas dela
+ *    PIORARAM.
+ *
+ * 2. Todo upload gera id novo. Então "já é a capa" nunca reconhecia a mesma
+ *    imagem reenviada, e a foto que já estava lá foi "trocada" por si mesma.
+ *
+ * As fotos importadas do ML JÁ TÊM id lá dentro, escrito na própria url:
+ * `https://http2.mlstatic.com/D_612023-MLB112810638066_072026-O.jpg` carrega
+ * `612023-MLB112810638066_072026`. Reusar é melhor que reenviar em todos os
+ * sentidos: nada é reprocessado, nada perde resolução, e o id bate.
+ *
+ * `null` para foto do Storage dela (veio do celular): essa precisa subir mesmo,
+ * e lá o arquivo É o original — não há variante para errar.
+ */
+export function idDaFotoNoML(url: string): string | null {
+  const m = /^https?:\/\/[^/]*mlstatic\.com\/D_([A-Za-z0-9_-]+?)-[A-Z]{1,2}\.(jpg|jpeg|png|webp)(\?.*)?$/i.exec(
+    (url ?? "").trim()
+  );
+  return m ? m[1] : null;
+}
+
 /** Um anúncio no ar, como o ensaio precisa vê-lo. */
 export interface AnuncioParaEnsaio {
   mlb: string;
