@@ -40,6 +40,21 @@ const RAIZ = join(process.cwd(), "src");
  * sozinho — todos os números abaixo foram medidos em produção em 10/08/2026.
  */
 const DISPENSADAS: Record<string, string> = {
+  // ---- O ensaio da capa lê UM produto: 41 variantes e 42 anúncios ----
+  //
+  // Os dois `eq(produto_id)`. O maior produto da base é o Chinelo Havaianas
+  // Top Liso, com 41 variantes e 42 anúncios — um por cor e tamanho. Cresce
+  // com a grade do produto, não com o catálogo, e a grade é limitada pelo que
+  // a fábrica fabrica.
+  //
+  // Medido em produção em 13/08/2026. Se um dia um produto passar de 1.000
+  // variantes, o recorte silencioso volta — e aí é paginar, não aumentar o
+  // número aqui.
+  "src/app/api/ml/ensaio-da-capa/route.ts::produto_variantes":
+    "eq(produto_id) — a grade de um produto. Máximo medido: 41 (13/08/2026).",
+  "src/app/api/ml/ensaio-da-capa/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+
   // ---- Tabelas de medidas do CLIENTE: 14 medidas ----
   //
   // Uma por marca, e o catálogo tem menos de vinte marcas. Cresce com o
