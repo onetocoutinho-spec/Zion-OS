@@ -102,6 +102,28 @@ export async function GET(request: Request) {
         variacoes: variacoes.length,
         precoDaPrimeiraVariacao: variacoes[0]?.price ?? null,
       },
+      // AS FOTOS DESTE ANÚNCIO, com o tamanho que o ML guarda de cada uma.
+      //
+      // `pictures` aparecia no inventário desta rota como aninhado IGNORADO —
+      // ela dizia "existe e ninguém lê" e continuava não lendo.
+      //
+      // Isto responde uma pergunta que nada no Zion respondia (12/08/2026):
+      // nossas 651 fotos estão ligadas ao PRODUTO, e nenhuma ao anúncio, então
+      // não se sabia quais fotos cada um dos 460 anúncios tem. Sem isso não dá
+      // para decidir se trocar a capa conserta a infração — e trocar às cegas
+      // é pior, porque `definirFotosDoItem` SUBSTITUI o conjunto: mandar uma
+      // lista incompleta apaga foto.
+      //
+      // `max_size` é o ORIGINAL, não a variante servida pela url. A ordem
+      // importa e vai preservada: a primeira é a capa.
+      fotos: (Array.isArray(item?.pictures) ? (item!.pictures as Record<string, unknown>[]) : []).map(
+        (p, i) => ({
+          ordem: i,
+          id: String(p.id ?? ""),
+          maxSize: String(p.max_size ?? ""),
+          qualidade: p.quality ?? null,
+        })
+      ),
       // O que o ML manda usar a partir de agora:
       dePrices: {
         status: precosResp.status,
