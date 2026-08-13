@@ -81,6 +81,11 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
+    // A COR VIRA COLUNA. Ela já chegava aqui e ia parar em `observacoes`, texto
+    // livre que não casa com variante nenhuma — a informação existia e não era
+    // consultável. `null` quando ninguém disse: foto de cor desconhecida não é
+    // candidata a capa de anúncio colorido. Migração 060.
+    cor: opcoes.cor?.trim() || null,
     ...dimensao,
   });
 }

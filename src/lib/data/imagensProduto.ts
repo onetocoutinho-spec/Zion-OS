@@ -16,6 +16,7 @@ export const imagensProduto: ImagemProduto[] = [
     observacoes: "Fundo branco, sapato de 3/4.",
     largura: null,
     altura: null,
+    cor: null,
   },
   {
     id: "img-02",
@@ -29,5 +30,6 @@ export const imagensProduto: ImagemProduto[] = [
     observacoes: "Modelo usando o tênis preto.",
     largura: null,
     altura: null,
+    cor: null,
   },
 ];

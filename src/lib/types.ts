@@ -282,6 +282,16 @@ export interface ImagemProduto {
    */
   largura: number | null;
   altura: number | null;
+  /**
+   * A cor desta foto, na MESMA string de `produto_variantes.cor` (migração 060).
+   *
+   * `null` = não sabemos de que cor é — NUNCA "serve para todas". Os anúncios
+   * desta base são um por cor e tamanho, e usar foto de cor desconhecida numa
+   * variante colorida troca uma infração de foto por uma de "o anúncio não
+   * corresponde ao produto" — a categoria com que o ML já pausou 25 anúncios
+   * desta conta.
+   */
+  cor: string | null;
 }
 
 export type AreaAgente =

@@ -1033,6 +1033,10 @@ export async function importarAnunciosDoCliente(
         // honesta destas viria de outra leitura, contra o sufixo `-F`.
         largura: null,
         altura: null,
+        // A importação traz as fotos DO ANÚNCIO, e o anúncio é por cor — mas o
+        // ML não diz de que cor é cada foto. `null` guarda essa ignorância;
+        // adivinhar pela ordem poria a foto amarela no anúncio azul.
+        cor: null,
       });
     });
     imagens.push(...doProduto);

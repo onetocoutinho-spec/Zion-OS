@@ -522,6 +522,9 @@ export function imagemParaApp(row: ImagemProdutoRow): ImagemProduto {
     // distinção que o resto deste sistema já paga caro para manter.
     largura: row.largura ?? null,
     altura: row.altura ?? null,
+    // Sem `?? ""`: string vazia passaria por preenchida em toda checagem e não
+    // casaria com variante nenhuma — a ausência disfarçada de resposta.
+    cor: row.cor ?? null,
   };
 }
 
@@ -541,6 +544,7 @@ export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unkno
   // exatamente a confusão que a 059 existe para acabar.
   if (d.largura !== undefined) r.largura = d.largura;
   if (d.altura !== undefined) r.altura = d.altura;
+  if (d.cor !== undefined) r.cor = d.cor;
   return r;
 }
 

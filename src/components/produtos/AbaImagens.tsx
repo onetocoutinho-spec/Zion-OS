@@ -69,6 +69,9 @@ export function AbaImagens({ produto }: { produto: Produto }) {
       // capa. Quem sobe arquivo (`uploadImagemProduto`) mede.
       largura: null,
       altura: null,
+      // URL colada não diz cor. Quem sobe ARQUIVO pelo portal escolhe a cor da
+      // lista do produto; aqui não há de onde tirar.
+      cor: null,
     });
     setUrl("");
   }

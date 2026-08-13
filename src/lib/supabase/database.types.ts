@@ -209,6 +209,8 @@ export interface ImagemProdutoRow {
   /** Migração 059. `null` = não medimos — nunca "não tem". */
   largura: number | null;
   altura: number | null;
+  /** Migração 060. `null` = não sabemos a cor — nunca "serve para todas". */
+  cor: string | null;
 }
 
 // ---- v1.8: Auditoria em massa ----
