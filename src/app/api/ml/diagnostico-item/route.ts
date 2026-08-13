@@ -101,6 +101,15 @@ export async function GET(request: Request) {
         shipping_dimensions: (item?.shipping as { dimensions?: string })?.dimensions ?? null,
         variacoes: variacoes.length,
         precoDaPrimeiraVariacao: variacoes[0]?.price ?? null,
+        // O VÍDEO. O ML devolve `video_id` e a importação do Zion o LÊ — ele
+        // aparece entre os campos usados — mas ninguém o guarda: não existe
+        // coluna de vídeo em tabela nenhuma. É o mesmo formato que já custou
+        // dias nesta base: o dado chega e é descartado na borda.
+        //
+        // Aqui vai o VALOR, não só a presença: saber que o campo veio não
+        // responde se ela usa vídeo, e é essa resposta que decide se isso é
+        // dado dela sendo perdido ou oportunidade que nunca existiu.
+        video_id: (item?.video_id as string | null) ?? null,
       },
       // AS FOTOS DESTE ANÚNCIO, com o tamanho que o ML guarda de cada uma.
       //
