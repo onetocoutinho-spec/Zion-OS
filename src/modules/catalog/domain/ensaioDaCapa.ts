@@ -1,0 +1,171 @@
+// O ENSAIO DA TROCA DE CAPA: o que aconteceria, sem que nada aconteça.
+//
+// ===========================================================================
+// AS DUAS PERGUNTAS PERIGOSAS, E POR QUE ELAS MORAM AQUI
+// ===========================================================================
+//
+// 1. QUAIS anúncios esta foto tocaria?
+//
+//    `anuncio_variantes` está VAZIA (medido em 13/08/2026: zero vínculos), e
+//    `imagens_produto` não liga foto a anúncio. A única ponte entre anúncio e
+//    cor é o TÍTULO — "Chinelo Havaianas Top Liso Amarelo 33 - 34".
+//
+//    Ler cor de texto é adivinhar, e adivinhar errado põe a foto amarela no
+//    anúncio azul: troca uma infração de FOTO por uma de "o anúncio não
+//    corresponde ao produto", que é a que PAUSA. Então este módulo adivinha o
+//    mínimo e RECUSA quando há dúvida.
+//
+//    A armadilha é real nesta base: o Havaianas Top Liso tem `Azul` E
+//    `Azul-marinho`. Um `includes("Azul")` casa com os dois.
+//
+// 2. Qual seria a lista nova de fotos?
+//
+//    `definirFotosDoItem` SUBSTITUI o conjunto no Mercado Livre — mandar lista
+//    incompleta APAGA foto do anúncio dela. A composição não pode perder nada,
+//    e é por isso que ela é uma função pura com teste, e não três linhas
+//    dentro de uma rota.
+//
+// Nada aqui chama rede, escreve ou decide por ninguém. O ensaio é para ela
+// LER antes de autorizar.
+
+import { normalizarCor } from "./corDaFoto";
+
+/** Um anúncio no ar, como o ensaio precisa vê-lo. */
+export interface AnuncioParaEnsaio {
+  mlb: string;
+  titulo: string;
+  /** Os ids das fotos NO ML, na ordem atual. A primeira é a capa. */
+  fotos: readonly string[];
+}
+
+export type MotivoDeFora =
+  | "cor-nao-aparece-no-titulo"
+  | "titulo-cita-mais-de-uma-cor"
+  | "ja-e-a-capa"
+  | "sem-fotos-lidas";
+
+export interface AlvoDoEnsaio {
+  mlb: string;
+  titulo: string;
+  /** A lista que seria enviada. A primeira é a capa nova. */
+  novaOrdem: readonly string[];
+  /** Quantas fotos o anúncio tem hoje — para conferir que nenhuma some. */
+  fotosHoje: number;
+}
+
+export interface ForaDoEnsaio {
+  mlb: string;
+  titulo: string;
+  motivo: MotivoDeFora;
+}
+
+export interface Ensaio {
+  alvos: readonly AlvoDoEnsaio[];
+  fora: readonly ForaDoEnsaio[];
+}
+
+/**
+ * A cor deste título, entre as cores conhecidas do produto.
+ *
+ * Casa por PALAVRA INTEIRA e devolve a MAIS LONGA — `Azul-marinho` vence
+ * `Azul` num título que diz "Azul-marinho". Quando duas cores de mesmo
+ * comprimento casam, devolve `null`: o título cita duas e escolher uma seria
+ * apostar com a conta dela.
+ */
+export function corDoTitulo(
+  titulo: string,
+  cores: readonly string[]
+): string | null {
+  const alvo = normalizarCor(titulo);
+  const casam = cores.filter((c) => {
+    const n = normalizarCor(c);
+    if (!n) return false;
+    // Fronteira de palavra na string JÁ normalizada. Sem isto, `Azul` casaria
+    // dentro de `Azulado` e a foto iria para o anúncio errado.
+    return new RegExp(`(^|[^a-z0-9])${escapar(n)}([^a-z0-9]|$)`).test(alvo);
+  });
+  if (casam.length === 0) return null;
+  const maior = Math.max(...casam.map((c) => normalizarCor(c).length));
+  const finalistas = casam.filter((c) => normalizarCor(c).length === maior);
+  // Duas cores DIFERENTES de mesmo tamanho no mesmo título: "Preto/Branco" num
+  // produto que tem `Preto` e `Branco` soltos, por exemplo. Não dá para saber.
+  return finalistas.length === 1 ? finalistas[0] : null;
+}
+
+function escapar(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+}
+
+/**
+ * O que a troca faria, anúncio por anúncio.
+ *
+ * `novaFotoId` é a foto DELA já no ML (subida antes, sem entrar em anúncio
+ * nenhum). A composição põe ela na frente e PRESERVA todas as outras atrás, na
+ * ordem em que estavam — inclusive a capa velha, que vira segunda.
+ */
+export function ensaiarTrocaDeCapa(
+  anuncios: readonly AnuncioParaEnsaio[],
+  cores: readonly string[],
+  corDaFoto: string,
+  novaFotoId: string
+): Ensaio {
+  const alvos: AlvoDoEnsaio[] = [];
+  const fora: ForaDoEnsaio[] = [];
+  const querida = normalizarCor(corDaFoto);
+
+  for (const a of anuncios) {
+    const cor = corDoTitulo(a.titulo, cores);
+    if (cor === null) {
+      // Duas causas diferentes, e a lojista precisa saber qual: título sem cor
+      // nenhuma é anúncio que talvez nem seja da grade; título com duas é
+      // ambiguidade que ela resolve renomeando.
+      const quantas = cores.filter((c) =>
+        normalizarCor(a.titulo).includes(normalizarCor(c))
+      ).length;
+      fora.push({
+        mlb: a.mlb,
+        titulo: a.titulo,
+        motivo: quantas > 1 ? "titulo-cita-mais-de-uma-cor" : "cor-nao-aparece-no-titulo",
+      });
+      continue;
+    }
+    if (normalizarCor(cor) !== querida) continue; // outra cor: nem entra no ensaio
+
+    if (a.fotos.length === 0) {
+      // Sem leitura das fotos não dá para compor lista nenhuma — e mandar só a
+      // nova apagaria as que existem lá.
+      fora.push({ mlb: a.mlb, titulo: a.titulo, motivo: "sem-fotos-lidas" });
+      continue;
+    }
+    if (a.fotos[0] === novaFotoId) {
+      fora.push({ mlb: a.mlb, titulo: a.titulo, motivo: "ja-e-a-capa" });
+      continue;
+    }
+
+    // A NOVA NA FRENTE, TODAS AS OUTRAS ATRÁS. O filtro evita duplicar quando
+    // a foto já está no anúncio em outra posição — mandar o mesmo id duas vezes
+    // é pedido malformado, e o ML já recusou payload assim nesta conta.
+    const novaOrdem = [novaFotoId, ...a.fotos.filter((f) => f !== novaFotoId)];
+    alvos.push({
+      mlb: a.mlb,
+      titulo: a.titulo,
+      novaOrdem,
+      fotosHoje: a.fotos.length,
+    });
+  }
+
+  return { alvos, fora };
+}
+
+/**
+ * A conferência que impede o ensaio de virar perda de foto.
+ *
+ * Chamada ANTES de qualquer envio: se a lista nova não contém tudo o que a
+ * antiga tinha, alguém errou a composição e o envio apagaria foto da lojista.
+ */
+export function nenhumaFotoSumiu(
+  antes: readonly string[],
+  depois: readonly string[]
+): boolean {
+  return antes.every((f) => depois.includes(f));
+}
