@@ -1,0 +1,101 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+// A ÚNICA rota deste caminho que escreve nos anúncios no ar. Três regras a
+// governam, decididas com o dono em 13/08/2026, e todas as três são invisíveis
+// numa revisão rápida de código.
+//
+//   1. uma cor por vez        — não existe "arruma tudo"
+//   2. para no primeiro erro  — metade trocada sem saber quais é o pior desfecho
+//   3. confere depois de cada — `200` do ML é "aceitei", não "troquei"
+//
+// A terceira tem cicatriz: em 03/08/2026 alguém afirmou "capa ajustada" com
+// base no 200, a lojista reconferiu, e a capa era a antiga.
+
+const FONTE = readFileSync(new URL("./aplicar-capa/route.ts", import.meta.url), "utf8");
+const CODIGO = FONTE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+test("REGRA 2 — para no primeiro erro, e devolve o que já foi", () => {
+  // `parcial()` existe para isso: nunca 500 seco depois de ter trocado alguns.
+  assert.match(CODIGO, /function parcial\(/, "a resposta de parada sumiu");
+  // Todo caminho de falha DENTRO do laço tem que sair com `return parcial(`.
+  const i = CODIGO.indexOf("for (const a of daCor)");
+  const fim = CODIGO.indexOf("return Response.json({\n      ok: true", i);
+  assert.ok(i > 0 && fim > i, "o laço de escrita mudou de forma");
+  const laco = CODIGO.slice(i, fim);
+  assert.equal(
+    (laco.match(/return parcial\(/g) ?? []).length,
+    4,
+    "mudou o número de saídas por `parcial` — ou uma falha passou a seguir em " +
+      "frente, e aí a lojista fica com metade dos anúncios trocados"
+  );
+  assert.ok(
+    !/continue;\s*\}\s*catch/.test(laco),
+    "alguma falha virou `continue` — o laço deixou de parar no primeiro erro"
+  );
+});
+
+test("REGRA 3 — confere a capa DEPOIS de cada envio", () => {
+  const i = CODIGO.indexOf("definirFotosDoItem(tokens.accessToken");
+  assert.ok(i > 0, "o envio sumiu");
+  const depois = CODIGO.slice(i, i + 900);
+  assert.match(
+    depois,
+    /attributes=id,pictures/,
+    "sumiu a releitura pós-envio: `200` voltaria a ser lido como 'trocou'"
+  );
+  assert.match(
+    depois,
+    /capaAgora !== novaFotoId/,
+    "sumiu a comparação da capa com a foto enviada"
+  );
+});
+
+test("a composição é RECOMPOSTA no servidor, do estado de agora", () => {
+  // Se o plano viesse do cliente, uma lista montada dez minutos antes apagaria
+  // a foto que entrou nesse meio-tempo.
+  assert.match(CODIGO, /ensaiarTrocaDeCapa\(/, "o plano deixou de ser recomposto aqui");
+  assert.ok(
+    !/corpo\.(alvos|novaOrdem|plano)/.test(CODIGO),
+    "a rota passou a aceitar o plano do cliente — lista velha apaga foto"
+  );
+});
+
+test("a última tranca antes de escrever: nenhuma foto pode sumir", () => {
+  const iTranca = CODIGO.indexOf("nenhumaFotoSumiu(");
+  const iEnvio = CODIGO.indexOf("await definirFotosDoItem(");
+  assert.ok(iTranca > 0 && iEnvio > 0, "a tranca ou o envio sumiram");
+  assert.ok(
+    iTranca < iEnvio,
+    "a conferência de fotos passou para DEPOIS do envio — ela existe justamente " +
+      "para impedir o envio que apaga"
+  );
+});
+
+test("foto sem cor não chega a escrever", () => {
+  const iCor = CODIGO.indexOf("motivo: \"sem-cor\"");
+  const iEnvio = CODIGO.indexOf("await definirFotosDoItem(");
+  assert.ok(iCor > 0 && iCor < iEnvio, "a recusa por falta de cor saiu da frente do envio");
+});
+
+test("a foto sobe UMA vez, fora do laço", () => {
+  const iSubir = CODIGO.indexOf("await subirFoto(");
+  const iLaco = CODIGO.indexOf("for (const a of daCor)");
+  assert.ok(iSubir > 0 && iLaco > 0, "o upload ou o laço sumiram");
+  assert.ok(
+    iSubir < iLaco,
+    "o upload entrou no laço: cada anúncio criaria uma cópia da mesma foto no " +
+      "acervo dela"
+  );
+});
+
+test("cada passo deixa rastro", () => {
+  // A única ação deste caminho que muda o que a compradora vê. `grep
+  // "ml.aplicarCapa"` nos logs tem que responder o que aconteceu sem depender
+  // do print da conversa — mesma disciplina de `chat.reativar`.
+  assert.match(CODIGO, /src: "ml\.aplicarCapa"/);
+  for (const evento of ["foto-no-acervo", "trocou", "capa-nao-mudou", "ml-recusou"]) {
+    assert.ok(CODIGO.includes(evento), `sumiu o evento \`${evento}\` do rastro`);
+  }
+});

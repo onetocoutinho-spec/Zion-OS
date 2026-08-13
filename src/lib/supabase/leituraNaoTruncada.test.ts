@@ -54,6 +54,13 @@ const DISPENSADAS: Record<string, string> = {
     "eq(produto_id) — a grade de um produto. Máximo medido: 41 (13/08/2026).",
   "src/app/api/ml/ensaio-da-capa/route.ts::anuncios_gerados":
     "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+  // A rota que APLICA lê as mesmas duas coisas, do mesmo jeito e pelo mesmo
+  // motivo: ela recompõe o plano do estado de agora em vez de aceitá-lo do
+  // cliente. Mesmos números medidos.
+  "src/app/api/ml/aplicar-capa/route.ts::produto_variantes":
+    "eq(produto_id) — a grade de um produto. Máximo medido: 41 (13/08/2026).",
+  "src/app/api/ml/aplicar-capa/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
 
   // ---- Tabelas de medidas do CLIENTE: 14 medidas ----
   //
