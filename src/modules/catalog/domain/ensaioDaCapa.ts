@@ -189,6 +189,67 @@ export function ensaiarTrocaDeCapa(
   return { alvos, fora };
 }
 
+/** Uma foto do anúncio como o ML a descreve. `maxSize` é o ORIGINAL. */
+export interface FotoDoAnuncio {
+  id: string;
+  maxSize: string;
+}
+
+export interface PromocaoDaMelhor {
+  /** A foto que deveria ser a capa. `null` = não há candidata melhor. */
+  melhor: string | null;
+  novaOrdem: readonly string[];
+  motivo: "trocar" | "capa-ja-e-a-melhor" | "nenhuma-serve";
+}
+
+/**
+ * Promove a MELHOR foto que JÁ ESTÁ no anúncio.
+ *
+ * ===========================================================================
+ * POR QUE ISTO É MAIS SEGURO QUE TUDO O QUE VEIO ANTES
+ * ===========================================================================
+ *
+ * Não sobe nada, não consulta o cadastro, e — o ponto — NÃO PRECISA SABER A
+ * COR. Se a foto já está naquele anúncio, ela já é daquele produto e daquela
+ * cor: quem a colocou ali foi a lojista. A adivinhação de cor por título, que
+ * é a parte frágil do outro caminho, simplesmente não acontece.
+ *
+ * Medido em 13/08/2026: 23 anúncios de 4 produtos têm a foto 1200x1200 dentro
+ * deles, em segundo ou terceiro lugar, com uma pior na frente.
+ *
+ * "Melhor" é quadrada e com o lado mínimo — a régua do ML e do resto do
+ * sistema. Entre as que servem, a maior. Nenhuma que sirva, nada a fazer:
+ * inventar um critério secundário aqui poria uma foto ruim na frente de outra
+ * ruim, gastando uma escrita para não mudar nada.
+ */
+export function promoverMelhorFoto(
+  fotos: readonly FotoDoAnuncio[],
+  ladoMinimo: number
+): PromocaoDaMelhor {
+  const medida = (f: FotoDoAnuncio) => {
+    const [w, h] = (f.maxSize ?? "").split("x").map((n) => Number(n));
+    return { w: Number.isFinite(w) ? w : 0, h: Number.isFinite(h) ? h : 0 };
+  };
+  const servem = fotos.filter((f) => {
+    const { w, h } = medida(f);
+    return w > 0 && w === h && w >= ladoMinimo;
+  });
+  if (servem.length === 0) {
+    return { melhor: null, novaOrdem: fotos.map((f) => f.id), motivo: "nenhuma-serve" };
+  }
+  const melhor = servem.reduce((a, f) => (medida(f).w > medida(a).w ? f : a), servem[0]);
+  if (fotos[0]?.id === melhor.id) {
+    return { melhor: melhor.id, novaOrdem: fotos.map((f) => f.id), motivo: "capa-ja-e-a-melhor" };
+  }
+  // TODAS as outras seguem atrás, na ordem em que estavam. `definirFotosDoItem`
+  // substitui o conjunto: o que não entrar aqui some do anúncio.
+  return {
+    melhor: melhor.id,
+    novaOrdem: [melhor.id, ...fotos.filter((f) => f.id !== melhor.id).map((f) => f.id)],
+    motivo: "trocar",
+  };
+}
+
 /**
  * A conferência que impede o ensaio de virar perda de foto.
  *

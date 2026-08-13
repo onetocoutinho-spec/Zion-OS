@@ -5,7 +5,95 @@ import {
   ensaiarTrocaDeCapa,
   nenhumaFotoSumiu,
   idDaFotoNoML,
+  promoverMelhorFoto,
 } from "./ensaioDaCapa.ts";
+
+// ---------------------------------------------------------------------------
+// Promover a melhor foto que JÁ ESTÁ no anúncio
+// ---------------------------------------------------------------------------
+//
+// O caminho mais seguro de todos: não sobe nada, não consulta o cadastro e não
+// precisa saber a cor. Se a foto já está naquele anúncio, ela já é daquele
+// produto e daquela cor — quem a colocou ali foi a lojista.
+//
+// Medido em 13/08/2026: 23 anúncios de 4 produtos têm a 1200x1200 dentro
+// deles, em segundo ou terceiro lugar, com uma pior na frente.
+
+test("promove a quadrada 1200 que está em segundo", () => {
+  const r = promoverMelhorFoto(
+    [
+      { id: "A", maxSize: "961x1200" },
+      { id: "B", maxSize: "1200x1200" },
+    ],
+    1200
+  );
+  assert.equal(r.motivo, "trocar");
+  assert.equal(r.melhor, "B");
+  assert.deepEqual(r.novaOrdem, ["B", "A"]);
+});
+
+test("nenhuma foto some ao promover — o dano mais caro deste caminho", () => {
+  const fotos = [
+    { id: "A", maxSize: "900x1200" },
+    { id: "B", maxSize: "900x1200" },
+    { id: "C", maxSize: "1200x1200" },
+  ];
+  const r = promoverMelhorFoto(fotos, 1200);
+  assert.deepEqual(r.novaOrdem, ["C", "A", "B"]);
+  assert.ok(nenhumaFotoSumiu(fotos.map((f) => f.id), r.novaOrdem));
+});
+
+test("capa que JÁ é a melhor não gera escrita", () => {
+  // Foi exatamente o caso do Havaianas Top Liso: rodar assim mesmo trocou uma
+  // 1200x1200 por uma cópia de 500px dela.
+  const r = promoverMelhorFoto(
+    [
+      { id: "A", maxSize: "1200x1200" },
+      { id: "B", maxSize: "961x1200" },
+    ],
+    1200
+  );
+  assert.equal(r.motivo, "capa-ja-e-a-melhor");
+  assert.deepEqual(r.novaOrdem, ["A", "B"]);
+});
+
+test("nenhuma que sirva: não inventa critério secundário", () => {
+  // Promover a "menos ruim" gastaria uma escrita para não resolver nada, e
+  // ainda mexeria na vitrine dela sem ganho.
+  const r = promoverMelhorFoto(
+    [
+      { id: "A", maxSize: "465x189" },
+      { id: "B", maxSize: "618x598" },
+    ],
+    1200
+  );
+  assert.equal(r.motivo, "nenhuma-serve");
+  assert.equal(r.melhor, null);
+});
+
+test("entre as que servem, vence a maior", () => {
+  const r = promoverMelhorFoto(
+    [
+      { id: "A", maxSize: "900x1200" },
+      { id: "B", maxSize: "1200x1200" },
+      { id: "C", maxSize: "1600x1600" },
+    ],
+    1200
+  );
+  assert.equal(r.melhor, "C");
+});
+
+test("medida ilegível não vira candidata", () => {
+  // `maxSize` vazio ou estranho é ausência de medida, não uma foto boa.
+  const r = promoverMelhorFoto(
+    [
+      { id: "A", maxSize: "" },
+      { id: "B", maxSize: "sem-medida" },
+    ],
+    1200
+  );
+  assert.equal(r.motivo, "nenhuma-serve");
+});
 
 // ---------------------------------------------------------------------------
 // O id da foto no ML — o defeito que custou 5 anúncios da lojista
