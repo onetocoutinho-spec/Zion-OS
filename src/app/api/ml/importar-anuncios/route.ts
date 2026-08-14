@@ -114,6 +114,12 @@ export async function POST(request: Request) {
         erroDoMultiget: leitura.erroDoMultiget,
         filtroDeCamposRecusado: leitura.filtroDeCamposRecusado,
         falhaDaLeituraFoiNossa: leitura.falhaDaLeituraFoiNossa,
+        // O FRETE, medido na fonte: quantos itens o multiget devolveu com o
+        // objeto `shipping`, e quantos com `free_shipping` dentro dele. Sem
+        // estes dois números, "nenhum anúncio informou o frete" é indistinguível
+        // de "nós não perguntamos direito".
+        itensComShipping: leitura.itensComShipping,
+        itensComFreteInformado: leitura.itensComFreteInformado,
       },
     });
   } catch (e) {
