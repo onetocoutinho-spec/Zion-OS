@@ -79,3 +79,25 @@ test("o plano é feito no servidor, não aceito do cliente", () => {
   );
   assert.match(CODIGO, /await planejar\(/);
 });
+
+test("o ensaio tem CONTINUAÇÃO — teto sem `desde` esconde o fim da lista", () => {
+  // MEDIDO EM 14/08/2026, na varredura dos 36 produtos com capa fora do
+  // padrão: 391 anúncios, 228 lidos, 163 FORA DE ALCANCE. O teto cortava
+  // sempre os 12 PRIMEIROS, então rechamar trazia os mesmos 12 e o fim da
+  // lista nunca era visto.
+  //
+  // `naoLidos` dizia o número. Dizer não basta quando não há como chegar lá —
+  // é o mesmo defeito que `aplicar-capa` teve na escrita, aqui na leitura.
+  assert.ok(
+    !/const alvos = todos\.slice\(0, MAXIMO_POR_CHAMADA\)/.test(CODIGO),
+    "o teto voltou a cortar sempre do começo — o fim da lista fica inalcançável"
+  );
+  assert.match(CODIGO, /todos\.slice\(inicio, inicio \+ MAXIMO_POR_CHAMADA\)/);
+
+  const i = CODIGO.indexOf("export async function GET(");
+  const get = CODIGO.slice(i, CODIGO.indexOf("export async function POST("));
+  assert.match(get, /searchParams\.get\("desde"\)/, "o GET não aceita continuar de onde parou");
+  assert.match(get, /proximoDesde:/, "a resposta não diz por onde continuar");
+  // E o que falta tem que descontar a janela já lida, senão o total mente.
+  assert.match(get, /total - \(inicio \+ passos\.length\)/, "`naoLidos` parou de descontar a janela");
+});

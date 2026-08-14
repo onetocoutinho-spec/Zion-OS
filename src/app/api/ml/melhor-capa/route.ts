@@ -57,7 +57,17 @@ async function planejar(
   supabase: NonNullable<Awaited<ReturnType<typeof exigirAcessoAoCliente>>["supabase"]>,
   clienteId: string,
   produtoId: string,
-  auth: HeadersInit
+  auth: HeadersInit,
+  /**
+   * De onde continuar. O teto é por CHAMADA, não por produto — sem este
+   * deslocamento, o produto com 40 anúncios devolvia sempre os 12 primeiros e
+   * os 28 do fim eram inalcançáveis, por mais que se rechamasse.
+   *
+   * Medido em 14/08/2026 na varredura dos 36 produtos com capa fora do padrão:
+   * 391 anúncios, 228 lidos, **163 fora de alcance**. `naoLidos` dizia o
+   * número — dizer não é o bastante quando não há como chegar lá.
+   */
+  desde = 0
 ): Promise<{ passos: Passo[]; falhas: { mlb: string; erro: string }[]; total: number }> {
   const { data: anuncios } = await supabase
     .from("anuncios_gerados")
@@ -67,7 +77,8 @@ async function planejar(
     .not("ml_item_id", "is", null);
 
   const todos = (anuncios ?? []).map((a) => a.ml_item_id as string);
-  const alvos = todos.slice(0, MAXIMO_POR_CHAMADA);
+  const inicio = Math.max(0, Math.floor(desde) || 0);
+  const alvos = todos.slice(inicio, inicio + MAXIMO_POR_CHAMADA);
   const passos: Passo[] = [];
   const falhas: { mlb: string; erro: string }[] = [];
 
@@ -146,18 +157,26 @@ export async function GET(request: Request) {
   }
   if ("recusa" in sessao) return sessao.recusa;
 
+  const desde = Number(searchParams.get("desde") ?? 0);
   const { passos, falhas, total } = await planejar(
     sessao.supabase,
     clienteId,
     produtoId,
-    sessao.auth
+    sessao.auth,
+    desde
   );
+  const inicio = Math.max(0, Math.floor(desde) || 0);
   const trocar = passos.filter((p) => p.motivo === "trocar");
   return Response.json({
     ensaio: true,
     anunciosDoProduto: total,
+    desde: inicio,
     lidos: passos.length,
-    naoLidos: Math.max(0, total - passos.length),
+    // O QUE FALTA DEPOIS DESTA JANELA, e por onde continuar. Um número sem
+    // continuação é o mesmo que não ter contado: a varredura de 14/08 parou
+    // com 163 anúncios fora de alcance porque o teto não tinha `desde`.
+    naoLidos: Math.max(0, total - (inicio + passos.length)),
+    proximoDesde: inicio + passos.length < total ? inicio + passos.length : null,
     trocariam: trocar.length,
     jaEstaoCertos: passos.filter((p) => p.motivo === "capa-ja-e-a-melhor").length,
     semFotoBoa: passos.filter((p) => p.motivo === "nenhuma-serve").length,
