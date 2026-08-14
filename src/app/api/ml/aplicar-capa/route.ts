@@ -239,7 +239,9 @@ export async function POST(request: Request) {
 
       // CONFERE. Sem isto, `200` viraria "trocou" — o defeito de 03/08.
       const rDepois = await fetch(`${API}/items/${a.mlb}?attributes=id,pictures`, { headers: auth });
-      const depois = rDepois.ok ? ((await rDepois.json()) as { pictures?: { id?: string }[] }) : null;
+      const depois = rDepois.ok
+        ? ((await rDepois.json()) as { pictures?: { id?: string; max_size?: string }[] })
+        : null;
       const capaAgora = (depois?.pictures ?? [])[0]?.id?.trim() ?? "";
       if (capaAgora !== novaFotoId) {
         registrar("error", "capa-nao-mudou", { mlb: a.mlb, capaAgora });
@@ -250,13 +252,38 @@ export async function POST(request: Request) {
           foto.cor as string
         );
       }
+      // ANOTA O QUE ACABAMOS DE FAZER.
+      // ===================================================================
+      // Medido em 14/08/2026, logo depois da primeira troca real: o Mercado
+      // Livre passou a dizer `1200x1200` e `anuncios_gerados` continuou
+      // dizendo `402x496` nos dez. Nós mudamos a capa e não anotamos.
+      //
+      // O custo não é cosmético. `foto_capa_max_size` é a coluna que a
+      // análise de capa lê: sem esta escrita, a lista de pendências segue
+      // cobrando o que já foi resolvido até a lojista mandar reler a conta —
+      // e ela não tem por que saber que precisa.
+      //
+      // Falhar AQUI não desfaz nada e não vira erro: a capa no ar já está
+      // certa, e responder "não deu" sobre o que deu seria a mentira que este
+      // arquivo inteiro existe para não contar. Vira rastro.
+      const tamanhoAgora = ((depois?.pictures ?? [])[0]?.max_size ?? "").trim();
+      if (tamanhoAgora) {
+        const { error: erroAnotar } = await ctx.supabase
+          .from("anuncios_gerados")
+          .update({ foto_capa_max_size: tamanhoAgora })
+          .eq("cliente_id", clienteId)
+          .eq("ml_item_id", a.mlb);
+        if (erroAnotar) {
+          registrar("warn", "trocou-mas-nao-anotou", { mlb: a.mlb, erro: erroAnotar.message });
+        }
+      }
       feitos.push({
         mlb: a.mlb,
         titulo: a.titulo,
         fotosAntes: idsAntes.length,
         fotosDepois: (depois?.pictures ?? []).length,
       });
-      registrar("info", "trocou", { mlb: a.mlb });
+      registrar("info", "trocou", { mlb: a.mlb, capa: tamanhoAgora });
     }
 
     // O QUE FICOU DE FORA ENTRA NA FRASE. Um teto calado se lê como "acabou",

@@ -64,6 +64,38 @@ test("REGRA 4 — o teto conta ESCRITAS, e o que sobrou entra na frase", () => {
   assert.match(resposta, /frase:[\s\S]{0,300}\+ sobra/, "a frase deixou de somar a sobra");
 });
 
+test("REGRA 5 — o que trocamos fica ANOTADO, ou a pendência cobra o que já foi", () => {
+  // MEDIDO EM 14/08/2026, na primeira troca real pelo chat: os 10 anúncios
+  // Azul-marinho do Havaianas Top Liso passaram a ter capa 1200x1200 no
+  // Mercado Livre, e `anuncios_gerados.foto_capa_max_size` continuou em
+  // `402x496` nos dez.
+  //
+  // `foto_capa_max_size` é a coluna que a análise de capa lê. Sem esta
+  // escrita, a lista de pendências segue cobrando o que já foi resolvido até
+  // a lojista mandar reler a conta — e ela não tem por que saber disso.
+  const i = CODIGO.indexOf("capaAgora !== novaFotoId");
+  const j = CODIGO.indexOf("feitos.push({", i);
+  assert.ok(i > 0 && j > i, "o bloco de confirmação mudou de forma");
+  const entre = CODIGO.slice(i, j);
+  assert.match(entre, /foto_capa_max_size: tamanhoAgora/, "a anotação sumiu");
+  assert.match(entre, /\.eq\("ml_item_id", a\.mlb\)/, "a anotação deixou de mirar ESTE anúncio");
+  // E ela só pode acontecer DEPOIS da confirmação: anotar antes gravaria o
+  // tamanho de uma troca que o ML pode não ter feito.
+  assert.ok(
+    CODIGO.indexOf("foto_capa_max_size: tamanhoAgora") > i,
+    "a anotação passou para antes da conferência da capa"
+  );
+  // Falhar ao anotar NÃO pode virar erro da troca: a capa no ar já está certa.
+  assert.match(entre, /trocou-mas-nao-anotou/, "a falha de anotação virou silêncio ou virou erro");
+  // Ancorado NO BLOCO do `if (erroAnotar)`, e não no trecho inteiro: um
+  // `[\s\S]*` aqui atravessava o `return parcial(` da conferência de capa,
+  // logo acima, e reprovava código correto.
+  const trecho = entre.slice(entre.indexOf("if (erroAnotar)"));
+  const blocoDaFalha = trecho.slice(0, trecho.indexOf("}") + 1);
+  assert.ok(blocoDaFalha.length > 10, "o tratamento da falha de anotação sumiu");
+  assert.ok(!/return/.test(blocoDaFalha), "anotar virou motivo de parada");
+});
+
 test("REGRA 3 — confere a capa DEPOIS de cada envio", () => {
   const i = CODIGO.indexOf("definirFotosDoItem(tokens.accessToken");
   assert.ok(i > 0, "o envio sumiu");
