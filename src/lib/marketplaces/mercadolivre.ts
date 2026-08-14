@@ -1209,6 +1209,10 @@ export interface LeituraDoVendedor {
    * manda quem lê para o lugar errado.
    */
   falhaDaLeituraFoiNossa: boolean;
+  /** Itens que vieram com o objeto `shipping` no multiget. */
+  itensComShipping?: number;
+  /** Itens com `shipping.free_shipping` booleano — quem paga o frete. */
+  itensComFreteInformado?: number;
 }
 
 /**
@@ -1323,6 +1327,10 @@ export async function buscarAnunciosDoVendedor(
    * não explicar: manda procurar no lugar errado.
    */
   let falhaFoiNossa = false;
+  /** Quantos itens vieram COM o objeto `shipping` — ver a medição em `buscarLote`. */
+  let itensComShipping = 0;
+  /** E quantos trouxeram `free_shipping` booleano dentro dele. */
+  let itensComFreteInformado = 0;
 
   async function buscarLote(lote: string, campos: string): Promise<AnuncioML[] | "recusado"> {
     try {
@@ -1332,7 +1340,23 @@ export async function buscarAnunciosDoVendedor(
         return "recusado";
       }
       const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
-      return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+      const corpos = arr.filter((x) => x.code === 200 && x.body?.id).map((x) => x.body!);
+      // MEDIÇÃO NO PONTO DA DÚVIDA, 14/08/2026.
+      //
+      // `shipping` entrou na lista de campos hoje e o frete continuou chegando
+      // nulo nos 780. Provamos com `GET /items/{id}` que `shipping.free_shipping`
+      // EXISTE no item inteiro — o que não se sabia é se o MULTIGET, com o
+      // filtro `attributes=`, devolve o objeto aninhado.
+      //
+      // Contar aqui responde isso de uma vez e para sempre, em vez de a próxima
+      // pessoa refazer a mesma investigação. Se `comShipping` for 0 com
+      // `shipping` na lista, o filtro do multiget é que não entrega, e o
+      // caminho do frete precisa de outra fonte — não de mais um campo pedido.
+      for (const b of corpos) {
+        if (b.shipping && typeof b.shipping === "object") itensComShipping++;
+        if (typeof b.shipping?.free_shipping === "boolean") itensComFreteInformado++;
+      }
+      return corpos.map((b) => mapearItem(b));
     } catch (e) {
       // `fetch failed` do undici traz o motivo real em `cause` — e é ele que
       // diz se foi tempo, conexão ou DNS. Sem isso, "lote com falha" de novo.
@@ -1377,6 +1401,9 @@ export async function buscarAnunciosDoVendedor(
     filtroDeCamposRecusado: filtroRecusado,
     // A falha foi nossa (exceção) ou do ML (HTTP)? Muda onde procurar.
     falhaDaLeituraFoiNossa: falhaFoiNossa,
+    // O FRETE, medido na fonte. Ver o comentário em `buscarLote`.
+    itensComShipping,
+    itensComFreteInformado,
   };
 }
 
