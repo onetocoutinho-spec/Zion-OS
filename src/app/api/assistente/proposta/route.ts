@@ -1107,10 +1107,38 @@ export async function POST(request: Request) {
         p.tipo === "cadastro"
           ? `Produto criado: ${criado?.nome ?? p.resumo}`
           : p.tipo === "titulo"
-            ? `Título trocado. ${p.resumo}`
+            ? // ONDE, e não só o quê.
+              //
+              // Dizia `"Título trocado."` e parava aí. `copilot_executar_titulo`
+              // (048) troca a chave `tituloOtimizado` DENTRO do JSONB de
+              // `anuncios_gerados` — o nosso banco. Nada vai ao Mercado Livre:
+              // o cliente do ML tem três operações de escrita em anúncio
+              // existente (encerrar, pausar/reativar, fotos) e NENHUMA toca
+              // título, descrição, ficha ou palavra-chave.
+              //
+              // Medido em 14/08/2026: a lojista tem 780 anúncios no ar. Para
+              // todos eles, "Título trocado" era lido como "meu anúncio mudou"
+              // e o anúncio continuava idêntico. O `preco` logo abaixo sempre
+              // nomeou o destino ("no seu catálogo"); o título calava, e o
+              // silêncio é lido como "no ML".
+              `Título trocado no anúncio preparado aqui. ${p.resumo} ` +
+              `O anúncio que já está no ar no Mercado Livre não muda com isso — ` +
+              `este texto vai junto quando um anúncio novo for publicado.`
             : p.tipo === "preco"
               ? `Preço aplicado no seu catálogo. ${p.resumo}`
-              : `Pronto. ${p.resumo}${ressalvaDoPreenchimento(afetados, elegiveis)}`,
+              : // DESCRIÇÃO E PALAVRAS-CHAVE têm o mesmo destino do título, e
+                // caíam no "Pronto." genérico — que não mente por afirmação,
+                // mente por omissão. `copilot_executar_texto_do_anuncio` (057)
+                // grava no JSONB de `anuncios_gerados`, e o Mercado Livre não
+                // recebe nada.
+                //
+                // Peso e custo NÃO entram aqui: eles mudam o catálogo dela de
+                // verdade, e "Pronto" já é a frase certa.
+                p.tipo === "descricao" || p.tipo === "palavras_chave"
+                ? `Pronto, no anúncio preparado aqui. ${p.resumo} ` +
+                  `O anúncio que já está no ar no Mercado Livre não muda com isso.` +
+                  ressalvaDoPreenchimento(afetados, elegiveis)
+                : `Pronto. ${p.resumo}${ressalvaDoPreenchimento(afetados, elegiveis)}`,
       ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
     });
   } catch (e) {
