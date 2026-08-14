@@ -108,8 +108,19 @@ export async function POST(request: Request) {
     .filter((a) => {
       const c = corDoTitulo(a.titulo, cores);
       return c !== null && c.toLowerCase() === String(foto.cor).toLowerCase();
-    })
-    .slice(0, MAXIMO_POR_CHAMADA);
+    });
+  // O TETO CONTA ESCRITAS, NÃO CANDIDATOS — e a diferença é entre terminar e
+  // nunca terminar.
+  //
+  // Medido em 14/08/2026: 11 pares (produto, cor) desta conta têm MAIS de 12
+  // anúncios, e o maior tem 25. Cortando a lista de candidatos aqui, a chamada
+  // trocava os 12 primeiros e devolvia "troquei 12" — sem dizer que 13 ficaram.
+  // E repetir a chamada não resolvia: o corte pegaria os MESMOS 12 primeiros,
+  // que agora já estão com a capa certa, e os 13 do fim nunca seriam
+  // alcançados. Um teto que não termina é pior que teto nenhum.
+  //
+  // Contando ESCRITAS, o anúncio que já está certo é pulado de graça e a
+  // chamada seguinte continua de onde esta parou.
 
   if (daCor.length === 0) {
     return Response.json(
@@ -119,6 +130,8 @@ export async function POST(request: Request) {
   }
 
   const feitos: { mlb: string; titulo: string; fotosAntes: number; fotosDepois: number }[] = [];
+  /** Os que o teto deixou para a próxima chamada. Nunca fica em silêncio. */
+  let naoAlcancados = 0;
   const registrar = (nivel: "info" | "warn" | "error", evento: string, extra: Record<string, unknown> = {}) =>
     console.log(
       JSON.stringify({ src: "ml.aplicarCapa", clienteId, produtoId, cor: foto.cor, nivel, evento, ...extra })
@@ -179,7 +192,13 @@ export async function POST(request: Request) {
     }
 
     // ---- UM ANÚNCIO POR VEZ, PARANDO NO PRIMEIRO ERRO ----
-    for (const a of daCor) {
+    for (const [i, a] of daCor.entries()) {
+      // O TETO, medido em escritas. Ver o comentário na montagem de `daCor`.
+      if (feitos.length >= MAXIMO_POR_CHAMADA) {
+        naoAlcancados = daCor.length - i;
+        registrar("info", "teto-da-chamada", { escritas: feitos.length, naoAlcancados });
+        break;
+      }
       // O estado de AGORA, relido por anúncio. Compor a partir do que o ensaio
       // viu minutos atrás apagaria foto que entrou nesse meio-tempo.
       const rLer = await fetch(`${API}/items/${a.mlb}?attributes=id,pictures`, { headers: auth });
@@ -240,15 +259,23 @@ export async function POST(request: Request) {
       registrar("info", "trocou", { mlb: a.mlb });
     }
 
+    // O QUE FICOU DE FORA ENTRA NA FRASE. Um teto calado se lê como "acabou",
+    // e ela fecharia a conversa com 13 anúncios ainda com a capa velha.
+    const sobra =
+      naoAlcancados > 0
+        ? ` Parei em ${MAXIMO_POR_CHAMADA} de uma vez — faltam ${naoAlcancados} anúncio(s) desta cor. ` +
+          "Peça de novo com a mesma foto que eu continuo de onde parei."
+        : "";
     return Response.json({
       ok: true,
       cor: foto.cor,
       trocados: feitos.length,
+      naoAlcancados,
       feitos,
       frase:
-        feitos.length === 0
+        (feitos.length === 0
           ? `Nenhum anúncio de ${foto.cor} precisava de troca — todos já estavam com essa capa.`
-          : `Troquei a capa de ${feitos.length} anúncio(s) de ${foto.cor}.`,
+          : `Troquei a capa de ${feitos.length} anúncio(s) de ${foto.cor}.`) + sobra,
     });
   } catch (e) {
     return Response.json(

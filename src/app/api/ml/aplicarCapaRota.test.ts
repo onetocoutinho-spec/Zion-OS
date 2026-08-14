@@ -16,11 +16,14 @@ import { readFileSync } from "node:fs";
 const FONTE = readFileSync(new URL("./aplicar-capa/route.ts", import.meta.url), "utf8");
 const CODIGO = FONTE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
+/** O laço de escrita, em UM lugar: duas provas o ancoram e a assinatura muda. */
+const LACO_DE_ESCRITA = "for (const [i, a] of daCor.entries())";
+
 test("REGRA 2 — para no primeiro erro, e devolve o que já foi", () => {
   // `parcial()` existe para isso: nunca 500 seco depois de ter trocado alguns.
   assert.match(CODIGO, /function parcial\(/, "a resposta de parada sumiu");
   // Todo caminho de falha DENTRO do laço tem que sair com `return parcial(`.
-  const i = CODIGO.indexOf("for (const a of daCor)");
+  const i = CODIGO.indexOf(LACO_DE_ESCRITA);
   const fim = CODIGO.indexOf("return Response.json({\n      ok: true", i);
   assert.ok(i > 0 && fim > i, "o laço de escrita mudou de forma");
   const laco = CODIGO.slice(i, fim);
@@ -34,6 +37,31 @@ test("REGRA 2 — para no primeiro erro, e devolve o que já foi", () => {
     !/continue;\s*\}\s*catch/.test(laco),
     "alguma falha virou `continue` — o laço deixou de parar no primeiro erro"
   );
+});
+
+test("REGRA 4 — o teto conta ESCRITAS, e o que sobrou entra na frase", () => {
+  // MEDIDO EM 14/08/2026: 11 pares (produto, cor) desta conta têm MAIS de 12
+  // anúncios, e o maior tem 25.
+  //
+  // Enquanto o teto cortava a LISTA DE CANDIDATOS, a chamada trocava os 12
+  // primeiros e respondia "troquei 12" — calada sobre os 13 restantes. E
+  // repetir não resolvia: o corte pegaria os mesmos 12 do começo, agora já
+  // certos, e o fim da lista nunca seria alcançado. Teto que não termina é
+  // pior que teto nenhum, e teto calado se lê como "acabou".
+  assert.ok(
+    !/\.slice\(0, MAXIMO_POR_CHAMADA\)/.test(CODIGO),
+    "o teto voltou a cortar candidatos — os últimos anúncios da cor viram inalcançáveis"
+  );
+  assert.match(
+    CODIGO,
+    /if \(feitos\.length >= MAXIMO_POR_CHAMADA\)/,
+    "o teto deixou de contar escritas"
+  );
+  assert.match(CODIGO, /naoAlcancados = daCor\.length - i;/, "o que sobrou parou de ser contado");
+  // E o número tem que chegar na FRASE, não só no JSON: é a frase que ela lê.
+  const resposta = CODIGO.slice(CODIGO.indexOf("const sobra ="));
+  assert.match(resposta, /faltam \$\{naoAlcancados\}/, "a sobra sumiu da frase");
+  assert.match(resposta, /frase:[\s\S]{0,300}\+ sobra/, "a frase deixou de somar a sobra");
 });
 
 test("REGRA 3 — confere a capa DEPOIS de cada envio", () => {
@@ -81,7 +109,7 @@ test("foto sem cor não chega a escrever", () => {
 
 test("a foto sobe UMA vez, fora do laço", () => {
   const iSubir = CODIGO.indexOf("await subirFoto(");
-  const iLaco = CODIGO.indexOf("for (const a of daCor)");
+  const iLaco = CODIGO.indexOf(LACO_DE_ESCRITA);
   assert.ok(iSubir > 0 && iLaco > 0, "o upload ou o laço sumiram");
   assert.ok(
     iSubir < iLaco,
