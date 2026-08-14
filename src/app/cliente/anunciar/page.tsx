@@ -62,6 +62,7 @@ import { quotaEsteira } from "@/lib/services/perfil";
 import { INTERMEDIARIOS, rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
 import {
   montarJornada,
+  avisoDeProdutoJaNoAr,
   proximaAcao,
   etapaAtual,
   concluida,
@@ -325,6 +326,17 @@ function Jornada() {
     conectado,
     // Enquanto a quota não chega, não se bloqueia por algo que não se sabe.
     quotaRestante: quota ?? 1,
+    // QUANTOS DESTE PRODUTO JÁ ESTÃO NO AR. Sai da mesma lista que já está
+    // carregada — nenhuma consulta nova. `undefined` enquanto ela não chegou,
+    // porque contar zero antes de ter contado é a afirmação falsa que este
+    // repositório passou o mês arrancando.
+    ...(anuncios && produtoId
+      ? {
+          anunciosNoArDoProduto: anuncios.filter(
+            (a) => a.produtoId === produtoId && a.mlItemId
+          ).length,
+        }
+      : {}),
   };
 
   const trilha = montarJornada(ctx);
@@ -567,6 +579,19 @@ function Jornada() {
       {publicado && <AvisoPublicado resultado={publicado} />}
 
       <Trilha trilha={trilha} />
+
+      {/* A ESTEIRA CRIA — ela não melhora o que já está no ar.
+          Medido em 14/08/2026: 88 rascunhos nesta conta, e 86 nasceram DEPOIS
+          de o produto já estar no ar. Quem abre a esteira num produto
+          publicado quase sempre quer melhorar o que está vendendo, e o que sai
+          daqui é mais um anúncio. Avisa, não bloqueia: cor nova e kit são
+          motivos legítimos. */}
+      {avisoDeProdutoJaNoAr(ctx) && (
+        <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3 text-sm leading-relaxed text-amber-200/90">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+          {avisoDeProdutoJaNoAr(ctx)}
+        </p>
+      )}
 
 
       {/* ── Passo 1: escolher o produto ─────────────────────────────────── */}
