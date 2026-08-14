@@ -33,7 +33,11 @@ import {
   atualizarImagem,
   excluirImagem,
 } from "@/lib/services/imagensProduto";
-import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storageImagens";
+import {
+  excluirImagemDoProduto,
+  promoverImagemACapa,
+  uploadImagemProduto,
+} from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
@@ -179,7 +183,9 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   async function remover(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
-      await excluirImagem(img.id);
+      // NÃO é `excluirImagem` direto: apagar a capa deixava o produto sem capa
+      // nenhuma, em silêncio. Ver `excluirImagemDoProduto`.
+      await excluirImagemDoProduto(img.produtoId, img.id);
       reload();
     } finally {
       setImgBusy(null);
