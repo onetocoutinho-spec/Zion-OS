@@ -104,6 +104,8 @@ import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
+import { fraseDoDesfecho, type EnvioAoML } from "@/modules/catalog/domain/desfechoDaFoto";
+import { enviarCapaAoMercadoLivre } from "@/lib/services/capaNoMercadoLivre";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
 import { publicarNoML } from "@/lib/services/publicacaoML";
 import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
@@ -1159,13 +1161,43 @@ export function ChatDaOperacao({
       });
       // A CAPA É UM SEGUNDO PASSO, e falhar nele não desfaz o upload: a foto
       // está lá, e dizer "não subiu" seria mentira. Por isso o catch separado.
-      let virouCapa = false;
+      //
+      // E O MERCADO LIVRE É UM TERCEIRO.
+      // ===================================================================
+      // Até 14/08/2026 este bloco parava na linha de cima e respondia "Ela é
+      // a capa agora". A promoção era só no nosso banco: o anúncio no ar
+      // continuava com a capa velha. A lojista tem 341 anúncios com capa fora
+      // do padrão e as fotos boas no celular — ela subiria a foto certa, leria
+      // que deu certo, conferiria no Mercado Livre e não encontraria nada.
+      //
+      // A ordem dos três passos é a ordem da reversibilidade: o upload não
+      // desfaz nada, a promoção daqui se desfaz num clique, e a escrita no
+      // marketplace muda o que o comprador vê. Cada um só acontece se o
+      // anterior deu certo, e o desfecho de cada um entra na frase.
+      let envio: EnvioAoML = { situacao: "nao-tentado", porque: "nao-pediu-capa" };
       if (comoCapa) {
+        let virouCapa = false;
         try {
           await promoverImagemACapa(produto.id, img.id);
           virouCapa = true;
         } catch (e) {
           console.error("[chat/foto] subiu mas não virou capa:", e);
+        }
+        if (!virouCapa) {
+          envio = { situacao: "nao-tentado", porque: "nao-virou-capa" };
+        } else if (!cor) {
+          // Sem cor a rota recusaria com 409. Não gastar a chamada é o certo:
+          // cada chamada ao ML renova o token dela.
+          envio = { situacao: "nao-tentado", porque: "sem-cor" };
+        } else {
+          envio = {
+            situacao: "respondeu",
+            resposta: await enviarCapaAoMercadoLivre({
+              clienteId,
+              produtoId: produto.id,
+              imagemId: img.id,
+            }),
+          };
         }
       }
       const m = alvo.foto.medida;
@@ -1176,13 +1208,16 @@ export function ChatDaOperacao({
                 ...turno,
                 foto: undefined,
                 importandoPlanilha: false,
-                texto:
-                  `Subi a foto para ${produto.nome} (${m.largura} × ${m.altura}).` +
-                  (comoCapa
-                    ? virouCapa
-                      ? " Ela é a capa agora."
-                      : " Subiu, mas não consegui marcá-la como capa — dá para fazer isso na tela de Imagens."
-                    : ""),
+                // A FRASE É DOMÍNIO, com teste. Ver `desfechoDaFoto`: a regra
+                // é que nenhuma frase afirme mudança no Mercado Livre sem
+                // anúncio confirmado, e que o silêncio sobre o marketplace
+                // também conte como afirmação.
+                texto: fraseDoDesfecho({
+                  produtoNome: produto.nome,
+                  largura: m.largura,
+                  altura: m.altura,
+                  envio,
+                }),
               }
             : turno
         )

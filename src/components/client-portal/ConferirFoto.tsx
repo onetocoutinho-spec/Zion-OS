@@ -123,6 +123,21 @@ export function ConferirFoto({
             Usar como capa
           </label>
 
+          {/* O AVISO VEM ANTES DO CLIQUE.
+              Marcar esta caixa escreve nos anúncios que estão NO AR: quem
+              abrir o anúncio passa a ver esta foto. Contar isso depois de
+              feito é a mesma coisa que não contar — e foi o que este
+              repositório fez em "Título trocado" e no botão que dizia "não
+              grava". Se ela não escolher a cor, o texto abaixo (na pergunta
+              da cor) já avisa que o Mercado Livre fica de fora. */}
+          {comoCapa && (
+            <p className="mt-1.5 pl-6 text-xs leading-relaxed text-zinc-400">
+              Troco a capa aqui <strong className="text-white/80">e nos seus anúncios desta cor
+              no Mercado Livre</strong> — quem abrir o anúncio passa a ver esta foto. Depois eu
+              digo quais anúncios mudaram.
+            </p>
+          )}
+
           {/* A COR. Só aparece quando o produto tem grade de cor.
               Cada anúncio dela é de uma cor — sem esta resposta a foto entra
               sem saber a que anúncio serve, e usá-la na cor errada troca uma

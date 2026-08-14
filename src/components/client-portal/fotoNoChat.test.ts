@@ -84,14 +84,66 @@ test("largar a foto NÃO sobe — só o clique sobe", () => {
   assert.ok(!receb.includes("uploadImagemProduto("), "largar a foto no chat passou a subir sozinho");
 });
 
+const CONFIRMAR_FOTO = CHAT.slice(
+  CHAT.indexOf("async function confirmarFoto("),
+  CHAT.indexOf("async function confirmarCatalogo(")
+);
+
 test("a capa é um SEGUNDO passo, e falhar nele não vira 'não subiu'", () => {
   // A foto está lá. Dizer que não subiu seria mentira.
-  const grav = CHAT.slice(
-    CHAT.indexOf("async function confirmarFoto("),
-    CHAT.indexOf("async function confirmarCatalogo(")
+  //
+  // MODIFICADA EM 14/08/2026, e o motivo escrito porque sentinela alterada sem
+  // justificativa é sentinela desligada: esta linha exigia a frase
+  // "não consegui marcá-la como capa" DENTRO do componente. A frase mudou de
+  // casa — foi para `modules/catalog/domain/desfechoDaFoto`, que tem teste
+  // próprio e uma sentinela mais forte (nenhuma frase afirma mudança no
+  // Mercado Livre sem anúncio confirmado). O que se guarda AQUI passa a ser o
+  // caminho: a falha da promoção sai como desfecho parcial, e não pelo catch
+  // que responde "Não consegui subir a foto".
+  assert.match(CONFIRMAR_FOTO, /promoverImagemACapa/);
+  assert.match(
+    CONFIRMAR_FOTO,
+    /porque: "nao-virou-capa"/,
+    "o desfecho parcial virou erro total"
   );
-  assert.match(grav, /promoverImagemACapa/);
-  assert.match(grav, /não consegui marcá-la como capa/, "o desfecho parcial virou erro total");
+  assert.match(
+    CONFIRMAR_FOTO,
+    /subiu mas não virou capa/,
+    "o catch da promoção deixou de ser separado do catch do upload"
+  );
+});
+
+test("marcar 'usar como capa' ESCREVE no Mercado Livre, não só no nosso banco", () => {
+  // O DEFEITO QUE ESTA SENTINELA IMPEDE DE VOLTAR, cometido até 14/08/2026:
+  // `promoverImagemACapa` mexe no NOSSO banco. Sozinha, ela fazia o chat
+  // responder "Ela é a capa agora" enquanto o anúncio no ar continuava com a
+  // capa velha — a mesma família de "Título trocado" e do botão que dizia
+  // "não grava" e gravava.
+  //
+  // Apagar a chamada abaixo não quebraria nenhuma outra prova: `envio` ficaria
+  // em "nao-pediu-capa" e a frase simplesmente PARARIA de falar do Mercado
+  // Livre. Silêncio é exatamente como o defeito passou treze dias.
+  assert.match(CONFIRMAR_FOTO, /enviarCapaAoMercadoLivre\(/);
+  assert.ok(
+    CONFIRMAR_FOTO.indexOf("promoverImagemACapa") <
+      CONFIRMAR_FOTO.indexOf("enviarCapaAoMercadoLivre("),
+    "o envio ao ML passou na frente da promoção daqui — escreve lá fora antes de acertar aqui dentro"
+  );
+  // Sem cor a rota recusa com 409, e cada chamada ao ML renova o token dela.
+  assert.match(CONFIRMAR_FOTO, /porque: "sem-cor"/);
+});
+
+test("o aviso de que o anúncio no ar vai mudar vem ANTES do clique", () => {
+  // Contar depois de feito é o mesmo que não contar. A caixa "Usar como capa"
+  // escreve nos anúncios que estão no ar; quem abrir o anúncio passa a ver
+  // outra foto.
+  const semEspaco = FOTO.replace(/\s+/g, " ");
+  assert.match(
+    semEspaco,
+    /\{comoCapa && \(/,
+    "o aviso deixou de depender da caixa marcada"
+  );
+  assert.match(semEspaco, /anúncios desta cor no Mercado Livre/);
 });
 
 test("a URL do preview é revogada — senão cada foto deixa um blob preso", () => {
