@@ -22,7 +22,7 @@ import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
-import type { EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
+import { amostraDeNomes, type EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 
 /**
@@ -56,6 +56,8 @@ export function montarEstadoDaLoja(
 ): EstadoDaLoja {
   const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
   const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
+  /** id → nome, para o anúncio poder ser chamado pelo produto dele. */
+  const nomePorProduto = new Map(produtos.map((p) => [p.id, p.nome]));
 
   return {
       produtos: produtos.length,
@@ -74,6 +76,35 @@ export function montarEstadoDaLoja(
       comAnuncio: produtos.filter((p) => produtosComAnuncio.has(p.id)).length,
     aguardandoAprovacao: anuncios.filter((a) => a.status === "aguardando_aprovacao").length,
     aprovadosNaoPublicados: anuncios.filter((a) => a.status === "aprovado").length,
+    // OS NOMES, no mesmo passo em que os números saem.
+    //
+    // A lista já está aqui, inteira, na memória desta tela. Contar sem guardar
+    // quem foi contado era jogar fora a resposta da pergunta seguinte — que é
+    // sempre "quais?" — e mandar a lojista caçar numa tabela de 80 linhas.
+    quaisSao: {
+      peso: amostraDeNomes(produtos.filter((p) => pesoPendente(p)).map((p) => p.nome)),
+      custo: amostraDeNomes(produtos.filter((p) => !(p.custo > 0)).map((p) => p.nome)),
+      foto: amostraDeNomes(produtos.filter((p) => !comFoto.has(p.id)).map((p) => p.nome)),
+      anuncio: amostraDeNomes(
+        produtos.filter((p) => !produtosComAnuncio.has(p.id)).map((p) => p.nome)
+      ),
+      precificacao: amostraDeNomes(
+        produtos.filter((p) => !(p.custo > 0 && p.pesoGramas > 0)).map((p) => p.nome)
+      ),
+      // Aqui a unidade é o anúncio, mas o NOME é o do produto: é assim que ela
+      // fala dos seus itens, e o título otimizado não chega a esta lista.
+      // Anúncio sem produtoId sai da amostra em vez de virar linha vazia.
+      aprovacao: amostraDeNomes(
+        anuncios
+          .filter((a) => a.status === "aguardando_aprovacao")
+          .map((a) => nomePorProduto.get(a.produtoId ?? "") ?? "")
+      ),
+      publicacao: amostraDeNomes(
+        anuncios
+          .filter((a) => a.status === "aprovado")
+          .map((a) => nomePorProduto.get(a.produtoId ?? "") ?? "")
+      ),
+    },
     conectadoAoMarketplace: conectado,
     ...(infracoes
       ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }

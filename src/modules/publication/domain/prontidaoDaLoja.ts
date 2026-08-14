@@ -77,6 +77,79 @@ export interface EstadoDaLoja {
   /** Anúncios aprovados e ainda não publicados. */
   aprovadosNaoPublicados: number;
   conectadoAoMarketplace: boolean;
+  /**
+   * OS NOMES POR TRÁS DOS NÚMEROS.
+   *
+   * ===========================================================================
+   * POR QUE ISTO EXISTE
+   * ===========================================================================
+   *
+   * "23 produtos sem peso" é um número honesto e inútil sozinho: a pergunta
+   * seguinte é sempre **quais**, e até 14/08/2026 o chat não sabia responder.
+   * Ela contava e mandava a lojista caçar na tabela de 80 linhas.
+   *
+   * OPCIONAL de propósito, e pela mesma razão de `infracoes`: `undefined`
+   * significa "não levantamos os nomes", não "não há nenhum". Quem não juntou
+   * a lista não pode dizer que a lista é vazia.
+   */
+  quaisSao?: Partial<Record<CondicaoNomeavel, AmostraDeNomes>>;
+}
+
+/** As condições cujos nomes valem ser ditos. Fechada: o resto é só número. */
+export type CondicaoNomeavel =
+  | "peso"
+  | "custo"
+  | "foto"
+  | "anuncio"
+  | "precificacao"
+  | "aprovacao"
+  | "publicacao";
+
+/**
+ * Quantos nomes cabem numa resposta de chat antes de virar ruído.
+ *
+ * Cinco. Uma lista de oitenta nomes não é uma resposta — é a mesma tabela que
+ * ela já não conseguia ler, agora dentro da conversa.
+ */
+export const LIMITE_DE_NOMES = 5;
+
+export interface AmostraDeNomes {
+  /** Até `LIMITE_DE_NOMES` nomes. */
+  nomes: readonly string[];
+  /** Quantos ficaram de fora. NUNCA corte calado — ver `omitidos` na frase. */
+  omitidos: number;
+}
+
+/**
+ * A amostra, com o corte declarado.
+ *
+ * Ordena por nome para a resposta ser a MESMA entre duas perguntas iguais.
+ * Amostra sorteada faria a lojista achar que a lista mudou quando nada mudou.
+ */
+export function amostraDeNomes(todos: readonly string[]): AmostraDeNomes {
+  const limpos = [...new Set(todos.map((n) => (n ?? "").trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "pt-BR")
+  );
+  return {
+    nomes: limpos.slice(0, LIMITE_DE_NOMES),
+    omitidos: Math.max(0, limpos.length - LIMITE_DE_NOMES),
+  };
+}
+
+/**
+ * A frase que nomeia — ou string vazia quando não há o que nomear.
+ *
+ * O corte entra na frase, e não só no objeto: é a frase que a lojista lê, e
+ * "são estes cinco" sobre vinte e três é a mentira por omissão que este
+ * repositório passou o mês arrancando.
+ */
+export function fraseDosNomes(a: AmostraDeNomes | undefined): string {
+  if (!a || a.nomes.length === 0) return "";
+  const lista = a.nomes.join(", ");
+  if (a.omitidos === 0) {
+    return a.nomes.length === 1 ? ` É o ${lista}.` : ` São eles: ${lista}.`;
+  }
+  return ` Os primeiros são ${lista} — e mais ${a.omitidos}.`;
 }
 
 export interface Lacuna {

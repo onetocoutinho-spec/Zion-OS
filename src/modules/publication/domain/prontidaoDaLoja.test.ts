@@ -8,7 +8,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { lacunasDaLoja, semLacunas, type EstadoDaLoja } from "./prontidaoDaLoja.ts";
+import {
+  amostraDeNomes,
+  fraseDosNomes,
+  lacunasDaLoja,
+  semLacunas,
+  LIMITE_DE_NOMES,
+  type EstadoDaLoja,
+} from "./prontidaoDaLoja.ts";
 
 /** Uma loja sem nenhuma pendência; cada teste estraga só o que quer testar. */
 function loja(over: Partial<EstadoDaLoja> = {}): EstadoDaLoja {
@@ -146,4 +153,55 @@ test("a frase forte de 'sem peso' continua intacta para ausência TOTAL", () => 
   const semPeso = lacunasDaLoja({ ...LOJA_BASE, comPeso: 50, comPesoIncompleto: 2 })
     .find((x) => x.tipo === "sem_peso");
   assert.match(semPeso!.trava, /o preço mínimo não sai/);
+});
+
+// ===========================================================================
+// OS NOMES POR TRÁS DOS NÚMEROS — 14/08/2026
+// ===========================================================================
+//
+// "23 produtos sem peso" é honesto e inútil sozinho: a pergunta seguinte é
+// sempre QUAIS, e a resposta era mandar a lojista caçar numa tabela de 80
+// linhas.
+
+test("a amostra corta em cinco e DIZ quantos ficaram de fora", () => {
+  // Corte calado é a mentira por omissão que este repositório passou o mês
+  // arrancando. Oitenta nomes numa resposta de chat não é resposta — é a mesma
+  // tabela que ela já não conseguia ler, agora dentro da conversa.
+  const a = amostraDeNomes(Array.from({ length: 23 }, (_, i) => `Produto ${String(i).padStart(2, "0")}`));
+  assert.equal(a.nomes.length, LIMITE_DE_NOMES);
+  assert.equal(a.omitidos, 18);
+  assert.match(fraseDosNomes(a), /e mais 18\./);
+});
+
+test("cabendo tudo, não inventa 'e mais 0'", () => {
+  const a = amostraDeNomes(["Chinelo Azul", "Tamanco Preto"]);
+  assert.equal(a.omitidos, 0);
+  assert.match(fraseDosNomes(a), /São eles: Chinelo Azul, Tamanco Preto\./);
+  assert.doesNotMatch(fraseDosNomes(a), /e mais/);
+});
+
+test("um só fala no singular", () => {
+  assert.match(fraseDosNomes(amostraDeNomes(["Chinelo Azul"])), /É o Chinelo Azul\./);
+});
+
+test("ordena por nome — a MESMA pergunta dá a MESMA resposta", () => {
+  // Amostra sorteada faria a lojista achar que a lista mudou quando nada
+  // mudou, e desconfiar do número junto.
+  const nomes = ["Zapato", "Almofada", "Meia"];
+  assert.deepEqual([...amostraDeNomes(nomes).nomes], ["Almofada", "Meia", "Zapato"]);
+  assert.deepEqual([...amostraDeNomes([...nomes].reverse()).nomes], ["Almofada", "Meia", "Zapato"]);
+});
+
+test("nome vazio NÃO vira linha em branco, e repetido não conta duas vezes", () => {
+  // Anúncio sem produto casado traria "" — uma linha vazia na resposta é pior
+  // que a omissão, porque parece defeito de tela.
+  const a = amostraDeNomes(["Chinelo", "", "  ", "Chinelo", "Tamanco"]);
+  assert.deepEqual([...a.nomes], ["Chinelo", "Tamanco"]);
+  assert.equal(a.omitidos, 0);
+});
+
+test("sem nomes, sem frase — o silêncio é a resposta certa", () => {
+  // `undefined` é "não levantamos", e ele não pode virar "não há nenhum".
+  assert.equal(fraseDosNomes(undefined), "");
+  assert.equal(fraseDosNomes(amostraDeNomes([])), "");
 });

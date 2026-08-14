@@ -15,8 +15,14 @@
 // Um termo a mais o código descarta de forma determinística. Um termo a menos é
 // irrecuperável — por isso o modelo é instruído a não filtrar nada.
 
-import type { EstadoDaLoja, Lacuna, TipoLacuna } from "../../publication/domain/prontidaoDaLoja";
-import { lacunasDaLoja } from "../../publication/domain/prontidaoDaLoja";
+import type {
+  AmostraDeNomes,
+  CondicaoNomeavel,
+  EstadoDaLoja,
+  Lacuna,
+  TipoLacuna,
+} from "../../publication/domain/prontidaoDaLoja";
+import { fraseDosNomes, lacunasDaLoja } from "../../publication/domain/prontidaoDaLoja";
 import type { EstadoDoProduto, LacunaProduto } from "../../catalog/domain/lacunasDoProduto";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
 
@@ -135,6 +141,11 @@ export type RespostaDaOperacao =
       total: number;
       /** O que `quantos` conta, em palavras. Sem isto o número é invertível. */
       significado: string;
+      /**
+       * QUAIS são, quando sabemos. Ausente quando não levantamos os nomes —
+       * nunca uma lista vazia fingindo que não há.
+       */
+      quais?: AmostraDeNomes;
       href?: string;
       cta?: string;
     }
@@ -378,12 +389,26 @@ export function responder(
       }
       const { quantos, total, frase, significado } = contar(assunto, ctx.loja);
       const lacuna = lista.find((l) => LACUNA_DO_ASSUNTO[assunto].includes(l.tipo));
+      // OS NOMES ENTRAM AQUI, num lugar só.
+      //
+      // "23 produtos sem peso" é honesto e inútil sozinho: a pergunta seguinte
+      // é sempre QUAIS, e até 14/08/2026 a resposta era mandar a lojista caçar
+      // numa tabela de 80 linhas.
+      //
+      // Fica no ponto de saída, e não espalhado pelos oito ramos do `contar`,
+      // porque a regra é uma: quando sabemos os nomes, dizemos; quando não
+      // sabemos, calamos. Oito cópias divergiriam no primeiro ajuste — foi o
+      // que aconteceu com a regra da capa, em quatro lugares.
+      const quais = ctx.loja.quaisSao?.[assunto as CondicaoNomeavel];
       return {
         tipo: "numero",
-        frase,
+        // A amostra entra na FRASE, com o corte declarado. Só no objeto, ela
+        // dependeria de cada tela lembrar de mostrá-la.
+        frase: frase + fraseDosNomes(quantos > 0 ? quais : undefined),
         quantos,
         significado,
         total,
+        ...(quais && quantos > 0 ? { quais } : {}),
         ...(lacuna ? { href: lacuna.href, cta: lacuna.cta } : {}),
       };
     }

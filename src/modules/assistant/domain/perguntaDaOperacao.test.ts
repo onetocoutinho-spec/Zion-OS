@@ -268,3 +268,43 @@ test("mesma pergunta e mesmo estado dão a mesma resposta", () => {
   const c = criterio({ intencao: "estado_geral" });
   assert.deepEqual(responder(c, ctx(e)), responder(c, ctx(e)));
 });
+
+// ===========================================================================
+// O NÚMERO PASSA A DIZER QUAIS — 14/08/2026
+// ===========================================================================
+
+test("a resposta numérica NOMEIA quando sabemos quem são", () => {
+  const r = responder(
+    criterio({ intencao: "contagem", assunto: "custo" }),
+    ctx(
+      loja({
+        produtos: 3,
+        comCusto: 1,
+        quaisSao: { custo: { nomes: ["Chinelo Azul", "Tamanco Preto"], omitidos: 0 } },
+      })
+    )
+  );
+  assert.equal(r.tipo, "numero");
+  assert.match(r.frase, /2 de 3 produto\(s\) estão sem custo\./);
+  assert.match(r.frase, /São eles: Chinelo Azul, Tamanco Preto\./);
+});
+
+test("sem os nomes levantados, a frase fica EXATAMENTE como era", () => {
+  // `quaisSao` ausente é "não levantamos", e não pode virar lista vazia nem
+  // mudar a resposta de quem já dependia dela.
+  const r = responder(criterio({ intencao: "contagem", assunto: "custo" }), ctx(loja({ produtos: 3, comCusto: 1 })));
+  assert.equal(r.tipo === "numero" && r.frase, "2 de 3 produto(s) estão sem custo.");
+  assert.equal(r.tipo === "numero" && r.quais, undefined);
+});
+
+test("contagem ZERO não nomeia ninguém", () => {
+  // Nomes de uma condição vazia seriam nomes de quem NÃO está nela — o número
+  // invertido, que é o defeito que `significado` existe para impedir.
+  const r = responder(
+    criterio({ intencao: "contagem", assunto: "custo" }),
+    ctx(loja({ produtos: 3, comCusto: 3, quaisSao: { custo: { nomes: ["Chinelo Azul"], omitidos: 0 } } }))
+  );
+  assert.equal(r.tipo === "numero" && r.quantos, 0);
+  assert.doesNotMatch(r.frase, /Chinelo Azul/);
+  assert.equal(r.tipo === "numero" && r.quais, undefined);
+});
