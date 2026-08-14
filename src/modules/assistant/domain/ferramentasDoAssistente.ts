@@ -214,8 +214,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     // manter anotado.
     nome: "fotos_do_produto",
     efeito: "le",
+    // A DESCRIÇÃO NÃO PODE PROMETER O QUE NÃO EXISTE.
+    //
+    // A primeira versão dizia "ofereça aplicar". Testada em produção no mesmo
+    // dia, o modelo terminou a resposta com "Quer que eu aplique essas fotos
+    // nos anúncios?" — e o chat NÃO TEM como aplicar: a troca de capa só
+    // acontece quando a lojista larga a foto no chat, por `aplicar-capa`. Um
+    // "sim" dela cairia no vazio.
+    //
+    // É o defeito que este repositório passou o mês arrancando, cometido na
+    // descrição de uma ferramenta: prometer o que o software não faz. A
+    // descrição agora diz o caminho que EXISTE.
     descricao:
-      "As fotos de UM produto: quantos anúncios dele estão com a capa fora do padrão do Mercado Livre, e se o cadastro já tem foto que serviria de capa (quadrada, 1200 ou mais de lado) ou se é preciso fotografar. Use para \"preciso fotografar este produto?\", \"as fotos deste anúncio estão boas?\" e sempre que a lojista perguntar o que fazer com a capa. NÃO diga que não enxerga isso. Se a resposta disser que já existe foto boa, ofereça aplicar; se disser que não serve nenhuma, diga que ela pode mandar a foto pelo próprio chat.",
+      "As fotos de UM produto: quantos anúncios dele estão com a capa fora do padrão do Mercado Livre, e se o cadastro já tem foto que serviria de capa (quadrada, 1200 ou mais de lado) ou se é preciso fotografar. Use para \"preciso fotografar este produto?\", \"as fotos deste anúncio estão boas?\" e sempre que a lojista perguntar o que fazer com a capa. NÃO diga que não enxerga isso. NUNCA se ofereça para aplicar ou trocar a capa: você não tem ferramenta para isso. O caminho que existe é UM só, e é ela quem faz — arrastar a foto para esta conversa, escolher a cor e confirmar; aí o Zion troca a capa dos anúncios daquela cor. Diga isso, tanto quando já existe foto boa quanto quando não existe nenhuma.",
     parametros: {
       type: "object",
       properties: {

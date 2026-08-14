@@ -104,3 +104,26 @@ test("`proximo_passo` continua caindo em `estado_da_loja`, não num vizinho novo
       "case entre os dois e sequestrou o fallthrough"
   );
 });
+
+test("nenhuma descrição promete uma capacidade que o catálogo não tem", () => {
+  // O DEFEITO, cometido em 14/08/2026 na própria descrição de
+  // `fotos_do_produto`: ela mandava "ofereça aplicar", e o modelo terminou a
+  // resposta com "Quer que eu aplique essas fotos nos anúncios?".
+  //
+  // O chat NÃO tem ferramenta que aplique capa: a troca só acontece quando a
+  // lojista larga a foto na conversa. Um "sim" dela cairia no vazio — que é a
+  // mesma família de "Título trocado" e de "Ela é a capa agora", agora nascida
+  // dentro de um prompt em vez de dentro de um componente.
+  //
+  // A prova mira o IMPERATIVO ("ofereça/proponha aplicar"), e não a palavra
+  // solta: descrever o que a lojista pode fazer é legítimo, e é justamente o
+  // conserto.
+  const nomes = new Set(FERRAMENTAS.map((f) => f.nome));
+  assert.ok(!nomes.has("aplicar_capa"), "existe ferramenta de aplicar capa — reveja esta prova");
+  for (const f of FERRAMENTAS) {
+    assert.ok(
+      !/(ofere[çc]a|proponha|sugira)\s+(aplicar|trocar)\s+(a\s+)?capa/i.test(f.descricao),
+      `"${f.nome}" manda oferecer uma troca de capa que nenhuma ferramenta faz`
+    );
+  }
+});
