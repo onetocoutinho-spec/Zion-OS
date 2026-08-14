@@ -149,3 +149,39 @@ test("o aviso de que o anúncio no ar vai mudar vem ANTES do clique", () => {
 test("a URL do preview é revogada — senão cada foto deixa um blob preso", () => {
   assert.match(FOTO, /revokeObjectURL/);
 });
+
+test("a ida NÃO existe sem a volta — o desfazer mora no turno que trocou", () => {
+  // O INCIDENTE DE 14/08/2026: uma foto de Havaianas AMARELO virou capa de 10
+  // anúncios AZUL-MARINHO. A foto era quadrada, tinha 1200 de lado e passou em
+  // todas as guardas — a cor é a única entrada deste caminho que NENHUM código
+  // confere.
+  //
+  // O que faltava não era mais uma guarda: era a volta. `aplicar-capa` punha,
+  // `melhor-capa` promovia, e nada tirava. Desfazer exigiu escrever código
+  // novo com a lojista no prejuízo.
+  //
+  // O desfazer mora no TURNO, e não numa 24ª ferramenta, porque o lugar dele é
+  // onde ela está quando percebe o erro — não numa frase que ela precisaria
+  // saber formular.
+  assert.match(CONFIRMAR_FOTO, /podeDesfazer\(/, "o turno parou de guardar a volta");
+  assert.match(CONFIRMAR_FOTO, /desfazerCapa:/, "sumiu o que o desfazer precisa mirar");
+  assert.match(CHAT, /tirarFotoDoMercadoLivre\(/, "a volta deixou de chamar a rota que tira");
+
+  // E o botão tem que APARECER: a volta que não está na tela não é volta.
+  const semEspaco = CHAT.replace(/\s+/g, " ");
+  assert.match(semEspaco, /\{t\.desfazerCapa && \(/, "o botão de desfazer saiu da tela");
+
+  // O botão só some quando a foto SAIU de algum anúncio. Se a remoção falhou,
+  // ela continua lá e a volta continua fazendo falta.
+  const desfazer = CHAT.slice(
+    CHAT.indexOf("async function desfazerTrocaDeCapa("),
+    CHAT.indexOf("async function confirmarCatalogo(")
+  );
+  assert.ok(desfazer.length > 100, "a função de desfazer sumiu");
+  assert.match(
+    desfazer,
+    /\(resposta\.feitos \?\? \[\]\)\.length > 0 \? \{ desfazerCapa: undefined \}/,
+    "o botão passou a sumir mesmo quando a foto continuou nos anúncios"
+  );
+  assert.match(desfazer, /fraseDoDesfazer\(/, "a frase do desfazer deixou de vir do domínio");
+});

@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fraseDoDesfecho, type EnvioAoML } from "./desfechoDaFoto.ts";
+import {
+  fraseDoDesfecho,
+  fraseDoDesfazer,
+  podeDesfazer,
+  type EnvioAoML,
+} from "./desfechoDaFoto.ts";
 
 // A frase depois de subir a foto é onde este repositório já mentiu três vezes:
 // "Título trocado" quando o anúncio no ar não mudava, o botão que dizia "não
@@ -137,4 +142,67 @@ test("erro do ML chega inteiro, não virado em 'não deu'", () => {
   const t = frase({ situacao: "respondeu", resposta: { erro: "Cliente não conectado ao Mercado Livre." } });
   assert.match(t, /Cliente não conectado ao Mercado Livre\./);
   assert.match(t, /continuam com a capa antiga/);
+});
+
+// ===========================================================================
+// O DESFAZER — nascido do incidente de 14/08/2026
+// ===========================================================================
+//
+// Uma foto de Havaianas AMARELO virou capa de 10 anúncios AZUL-MARINHO, e o
+// repositório tinha ida sem volta. A volta existe agora, e as regras dela são
+// as da ida, invertidas.
+
+test("só oferece desfazer quando houve troca CONFIRMADA e sabemos qual foto", () => {
+  // Oferecer "desfazer" sobre uma troca que não aconteceu ensina a lojista a
+  // desconfiar do botão — e um desfazer em que não se confia é pior que
+  // nenhum, porque ela deixa de tentar.
+  assert.equal(podeDesfazer({ ok: true, feitos: [], fotoNoML: "1-MLB1_082026" }), false);
+  assert.equal(podeDesfazer({ ok: true, feitos: [{ mlb: "MLB1", titulo: "t" }] }), false);
+  assert.equal(podeDesfazer({ ok: true, feitos: [{ mlb: "MLB1", titulo: "t" }], fotoNoML: "  " }), false);
+  assert.equal(
+    podeDesfazer({ ok: true, feitos: [{ mlb: "MLB1", titulo: "t" }], fotoNoML: "1-MLB1_082026" }),
+    true
+  );
+});
+
+test("o desfecho PARCIAL também pode ser desfeito — é onde ele mais serve", () => {
+  // Metade trocada é justamente o estado em que ela mais precisa da volta.
+  assert.equal(
+    podeDesfazer({
+      ok: false,
+      parou: true,
+      feitos: [{ mlb: "MLB1", titulo: "t" }],
+      fotoNoML: "1-MLB1_082026",
+    }),
+    true
+  );
+});
+
+test("a frase do desfazer NÃO afirma remoção sem anúncio confirmado", () => {
+  // Mesma sentinela da ida, invertida. "Desfiz" sobre nada desfeito é a pior
+  // mentira deste caminho, porque ela para de procurar.
+  const semNada = fraseDoDesfazer({ erro: "Cliente não conectado ao Mercado Livre." });
+  assert.doesNotMatch(semNada, /\bTirei\b/);
+  assert.doesNotMatch(semNada, /\bMLB\d/);
+  assert.match(semNada, /continuam com ela/);
+  assert.match(semNada, /Cliente não conectado ao Mercado Livre\./);
+});
+
+test("desfez: a frase da rota manda e os MLBs vêm junto", () => {
+  const t = fraseDoDesfazer({
+    ok: true,
+    feitos: [
+      { mlb: "MLB4820637003", titulo: "Azul-marinho 45-46" },
+      { mlb: "MLB4820624201", titulo: "Azul-marinho 45-46" },
+    ],
+    frase: "Tirei a foto de 2 anúncio(s).",
+  });
+  assert.match(t, /No Mercado Livre: Tirei a foto de 2 anúncio\(s\)\./);
+  assert.match(t, /MLB4820637003, MLB4820624201/);
+});
+
+test("'não estava em nenhum' não vira lista de MLB nenhuma", () => {
+  const t = fraseDoDesfazer({ ok: true, feitos: [], frase: "Essa foto não estava em nenhum anúncio deste produto." });
+  assert.doesNotMatch(t, /\bMLB\d/);
+  assert.match(t, /não estava em nenhum/);
 });

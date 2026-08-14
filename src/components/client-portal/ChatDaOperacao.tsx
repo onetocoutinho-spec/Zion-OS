@@ -104,8 +104,16 @@ import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
-import { fraseDoDesfecho, type EnvioAoML } from "@/modules/catalog/domain/desfechoDaFoto";
-import { enviarCapaAoMercadoLivre } from "@/lib/services/capaNoMercadoLivre";
+import {
+  fraseDoDesfecho,
+  fraseDoDesfazer,
+  podeDesfazer,
+  type EnvioAoML,
+} from "@/modules/catalog/domain/desfechoDaFoto";
+import {
+  enviarCapaAoMercadoLivre,
+  tirarFotoDoMercadoLivre,
+} from "@/lib/services/capaNoMercadoLivre";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
 import { publicarNoML } from "@/lib/services/publicacaoML";
 import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
@@ -197,6 +205,20 @@ interface Turno {
    * porque perguntar cor de quem não tem cor é ruído.
    */
   foto?: { arquivo: File; medida: FotoMedida; cores: string[] };
+  /**
+   * A VOLTA da troca de capa, presa ao turno que a fez.
+   *
+   * Fica aqui, e não numa ferramenta nova, porque o lugar do desfazer é onde
+   * a pessoa está quando percebe o erro — não numa frase que ela precisaria
+   * saber formular. Em 14/08/2026 uma foto de Havaianas amarelo virou capa de
+   * 10 anúncios azul-marinho e só o desenvolvedor tinha como voltar.
+   *
+   * Só existe quando o Mercado Livre CONFIRMOU pelo menos uma troca — ver
+   * `podeDesfazer`. Botão de desfazer sobre nada desfeito ensina a lojista a
+   * desconfiar do botão.
+   */
+  desfazerCapa?: { produtoId: string; fotoNoML: string; quantos: number };
+  desfazendo?: boolean;
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -1218,6 +1240,17 @@ export function ChatDaOperacao({
                   altura: m.altura,
                   envio,
                 }),
+                // A VOLTA nasce junto com a ida, no mesmo turno. Só quando o
+                // Mercado Livre confirmou troca e sabemos qual foto entrou.
+                ...(envio.situacao === "respondeu" && podeDesfazer(envio.resposta)
+                  ? {
+                      desfazerCapa: {
+                        produtoId: produto.id,
+                        fotoNoML: envio.resposta.fotoNoML,
+                        quantos: (envio.resposta.feitos ?? []).length,
+                      },
+                    }
+                  : {}),
               }
             : turno
         )
@@ -1236,6 +1269,38 @@ export function ChatDaOperacao({
         )
       );
     }
+  }
+
+  /**
+   * TIRA do Mercado Livre a foto que a troca acabou de pôr.
+   *
+   * A rota confere anúncio por anúncio e recusa deixar qualquer um sem foto.
+   * A frase vem do domínio pelo mesmo motivo da ida: é aqui que "desfiz" sobre
+   * nada desfeito nasceria, e essa é a pior mentira deste caminho — ela para
+   * de procurar.
+   */
+  async function desfazerTrocaDeCapa(indice: number) {
+    const alvo = turnos[indice];
+    if (!alvo?.desfazerCapa || !clienteId) return;
+    const { produtoId, fotoNoML } = alvo.desfazerCapa;
+    setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, desfazendo: true } : turno)));
+    const resposta = await tirarFotoDoMercadoLivre({ clienteId, produtoId, fotoNoML });
+    setTurnos((t) =>
+      t.map((turno, i) =>
+        i === indice
+          ? {
+              ...turno,
+              desfazendo: false,
+              // O botão só sai quando a foto SAIU de algum anúncio. Se a
+              // remoção falhou, ela continua lá e a volta continua fazendo
+              // falta.
+              ...((resposta.feitos ?? []).length > 0 ? { desfazerCapa: undefined } : {}),
+              texto: `${turno.texto ?? ""}\n\n${fraseDoDesfazer(resposta)}`.trim(),
+            }
+          : turno
+      )
+    );
+    aoGravar?.();
   }
 
   async function confirmarCatalogo(indice: number) {
@@ -1542,6 +1607,24 @@ export function ChatDaOperacao({
                 t.propostaDePreco ? (
                 <div className="space-y-2">
                   {t.texto && <Markdown texto={t.texto} />}
+                  {/* A VOLTA, no turno que fez a ida.
+                      Fica aqui porque é onde ela está quando percebe que a foto
+                      era da cor errada — e não numa frase que ela precisaria
+                      saber formular. Em 14/08/2026 uma foto de Havaianas
+                      amarelo virou capa de 10 anúncios azul-marinho e só o
+                      desenvolvedor tinha como voltar. */}
+                  {t.desfazerCapa && (
+                    <button
+                      type="button"
+                      onClick={() => void desfazerTrocaDeCapa(i)}
+                      disabled={t.desfazendo}
+                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5 hover:text-white disabled:opacity-50"
+                    >
+                      {t.desfazendo
+                        ? "Tirando…"
+                        : `Não era essa foto — tirar dos ${t.desfazerCapa.quantos} anúncio(s)`}
+                    </button>
+                  )}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
                   {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
                   {t.pricing && <PainelDePreco p={t.pricing} />}

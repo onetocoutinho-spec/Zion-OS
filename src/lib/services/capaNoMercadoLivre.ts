@@ -16,7 +16,10 @@
 //   e a frase diz "os anúncios continuam com a capa antiga" — que é a verdade.
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
-import type { RespostaDaCapa } from "@/modules/catalog/domain/desfechoDaFoto";
+import type {
+  RespostaDaCapa,
+  RespostaDaRemocao,
+} from "@/modules/catalog/domain/desfechoDaFoto";
 
 export async function enviarCapaAoMercadoLivre(dados: {
   clienteId: string;
@@ -40,6 +43,39 @@ export async function enviarCapaAoMercadoLivre(dados: {
   // acontecer é o corpo ilegível virar sucesso silencioso.
   try {
     return (await resposta.json()) as RespostaDaCapa;
+  } catch {
+    return { erro: `o Mercado Livre respondeu ${resposta.status} e eu não consegui ler a resposta` };
+  }
+}
+
+/**
+ * A VOLTA: tira do Mercado Livre a foto que a ida colocou.
+ *
+ * Existe por causa do incidente de 14/08/2026 — uma foto de Havaianas amarelo
+ * virou capa de 10 anúncios azul-marinho, e o repositório só tinha ida. O
+ * desfazer que só o desenvolvedor alcança não é desfazer.
+ *
+ * Mesma forma da ida, e pelo mesmo motivo: rede caída chega ao chamador como
+ * resposta com `erro`, e a frase diz "os anúncios continuam com ela" — que é
+ * a verdade.
+ */
+export async function tirarFotoDoMercadoLivre(dados: {
+  clienteId: string;
+  produtoId: string;
+  fotoNoML: string;
+}): Promise<RespostaDaRemocao> {
+  let resposta: Response;
+  try {
+    resposta = await fetch("/api/ml/remover-foto", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+      body: JSON.stringify(dados),
+    });
+  } catch (e) {
+    return { erro: e instanceof Error ? e.message : "não consegui falar com o Mercado Livre agora" };
+  }
+  try {
+    return (await resposta.json()) as RespostaDaRemocao;
   } catch {
     return { erro: `o Mercado Livre respondeu ${resposta.status} e eu não consegui ler a resposta` };
   }

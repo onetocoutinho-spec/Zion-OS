@@ -204,7 +204,7 @@ export async function POST(request: Request) {
       const rLer = await fetch(`${API}/items/${a.mlb}?attributes=id,pictures`, { headers: auth });
       if (!rLer.ok) {
         registrar("error", "falha-ao-ler", { mlb: a.mlb, status: rLer.status });
-        return parcial(feitos, a, `não consegui ler as fotos deste anúncio (ML ${rLer.status})`, foto.cor as string);
+        return parcial(feitos, a, `não consegui ler as fotos deste anúncio (ML ${rLer.status})`, foto.cor as string, novaFotoId);
       }
       const antes = ((await rLer.json()) as { pictures?: { id?: string }[] }).pictures ?? [];
       const idsAntes = antes.map((p) => String(p.id ?? "")).filter(Boolean);
@@ -227,14 +227,14 @@ export async function POST(request: Request) {
       // foto dela. Recusar aqui é sempre melhor que descobrir depois.
       if (!nenhumaFotoSumiu(idsAntes, alvo.novaOrdem)) {
         registrar("error", "composicao-perderia-foto", { mlb: a.mlb, antes: idsAntes.length });
-        return parcial(feitos, a, "a lista nova perderia uma foto, então não enviei nada neste anúncio", foto.cor as string);
+        return parcial(feitos, a, "a lista nova perderia uma foto, então não enviei nada neste anúncio", foto.cor as string, novaFotoId);
       }
 
       try {
         await definirFotosDoItem(tokens.accessToken, a.mlb, alvo.novaOrdem);
       } catch (e) {
         registrar("error", "ml-recusou", { mlb: a.mlb, erro: e instanceof Error ? e.message : "?" });
-        return parcial(feitos, a, e instanceof Error ? e.message : "o Mercado Livre recusou a troca", foto.cor as string);
+        return parcial(feitos, a, e instanceof Error ? e.message : "o Mercado Livre recusou a troca", foto.cor as string, novaFotoId);
       }
 
       // CONFERE. Sem isto, `200` viraria "trocou" — o defeito de 03/08.
@@ -249,7 +249,8 @@ export async function POST(request: Request) {
           feitos,
           a,
           "o Mercado Livre aceitou o pedido mas a capa continuou a antiga",
-          foto.cor as string
+          foto.cor as string,
+          novaFotoId
         );
       }
       // ANOTA O QUE ACABAMOS DE FAZER.
@@ -296,6 +297,10 @@ export async function POST(request: Request) {
     return Response.json({
       ok: true,
       cor: foto.cor,
+      // O ID DA FOTO NO MERCADO LIVRE — é o que o desfazer precisa mirar.
+      // Sem ele, quem quisesse tirar a foto errada teria de descobrir o id
+      // relendo os anúncios, e o desfazer nasceria mais frágil que a ida.
+      fotoNoML: novaFotoId,
       trocados: feitos.length,
       naoAlcancados,
       feitos,
@@ -322,13 +327,16 @@ function parcial(
   feitos: { mlb: string; titulo: string; fotosAntes: number; fotosDepois: number }[],
   onde: { mlb: string; titulo: string },
   motivo: string,
-  cor: string
+  cor: string,
+  /** A foto que ENTROU. O desfazer mira nela, e a parada é onde ele mais serve. */
+  fotoNoML: string
 ) {
   return Response.json(
     {
       ok: false,
       parou: true,
       cor,
+      fotoNoML,
       trocados: feitos.length,
       feitos,
       pareiEm: { mlb: onde.mlb, titulo: onde.titulo, motivo },

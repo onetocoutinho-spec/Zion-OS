@@ -40,6 +40,57 @@ export interface RespostaDaCapa {
   /** 409 e 502 não têm frase — têm motivo. */
   erro?: string;
   motivo?: string;
+  /**
+   * O id da foto NO MERCADO LIVRE. É por ele que o desfazer mira.
+   *
+   * Sem este campo o desfazer teria de descobrir o id relendo os anúncios —
+   * e nasceria mais frágil que a ida, que é o contrário do que se quer de um
+   * desfazer.
+   */
+  fotoNoML?: string;
+}
+
+/** O que `/api/ml/remover-foto` devolve. Mesma forma, outro verbo. */
+export interface RespostaDaRemocao {
+  ok?: boolean;
+  parou?: boolean;
+  trocados?: number;
+  feitos?: { mlb: string; titulo: string }[];
+  frase?: string;
+  erro?: string;
+}
+
+/**
+ * PODE DESFAZER?
+ *
+ * Só quando o Mercado Livre confirmou pelo menos uma troca E sabemos qual foto
+ * entrou. Oferecer "desfazer" sobre uma troca que não aconteceu ensinaria a
+ * lojista a desconfiar do botão — e um desfazer em que não se confia é pior
+ * que nenhum, porque ela deixa de tentar.
+ */
+export function podeDesfazer(r: RespostaDaCapa): r is RespostaDaCapa & { fotoNoML: string } {
+  return anunciosTrocados(r) > 0 && typeof r.fotoNoML === "string" && r.fotoNoML.trim() !== "";
+}
+
+/**
+ * A frase depois do desfazer.
+ *
+ * A mesma regra da ida vale aqui, invertida: nenhuma frase pode afirmar que a
+ * foto saiu do Mercado Livre sem que a rota tenha confirmado anúncio por
+ * anúncio. "Desfiz" sobre nada desfeito é a pior das mentiras deste caminho,
+ * porque ela para de procurar.
+ */
+export function fraseDoDesfazer(r: RespostaDaRemocao): string {
+  const tirados = Array.isArray(r.feitos) ? r.feitos.length : 0;
+  if (!r.frase) {
+    return (
+      "Não consegui tirar a foto: " +
+      (r.erro ?? "não consegui falar com o Mercado Livre agora") +
+      ". Os anúncios continuam com ela."
+    );
+  }
+  const quais = tirados > 0 ? ` (${(r.feitos ?? []).map((f) => f.mlb).join(", ")})` : "";
+  return `No Mercado Livre: ${r.frase}${quais}`;
 }
 
 export type EnvioAoML =
