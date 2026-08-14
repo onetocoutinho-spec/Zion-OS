@@ -1142,6 +1142,15 @@ export const CAMPOS_PEDIDOS_AO_ML = [
   "descriptions",                        // SE existe descrição (o texto é outra rota)
   "warranty","condition","video_id","tags",
   "base_price","original_price",
+  // ---- acrescentado em 14/08/2026 ----
+  // `shipping` — QUEM PAGA O FRETE. O mapeador lia `it.shipping?.free_shipping`
+  // desde sempre, e este campo nunca esteve na lista: o ML nunca foi
+  // perguntado. Resultado medido: 80 de 80 produtos com `vendedor_paga_frete`
+  // nulo, e o botão respondendo "Nenhum anúncio informou o frete" — culpando a
+  // fonte por omissão nossa, que é o pecado que o comentário de `falhaFoiNossa`
+  // logo abaixo descreve. Sem frete não há preço mínimo, e sem preço mínimo a
+  // precificação inteira fica parada.
+  "shipping",
   // NÃO entraram, de propósito: geolocation, seller_address, coverage_areas,
   // channels, deal_ids, thumbnail, site_id, currency_id, accepts_mercadopago,
   // non_mercado_pago_payment_methods. São dado de conta e de plataforma, não de
