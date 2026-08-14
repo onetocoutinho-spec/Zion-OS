@@ -193,6 +193,41 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    // A 24ª FERRAMENTA — e a decisão, escrita, de por que ela existe.
+    //
+    // MEDIDO EM 14/08/2026: 310 anúncios ativos com capa fora do padrão, em 54
+    // produtos, com o Mercado Livre cobrando "a foto de capa não cumpre os
+    // requisitos". O chat sabia CONTAR isso pela conta inteira e não sabia
+    // responder a pergunta que ela faz produto a produto: preciso fotografar
+    // este, ou já tenho foto boa aqui dentro?
+    //
+    // A varredura completa do mesmo dia — 391 de 391 anúncios lidos — provou
+    // que a resposta quase nunca está dentro do anúncio (`trocariam`: ZERO).
+    // O gargalo são as fotos dela. Então o que o software pode fazer de útil é
+    // dizer, por produto, se a viagem ao fabricante é necessária ou se o
+    // conserto é um clique.
+    //
+    // `le` e não `executa`: ela não escreve em lugar nenhum, e não fala com o
+    // Mercado Livre — cada chamada ao ML renova o refresh_token da lojista, e
+    // uma ferramenta de chat que faz isso a cada pergunta derruba a conexão
+    // dela. Responde do nosso banco, que a rota de troca de capa passou a
+    // manter anotado.
+    nome: "fotos_do_produto",
+    efeito: "le",
+    descricao:
+      "As fotos de UM produto: quantos anúncios dele estão com a capa fora do padrão do Mercado Livre, e se o cadastro já tem foto que serviria de capa (quadrada, 1200 ou mais de lado) ou se é preciso fotografar. Use para \"preciso fotografar este produto?\", \"as fotos deste anúncio estão boas?\" e sempre que a lojista perguntar o que fazer com a capa. NÃO diga que não enxerga isso. Se a resposta disser que já existe foto boa, ofereça aplicar; se disser que não serve nenhuma, diga que ela pode mandar a foto pelo próprio chat.",
+    parametros: {
+      type: "object",
+      properties: {
+        produto: {
+          type: "string",
+          description:
+            "Nome ou parte do nome do produto. Omita quando há um produto aberto na tela — aí é sobre ele.",
+        },
+      },
+    },
+  },
+  {
     nome: "o_que_impede",
     efeito: "le",
     descricao: "O que impede a loja de precificar, anunciar ou publicar hoje. Use para \"por que não consigo publicar?\" e \"o que está travando?\".",

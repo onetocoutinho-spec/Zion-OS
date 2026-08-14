@@ -90,6 +90,7 @@ import {
   produtoParaPreparar,
 } from "@/lib/services/preparacaoDeAnuncio";
 import { pendenciasDaContaDoCliente } from "@/lib/services/pendenciasDaContaDoAssistente";
+import { fotosDoProdutoDoAssistente } from "@/lib/services/fotosDoProdutoDoAssistente";
 import {
   CAMPO_TITULO_ATUAL,
   CAMPO_TEXTO_ATUAL,
@@ -398,6 +399,11 @@ export async function POST(request: Request) {
       // servidor: a função equivalente do portal usa o cliente do navegador e
       // aqui devolveria vazio em silêncio.
       pendenciasDaConta: () => pendenciasDaContaDoCliente(clienteDaSessao),
+      // As fotos de UM produto, do NOSSO banco. Não fala com o Mercado Livre:
+      // cada chamada de lá renova o refresh_token da lojista, e uma ferramenta
+      // de chat que faz isso a cada pergunta derruba a conexão dela.
+      fotosDoProduto: (produtoId, nome) =>
+        fotosDoProdutoDoAssistente(clienteDaSessao, produtoId, nome),
       doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
       catalogo: async () => {
         const c = await catalogoParaPreparar(clienteDaSessao);

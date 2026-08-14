@@ -76,6 +76,7 @@ import {
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
 import type { ResumoDePendencias } from "../../integration/domain/pendenciasDaConta";
+import type { DiagnosticoDasFotos } from "../../catalog/domain/fotosDoProduto";
 
 /**
  * O resumo mais o QUANDO da leitura.
@@ -268,6 +269,17 @@ export interface ContextoDoAnuncio {
    * ausente, a ferramenta diz que não alcança em vez de dizer que não há.
    */
   pendenciasDaConta?: () => Promise<ResumoDaConta | null>;
+  /**
+   * O diagnóstico das fotos de UM produto — lido do NOSSO banco.
+   *
+   * Opcional pela mesma razão da porta acima: ausente, a ferramenta diz que
+   * não alcança, em vez de dizer que está tudo bem. E não fala com o Mercado
+   * Livre de propósito — cada chamada de lá renova o refresh_token da lojista.
+   */
+  fotosDoProduto?: (
+    produtoId: string,
+    nome: string
+  ) => Promise<DiagnosticoDasFotos>;
   /** Um produto, com o anúncio que já existir para ele. */
   doProduto: (
     produtoId: string
@@ -858,6 +870,64 @@ export async function executarFerramenta(
         return { saida: { impedimento: r.lacuna.titulo, porque: r.lacuna.trava, onde: r.lacuna.href } };
       }
       return { saida: { nadaImpede: r.tipo === "nada_travado", frase: r.frase } };
+    }
+
+    case "fotos_do_produto": {
+      const porta = ctx.anuncio?.fotosDoProduto;
+      if (!porta) {
+        return { saida: { erro: "Não alcanço as fotos dos anúncios nesta tela." } };
+      }
+      // O PRODUTO SAI DO CONTEXTO OU DE UM NOME — nunca de um palpite.
+      //
+      // Responder sobre o produto errado aqui manda a lojista fotografar o que
+      // já está certo, ou dizer que está tudo bem sobre o que o ML está
+      // cobrando. Duas escolhas ruins; por isso a ambiguidade vira pergunta.
+      const termo = texto(args, "produto").trim().toLowerCase();
+      let alvo = ctx.produtoAberto ?? null;
+      if (termo) {
+        const achados = ctx.produtos.filter((p) => p.nome.toLowerCase().includes(termo));
+        if (achados.length === 0) {
+          return { saida: { erro: `Não achei produto com "${texto(args, "produto")}" no nome.` } };
+        }
+        if (achados.length > 1) {
+          return {
+            saida: {
+              ambiguo: true,
+              // Nomes, e não ids: é por nome que ela desempata.
+              candidatos: achados.slice(0, 5).map((p) => p.nome),
+              frase: `"${texto(args, "produto")}" casou com ${achados.length} produtos. De qual você fala?`,
+            },
+          };
+        }
+        alvo = { id: achados[0].id, nome: achados[0].nome };
+      }
+      if (!alvo) {
+        return {
+          saida: {
+            erro:
+              "Não sei de qual produto você fala. Abra o produto ou me diga o nome dele — " +
+              "responder sobre o errado manda fotografar o que já está certo.",
+          },
+        };
+      }
+      const d = await porta(alvo.id, alvo.nome);
+      return {
+        saida: {
+          produto: alvo.nome,
+          anuncios: d.anuncios,
+          capasForaDoPadrao: d.foraDoPadrao,
+          // NUNCA somado às reprovadas: "não medimos" e "está ruim" são
+          // respostas diferentes, e só a segunda manda alguém trabalhar.
+          capasQueNaoMedi: d.semMedida,
+          fotosNoCadastroQueServem: d.fotosQueServem,
+          coresComFotoPronta: d.coresProntas,
+          veredicto: d.veredicto,
+          frase: d.frase,
+          significado:
+            "capasForaDoPadrao conta anúncios cuja CAPA o Mercado Livre reprova (não quadrada ou menor que 1200). " +
+            "capasQueNaoMedi são anúncios cuja capa ainda não foi lida — NÃO são capas ruins.",
+        },
+      };
     }
 
     case "achar_produto": {

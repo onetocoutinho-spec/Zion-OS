@@ -62,9 +62,26 @@ test("o catálogo não muda sem alguém decidir", () => {
   // remédios escritos pelo próprio Mercado Livre, mais 131 anúncios pausados
   // e 155 em revisão. Nenhuma regra nova nasceu com ela: `pendenciasDaConta`
   // já classificava tudo isso para as duas telas. Faltava a porta.
+  //
+  // 23 → 24 em 14/08/2026: entrou `fotos_do_produto`. O motivo, medido: 310
+  // anúncios ativos com capa fora do padrão, em 54 produtos, com o Mercado
+  // Livre cobrando "a foto de capa não cumpre os requisitos". O chat sabia
+  // CONTAR isso pela conta inteira e não sabia responder a pergunta que a
+  // lojista faz produto a produto — **preciso fotografar este, ou já tenho
+  // foto boa aqui dentro?** A diferença entre as duas respostas é uma viagem
+  // ao fabricante.
+  //
+  // E a varredura completa do mesmo dia (391 de 391 anúncios lidos, `trocariam`
+  // ZERO) provou que a resposta quase nunca está dentro do anúncio: o gargalo
+  // são as fotos dela. Dizer isso por produto é a única coisa útil que o
+  // software pode fazer aqui.
+  //
+  // `le`: não escreve em lugar nenhum, e NÃO fala com o Mercado Livre — cada
+  // chamada de lá renova o refresh_token da lojista, e uma ferramenta de chat
+  // que faz isso a cada pergunta derruba a conexão dela.
   assert.equal(
     FERRAMENTAS.length,
-    23,
+    24,
     "o número de ferramentas mudou; isso é um ato, não um efeito colateral"
   );
 });

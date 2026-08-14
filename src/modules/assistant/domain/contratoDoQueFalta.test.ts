@@ -365,8 +365,22 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // E ela lê o DOMÍNIO: `pendenciasDaConta` já classificava gravidade, tipo e
   // o que fazer para as duas telas, inclusive o ramo grave de propriedade
   // intelectual. Nenhuma regra nasceu com a ferramenta — só a porta.
-  assert.equal(FERRAMENTAS.length, 23);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
+  // De 23 para 24 em 14/08/2026: `fotos_do_produto`, LEITURA. Nenhuma das
+  // outras vinte e três mudou de efeito — continuam 1 rascunho, 8 propostas e
+  // 1 execução.
+  //
+  // A decisão: 310 anúncios ativos com capa fora do padrão, em 54 produtos, e
+  // o Mercado Livre cobrando "a foto de capa não cumpre os requisitos". O chat
+  // contava isso pela conta inteira e não respondia a pergunta que a lojista
+  // faz produto a produto — preciso fotografar este, ou já tenho foto boa aqui?
+  // A diferença entre as duas respostas é uma viagem ao fabricante.
+  //
+  // É `le` porque diz o ESTADO e não mexe em nada: a troca de capa continua
+  // sendo `/api/ml/aplicar-capa`, com o aviso antes do clique e o desfazer no
+  // turno. Um caminho próprio até o ML aqui seria uma segunda cópia daquelas
+  // guardas — e, além disso, cada chamada ao ML renova o refresh_token dela.
+  assert.equal(FERRAMENTAS.length, 24);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 14);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -376,10 +390,10 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  // 13 desde 11/08/2026 (`pendencias_da_conta`). O que o C1R garante NÃO mudou
+  // 14 desde 14/08/2026 (`fotos_do_produto`). O que o C1R garante NÃO mudou
   // e é o que a linha seguinte prova: toda ferramenta da primeira ação tem
   // efeito `le`. O número trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 13);
+  assert.equal(PRIMEIRA_ACAO.length, 14);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

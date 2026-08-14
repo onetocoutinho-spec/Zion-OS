@@ -47,19 +47,30 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 13 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 14 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 13);
+  assert.equal(PRIMEIRA_ACAO.length, 14);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas treze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas catorze — a matriz que autorizou a decisão", () => {
+  // A DÉCIMA QUARTA entrou em 14/08/2026: `fotos_do_produto`.
+  //
+  // Ela responde, por produto, se as capas dos anúncios estão fora do padrão e
+  // se o cadastro já tem foto que serviria — a diferença entre um clique e uma
+  // viagem ao fabricante. Sem escrita, sem chamada externa (lê o nosso banco,
+  // que a rota de troca de capa mantém anotado), e o tenant vem da sessão.
+  //
+  // Por que pode ser a PRIMEIRA ação: o pior caso de um "obrigado" disparando-a
+  // é a lojista ver o estado das fotos de um produto sem ter pedido. Mesmo
+  // dano de `estado_da_loja` — nenhum.
+  //
   // A DÉCIMA TERCEIRA entrou em 11/08/2026: `pendencias_da_conta`.
   //
   // Ela lê o que o Mercado Livre disse sobre os anúncios DESTA conta —
@@ -98,6 +109,7 @@ test("T2: são exatamente estas treze — a matriz que autorizou a decisão", ()
     "achar_produto",
     "contar",
     "estado_da_loja",
+    "fotos_do_produto",
     "meus_custos",
     "o_que_falta_no_produto",
     "o_que_impede",
@@ -287,8 +299,33 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // intelectual, onde editar-e-republicar conta como reincidência. Nenhuma
   // regra nova nasceu com a ferramenta, e é por isso que ela é `le`: dizer o
   // que o ML mandou não é agir sobre o anúncio.
-  assert.equal(FERRAMENTAS.length, 23);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
+  //
+  // De 23 para 24 em 14/08/2026: `fotos_do_produto`, LEITURA. O poder de agir
+  // não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão: 310 anúncios ativos com capa fora do padrão, em 54 produtos, e
+  // o Mercado Livre cobrando "a foto de capa não cumpre os requisitos". O chat
+  // sabia CONTAR isso pela conta inteira e não sabia responder a pergunta que
+  // ela faz produto a produto — preciso fotografar este, ou já tenho foto boa
+  // aqui dentro? A diferença entre as duas respostas é uma viagem ao
+  // fabricante, e o software tinha o dado para separá-las.
+  //
+  // A varredura completa do mesmo dia (391 de 391 anúncios lidos) mostrou
+  // `trocariam` ZERO: a foto boa quase nunca está dentro do anúncio. Ou seja,
+  // a resposta honesta na maioria dos casos É "precisa fotografar" — e dizer
+  // isso cedo vale mais que oferecer um conserto que não existe.
+  //
+  // Ela lê o DOMÍNIO e o NOSSO banco: `lerMaxSize` é o mesmo juiz da tela de
+  // conferência e do relatório do ML, e `foto_capa_max_size` é anotado pela
+  // rota que troca a capa. NÃO fala com o Mercado Livre de propósito — cada
+  // chamada de lá renova o refresh_token da lojista, e uma ferramenta de chat
+  // que faz isso a cada pergunta derruba a conexão dela.
+  //
+  // Entra na PRIMEIRA AÇÃO porque é leitura pura: o pior caso de um "obrigado"
+  // dispará-la é a lojista ver o estado das fotos de um produto sem ter
+  // pedido. Mesmo dano de `estado_da_loja` — nenhum.
+  assert.equal(FERRAMENTAS.length, 24);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 14);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
