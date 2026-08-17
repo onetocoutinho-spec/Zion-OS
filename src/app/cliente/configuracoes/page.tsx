@@ -9,6 +9,7 @@ import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { quotaEsteira } from "@/lib/services/perfil";
+import { estadoDaCota } from "@/modules/workspace/domain/cotaDaEsteira";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
@@ -18,6 +19,10 @@ import { CustosDoLojista } from "@/components/client-portal/CustosDoLojista";
 export default function ClienteConfiguracoes() {
   const { nome, marketplace, clienteId } = useClientPortal();
   const { data: quota } = useLiveQuery(quotaEsteira);
+  // A frase vem do domínio. Ver `cotaDaEsteira`: `null` é "não conseguimos
+  // ler", e nunca "acabou" — era isso que mandava a lojista falar com a Zion
+  // por causa de uma falha de rede.
+  const cota = estadoDaCota(quota ?? null, new Date());
   const { data: canal } = useLiveQuery(
     () => buscarCanal(clienteId, "Mercado Livre"),
     [clienteId]
@@ -167,9 +172,7 @@ export default function ClienteConfiguracoes() {
                 />
               </div>
               <p className="mt-2 text-xs text-zinc-500">
-                {quota.restante > 0
-                  ? `Você ainda pode otimizar ${quota.restante} anúncio(s) este mês.`
-                  : "Você usou todas as otimizações do mês. Fale com a Zion para ampliar seu plano."}
+                {cota.frase}
               </p>
             </div>
           )}

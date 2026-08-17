@@ -141,14 +141,35 @@ export interface QuotaEsteira {
   restante: number;
 }
 
-export async function quotaEsteira(): Promise<QuotaEsteira> {
+/**
+ * A cota do mês — ou `null` quando NÃO CONSEGUIMOS LER.
+ *
+ * ===========================================================================
+ * O DEFEITO QUE ESTA ASSINATURA CONSERTA — medido em 17/08/2026
+ * ===========================================================================
+ *
+ * O `catch` devolvia `{limite:0, usado:0, restante:0}`. A tela de otimização
+ * calculava `semCota = Boolean(quota) && restante <= 0`, e um objeto verdadeiro
+ * com restante zero dava `true`: uma falha de rede mostrava "você usou todas as
+ * otimizações do seu plano este mês", **bloqueava o botão Gerar** e mandava a
+ * lojista falar com a Zion.
+ *
+ * Falha de leitura virava parede comercial. `null` é a única resposta honesta
+ * quando não se leu, e quem consome decide — ver `estadoDaCota`, que é
+ * fail-open de propósito.
+ */
+export async function quotaEsteira(): Promise<QuotaEsteira | null> {
   if (!supabaseConfigurado) return { limite: 30, usado: 0, restante: 30 };
   try {
-    const { data } = await getSupabase().rpc("quota_esteira");
-    const limite = Number((data as { limite?: number })?.limite ?? 0);
-    const usado = Number((data as { usado?: number })?.usado ?? 0);
+    const { data, error } = await getSupabase().rpc("quota_esteira");
+    // `error` sem exceção também é falha: o Supabase devolve o erro no objeto,
+    // e ignorá-lo era a metade silenciosa do mesmo defeito.
+    if (error) return null;
+    const limite = Number((data as { limite?: number })?.limite ?? NaN);
+    const usado = Number((data as { usado?: number })?.usado ?? NaN);
+    if (!Number.isFinite(limite) || !Number.isFinite(usado)) return null;
     return { limite, usado, restante: Math.max(0, limite - usado) };
   } catch {
-    return { limite: 0, usado: 0, restante: 0 };
+    return null;
   }
 }

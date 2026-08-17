@@ -51,6 +51,7 @@ import {
 } from "@/lib/services/filaOtimizacaoProduto";
 import { rodarAgentePortal } from "@/lib/services/agentePortal";
 import { quotaEsteira } from "@/lib/services/perfil";
+import { estadoDaCota } from "@/modules/workspace/domain/cotaDaEsteira";
 import type { FerramentaPortal } from "@/lib/agentes/catalogo";
 import { precoMinimo, MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { margemMinimaDoCliente } from "@/lib/services/margemCliente";
@@ -163,8 +164,16 @@ export default function ClienteOtimizar() {
   }, [anuncios]);
 
   const registro = produtoId ? anuncioPorProduto.get(produtoId) ?? null : null;
-  const restante = quota?.restante ?? 0;
-  const semCota = Boolean(quota) && restante <= 0;
+  // A COTA VEM DO DOMÍNIO, e "não sei" não bloqueia.
+  //
+  // Era `semCota = Boolean(quota) && restante <= 0`, e `quotaEsteira()`
+  // devolvia `{limite:0,usado:0,restante:0}` quando a LEITURA FALHAVA — então
+  // uma falha de rede mostrava "você usou todas as otimizações deste mês",
+  // travava o botão Gerar e mandava a lojista falar com a Zion. Ver
+  // `cotaDaEsteira`: `null` é "não conseguimos ler", e é fail-open.
+  const cota = estadoDaCota(quota ?? null, new Date());
+  const restante = cota.tipo === "tem" ? cota.restante : 0;
+  const semCota = !cota.podeGerar;
 
   const passo = !ferramentaKey ? 1 : !produtoId ? 2 : 3;
 
@@ -432,6 +441,7 @@ export default function ClienteOtimizar() {
           rodando={rodando}
           busy={busy}
           semCota={semCota}
+          fraseDaCota={cota.frase}
           resultadoAgente={resultadoAgente}
           onGerar={gerar}
           onGerarAgente={gerarAgente}
@@ -621,6 +631,7 @@ function ResultadoPasso({
   rodando,
   busy,
   semCota,
+  fraseDaCota,
   resultadoAgente,
   onGerar,
   onGerarAgente,
@@ -634,6 +645,8 @@ function ResultadoPasso({
   rodando: boolean;
   busy: boolean;
   semCota: boolean;
+  /** A frase do domínio. A tela não redige cota — ver `cotaDaEsteira`. */
+  fraseDaCota: string;
   resultadoAgente: { markdown: string; agente: string; tipo: "IA" | "Simulada" } | null;
   onGerar: () => void;
   onGerarAgente: () => void;
@@ -692,7 +705,7 @@ function ResultadoPasso({
           </div>
           {semCota ? (
             <p className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-400 ring-1 ring-inset ring-amber-500/20">
-              <AlertTriangle size={14} /> Você usou todas as otimizações do seu plano este mês. Fale com a Zion para ampliar.
+              <AlertTriangle size={14} /> {fraseDaCota}
             </p>
           ) : (
             <Button onClick={onGerar}>

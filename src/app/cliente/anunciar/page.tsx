@@ -135,9 +135,13 @@ function Jornada() {
     buscarCanal(clienteId, marketplace)
       .then((c) => vivo && setConectado(Boolean(c?.ativo)))
       .catch(() => vivo && setConectado(false));
+    // `null` é "não conseguimos ler", e ele TEM que chegar como null: o
+    // `quotaRestante: quota ?? 1` abaixo já decidiu não bloquear por algo que
+    // não se sabe, e mandar 0 aqui transformava falha de rede em cota
+    // esgotada — a parede comercial que ninguém pediu.
     quotaEsteira()
-      .then((q) => vivo && setQuota(q.restante))
-      .catch(() => vivo && setQuota(0));
+      .then((q) => vivo && setQuota(q ? q.restante : null))
+      .catch(() => vivo && setQuota(null));
     return () => {
       vivo = false;
     };

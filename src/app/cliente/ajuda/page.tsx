@@ -51,7 +51,7 @@ const FAQ = [
   },
   {
     q: "Quantas otimizações eu posso fazer?",
-    a: "Depende do seu plano. Você vê o quanto já usou no mês no topo das telas e em “Configurações”. Ao esgotar, fale com a Zion para ampliar.",
+    a: "Depende do seu plano. Você vê o quanto já usou no mês no topo das telas e em “Configurações”. A cota reinicia no dia 1º de cada mês, e o que você já gerou continua aqui — nada se perde quando ela vira.",
   },
   {
     q: "A IA publica sozinha no Mercado Livre?",
