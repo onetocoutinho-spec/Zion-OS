@@ -3077,11 +3077,30 @@ function CartaoDaProposta({
  * esquecer um caso um erro de compilação, e não uma tela em branco.
  */
 function Resposta({ r, interpretacao }: { r: RespostaDaOperacao; interpretacao?: string }) {
-  // A linha de auditoria some quando repetiria a resposta. Em "fora do alcance"
-  // a frase É a interpretação do modelo, e "Entendi: <a mesma frase>" só ocupa
-  // espaço dizendo duas vezes a mesma coisa.
+  // A AUDITORIA SÓ APARECE QUANDO O SOFTWARE NÃO ENTREGOU.
+  //
+  // ===========================================================================
+  // MEDIDO NO USO REAL, 17/08/2026
+  // ===========================================================================
+  //
+  // A lojista perguntou "quais são as pendências", recebeu as três com o link
+  // de resolver cada uma — e a última linha da tela era "Entendi: Você quer um
+  // panorama do que está pendente na loja".
+  //
+  // A resposta estava certa e óbvia. A última coisa que ela lia era o software
+  // explicando a pergunta de volta para ela. Isso treina a lojista a pular
+  // texto — e o texto que ela vai pular junto é o que avisa que o anúncio no ar
+  // vai mudar.
+  //
+  // Quando a resposta é "não sei" ou "me diga mais", saber o que o modelo
+  // entendeu é a explicação do fracasso e ensina a reformular. Aí ela ganha o
+  // seu lugar. Nos outros casos, a resposta fala por si.
+  //
+  // A linha também some quando repetiria a resposta: em "fora do alcance" a
+  // frase É a interpretação, e dizê-la duas vezes é só espaço gasto.
+  const auditoriaExplica = r.tipo === "nao_sei" || r.tipo === "perguntar";
   const entendi =
-    interpretacao && interpretacao.trim() !== r.frase.trim() ? (
+    auditoriaExplica && interpretacao && interpretacao.trim() !== r.frase.trim() ? (
       <p className="text-[11px] text-zinc-600">Entendi: {interpretacao}</p>
     ) : null;
 

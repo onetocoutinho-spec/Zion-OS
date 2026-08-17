@@ -122,3 +122,27 @@ test("o domínio continua tendo os quatro `nao_sei` — a escalada não os apago
   const quantos = (dominio.match(/tipo: "nao_sei"/g) ?? []).length;
   assert.ok(quantos >= 4, `o domínio tinha 4+ recusas honestas, agora tem ${quantos}`);
 });
+
+test("a auditoria só aparece quando o software NÃO entregou", () => {
+  // MEDIDO NO USO REAL, 17/08/2026: a lojista perguntou "quais são as
+  // pendências", recebeu as três com o link de resolver cada uma — e a última
+  // linha da tela era "Entendi: Você quer um panorama do que está pendente na
+  // loja".
+  //
+  // A resposta estava certa e óbvia. A última coisa que ela lia era o software
+  // explicando a pergunta de volta. Isso treina a lojista a pular texto, e o
+  // texto que ela vai pular junto é o aviso de que o anúncio no ar vai mudar.
+  //
+  // Em "não sei" e "me diga mais", a interpretação É a explicação do fracasso
+  // e ensina a reformular — aí ela ganha o lugar de volta.
+  const fonte = readFileSync(new URL("./ChatDaOperacao.tsx", import.meta.url), "utf8");
+  const i = fonte.indexOf("function Resposta({");
+  assert.ok(i > 0, "o componente da resposta mudou de nome");
+  const corpo = fonte.slice(i, i + 2200);
+  assert.match(
+    corpo,
+    /r\.tipo === "nao_sei" \|\| r\.tipo === "perguntar"/,
+    "a auditoria voltou a aparecer em resposta que deu certo"
+  );
+  assert.match(corpo, /auditoriaExplica &&/, "o gate saiu da frente da linha");
+});
