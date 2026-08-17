@@ -89,11 +89,25 @@ export function ConferirFoto({
             </span>
           </p>
 
-          {/* O VEREDICTO ANTES DO UPLOAD. É o ponto desta tela. */}
+          {/* O VEREDICTO ANTES DO UPLOAD. É o ponto desta tela.
+              ATENUADO EM 17/08/2026, contra medição. A frase era "Serve de capa"
+              — uma promessa. Quatro dias depois de quatro anúncios da Papete
+              Moleca Bege ficarem com capa 1200×1200, o Mercado Livre SEGUIA
+              cobrando "a foto de capa não cumpre os requisitos". Somado aos 189
+              anúncios já medidos com capa quadrada de 1200 e cobrados, cujo
+              texto fala em "produto completo, centralizado": quadrada e 1200 é
+              o MÍNIMO dele, não o suficiente. Prometer que serve era vender um
+              resultado que não está na nossa mão. */}
           {serve ? (
-            <p className="mt-1 text-xs text-emerald-300/80">
-              Serve de capa: quadrada e com {LADO_MINIMO_DA_CAPA} ou mais de lado.
-            </p>
+            <>
+              <p className="mt-1 text-xs text-emerald-300/80">
+                Atende o mínimo do Mercado Livre: quadrada, {LADO_MINIMO_DA_CAPA} de lado.
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Isso não garante que ele aceite — ele também exige o produto inteiro e
+                centralizado na foto, e isso só o olho dele julga.
+              </p>
+            </>
           ) : (
             <p className="mt-1 text-xs text-amber-300">
               {c && !c.quadrada

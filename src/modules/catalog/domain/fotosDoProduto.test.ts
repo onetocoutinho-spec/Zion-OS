@@ -65,13 +65,18 @@ test("foto boa SEM cor não vira promessa — cada anúncio é de uma cor", () =
   assert.match(d.frase, /nenhuma delas tem a cor definida/);
 });
 
-test("nenhuma foto serve: diz que é foto NOVA, e por onde mandar", () => {
+test("nenhuma foto atende: diz que é foto NOVA, e por onde mandar", () => {
   // "Não dá" ensina a desistir. "Me mande pelo chat" é o que ela pode fazer
   // hoje à noite.
+  //
+  // MODIFICADA EM 17/08/2026, com o motivo escrito: esta prova exigia a frase
+  // "1200 ou mais de lado". O texto mudou para "o mínimo dele: quadrada com
+  // 1200 de lado" porque a medição mostrou que atender o mínimo NÃO derruba a
+  // cobrança. O que se guarda é o número e o caminho, não a redação antiga.
   const d = diagnosticarFotos([{ mlb: "MLB1", capaMaxSize: "402x496" }], [ruim, ruim], NOME);
   assert.equal(d.veredicto, "precisa-fotografar");
   assert.match(d.frase, /nenhuma das 2 foto\(s\)/);
-  assert.match(d.frase, /1200 ou mais de lado/);
+  assert.match(d.frase, /1200 de lado/);
   assert.match(d.frase, /me mande pelo chat/i);
 });
 
@@ -112,4 +117,29 @@ test("a contagem NUNCA soma o que não foi medido", () => {
     );
     assert.equal(d.anuncios, capas.length);
   }
+});
+
+test("NÃO promete que a infração cai — medido em 17/08/2026", () => {
+  // Quatro dias depois de quatro anúncios da Papete Moleca Bege ficarem com
+  // capa 1200×1200, o Mercado Livre SEGUIA cobrando "a foto de capa não cumpre
+  // os requisitos" — leitura viva completa, 1.094 de 1.094 infrações, zero
+  // páginas com falha.
+  //
+  // Somado aos 189 anúncios já medidos com capa quadrada de 1200 e cobrados,
+  // cujo texto fala em "produto completo, centralizado": quadrada e 1200 é o
+  // MÍNIMO dele, não o suficiente.
+  //
+  // Prometer "serve de capa" era vender um resultado que não está na nossa mão.
+  // A frase agora diz o que sabemos e o que não sabemos.
+  const d = diagnosticarFotos(
+    [{ mlb: "MLB1", capaMaxSize: "402x496" }],
+    [{ largura: 402, altura: 496, cor: null }],
+    NOME
+  );
+  assert.equal(d.veredicto, "precisa-fotografar");
+  assert.match(d.frase, /mínimo dele/i, "voltou a falar como se o mínimo bastasse");
+  assert.match(d.frase, /não garante/i, "sumiu a ressalva — a frase virou promessa de novo");
+  assert.match(d.frase, /centralizado/i, "sumiu o que o ML realmente cobra além do tamanho");
+  // E não pode voltar a dizer que a foto "serve", que era a promessa.
+  assert.doesNotMatch(d.frase, /\bserve\b/i);
 });

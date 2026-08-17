@@ -153,7 +153,9 @@ export function diagnosticarFotos(
     veredicto: "precisa-fotografar",
     frase:
       `${foraDoPadrao} anúncio(s) de ${nomeDoProduto} estão com a capa fora do padrão${ressalva}, ` +
-      `e nenhuma das ${fotos.length} foto(s) que tenho aqui serve: o Mercado Livre pede quadrada ` +
-      `com ${LADO_MINIMO_DA_CAPA} ou mais de lado. Essa é foto nova — me mande pelo chat que eu troco.`,
+      `e nenhuma das ${fotos.length} foto(s) que tenho aqui atende o mínimo dele: quadrada ` +
+      `com ${LADO_MINIMO_DA_CAPA} de lado. Essa é foto nova — me mande pelo chat que eu troco. ` +
+      "Aviso desde já: atender o mínimo não garante que ele tire a cobrança — ele também " +
+      "exige o produto inteiro e centralizado, e isso só o olho dele julga.",
   };
 }
