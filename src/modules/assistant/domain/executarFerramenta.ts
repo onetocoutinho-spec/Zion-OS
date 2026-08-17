@@ -951,6 +951,51 @@ export async function executarFerramenta(
       // ---- Caminho em memoria: nome e marca, como sempre foi ----
       const termos = (texto(args, "termos") || termo).split(/\s+/).filter(Boolean);
       const achados = candidatos(termos, ctx.produtos);
+
+      // AMBIGUIDADE NÃO ENTREGA `id` — a diferença entre pedir e impedir.
+      //
+      // =====================================================================
+      // MEDIDO EM 17/08/2026, comparando os dois caminhos do chat
+      // =====================================================================
+      //
+      // Este ramo devolvia os ids de TODOS os candidatos, acompanhados de um
+      // aviso em texto: "pergunte ao lojista qual, sem escolher". Ou seja,
+      // entregava as chaves e pedia para não usar.
+      //
+      // O caminho local, no mesmo caso, devolve `ambigua` e PARA: sem alvo
+      // único não existe proposta. A garantia é do código.
+      //
+      // A diferença aparece na única coisa que importa: qual produto recebe o
+      // peso ou o custo que a lojista ditou. Gravar no produto errado é pior
+      // que não gravar, e "o modelo foi instruído a perguntar" não é uma
+      // trava — é uma esperança. `propor_gravacao` recebe `produtoId` pronto e
+      // não tem como saber se ele veio de um casamento único ou de um palpite.
+      //
+      // Sem `id`, o modelo NÃO CONSEGUE seguir para a proposta. Ele tem que
+      // perguntar, ela responde com o nome, e a segunda busca resolve — que é
+      // exatamente o fluxo que o aviso já pedia, agora sem depender de
+      // obediência.
+      //
+      // É a mesma decisão que `fotos_do_produto` já tomava desde hoje de
+      // manhã: "nomes, e não ids — é por nome que ela desempata".
+      if (achados.length > 1) {
+        return {
+          saida: {
+            total: achados.length,
+            casamento: "ambiguo",
+            // Sem `id`, de propósito. Ver o comentário acima.
+            candidatos: achados.slice(0, 8).map((p) => ({
+              nome: p.nome,
+              marca: p.marca,
+              variacoes: p.quantidadeVariantes,
+            })),
+            aviso:
+              "Mais de um produto bate. Pergunte ao lojista qual — eu não te dou o id " +
+              "enquanto houver dúvida, então não há como seguir sem a resposta dele.",
+          },
+        };
+      }
+
       return {
         saida: {
           total: achados.length,
@@ -961,9 +1006,6 @@ export async function executarFerramenta(
             variacoes: p.quantidadeVariantes,
           })),
           ...(achados.length === 0 ? { aviso: "Nenhum produto bate com esses termos." } : {}),
-          ...(achados.length > 1
-            ? { aviso: "Mais de um produto bate. Pergunte ao lojista qual, sem escolher." }
-            : {}),
         },
       };
     }

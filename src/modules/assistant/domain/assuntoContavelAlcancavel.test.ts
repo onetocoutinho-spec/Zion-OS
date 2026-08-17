@@ -86,3 +86,33 @@ test("o prompt da rota e o enum falam do mesmo assunto", () => {
     "o prompt e o enum discordam sobre infração"
   );
 });
+
+test("ambiguidade NÃO entrega id — impedir, não pedir", () => {
+  // MEDIDO EM 17/08/2026, comparando os dois caminhos do chat.
+  //
+  // `achar_produto` devolvia os ids de TODOS os candidatos com um aviso em
+  // texto: "pergunte ao lojista qual, sem escolher". Entregava as chaves e
+  // pedia para não usar.
+  //
+  // O caminho local, no mesmo caso, devolve `ambigua` e PARA — sem alvo único
+  // não existe proposta. E `propor_gravacao` recebe `produtoId` pronto: não
+  // tem como saber se veio de casamento único ou de palpite.
+  //
+  // A diferença aparece na única coisa que importa: qual produto recebe o peso
+  // ou o custo que ela ditou. Gravar no produto errado é pior que não gravar.
+  const fonte = lerFonte(new URL("./executarFerramenta.ts", import.meta.url), "utf8");
+  const i = fonte.indexOf("const achados = candidatos(termos, ctx.produtos);");
+  assert.ok(i > 0, "a busca por termos do `achar_produto` mudou de forma");
+  const ramo = fonte.slice(i, i + 2600);
+  assert.match(ramo, /if \(achados\.length > 1\)/, "o ramo da ambiguidade sumiu");
+
+  // O corpo do ramo ambíguo não pode conter `id`.
+  const iAmb = ramo.indexOf("if (achados.length > 1)");
+  const corpoAmbiguo = ramo.slice(iAmb, ramo.indexOf("return {", ramo.indexOf("}", ramo.indexOf("aviso:", iAmb))));
+  assert.ok(
+    !/\bid: p\.id\b/.test(corpoAmbiguo),
+    "a ambiguidade voltou a entregar o id — o modelo pode escolher o produto errado " +
+      "e `propor_gravacao` não tem como saber"
+  );
+  assert.match(corpoAmbiguo, /casamento: "ambiguo"/, "o desfecho deixou de se declarar ambíguo");
+});
