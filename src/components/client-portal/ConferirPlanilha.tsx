@@ -45,6 +45,14 @@ interface Props {
   nomesDoCatalogo?: readonly string[];
   onCancelar: () => void;
   onConfirmar: (mapa: Mapeamento) => void;
+  /**
+   * Trocar a tabela aberta por outra do mesmo arquivo.
+   *
+   * Opcional: sem ele a conferência funciona como antes, só não deixa trocar.
+   * Quem passa é a tela que guarda a planilha em estado — a troca é pura
+   * (`trocarTabela`), então ninguém relê o arquivo.
+   */
+  onTrocarTabela?: (aba: string, linhaDoCabecalho: number) => void;
   ocupado?: boolean;
 }
 
@@ -53,9 +61,25 @@ export function ConferirPlanilha({
   nomesDoCatalogo,
   onCancelar,
   onConfirmar,
+  onTrocarTabela,
   ocupado,
 }: Props) {
-  const [mapa, setMapa] = useState<Mapeamento>(() => sugerirMapeamento(planilha.headers));
+  // O MAPA SEGUE A TABELA. Trocar de aba troca os cabeçalhos, e um mapa da aba
+  // anterior apontaria papéis para colunas que não existem mais — a tela diria
+  // "custo" apontando para o nada, que é exatamente o tipo de silêncio que esta
+  // conferência existe para acabar. Estado derivado, recalculado no render em
+  // que a identidade muda.
+  const identidade = `${planilha.origem?.aba ?? ""}#${planilha.origem?.linhaDoCabecalho ?? 0}#${planilha.headers.join("|")}`;
+  const [estado, setEstado] = useState(() => ({
+    identidade,
+    mapa: sugerirMapeamento(planilha.headers),
+  }));
+  if (estado.identidade !== identidade) {
+    setEstado({ identidade, mapa: sugerirMapeamento(planilha.headers) });
+  }
+  const mapa = estado.mapa;
+  const setMapa = (f: (m: Mapeamento) => Mapeamento) =>
+    setEstado((e) => ({ ...e, mapa: f(e.mapa) }));
 
   const previa = useMemo(() => montarPrevia(planilha.linhas, mapa), [planilha.linhas, mapa]);
 
@@ -99,6 +123,51 @@ export function ConferirPlanilha({
           conhece a planilha é você.
         </p>
       </div>
+
+      {/* ── DE ONDE ESTA TABELA SAIU ───────────────────────────────────────
+          Um leitor que escolhe a aba em silêncio é a mesma coisa que um leitor
+          que adivinha a coluna. Aparece só quando houve escolha a fazer: uma
+          aba com cabeçalho na linha 1 não tem nada a declarar. */}
+      {planilha.origem &&
+        ((planilha.tabelas?.length ?? 0) > 1 || planilha.origem.linhaDoCabecalho > 1) && (
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs text-white/60">
+              Li a aba <span className="font-medium text-white/85">{planilha.origem.aba}</span>, com
+              o cabeçalho na linha {planilha.origem.linhaDoCabecalho}.
+            </p>
+            {(planilha.tabelas?.length ?? 0) > 1 && (
+              <label className="mt-2 flex flex-col gap-1">
+                <span className="text-xs text-white/45">
+                  Este arquivo tem {planilha.tabelas!.length} tabelas. Cada uma se importa
+                  separadamente — nenhuma entra junto.
+                </span>
+                {/* O valor é o ÍNDICE, e não "aba+linha" em texto: nome de
+                    aba tem espaço ("Produtos novos"), e qualquer separador de
+                    texto quebraria exatamente no arquivo que motivou a tela. */}
+                <select
+                  value={planilha.tabelas!.findIndex(
+                    (t) =>
+                      t.aba === planilha.origem!.aba &&
+                      t.linhaDoCabecalho === planilha.origem!.linhaDoCabecalho
+                  )}
+                  onChange={(e) => {
+                    const t = planilha.tabelas![Number(e.target.value)];
+                    if (t) onTrocarTabela?.(t.aba, t.linhaDoCabecalho);
+                  }}
+                  disabled={ocupado || !onTrocarTabela}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
+                >
+                  {planilha.tabelas!.map((t, i) => (
+                    <option key={`${t.aba}#${t.linhaDoCabecalho}`} value={i}>
+                      {t.aba} — {t.linhas.length} linha(s), colunas:{" "}
+                      {t.headers.filter(Boolean).slice(0, 4).join(", ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
 
       {/* ── As colunas e seus papéis ────────────────────────────────────── */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

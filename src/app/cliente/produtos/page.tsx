@@ -47,7 +47,7 @@ import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
 import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
-import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { lerPlanilha, trocarTabela, type PlanilhaLida } from "@/lib/planilha";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
 import { diagnosticarEGravar, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
@@ -995,6 +995,9 @@ export default function ClienteProdutos() {
           nomesDoCatalogo={(produtos ?? []).map((p) => p.nome)}
           ocupado={importandoCusto}
           onCancelar={() => setConferindo(null)}
+          onTrocarTabela={(aba, linha) =>
+            setConferindo((p) => (p ? trocarTabela(p, aba, linha) : p))
+          }
           onConfirmar={(mapa) => void gravarCustos(mapa)}
         />
       )}

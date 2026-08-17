@@ -124,7 +124,7 @@ import {
   type AnaliseProdutos,
 } from "@/lib/services/importacaoProdutos";
 import { oQueEssaPlanilhaE } from "@/modules/catalog/domain/oQueEssaPlanilhaE";
-import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { lerPlanilha, trocarTabela, type PlanilhaLida } from "@/lib/planilha";
 import { ConferirPeso } from "./ConferirPeso";
 import { ImportarCatalogoPdf } from "./ImportarCatalogoPdf";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
@@ -1495,6 +1495,15 @@ export function ChatDaOperacao({
                     setTurnos((ts) =>
                       ts.map((turno, j) =>
                         j === i ? { ...turno, planilha: undefined, texto: "Descartei a planilha. Nada foi gravado." } : turno
+                      )
+                    )
+                  }
+                  onTrocarTabela={(aba, linha) =>
+                    setTurnos((ts) =>
+                      ts.map((turno, j) =>
+                        j === i && turno.planilha
+                          ? { ...turno, planilha: trocarTabela(turno.planilha, aba, linha) }
+                          : turno
                       )
                     )
                   }

@@ -21,6 +21,19 @@ export function detectarDelimitador(texto: string): "," | ";" | "\t" {
   return ",";
 }
 
+/**
+ * O CSV como matriz de células, antes de qualquer linha virar cabeçalho.
+ *
+ * Exposta para o leitor de planilha poder PROCURAR onde está o cabeçalho, em
+ * vez de assumir a primeira linha. Um CSV exportado de uma aba de relatório
+ * carrega o título e a procedência em cima da tabela, igualzinho ao Excel de
+ * onde ele saiu — e assumir a linha 1 ali dá o mesmo "não achei coluna de
+ * custo" sobre um arquivo cheio de custo.
+ */
+export function matrizDoCsv(texto: string, delimitador?: string): string[][] {
+  return dividirEmCampos(texto, delimitador ?? detectarDelimitador(texto));
+}
+
 function dividirEmCampos(texto: string, delim: string): string[][] {
   const linhas: string[][] = [];
   let campo = "";

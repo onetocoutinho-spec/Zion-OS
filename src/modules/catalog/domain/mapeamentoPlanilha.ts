@@ -39,8 +39,30 @@ export const NOME_DO_PAPEL: Record<PapelColuna, string> = {
 /** Cabeçalho original → papel. Colunas ausentes do mapa são ignoradas. */
 export type Mapeamento = Record<string, PapelColuna>;
 
+/**
+ * Tira o parêntese do FIM do cabeçalho, quando sobra nome depois.
+ *
+ * "CMV (R$)" e "Preço atual (R$)" são as duas colunas de dinheiro da planilha
+ * real de 31/07/2026, e nenhuma das duas casava: normalizadas viravam `cmv_r` e
+ * `preco_atual_r`, e nenhuma regra reconhece isso. O parêntese final de um
+ * cabeçalho é UNIDADE ou anotação — "(R$)", "(kg)", "(un)" — não é o nome da
+ * coluna. Quem escreve planilha põe ali a unidade, não a identidade.
+ *
+ * Só do fim, e só quando sobra alguma coisa: "(R$)" sozinha continua "(R$)" e
+ * segue para "ignorar", em vez de virar coluna sem nome.
+ *
+ * NÃO afeta a importação de PESO, que tem normalizador próprio em
+ * `./importacaoPeso` — e é lá que mora a recusa de "coluna de peso sem unidade
+ * no cabeçalho". Se as duas dividissem esta função, tirar o "(kg)" apagaria
+ * exatamente a informação que aquela recusa existe para exigir.
+ */
+function semUnidadeNoFim(h: string): string {
+  const cortado = h.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return cortado === "" ? h : cortado;
+}
+
 function normalizar(h: string): string {
-  const semAcento = h
+  const semAcento = semUnidadeNoFim(h)
     .toLowerCase()
     .normalize("NFD")
     .split("")
@@ -55,7 +77,10 @@ function normalizar(h: string): string {
 const REGRAS: readonly { papel: Exclude<PapelColuna, "ignorar">; testa: (n: string) => boolean }[] = [
   // Preço ANTES de custo: "preco_de_custo" cairia em "preco" se a ordem fosse
   // outra, e um preço de venda lido como custo inverte a margem inteira.
-  { papel: "custo", testa: (n) => n.startsWith("custo") || ["cost", "preco_custo", "preco_de_custo", "valor_custo", "custounit"].includes(n) },
+  // `cmv` é Custo da Mercadoria Vendida, e é como o contador e o ERP dela
+  // escrevem custo. Não é sigla ambígua no varejo brasileiro — e sem ela a
+  // planilha de reprecificação de 31/07/2026 lia zero colunas de dinheiro.
+  { papel: "custo", testa: (n) => n.startsWith("custo") || ["cmv", "cost", "preco_custo", "preco_de_custo", "valor_custo", "custounit"].includes(n) },
   { papel: "precoVenda", testa: (n) => n.startsWith("preco_de_venda") || ["preco", "preco_venda", "valor_venda", "venda", "preco_atual"].includes(n) },
   { papel: "ean", testa: (n) => ["ean", "gtin", "ean13", "barcode"].includes(n) || n.startsWith("codigo_barras") || n.startsWith("cod_barras") },
   { papel: "sku", testa: (n) => n === "sku" || n.startsWith("sku") || ["codigo", "cod", "seller_sku", "codigo_sku", "cod_erp", "codigo_erp", "sku_erp", "referencia"].includes(n) },
