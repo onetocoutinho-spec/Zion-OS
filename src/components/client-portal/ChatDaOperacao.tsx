@@ -694,142 +694,47 @@ export function ChatDaOperacao({
         }
 
         // ===================================================================
-        // A VIA RÁPIDA CAINDO NÃO É MOTIVO PARA A LOJISTA FICAR SEM RESPOSTA
+        // UM CAMINHO SÓ — decidido com o dono em 17/08/2026, contra medição
         // ===================================================================
         //
-        // A rota `/api/assistente` classifica com Gemini Flash. Quando o
-        // provedor falha ela devolve 502 com "Não consegui entender agora.
-        // Tente de novo em instantes" — e a rota está certa: registra a causa
-        // no log e não vaza configuração do servidor para a tela.
+        // Havia duas portas até a resposta: um classificador com lista fechada
+        // de assuntos, e o fio das 24 ferramentas. A via "rápida" deixou de ser
+        // rápida e deixou de ser barata:
         //
-        // O que estava errado era o CLIENTE tratar isso como fim de linha.
-        // Medido em produção em 11/08/2026: a pergunta voltou 502, a lojista
-        // leu a desculpa, e a repetição idêntica funcionou — sintoma clássico
-        // de falha transitória do provedor.
+        //   · roda em `claude-opus-5`; o fio roda em `claude-sonnet-5`
+        //   · uma pergunta simples levou 5,9s NELA, sem escalar
+        //   · 4 chamadas na janela medida, ZERO escaladas
         //
-        // O fio roda em OUTRO provedor (Anthropic) e tem as 22 ferramentas.
-        // Enquanto ele responde, a via rápida cair é um detalhe de custo, não
-        // uma parede. As três portas de escalada já existiam para "não
-        // entendi" e "não sei"; esta é a quarta, para "não consegui perguntar".
+        // E custava correção: em 17/08 a ferramenta nova `fotos_do_produto` foi
+        // SOMBREADA — "preciso fotografar este produto?" caiu na lista fechada
+        // e respondeu `o_que_falta_no_produto`. Duas listas fechadas disputando
+        // a mesma frase é defeito estrutural: toda ferramenta nova entra na
+        // disputa, e ganha quem foi escrita primeiro.
         //
-        // Se o fio TAMBÉM falhar, o erro dele sobe normalmente pelo catch de
-        // baixo — dois provedores fora do ar é uma parede de verdade, e aí a
-        // desculpa é honesta.
-        let criterio: CriterioDaPergunta;
-        try {
-          criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
-        } catch (falhaDaViaRapida) {
-          console.error("[chat] via rápida indisponível, escalando:", falhaDaViaRapida);
-          await responderConversando(pergunta);
-          return;
-        }
-
-        // ESCALADA AUTOMÁTICA — o interruptor vira roteamento.
+        // O QUE FOI PRECISO ANTES DE APAGAR ESTA PORTA:
         //
-        // O classificador já dizia `entendeu: false` quando a pergunta não cabe
-        // na lista fechada de assuntos, e ninguém usava esse sinal: a rota
-        // barata devolvia "não sei" e a conversa ficava atrás de um botão que a
-        // lojista tinha que descobrir.
+        // 1. A frase do domínio. Aqui quem redigia o número era o CÓDIGO; no
+        //    fio, é o modelo. O prompt passou a prendê-lo: ferramenta que
+        //    devolve `frase` tem a frase repassada INTEIRA, sem paráfrase —
+        //    porque as ressalvas ("e mais 45", "isso não garante que ele
+        //    aceite") são o conteúdo.
         //
-        // Pedir a ela que escolha entre "barato e limitado" e "caro e capaz" é
-        // transferir uma decisão do SISTEMA para quem não tem como tomá-la —
-        // ela não sabe de antemão qual pergunta precisa de fio.
+        // 2. O ALVO. Aqui, ambiguidade devolvia `ambigua` e PARAVA. No fio,
+        //    `achar_produto` devolvia os ids de todos os candidatos com um
+        //    aviso pedindo ao modelo que não escolhesse — entregava as chaves e
+        //    pedia para não usar. Agora não entrega id nenhum enquanto houver
+        //    dúvida. Gravar peso ou custo no produto errado deixou de ser
+        //    possível.
         //
-        // E a escolha estava invertida: medido em 03/08/2026, o caminho CARO
-        // foi o honesto ("não tenho como saber") e o barato respondeu outra
-        // coisa afirmando ter entendido.
+        // A FALHA QUE SOBRA É "NÃO FAZ", NÃO "FAZ ERRADO": se o modelo não
+        // chamar `propor_gravacao` ao ouvir "o chinelo pesa 300 g", nada é
+        // gravado e ela repete a frase. Era isso que faltava para apagar a
+        // porta com segurança.
         //
-        // Agora o barato é a via rápida, não o teto: resolve o caso comum
-        // (39/39 na extração de intenção, EXP-004) e, quando não entende,
-        // repassa em vez de inventar. O custo continua baixo porque a maioria
-        // das perguntas não escala — e o contador de tokens do fio mostra
-        // quando escala.
-        if (!criterio.entendeu) {
-          await responderConversando(pergunta);
-          return;
-        }
-        // Ditar um valor não é perguntar. Vira PROPOSTA — nada é gravado até
-        // alguém ler o cartão e clicar. Ver `propostaDeCorrecao`.
-        const encerra =
-          criterio.intencao === "preencher"
-            ? {
-                proposta: montarProposta(
-                  criterio,
-                  produtos,
-                  contexto.produto
-                    ? { id: contexto.produto.id, nome: contexto.produto.nome }
-                    : null
-                ),
-              }
-            : // A resposta é montada AQUI, contra o estado real. O que voltou do
-              // servidor foi só a intenção.
-              { resposta: responder(criterio, contexto) };
-
-        // ===================================================================
-        // A SEGUNDA PORTA DA ESCALADA: entendeu, mas não sei responder
-        // ===================================================================
-        //
-        // A escalada acima cobre `!entendeu` — a frase que não cabe em assunto
-        // nenhum. Ela NÃO cobre o caso oposto e mais comum: o modelo entendeu
-        // perfeitamente, escreveu a interpretação, e a lista fechada não tinha
-        // balde.
-        //
-        // Medido em 10/08/2026, em produção: "quanto sai de mim em cada venda?"
-        // voltou com a interpretação correta ("você quer saber quanto sai do
-        // seu bolso") seguida da lista "o que eu consigo responder". A
-        // ferramenta `meus_custos` existia e respondia essa pergunta — atrás de
-        // um botão desligado que a lojista não tem como saber que existe.
-        //
-        // É estrutural, não um caso: `nao_sei` nasce em QUATRO lugares (intenção
-        // fora da lista, produto não aberto, assunto desconhecido, capacidade
-        // desconhecida), e o caminho do fio resolve os quatro — inclusive "não
-        // há produto aberto", porque lá existe `achar_produto`.
-        //
-        // Toda capacidade nova cai aqui. A lista fechada responde seis coisas;
-        // o fio tem dezoito ferramentas. Sem esta porta, cada ferramenta nova
-        // nasce inalcançável pelo caminho padrão.
-        //
-        // O CUSTO: uma classificação desperdiçada — Gemini Flash, teto de 400
-        // tokens. É o preço de a lojista nunca ver a parede, e ele não cresce:
-        // a maioria das perguntas continua sendo resolvida pela via rápida.
-        if ("resposta" in encerra && encerra.resposta?.tipo === "nao_sei") {
-          await responderConversando(pergunta);
-          return;
-        }
-
-        // ===================================================================
-        // A TERCEIRA PORTA: entendi o valor, mas quem autoriza é o servidor
-        // ===================================================================
-        //
-        // `montarProposta` roda AQUI, no navegador, e por isso não pode gravar
-        // nada: uma proposta sem autorização persistida é só um texto bonito.
-        // Desde 29/07 o cartão de `pronta` exige `propostaId` para existir — e
-        // está certo, é a primitiva que impede o clique de virar escrita sem
-        // passar pelo servidor.
-        //
-        // O que faltou foi ALGUÉM criar esse id no caminho barato. Resultado
-        // medido em produção em 11/08/2026, três vezes seguidas: a lojista diz
-        // "o custo do Chinelo Havaianas Top Liso e 28,40", o classificador
-        // acerta tudo (`preencher` / `custo` / `28,40` / termos do alvo), o
-        // domínio monta a proposta certa — e a tela fica MUDA. Treze dias
-        // assim, na única frase que a lojista escreve sozinha sem ser
-        // perguntada.
-        //
-        // O fio resolve porque lá a proposta nasce no servidor: `propor_gravacao`
-        // persiste, revalida a precondição e devolve o id. Custa uma chamada a
-        // mais; ditar um custo é raro e gravar errado é caro.
-        if ("proposta" in encerra && encerra.proposta?.tipo === "pronta") {
-          await responderConversando(pergunta);
-          return;
-        }
-
-        setTurnos((t) =>
-          t.map((turno, i) =>
-            i === t.length - 1
-              ? { ...turno, ...encerra, interpretacao: criterio.interpretacao }
-              : turno
-          )
-        );
+        // O domínio NÃO morreu: `executarFerramenta` chama o mesmo `responder`
+        // e o mesmo `montarProposta`. O que saiu foi a segunda estrada até ele.
+        await responderConversando(pergunta);
+        return;
       } catch (e) {
         const erro = e instanceof Error ? e.message : "Não consegui responder agora.";
         setTurnos((t) => t.map((turno, i) => (i === t.length - 1 ? { ...turno, erro } : turno)));

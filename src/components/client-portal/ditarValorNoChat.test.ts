@@ -52,23 +52,21 @@ test("o recado aparece sem id; só quem grava exige autorização persistida", (
   );
 });
 
-test("`pronta` do caminho barato sobe para o fio, que persiste e devolve o id", () => {
-  const porta =
-    /"proposta"\s+in\s+encerra\s*&&\s*encerra\.proposta\??\.tipo\s*===\s*"pronta"/;
-  assert.match(
-    CODIGO,
-    porta,
-    "a terceira porta sumiu: a proposta de gravar volta a nascer sem " +
-      "autorização, e o cartão com botão nunca aparece"
-  );
-
-  // A porta tem de ESCALAR, não só existir. Um `return` seco aqui calaria o
-  // chat do mesmo jeito, com o teste acima passando verde.
-  const i = CODIGO.search(porta);
-  const depois = CODIGO.slice(i, i + 260);
-  assert.match(
-    depois,
-    /responderConversando\(pergunta\)/,
-    "a porta existe mas não escala — ditar um valor volta a não fazer nada"
+test("a proposta de gravar NASCE autorizada — não sobe para pedir permissão", () => {
+  // APOSENTOU "`pronta` do caminho barato sobe para o fio", em 17/08/2026.
+  //
+  // A terceira porta existia porque a proposta nascia no NAVEGADOR, no caminho
+  // barato, e precisava subir ao fio para ganhar a autorização persistida sem
+  // a qual o cartão não tem botão. Com o chat unificado no fio, não há mais
+  // "caminho barato" de onde subir: `propor_gravacao` roda no servidor e a
+  // autorização nasce junto com a proposta.
+  //
+  // A propriedade guardada — cartão de gravar só existe com autorização — não
+  // mudou, e continua provada pela linha de cima (`propostaId` exigido de
+  // `pronta`) e por `umCaminhoSo.test.ts`.
+  const chat = FONTE;
+  assert.ok(
+    !/classificarPergunta\(/.test(chat),
+    "voltou a existir o caminho barato — e com ele a proposta que nasce sem autorização"
   );
 });

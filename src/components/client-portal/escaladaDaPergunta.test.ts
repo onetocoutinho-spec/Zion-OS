@@ -1,3 +1,10 @@
+// APOSENTADAS EM 17/08/2026 — as cinco provas da escada saíram daqui.
+//
+// O chat passou a ter UM caminho só: toda pergunta vai para o fio das
+// ferramentas. Sem duas portas não há escada para guardar. O destino de cada
+// propriedade está escrito em `umCaminhoSo.test.ts`, inclusive o da única
+// comportamental — "PREENCHER vira proposta, não vira pergunta".
+//
 // A lojista não vê a parede: quando o caminho barato não sabe, o fio responde.
 //
 // ===========================================================================
@@ -46,70 +53,6 @@ const DECISAO = FONTE.slice(
   FONTE.indexOf(INICIO),
   FONTE.indexOf("      } catch (e) {", FONTE.indexOf(INICIO))
 );
-
-test("a janela da decisão não está vazia — âncora viva", () => {
-  // Sem isto, mover a âncora de novo faz os testes abaixo passarem sobre nada.
-  assert.ok(
-    DECISAO.length > 500,
-    `a fatia da decisão tem ${DECISAO.length} chars — a âncora "${INICIO}" ` +
-      "saiu do lugar e os testes seguintes estão olhando para o vazio"
-  );
-});
-
-test("PORTA 1 — a frase que não cabe em assunto nenhum escala", () => {
-  assert.match(
-    DECISAO,
-    /if \(!criterio\.entendeu\)\s*\{\s*await responderConversando\(pergunta\);/,
-    "a escalada por `!entendeu` sumiu — frase fora da lista volta a receber o menu"
-  );
-});
-
-test("PORTA 2 — entendeu, mas o domínio não sabe responder, TAMBÉM escala", () => {
-  // A porta que faltava. Sem ela, `meus_custos` — e toda ferramenta futura —
-  // fica inalcançável pelo caminho que a lojista usa por padrão.
-  assert.match(
-    DECISAO,
-    /resposta\?\.tipo === "nao_sei"[\s\S]{0,120}await responderConversando\(pergunta\)/,
-    "`nao_sei` voltou a virar menu em vez de virar pergunta ao fio"
-  );
-});
-
-test("a escalada acontece ANTES de a resposta chegar na tela", () => {
-  // Se `setTurnos` rodar primeiro, a lojista vê a parede por um instante e
-  // depois a resposta — que é pior que ver só a parede: parece defeito.
-  const iEscalada = DECISAO.indexOf('resposta?.tipo === "nao_sei"');
-  assert.ok(iEscalada > 0, "a segunda porta sumiu");
-  assert.ok(
-    iEscalada < DECISAO.lastIndexOf("setTurnos((t) =>"),
-    "a resposta 'não sei' passou a ser pintada antes da escalada"
-  );
-});
-
-test("PREENCHER vira proposta, não vira pergunta", () => {
-  // "o chinelo pesa 300 g" é o lojista INFORMANDO. Isso NUNCA vira conversa:
-  // trocar o cartão de confirmação por um diálogo tiraria a única garantia de
-  // que nada é gravado sem alguém clicar.
-  //
-  // O nome deste teste era "PREENCHER não escala", e desde 11/08/2026 isso é
-  // meia verdade. A proposta continua nascendo AQUI, no domínio — o que mudou
-  // é que a `pronta` passa pelo fio antes de aparecer, porque só o servidor
-  // emite a autorização persistida que o cartão exige para ter botão. As
-  // outras (recusa, "não achei", "qual destes?") não gravam nada e seguem
-  // diretas para a tela. Ver `ditarValorNoChat.test.ts`.
-  //
-  // O que este teste guarda continua igual: o caminho da proposta existe e
-  // vem ANTES de qualquer escalada de pergunta.
-  assert.match(
-    DECISAO,
-    /criterio\.intencao === "preencher"[\s\S]{0,400}montarProposta\(/,
-    "o caminho da proposta saiu da frente da escalada"
-  );
-  assert.match(
-    DECISAO,
-    /"resposta" in encerra/,
-    "a escalada deixou de checar que existe RESPOSTA — poderia engolir uma proposta"
-  );
-});
 
 test("o domínio continua tendo os quatro `nao_sei` — a escalada não os apagou", () => {
   // A escalada é ROTEAMENTO, não conserto do domínio. Se alguém "resolver" o
