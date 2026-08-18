@@ -70,6 +70,18 @@ const normalizar = (s: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+/**
+ * Só os dígitos, para o tamanho casar apesar do sufixo.
+ *
+ * Medido na tela em 18/08/2026: as variações desta base chamam-se "34 BR",
+ * "40 BR". A planilha do ERP diz "34". Comparar o texto inteiro não casa nada, e
+ * a lojista não tem como adivinhar que precisa digitar " BR".
+ *
+ * Vazio quando não há dígito nenhum — e aí este caminho não decide nada, que é o
+ * certo: "Preto" contra "Aveiã Soft" não pode virar empate por ausência.
+ */
+const digitos = (s: string) => (limpar(s).match(/\d+/g) ?? []).join(" ");
+
 export const rotuloDaVariante = (v: VarianteSemSku): string =>
   [limpar(v.cor), limpar(v.tamanho)].filter(Boolean).join(" · ") || "(sem cor nem tamanho)";
 
@@ -111,6 +123,8 @@ export function lerColagem(
 
   const atribuicoes: Atribuicao[] = [];
   const sobraram: string[] = [];
+  /** Linhas que bateram em MAIS DE UMA variação. Recusa, nunca escolha. */
+  const ambiguas: string[] = [];
   const impedimentos: string[] = [];
   const usadas = new Set<string>();
 
@@ -124,13 +138,38 @@ export function lerColagem(
       }
       const chave = normalizar(p.slice(0, -1).join(" "));
       const sku = p[p.length - 1];
-      const alvo = variantes.find(
+      const disponivel = variantes.filter((v) => !usadas.has(v.id));
+      // EXATO primeiro, nas três formas.
+      let alvo = disponivel.find(
         (v) =>
-          !usadas.has(v.id) &&
-          (normalizar(`${v.cor} ${v.tamanho}`) === chave ||
-            normalizar(v.tamanho) === chave ||
-            normalizar(v.cor) === chave)
+          normalizar(`${v.cor} ${v.tamanho}`) === chave ||
+          normalizar(v.tamanho) === chave ||
+          normalizar(v.cor) === chave
       );
+
+      // POR DÍGITOS, e só quando sobra UM candidato.
+      //
+      // "34 BR" na tela, "34" na planilha do ERP. Comparar o texto inteiro não
+      // casa, e a lojista não tem como adivinhar o sufixo. Mas relaxar só é
+      // seguro enquanto a resposta for única: se dois tamanhos batem pelos
+      // mesmos dígitos, escolher um seria voltar a decidir por ordem.
+      if (!alvo) {
+        const d = digitos(chave);
+        if (d) {
+          const cor = normalizar(chave.replace(/\d+/g, ""));
+          const porDigito = disponivel.filter(
+            (v) =>
+              digitos(v.tamanho) === d &&
+              (cor === "" || normalizar(v.cor) === cor || normalizar(v.cor).startsWith(cor))
+          );
+          if (porDigito.length === 1) alvo = porDigito[0];
+          else if (porDigito.length > 1) {
+            ambiguas.push(`${p.join(" ")} → ${porDigito.map(rotuloDaVariante).join(" / ")}`);
+            continue;
+          }
+        }
+      }
+
       if (!alvo) {
         sobraram.push(p.join(" "));
         continue;
@@ -153,6 +192,13 @@ export function lerColagem(
     variantes.forEach((v, i) => {
       atribuicoes.push({ varianteId: v.id, rotulo: rotuloDaVariante(v), sku: linhas[i] });
     });
+  }
+
+  if (ambiguas.length > 0) {
+    impedimentos.push(
+      `Estas linhas batem em mais de uma variação e eu não escolho por você: ` +
+        `${ambiguas.join(" · ")}. Inclua a cor junto do tamanho.`
+    );
   }
 
   // CÓDIGO REPETIDO é recusa, não aviso: duas variações com o mesmo código

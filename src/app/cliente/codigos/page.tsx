@@ -162,7 +162,7 @@ export default function CodigosDasVariacoes() {
               </Button>
             </div>
 
-            {abertoId === p.id && leitura && (
+            {abertoId === p.id && leitura && aberto && (
               <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-white/55">
@@ -175,7 +175,15 @@ export default function CodigosDasVariacoes() {
                     onChange={(e) => setTexto(e.target.value)}
                     rows={6}
                     spellCheck={false}
-                    placeholder={"Preto 34\t010399\nPreto 35\t010400"}
+                    // O EXEMPLO SAI DAS VARIAÇÕES DELA, não de um texto meu.
+                    //
+                    // A primeira versão sugeria "Preto 34" e o catálogo dela
+                    // chama-se "Preto · 34 BR": o exemplo ensinava a errar, e
+                    // foi ela quem perguntou onde colar.
+                    placeholder={aberto.variantes
+                      .slice(0, 2)
+                      .map((v) => rotuloDaVariante(v).replace(" · ", " ") + "\tcódigo")
+                      .join("\n")}
                     className="rounded-lg border border-white/10 bg-white/5 p-2 font-mono text-sm outline-none focus:border-violet-500"
                   />
                 </label>
@@ -226,9 +234,16 @@ export default function CodigosDasVariacoes() {
                 )}
 
                 {leitura.semCodigo.length > 0 && (
-                  <p className="text-xs text-white/45">
-                    Sem código ainda: {leitura.semCodigo.join(", ")}
-                  </p>
+                  <details className="text-xs text-white/45">
+                    <summary className="cursor-pointer [@media(pointer:coarse)]:min-h-11">
+                      {leitura.semCodigo.length} variação(ões) ainda sem código — ver a lista
+                    </summary>
+                    {/* Uma por linha, e no mesmo formato que a caixa aceita:
+                        assim ela copia daqui e só acrescenta o código. */}
+                    <pre className="mt-2 overflow-x-auto rounded-lg border border-white/10 bg-white/[0.03] p-2 font-mono text-[11px] leading-5 text-white/60">
+                      {leitura.semCodigo.map((r) => r.replace(" · ", " ")).join(String.fromCharCode(10))}
+                    </pre>
+                  </details>
                 )}
                 {leitura.sobraram.length > 0 && (
                   <p className="text-xs text-amber-300">

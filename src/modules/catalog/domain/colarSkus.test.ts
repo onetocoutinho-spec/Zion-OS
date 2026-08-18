@@ -112,3 +112,51 @@ test("o rótulo da variação é o que a lojista reconhece", () => {
   assert.equal(rotuloDaVariante({ id: "x", cor: "", tamanho: "37" }), "37");
   assert.equal(rotuloDaVariante({ id: "x", cor: "", tamanho: "" }), "(sem cor nem tamanho)");
 });
+
+// ===========================================================================
+// O SUFIXO DO TAMANHO — visto na tela em 18/08/2026
+// ===========================================================================
+//
+// As variações desta base chamam-se "34 BR", "40 BR". A planilha do ERP diz
+// "34". Comparar o texto inteiro não casa NADA, e a lojista não tem como
+// adivinhar que precisa digitar " BR" — o exemplo que eu mesmo pus na tela
+// estava errado para o catálogo dela.
+
+const COM_BR: VarianteSemSku[] = [
+  { id: "b1", cor: "Preto", tamanho: "34 BR" },
+  { id: "b2", cor: "Preto", tamanho: "35 BR" },
+  { id: "b3", cor: "Aveiã Soft", tamanho: "34 BR" },
+];
+
+test('"34" casa com "34 BR" quando a cor desempata', () => {
+  const l = lerColagem("Preto 34\t010399\nAveiã Soft 34\t010500", COM_BR);
+  assert.deepEqual(l.impedimentos, []);
+  assert.equal(l.atribuicoes.find((a) => a.varianteId === "b1")?.sku, "010399");
+  assert.equal(l.atribuicoes.find((a) => a.varianteId === "b3")?.sku, "010500");
+});
+
+test('"34" sozinho, batendo em duas cores, é RECUSA e não escolha', () => {
+  // Duas variações têm tamanho 34. Escolher uma seria voltar a decidir por
+  // ordem — exatamente o que o modo posicional existe para evitar.
+  const l = lerColagem("34\t010399", COM_BR);
+  assert.equal(l.atribuicoes.length, 0);
+  assert.match(l.impedimentos[0], /mais de uma variação/);
+  assert.match(l.impedimentos[0], /Preto · 34 BR/);
+  assert.match(l.impedimentos[0], /Inclua a cor/);
+});
+
+test("o relaxamento não inventa empate quando não há dígito", () => {
+  // "Preto" contra "Aveiã Soft" não pode casar por ausência de número.
+  const l = lerColagem("Verde\t010399", COM_BR);
+  assert.equal(l.atribuicoes.length, 0);
+  assert.deepEqual(l.sobraram, ["Verde 010399"]);
+  assert.deepEqual(l.impedimentos, []);
+});
+
+test("o EXATO continua ganhando do relaxado", () => {
+  // Se "35 BR" está escrito por inteiro, ele casa por igualdade e nem chega no
+  // caminho dos dígitos.
+  const l = lerColagem("Preto 35 BR\t010400", COM_BR);
+  assert.equal(l.atribuicoes.length, 1);
+  assert.equal(l.atribuicoes[0].varianteId, "b2");
+});
