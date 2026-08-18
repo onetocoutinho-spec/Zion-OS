@@ -108,10 +108,14 @@ export default function CodigosDasVariacoes() {
         );
         return;
       }
+      // O NOME COMERCIAL vem junto: é ele que ela reconhece. Sem ele a tela
+      // mostrava "brasil" e "top liso", que são código interno do LINX.
+      const hNomeComercial = acha(["produto - derivacao", "produto", "descricao do produto"]);
       const linhas: LinhaDoErp[] = planilha.linhas.map((r) => ({
         codigo: r[hCod] ?? "",
         modelo: r[hModelo] ?? "",
         descricao: r[hDesc] ?? "",
+        nomeComercial: hNomeComercial ? (r[hNomeComercial] ?? "") : "",
       }));
       setLinhasDoErp(linhas);
       setPropostas(
@@ -294,7 +298,16 @@ export default function CodigosDasVariacoes() {
                 Qual destes é o modelo dele no seu ERP?
               </p>
               <ul className="mt-2 space-y-1.5">
-                {prop.candidatos.slice(0, verTodos.has(prop.produtoId) ? 99 : 5).map((c) => (
+                {(verTodos.has(prop.produtoId)
+                  ? prop.candidatos
+                  : // SÓ OS QUE CASAM. Um candidato que casa zero não é opção:
+                    // é ruído que faz a lista parecer uma adivinhação. Se
+                    // nenhum casar, mostra os três primeiros para ela ver que
+                    // existem, e o "ver todos" abre o resto.
+                    (prop.candidatos.filter((c) => c.casam > 0).length > 0
+                      ? prop.candidatos.filter((c) => c.casam > 0)
+                      : prop.candidatos.slice(0, 3))
+                ).map((c) => (
                   <li key={c.modelo}>
                     <button
                       onClick={() => escolherModelo(prop.produtoId, c.modelo)}
@@ -305,7 +318,13 @@ export default function CodigosDasVariacoes() {
                       }`}
                     >
                       <span className="flex flex-wrap items-baseline gap-2">
-                        <span className="font-medium">{c.modelo}</span>
+                        {/* O NOME COMERCIAL em destaque; o código do modelo
+                            pequeno ao lado. "Chinelo Havaianas Brasil" se
+                            reconhece; "brasil" não. */}
+                        <span className="font-medium">{c.nome || c.modelo}</span>
+                        {c.nome && (
+                          <span className="text-[11px] text-white/30">{c.modelo}</span>
+                        )}
                         {c.nomeBate && (
                           <span className="rounded bg-violet-500/25 px-1.5 py-0.5 text-[11px] text-violet-200">
                             o nome bate
@@ -326,7 +345,7 @@ export default function CodigosDasVariacoes() {
                   </li>
                 ))}
               </ul>
-              {prop.candidatos.length > 5 && (
+              {prop.candidatos.length > prop.candidatos.filter((c) => c.casam > 0).length && (
                 <button
                   onClick={() =>
                     setVerTodos((s) => {
@@ -340,7 +359,7 @@ export default function CodigosDasVariacoes() {
                 >
                   {verTodos.has(prop.produtoId)
                     ? "Mostrar menos"
-                    : `Ver os outros ${prop.candidatos.length - 5} modelos`}
+                    : `Ver todos os ${prop.candidatos.length} modelos`}
                 </button>
               )}
             </div>

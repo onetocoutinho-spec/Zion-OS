@@ -40,6 +40,19 @@ export interface LinhaDoErp {
   modelo: string;
   /** "papete slide modare 7208.101 nobuck (avela soft 34)" */
   descricao: string;
+  /**
+   * O nome COMERCIAL do produto no ERP — o que a lojista reconhece.
+   *
+   * Medido em 18/08/2026, depois de ela dizer "não sei se estou selecionando
+   * certo": a tela mostrava o campo `Modelo` do LINX, que para Havaianas é
+   * "brasil", "top liso", "h brasil logo 2024 25". Isso é código interno.
+   * Ninguém escolhe um produto por ele — e escolher errado aqui gruda o custo
+   * e o peso de outro item.
+   *
+   * Opcional porque nem todo arquivo traz a coluna; sem ele a tela cai no
+   * modelo, como antes.
+   */
+  nomeComercial?: string;
 }
 
 export interface VariacaoParaCasar {
@@ -94,6 +107,13 @@ export type PropostaDeCodigos =
 
 export interface CandidatoDeModelo {
   modelo: string;
+  /**
+   * O nome comercial mais comum desse modelo no ERP.
+   *
+   * É ELE que a tela mostra em destaque. "Chinelo Havaianas Brasil" se
+   * reconhece; "brasil" não.
+   */
+  nome: string;
   /** Quantas variações do produto casariam por cor + tamanho neste modelo. */
   casam: number;
   /** As cores desse modelo no ERP, para ela reconhecer o produto. */
@@ -209,12 +229,16 @@ export function proporCodigos(
 ): PropostaDeCodigos[] {
   // Índice por modelo, com a descrição já normalizada — os arquivos têm 14 mil
   // linhas e cada produto varre todas as cores.
-  const porModelo = new Map<string, { codigo: string; desc: string }[]>();
+  const porModelo = new Map<string, { codigo: string; desc: string; nome: string }[]>();
   for (const l of linhas) {
     const m = norm(l.modelo);
     if (!m || !limpar(l.codigo)) continue;
     const arr = porModelo.get(m) ?? [];
-    arr.push({ codigo: limpar(l.codigo), desc: norm(l.descricao) });
+    arr.push({
+      codigo: limpar(l.codigo),
+      desc: norm(l.descricao),
+      nome: limpar(l.nomeComercial ?? ""),
+    });
     porModelo.set(m, arr);
   }
 
@@ -264,6 +288,7 @@ export function proporCodigos(
           const palavras = m.split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
           return {
             modelo: m,
+            nome: nomeComumDoModelo(ls),
             casam: casarDentroDoModelo(ls, p).pares.length,
             cores: [...new Set(ls.map((l) => corDaDescricao(l.desc)).filter(Boolean))].slice(0, 6),
             nomeBate: palavras.length > 0 && palavras.every((t) => nomeDoProduto.includes(t)),
@@ -326,6 +351,26 @@ export function proporCodigos(
   });
 }
 
+/**
+ * O nome comercial que MAIS SE REPETE nas linhas do modelo.
+ *
+ * O ERP escreve "Chinelo Havaianas Brasil - chinelo havaianas brasil (…)": o
+ * que interessa é a parte antes do travessão, e ela às vezes varia de linha
+ * para linha. A mais frequente é a que a lojista vai reconhecer.
+ */
+function nomeComumDoModelo(ls: readonly { nome: string }[]): string {
+  const conta = new Map<string, number>();
+  for (const l of ls) {
+    const antes = l.nome.split(" - ")[0].trim();
+    if (!antes) continue;
+    conta.set(antes, (conta.get(antes) ?? 0) + 1);
+  }
+  let melhor = "";
+  let n = 0;
+  for (const [nome, q] of conta) if (q > n) { melhor = nome; n = q; }
+  return melhor;
+}
+
 /** Cor + tamanho, dentro de UM modelo. Só o casamento único conta. PURA. */
 function casarDentroDoModelo(
   linhasDoModelo: readonly { codigo: string; desc: string }[],
@@ -371,6 +416,9 @@ export function proporComModelo(
   const ls = linhas
     .filter((l) => norm(l.modelo) === alvo && limpar(l.codigo))
     .map((l) => ({ codigo: limpar(l.codigo), desc: norm(l.descricao) }));
+  const nomeDoErp = nomeComumDoModelo(
+    linhas.filter((l) => norm(l.modelo) === alvo).map((l) => ({ nome: limpar(l.nomeComercial ?? "") }))
+  );
   if (ls.length === 0) {
     return {
       produtoId: produto.id,
@@ -395,7 +443,9 @@ export function proporComModelo(
     produtoId: produto.id,
     nome: produto.nome,
     ok: true,
-    modelo: alvo,
+    // O nome comercial na frente do código: é o que ela reconhece na hora de
+    // conferir. O código fica junto, entre parênteses, para rastrear.
+    modelo: nomeDoErp ? `${nomeDoErp} (${alvo})` : alvo,
     corQueIdentificou: "",
     pares,
     semPar,

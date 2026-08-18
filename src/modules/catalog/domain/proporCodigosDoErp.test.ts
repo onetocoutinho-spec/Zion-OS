@@ -401,3 +401,62 @@ test("o NOME do modelo manda antes da contagem — a contagem sozinha engana", (
   assert.equal(r.candidatos[1].casam, 2);
   assert.equal(r.candidatos[1].nomeBate, false);
 });
+
+test("o candidato mostra o NOME COMERCIAL, não o código interno do ERP", () => {
+  // 18/08/2026, depois de ela dizer "não sei se estou selecionando certo": a
+  // tela mostrava o campo `Modelo` do LINX — "brasil", "top liso",
+  // "h brasil logo 2024 25". Isso é código interno. Ninguém escolhe um produto
+  // por ele, e escolher errado aqui gruda o custo e o peso de outro item.
+  const erp: LinhaDoErp[] = [
+    {
+      codigo: "0062433",
+      modelo: "BRASIL",
+      descricao: "chinelo havaianas brasil azul naval azul naval hav br 33 34",
+      nomeComercial: "Chinelo Havaianas Brasil - chinelo havaianas brasil azul naval",
+    },
+    {
+      codigo: "0063033",
+      modelo: "TOP LISO",
+      descricao: "chinelo dedo havaianas top liso top l azul naval 33 34",
+      nomeComercial: "Chinelo Dedo Havaianas Top Liso - chinelo dedo havaianas top liso",
+    },
+  ];
+  const [r] = proporCodigos(erp, [
+    {
+      id: "b",
+      nome: "Chinelo Havaianas Masculino Praia Original",
+      variacoes: [{ id: "v", cor: "Azul Naval", tamanho: "33-34 BR" }],
+    },
+  ]);
+  assert.ok(!r.ok && r.candidatos);
+  const nomes = r.candidatos.map((c) => c.nome);
+  assert.ok(nomes.includes("Chinelo Havaianas Brasil"), `nomes: ${nomes.join(" | ")}`);
+  assert.ok(nomes.includes("Chinelo Dedo Havaianas Top Liso"));
+  // E o código do modelo continua junto, para rastrear.
+  assert.ok(r.candidatos.every((c) => c.modelo.length > 0));
+});
+
+test("sem a coluna de nome comercial, cai no modelo — não quebra", () => {
+  const [r] = proporCodigos(HAVAIANAS, [BANDEIRA]);
+  assert.ok(!r.ok && r.candidatos);
+  assert.equal(r.candidatos[0].nome, "", "inventou nome onde o arquivo não tem");
+  assert.equal(r.candidatos[0].modelo, "brasil");
+});
+
+test("o modelo ESCOLHIDO também aparece pelo nome comercial na frase", () => {
+  const erp: LinhaDoErp[] = [
+    {
+      codigo: "0062433",
+      modelo: "BRASIL",
+      descricao: "chinelo havaianas brasil azul naval azul naval hav br 33 34",
+      nomeComercial: "Chinelo Havaianas Brasil - chinelo havaianas brasil",
+    },
+  ];
+  const r = proporComModelo(erp, {
+    id: "b", nome: "Havaianas Brasil",
+    variacoes: [{ id: "v", cor: "Azul Naval", tamanho: "33-34 BR" }],
+  }, "BRASIL");
+  assert.ok(r.ok);
+  assert.match(r.modelo, /Chinelo Havaianas Brasil/);
+  assert.match(r.modelo, /\(brasil\)/, "o código do modelo sumiu — sem ele não dá para rastrear");
+});
