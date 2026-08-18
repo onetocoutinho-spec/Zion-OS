@@ -414,7 +414,31 @@ export async function importarCustos(
     return candidatos[0].custo;
   }
 
-  // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
+  // 2) Produtos: SKU/codErp → VARIAÇÕES casadas por SKU → NOME.
+  //
+  // ===========================================================================
+  // A ORDEM MUDOU EM 17/08/2026, E O MOTIVO É UM NÚMERO ERRADO NA BASE REAL
+  // ===========================================================================
+  //
+  // O nome vinha ANTES das variações. Isso põe o sinal FRACO na frente do
+  // FORTE: SKU é identidade exata, nome é semelhança de 85%.
+  //
+  // O que aconteceu, medido na conta dela ao importar o `TABELA CUSTOS LINX`:
+  //
+  //   · "Chinelo Havaianas Masculino Top Max Comfort Original" tem 18 variações
+  //     nos códigos 006426/006427 (28,79), 006428 (36,01), 010100 (32,99) e
+  //     010101 (92,58);
+  //   · o nome casou, com 85,7%, com OUTRO item do arquivo — "CHINELO DEDO
+  //     MASCULINO HAVAIANAS TOP MAX COMFORT I", código 010810, custo 34,03;
+  //   · as 18 variações ficaram com 34,03, um valor que não é de nenhuma delas.
+  //
+  // Foi o ÚNICO dos 29 produtos gravados que divergiu do LINX. Os outros 28
+  // bateram exatamente — o que mostra que o problema não é o casamento por
+  // nome existir, é ele decidir quando já existe resposta melhor.
+  //
+  // Baixar o limiar de 85% não é o conserto (foi com 83% que o custo de um
+  // tênis foi parar em outro modelo), e subir quebraria os casos legítimos. O
+  // conserto é a PRECEDÊNCIA: quem casou por SKU já respondeu.
   const prodAtualizados: (Partial<Produto> & { id: string })[] = [];
   for (const p of produtos) {
     let custo = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
@@ -423,6 +447,14 @@ export async function importarCustos(
       custo = porSku.get(norm(p.codErp)) ?? porSku.get(semZeros(norm(p.codErp)));
       if (custo != null) usados.add(norm(p.codErp));
     }
+    // AS VARIAÇÕES QUE JÁ CASARAM POR SKU/EAN — antes do nome.
+    //
+    // `Math.min` continua sendo o resumo do produto, como sempre foi: a coluna
+    // é um retrato, e o preço mínimo tem que caber no item mais barato.
+    if (custo == null) {
+      const cs = custosPorProduto.get(p.id);
+      if (cs && cs.length > 0) custo = Math.min(...cs);
+    }
     let porNome = false;
     if (custo == null && hNome) {
       const c = custoPorNome(p.nome, p.id);
@@ -430,10 +462,6 @@ export async function importarCustos(
         custo = c;
         porNome = true;
       }
-    }
-    if (custo == null) {
-      const cs = custosPorProduto.get(p.id);
-      if (cs && cs.length > 0) custo = Math.min(...cs);
     }
     if (custo == null || custo <= 0) continue;
 

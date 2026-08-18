@@ -196,3 +196,30 @@ test("a oferta nasce DESMARCADA e a frase vem do domínio", () => {
     "a decisão da tela parou de chegar à importação"
   );
 });
+
+test("SKU decide antes do NOME — o sinal forte na frente do fraco", () => {
+  // O caso que produziu esta ordem, medido em 17/08/2026 na base real:
+  // "Chinelo Havaianas Masculino Top Max Comfort Original" tem 18 variações nos
+  // códigos 006426/006427 (28,79), 006428 (36,01), 010100 (32,99) e 010101
+  // (92,58). O nome casou, com 85,7%, com OUTRO item do arquivo — "CHINELO DEDO
+  // MASCULINO HAVAIANAS TOP MAX COMFORT I", código 010810, custo 34,03 — e as
+  // 18 ficaram com um valor que não é de nenhuma delas.
+  //
+  // Foi o ÚNICO dos 29 produtos gravados que divergiu do LINX. O problema não é
+  // o casamento por nome existir: é ele decidir quando já existe resposta
+  // melhor. Baixar o limiar não conserta (com 83% o custo de um tênis foi parar
+  // em outro modelo); subir quebraria os casos legítimos.
+  const imp = readFileSync(
+    new URL("../../../lib/services/importacaoCustos.ts", import.meta.url),
+    "utf8"
+  );
+  const laco = imp.slice(imp.indexOf("for (const p of produtos) {"));
+  const dasVariantes = laco.indexOf("custosPorProduto.get(p.id)");
+  const doNome = laco.indexOf("custoPorNome(p.nome, p.id)");
+  assert.ok(dasVariantes > 0 && doNome > 0, "um dos dois caminhos de custo sumiu do laço");
+  assert.ok(
+    dasVariantes < doNome,
+    "o casamento por NOME voltou a decidir antes das variações casadas por SKU — " +
+      "sinal de 85% de semelhança passando na frente de identidade exata"
+  );
+});
