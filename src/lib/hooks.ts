@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribe } from "./store";
 import {
   classificarEstado,
@@ -39,6 +39,25 @@ interface Opcoes<T> {
    * NUNCA trata `0`, `false` ou objeto presente como vazio. Ver `estadoAssincrono`.
    */
   vazio?: (dado: T) => boolean;
+  /**
+   * AS TABELAS QUE ESTA CONSULTA LÊ. Omitir = re-executa em qualquer mudança.
+   *
+   * Omitir é o comportamento de sempre, e continua sendo o default para os 73
+   * arquivos que usam este hook: nenhum precisa mudar, e nenhum atualiza menos
+   * do que atualizava.
+   *
+   * Declarar é o que corta a recarga à toa. Medido em 17/08/2026, na tela do
+   * assistente: um import que mexeu só em `produtos` e `produto_variantes`
+   * produziu 16 leituras de `infracoes_marketplace` — uma tabela que nem está
+   * publicada no Realtime.
+   *
+   * A REGRA PARA DECLARAR, e ela é assimétrica de propósito: liste TUDO que a
+   * consulta lê, inclusive o que ela lê indiretamente por dentro do serviço que
+   * chama. Esquecer uma tabela não dá erro — dá uma tela que para de atualizar
+   * quando aquele dado muda, em silêncio, que é o defeito mais caro deste repo.
+   * Na dúvida, não declare.
+   */
+  tabelas?: readonly string[];
 }
 
 /**
@@ -115,14 +134,42 @@ export function useLiveQuery<T>(
     };
   }, deps);
 
+  // O CONJUNTO DE TABELAS PRECISA SER ESTÁVEL, e isto não é preciosismo.
+  //
+  // `opcoes.tabelas` chega como literal na esmagadora maioria das chamadas, e
+  // literal muda de identidade a cada render. Pendurar o efeito no array
+  // recriaria exatamente o laço que a janela de `notificarMudanca` acabou de
+  // matar: efeito re-arma → `run()` → `setEstado` → render → novo array →
+  // efeito re-arma. Por isso a dependência é a CHAVE em texto, e o Set nasce
+  // dela.
+  const chaveDasTabelas = opcoes.tabelas ? [...opcoes.tabelas].sort().join("|") : "";
+  const alvo = useMemo(
+    () => (chaveDasTabelas ? new Set(chaveDasTabelas.split("|")) : null),
+    [chaveDasTabelas]
+  );
+
   useEffect(() => {
     const cancel = run();
-    const unsubscribe = subscribe(run);
+    const unsubscribe = subscribe((mudadas) => {
+      // `mudadas === null` é "mudou algo e não sei o quê" — re-executa.
+      // `alvo === null` é "esta consulta não declarou" — re-executa.
+      if (alvo && mudadas) {
+        let toca = false;
+        for (const t of mudadas) {
+          if (alvo.has(t)) {
+            toca = true;
+            break;
+          }
+        }
+        if (!toca) return;
+      }
+      run();
+    });
     return () => {
       cancel();
       unsubscribe();
     };
-  }, [run]);
+  }, [run, alvo]);
 
   const situacao = classificarEstado({
     carregando: estado.carregando,

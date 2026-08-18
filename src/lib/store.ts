@@ -99,7 +99,17 @@ const SEEDS: Record<CollectionName, { id: string }[]> = {
 
 // ---- Notificação de mudanças (as telas se inscrevem via useLiveQuery) ----
 
-type Listener = () => void;
+/**
+ * Recebe QUAIS tabelas mudaram na janela — ou `null` quando não se sabe.
+ *
+ * `null` não é "nenhuma": é "alguma, e não sei qual", e obriga quem ouve a
+ * re-executar. É o que chega de uma escrita local no localStorage e de qualquer
+ * chamador antigo que não informe a tabela. O default seguro é recarregar
+ * demais, nunca de menos — uma tela que não atualiza é pior que uma que
+ * atualiza à toa, e é o tipo de defeito que ninguém percebe até o dado errado
+ * já ter sido lido na tela.
+ */
+type Listener = (tabelas: ReadonlySet<string> | null) => void;
 const listeners = new Set<Listener>();
 
 export function subscribe(fn: Listener): () => void {
@@ -132,6 +142,11 @@ const JANELA_SOB_CARGA_MS = 1000;
 
 let agendada: ReturnType<typeof setTimeout> | null = null;
 let ultimaEntrega = 0;
+
+/** As tabelas vistas nesta janela. */
+let acumuladas = new Set<string>();
+/** Alguém avisou sem dizer a tabela — a janela inteira vira "não sei". */
+let semNome = false;
 
 /**
  * Notifica as telas (via useLiveQuery) de que algum dado mudou.
@@ -172,15 +187,30 @@ let ultimaEntrega = 0;
  * A garantia: N avisos dentro da janela produzem UMA passagem pelos listeners,
  * e sempre acontece pelo menos uma depois do último aviso. Nada é engolido.
  */
-export function notificarMudanca() {
+export function notificarMudanca(tabela?: string) {
+  if (tabela) acumuladas.add(tabela);
+  else semNome = true;
+
   if (agendada) return;
   const desdeAUltima = Date.now() - ultimaEntrega;
   const janela = desdeAUltima < JANELA_SOB_CARGA_MS ? JANELA_SOB_CARGA_MS : JANELA_MS;
   agendada = setTimeout(() => {
     agendada = null;
     ultimaEntrega = Date.now();
-    listeners.forEach((fn) => fn());
+    entregar();
   }, janela);
+}
+
+/**
+ * Fecha a janela e avisa. Troca os acumuladores ANTES de chamar os listeners:
+ * um listener que grave — e portanto avise — durante a passagem abre a janela
+ * seguinte em vez de sujar a que está sendo entregue.
+ */
+function entregar() {
+  const conjunto = semNome ? null : acumuladas;
+  acumuladas = new Set();
+  semNome = false;
+  listeners.forEach((fn) => fn(conjunto));
 }
 
 /**
@@ -194,7 +224,7 @@ export function drenarNotificacao(): number {
     agendada = null;
   }
   ultimaEntrega = Date.now();
-  listeners.forEach((fn) => fn());
+  entregar();
   return listeners.size;
 }
 
@@ -221,7 +251,9 @@ function write<T>(collection: CollectionName, items: T[]) {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(storageKey(collection), JSON.stringify(items));
   }
-  notify();
+  // O nome da coleção local é o mesmo da tabela — é assim que o modo sem
+  // Supabase consegue avisar com a mesma precisão do modo com.
+  notify(collection);
 }
 
 function novoId(prefixo: string): string {

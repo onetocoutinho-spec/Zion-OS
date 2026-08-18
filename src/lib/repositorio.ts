@@ -139,7 +139,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
       .select(selecao)
       .single();
     if (error) erroSupabase(`criar registro em ${tabela}`, error.message);
-    notificarMudanca();
+    notificarMudanca(tabela);
     return paraApp(data as Row);
   }
 
@@ -180,7 +180,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
         }
       }
     }
-    notificarMudanca();
+    notificarMudanca(tabela);
     return criados;
   }
 
@@ -285,7 +285,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
     // UMA notificação no fim, como sempre: uma por requisição faria as
     // `useLiveQuery` desta tela recarregarem centenas de vezes, que foi o que
     // derrubou o navegador com `TypeError: Failed to fetch` em 01/08.
-    notificarMudanca();
+    notificarMudanca(tabela);
   }
 
   async function atualizar(id: string, dados: Partial<T>): Promise<T | null> {
@@ -299,7 +299,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
       .select(selecao)
       .maybeSingle();
     if (error) erroSupabase(`atualizar registro em ${tabela}`, error.message);
-    notificarMudanca();
+    notificarMudanca(tabela);
     return data ? paraApp(data as Row) : null;
   }
 
@@ -310,7 +310,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
     }
     const { error } = await getSupabase().from(tabela).delete().eq("id", id);
     if (error) erroSupabase(`excluir registro em ${tabela}`, error.message);
-    notificarMudanca();
+    notificarMudanca(tabela);
   }
 
   /**
@@ -334,7 +334,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
     if (prefixo) q = q.ilike(prefixo.coluna, `${prefixo.valor}%`);
     const { error } = await q;
     if (error) erroSupabase(`excluir em massa em ${tabela}`, error.message);
-    notificarMudanca();
+    notificarMudanca(tabela);
   }
 
   /**
@@ -356,7 +356,7 @@ export function criarRepositorio<T extends { id: string }, Row>(
       .select(selecao)
       .single();
     if (error) erroSupabase(`salvar registro em ${tabela}`, error.message);
-    notificarMudanca();
+    notificarMudanca(tabela);
     return paraApp(data as Row);
   }
 

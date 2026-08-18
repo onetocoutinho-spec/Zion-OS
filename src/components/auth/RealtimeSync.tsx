@@ -24,7 +24,16 @@ export function RealtimeSync() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public" },
-        () => notificarMudanca()
+        // A TABELA VEM NO EVENTO, e é ela que evita recarregar a tela inteira.
+        //
+        // Sem o nome, uma linha de `produtos` re-executava também a consulta de
+        // `infracoes_marketplace` — que nem está publicada no Realtime. Medido
+        // em 17/08/2026: 16 leituras dela num import que não a tocou.
+        //
+        // `?? undefined` de propósito: sem nome, `notificarMudanca` trata a
+        // janela como "não sei qual mudou" e recarrega tudo. Recarregar demais
+        // é o erro barato; recarregar de menos é a tela mentindo.
+        (payload) => notificarMudanca(payload.table ?? undefined)
       )
       .subscribe();
 

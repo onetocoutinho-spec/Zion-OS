@@ -137,7 +137,17 @@ export function useContextoDaPergunta(
   clienteId: string,
   produtoEmFoco?: string | null
 ): ContextoDoChat {
-  const { data: produtos } = useLiveQuery(() => listarProdutosComPeso(clienteId), [clienteId]);
+  // AS TABELAS DE CADA CONSULTA — verificadas uma a uma no serviço, não
+  // deduzidas do nome. Esquecer uma aqui não dá erro: dá uma tela que para de
+  // atualizar quando aquele dado muda, em silencio.
+  //
+  // `listarProdutosComPeso` faz `Promise.all([listarProdutosDoCliente,
+  // listarTodasVariantes])` — o peso mora na variante, entao as duas contam.
+  const { data: produtos } = useLiveQuery(
+    () => listarProdutosComPeso(clienteId),
+    [clienteId],
+    { tabelas: ["produtos", "produto_variantes"] }
+  );
   // A CONSULTA LEVE, e a troca não é otimização.
   //
   // Isto trazia a linha INTEIRA de 880 anúncios — com o JSONB da esteira, que
@@ -151,15 +161,26 @@ export function useContextoDaPergunta(
   // A consulta estreita é a MESMA que a tela de Produtos usa e que funciona.
   const { data: anuncios } = useLiveQuery(
     () => listarResumoDeAnunciosDoCliente(clienteId),
-    [clienteId]
+    [clienteId],
+    { tabelas: ["anuncios_gerados"] }
   );
-  const { data: imagens } = useLiveQuery(listarTodasImagens);
-  const { data: canal } = useLiveQuery(() => buscarCanal(clienteId, "Mercado Livre"), [clienteId]);
+  const { data: imagens } = useLiveQuery(listarTodasImagens, [], {
+    tabelas: ["imagens_produto"],
+  });
+  const { data: canal } = useLiveQuery(
+    () => buscarCanal(clienteId, "Mercado Livre"),
+    [clienteId],
+    { tabelas: ["canais_marketplace"] }
+  );
   // O que o Mercado Livre já apontou (migração 052). `undefined` enquanto a
   // consulta não volta — e `undefined` não vira zero lá dentro.
   const { data: infracoes } = useLiveQuery(
     () => retratoDasInfracoes(clienteId),
-    [clienteId]
+    [clienteId],
+    // Quem escreve aqui e a sincronizacao com o ML, nao a tela. E a tabela nem
+    // esta publicada no Realtime — entao nenhum evento a alcanca, e sem esta
+    // anotacao ela recarregava a cada linha de QUALQUER outra tabela.
+    { tabelas: ["infracoes_marketplace"] }
   );
 
   return useMemo((): ContextoDoChat => {
