@@ -69,18 +69,29 @@ export async function importarPeso(
 
   // Uma chave pode aparecer em mais de uma variante (SKU repetido no ERP).
   // Todas recebem o peso: são a mesma peça física.
-  const porChave = new Map<string, ProdutoVariante[]>();
-  for (const v of variantes) {
-    const c = chaveDaVariante(v, colunas.tipoChave);
-    if (!c) continue;
-    const lista = porChave.get(c);
-    if (lista) lista.push(v);
-    else porChave.set(c, [v]);
-  }
+  const indexar = (tipo: ColunasPeso["tipoChave"]) => {
+    const m = new Map<string, ProdutoVariante[]>();
+    for (const v of variantes) {
+      const c = chaveDaVariante(v, tipo);
+      if (!c) continue;
+      const lista = m.get(c);
+      if (lista) lista.push(v);
+      else m.set(c, [v]);
+    }
+    return m;
+  };
+  const porChave = indexar(colunas.tipoChave);
+  // A SEGUNDA PORTA, quando a planilha traz as duas colunas.
+  //
+  // Medido em 18/08/2026: o export de derivação do LINX tem `Código` E `EAN`, e
+  // 7 variações desta base ficaram sem peso porque o SKU delas está vazio ou é
+  // de teste (`01044525_TEST`) — o EAN estava lá, e o arquivo o conhecia.
+  const porAlternativa = colunas.tipoAlternativa ? indexar(colunas.tipoAlternativa) : null;
 
   const atualizacoes: (Partial<ProdutoVariante> & { id: string })[] = [];
   const produtosTocados = new Set<string>();
   const jaVista = new Set<string>();
+  const variantesFeitas = new Set<string>();
   let linhasCsv = 0;
   let naoEncontrados = 0;
   let semPeso = 0;
@@ -98,7 +109,16 @@ export async function importarPeso(
     }
     linhasCsv++;
 
-    const alvos = porChave.get(leitura.linha.chave);
+    // O SKU MANDA; o EAN entra só para quem ele não alcançou. O SKU identifica
+    // a variação no ERP, e a ordem importa: invertê-la faria um EAN repetido
+    // entre variações decidir por cima da chave própria delas.
+    const porSku = porChave.get(leitura.linha.chave);
+    const alvos =
+      porSku && porSku.length > 0
+        ? porSku
+        : porAlternativa && leitura.linha.alternativa
+          ? porAlternativa.get(leitura.linha.alternativa)
+          : undefined;
     if (!alvos || alvos.length === 0) {
       naoEncontrados++;
       continue;
@@ -106,14 +126,25 @@ export async function importarPeso(
     // Chave repetida DENTRO da planilha: a primeira vale. Duas linhas com pesos
     // diferentes para a mesma peça é contradição, e escolher a última seria
     // decidir por ordem de digitação.
-    if (jaVista.has(leitura.linha.chave)) continue;
-    jaVista.add(leitura.linha.chave);
+    //
+    // O espaço da chave entra no identificador: um EAN e um SKU iguais em texto
+    // são coisas diferentes, e juntá-los faria uma linha engolir a outra.
+    const marca = porSku && porSku.length > 0
+      ? `sku:${leitura.linha.chave}`
+      : `alt:${leitura.linha.alternativa}`;
+    if (jaVista.has(marca)) continue;
+    jaVista.add(marca);
 
     const { pesoKg, alturaCm, larguraCm, comprimentoCm } = leitura.linha;
     const temTresMedidas = alturaCm > 0 && larguraCm > 0 && comprimentoCm > 0;
     if (temTresMedidas) comMedidas++;
 
     for (const v of alvos) {
+      // Uma variação recebe peso UMA vez. Sem isto, a que casa pelas duas
+      // chaves entraria duas vezes no lote — e se as duas linhas trouxessem
+      // pesos diferentes, venceria a ordem do arquivo.
+      if (variantesFeitas.has(v.id)) continue;
+      variantesFeitas.add(v.id);
       // Payload PARCIAL: só o que a operação quer mudar. Mandar a linha inteira
       // acopla a gravação a TODAS as colunas — foi assim que uma importação de
       // custos morreu por causa de um campo que ela nem queria tocar.
