@@ -108,12 +108,94 @@ export function subscribe(fn: Listener): () => void {
 }
 
 /**
+ * A JANELA EM QUE UMA RAJADA DE AVISOS VIRA UM AVISO SÓ.
+ *
+ * 250 ms: longo o bastante para engolir uma rajada de eventos do Realtime, que
+ * chegam ao longo de vários ticks, e curto o bastante para a tela não parecer
+ * travada depois de um clique — a percepção de "instantâneo" fica em torno de
+ * 100–200 ms, e este atraso só existe DEPOIS que a gravação já respondeu.
+ */
+const JANELA_MS = 250;
+
+/**
+ * A JANELA QUANDO AS RAJADAS SE EMENDAM.
+ *
+ * Janela fixa não resolve rajada LONGA: os 620 eventos da importação não chegam
+ * todos no mesmo tick — chegam espalhados por dezenas de segundos, e a 250 ms
+ * cada isso ainda seriam centenas de recargas da tela inteira.
+ *
+ * Então a janela responde à carga: se a última recarga foi há menos de um
+ * segundo, a próxima espera 1 s em vez de 250 ms. Escrita solta continua
+ * imediata ao olho; enxurrada é atendida no máximo uma vez por segundo.
+ */
+const JANELA_SOB_CARGA_MS = 1000;
+
+let agendada: ReturnType<typeof setTimeout> | null = null;
+let ultimaEntrega = 0;
+
+/**
  * Notifica as telas (via useLiveQuery) de que algum dado mudou.
  * Exportado para que a camada de repositório dispare o mesmo evento
  * após escritas no Supabase.
+ *
+ * ===========================================================================
+ * POR QUE ELA JUNTA EM VEZ DE AVISAR NA HORA — INCIDENTE DE 17/08/2026
+ * ===========================================================================
+ *
+ * A lojista importou custos pelo chat. A importação mexeu em ~620 linhas e
+ * gravou tudo certo. Mas `RealtimeSync` escuta CADA INSERT/UPDATE/DELETE do
+ * schema e chamava esta função UMA VEZ POR LINHA — e cada chamada re-executa
+ * TODAS as `useLiveQuery` abertas na tela.
+ *
+ * O amplificador está no repositório: um `update ... where id in (...)` com
+ * chunk de 200 é UMA requisição e DUZENTOS eventos de Realtime.
+ *
+ * MEDIDO no navegador dela, com `fetch` instrumentado:
+ *
+ *   · 21.795 leituras contra 99 escritas
+ *   · pico de 5.204 requisições em voo ao mesmo tempo
+ *   · 25 requisições por segundo ainda MINUTOS depois da importação terminar
+ *   · o `TypeError: Failed to fetch` que ela viu era vítima da enxurrada, não
+ *     a causa — todas as 99 escritas passaram
+ *
+ * Não é laço infinito: nenhuma leitura grava, então a rajada é finita. É finita
+ * e enorme, que na prática é a mesma coisa para quem está olhando a tela — e
+ * cada uma daquelas leituras é um `select *` que queima cota de egress.
+ *
+ * O repositório já tentava se defender disso avisando UMA vez no fim de cada
+ * lote (ver `atualizarVarios`). Não bastava, e não podia bastar: o aviso que
+ * multiplicou não foi o dele, foi o do Realtime, que ninguém no caminho da
+ * escrita controla. Por isso a defesa mora AQUI, no funil por onde todos
+ * passam, em vez de em cada chamador — que é a mesma razão de este arquivo ter
+ * um funil.
+ *
+ * A garantia: N avisos dentro da janela produzem UMA passagem pelos listeners,
+ * e sempre acontece pelo menos uma depois do último aviso. Nada é engolido.
  */
 export function notificarMudanca() {
+  if (agendada) return;
+  const desdeAUltima = Date.now() - ultimaEntrega;
+  const janela = desdeAUltima < JANELA_SOB_CARGA_MS ? JANELA_SOB_CARGA_MS : JANELA_MS;
+  agendada = setTimeout(() => {
+    agendada = null;
+    ultimaEntrega = Date.now();
+    listeners.forEach((fn) => fn());
+  }, janela);
+}
+
+/**
+ * Dispara AGORA o aviso que estiver represado, e devolve quantos listeners
+ * rodaram. Existe para os testes poderem observar o funil sem dormir 250 ms —
+ * e para quem precisa de leitura fresca imediatamente após uma escrita.
+ */
+export function drenarNotificacao(): number {
+  if (agendada) {
+    clearTimeout(agendada);
+    agendada = null;
+  }
+  ultimaEntrega = Date.now();
   listeners.forEach((fn) => fn());
+  return listeners.size;
 }
 
 const notify = notificarMudanca;
