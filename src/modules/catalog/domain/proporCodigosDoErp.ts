@@ -120,20 +120,65 @@ const rotulo = (v: VariacaoParaCasar) =>
  */
 function corDaDescricao(desc: string): string {
   const m = desc.match(/\(([^)]*)\)/);
+  // Sem parênteses — o formato das Havaianas — o que sobra é a descrição
+  // inteira. Tirar a corrida de números do fim deixa a cor legível; sem isso a
+  // lista de candidatos vira um parágrafo por linha e não ajuda a escolher.
   const dentro = m ? m[1] : desc;
-  return dentro.replace(/\s*\d+\s*$/, "").trim();
+  const tokens = dentro.split(" ").filter(Boolean);
+  while (tokens.length > 0 && /^\d+$/.test(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.slice(-4).join(" ").trim();
 }
 
-/** O número do calçado, tal como a derivação o escreve: o ÚLTIMO da descrição. */
-function tamanhoDaDescricao(descricao: string): string {
-  const nums = descricao.match(/\d+/g);
-  return nums && nums.length > 0 ? nums[nums.length - 1] : "";
+/**
+ * O TAMANHO no fim da descrição, como uma sequência de números.
+ *
+ * ===========================================================================
+ * POR QUE NÃO É "O ÚLTIMO NÚMERO" — medido em 18/08/2026
+ * ===========================================================================
+ *
+ * Foi assim que eu escrevi primeiro, e funcionava nos Modare:
+ *
+ *   "papete slide modare 7208.101 nobuck (avela soft 34)"   → 34
+ *
+ * Nas Havaianas o tamanho é FAIXA, e a descrição termina com os dois números:
+ *
+ *   "chinelo havaianas brasil azul naval azul naval hav br 33 34"  → 33 34
+ *
+ * O último número ali é 34; a variação dela chama-se "33-34 BR", cujo primeiro
+ * número é 33. Não casava NADA — os sete modelos candidatos apareciam na tela
+ * dizendo "casa 0 variação(ões)", que é uma lista inútil.
+ *
+ * Pega a CORRIDA de números do fim, e não todos: "012 43 hav top 2196 azul
+ * naval 23 24" tem 012, 43 e 2196 no meio, que são modelo e código de cor.
+ */
+function tamanhoDaDescricao(descricao: string): string[] {
+  const tokens = descricao.split(" ").filter(Boolean);
+  const fim: string[] = [];
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (!/^\d+$/.test(tokens[i])) break;
+    fim.unshift(tokens[i]);
+  }
+  return fim;
 }
 
-/** O primeiro número do tamanho da variação: "37/38 BR" → "37". */
-function tamanhoDaVariacao(v: VariacaoParaCasar): string {
-  const m = limpar(v.tamanho).match(/\d+/);
-  return m ? m[0] : "";
+/** Os números do tamanho da variação: "33-34 BR" → ["33","34"]; "37 BR" → ["37"]. */
+function tamanhoDaVariacao(v: VariacaoParaCasar): string[] {
+  return limpar(v.tamanho).match(/\d+/g) ?? [];
+}
+
+/**
+ * O tamanho da variação está no fim do tamanho da descrição?
+ *
+ * SUFIXO, e não igualdade, porque o ERP às vezes cola o código da cor antes:
+ * "…sor preto 01 37" tem ["01","37"] no fim, e a variação é só "37". Exigir
+ * igualdade perderia esses; comparar só o último número faria "33-34" casar com
+ * a linha de "34", que é outra peça.
+ */
+function tamanhoCasa(daDescricao: string[], daVariacao: string[]): boolean {
+  if (daVariacao.length === 0 || daDescricao.length === 0) return false;
+  if (daVariacao.length > daDescricao.length) return false;
+  const cauda = daDescricao.slice(-daVariacao.length);
+  return cauda.every((n, i) => n === daVariacao[i]);
 }
 
 /**
@@ -272,8 +317,7 @@ function casarDentroDoModelo(
         !usados.has(l.codigo) &&
         partes.length > 0 &&
         partes.every((t) => l.desc.includes(t)) &&
-        tam !== "" &&
-        tamanhoDaDescricao(l.desc) === tam
+        tamanhoCasa(tamanhoDaDescricao(l.desc), tam)
     );
     if (cand.length === 1) {
       usados.add(cand[0].codigo);

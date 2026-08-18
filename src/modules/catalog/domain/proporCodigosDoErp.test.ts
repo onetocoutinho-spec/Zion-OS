@@ -276,3 +276,80 @@ test("a tela oferece o seletor e reusa as linhas do ERP sem pedir o arquivo de n
   // E a contagem aparece no rótulo: é ela que torna a escolha barata.
   assert.match(tela, /casa \{c\.casam\} variação\(ões\)/);
 });
+
+// ===========================================================================
+// TAMANHO EM FAIXA — as Havaianas, vistas na tela em 18/08/2026
+// ===========================================================================
+//
+// A lojista abriu o seletor e TODOS os sete candidatos diziam "casa 0
+// variação(ões)". Uma lista assim não ajuda a escolher: ajuda a desistir.
+//
+// A causa: nas Havaianas o tamanho é FAIXA, e a descrição do ERP termina com os
+// dois números — "…azul naval 33 34". Eu lia o ÚLTIMO (34) e a variação dela
+// chama-se "33-34 BR", cujo primeiro é 33.
+
+const HAVAIANAS: LinhaDoErp[] = [
+  { codigo: "00624033", modelo: "BRASIL", descricao: "chinelo havaianas brasil azul naval azul naval hav br 33 34" },
+  { codigo: "00624035", modelo: "BRASIL", descricao: "chinelo havaianas brasil azul naval azul naval hav br 35 36" },
+  { codigo: "00624037", modelo: "BRASIL", descricao: "chinelo havaianas brasil azul naval azul naval hav br 37 38" },
+  // Outro modelo com a mesma cor, mas numeração infantil — não pode casar.
+  { codigo: "00801023", modelo: "012 43 HAV TOP", descricao: "chinelo dedo havaianas 012 43 hav top 2196 azul naval 23 24" },
+];
+
+const BANDEIRA: ProdutoParaPropor = {
+  id: "h",
+  nome: "Chinelo Havaianas Masculino Brasil Bandeira Original",
+  variacoes: [
+    { id: "v33", cor: "Azul Naval", tamanho: "33-34 BR" },
+    { id: "v35", cor: "Azul Naval", tamanho: "35-36 BR" },
+    { id: "v37", cor: "Azul Naval", tamanho: "37-38 BR" },
+  ],
+};
+
+test("tamanho em FAIXA casa: 33-34 BR encontra a linha que termina em 33 34", () => {
+  const r = proporComModelo(HAVAIANAS, BANDEIRA, "BRASIL");
+  assert.ok(r.ok, "as Havaianas continuam casando zero");
+  assert.equal(r.pares.length, 3);
+  assert.equal(r.pares.find((x) => x.variacaoId === "v33")?.codigo, "00624033");
+  assert.equal(r.pares.find((x) => x.variacaoId === "v37")?.codigo, "00624037");
+});
+
+test("o candidato ERRADO continua casando zero — a numeração infantil não serve", () => {
+  const r = proporComModelo(HAVAIANAS, BANDEIRA, "012 43 HAV TOP");
+  assert.ok(!r.ok, "casou uma faixa adulta com numeração infantil");
+});
+
+test("a contagem dos candidatos deixa de ser zero — é ela que torna a escolha útil", () => {
+  const [r] = proporCodigos(HAVAIANAS, [BANDEIRA]);
+  assert.ok(!r.ok, "a cor 'Azul Naval' está em dois modelos: tem que perguntar");
+  assert.ok(r.candidatos);
+  assert.equal(r.candidatos[0].modelo, "brasil");
+  assert.equal(r.candidatos[0].casam, 3, "o candidato certo continuaria mostrando 0");
+  assert.equal(r.candidatos[1].casam, 0);
+});
+
+test("o rótulo da cor fica legível mesmo sem parênteses", () => {
+  // Sem parênteses — o formato das Havaianas — a versão anterior devolvia a
+  // descrição inteira, e a lista de candidatos virava um parágrafo por linha.
+  const [r] = proporCodigos(HAVAIANAS, [BANDEIRA]);
+  assert.ok(!r.ok && r.candidatos);
+  for (const c of r.candidatos) {
+    for (const cor of c.cores) {
+      assert.ok(cor.length < 40, `cor longa demais na lista: "${cor}"`);
+      assert.ok(!/\d+$/.test(cor), `a cor terminou em número: "${cor}"`);
+    }
+  }
+});
+
+test("o SUFIXO é o critério: código de cor antes do tamanho não atrapalha", () => {
+  // "…sor preto 01 37" tem ["01","37"] no fim, e a variação é só "37".
+  const erp: LinhaDoErp[] = [
+    { codigo: "0070037", modelo: "4916.518 SORANO", descricao: "tenis casual actvitta 4916.518 sorano 15745a sor preto 01 37" },
+  ];
+  const r = proporComModelo(erp, {
+    id: "s", nome: "Sorano",
+    variacoes: [{ id: "v", cor: "sor preto", tamanho: "37 BR" }],
+  }, "4916.518 SORANO");
+  assert.ok(r.ok);
+  assert.equal(r.pares[0].codigo, "0070037");
+});
