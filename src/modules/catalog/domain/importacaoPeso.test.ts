@@ -216,21 +216,30 @@ test("a recusa de peso SEM UNIDADE continua valendo com duas chaves", () => {
   assert.equal(d.motivo, "peso_sem_unidade");
 });
 
-test("o SKU decide primeiro, e uma variação recebe peso UMA vez", async () => {
-  // A ordem importa: um EAN repetido entre variações não pode decidir por cima
-  // da chave própria delas. E a variação que casa pelas DUAS não pode entrar
-  // duas vezes no lote — se as linhas trouxessem pesos diferentes, venceria a
-  // ordem do arquivo.
+test("as DUAS chaves SOMAM, e uma variação recebe peso UMA vez", async () => {
+  // MODIFICADA EM 18/08/2026, com o motivo escrito. A versão anterior cobrava
+  // "SKU manda; EAN só se o SKU não alcançar" — e essa ordem custou três
+  // variações sem peso na base real:
+  //
+  //   sku 01044525  e  sku 01044525_TEST   → a MESMA peça, duplicada. A linha
+  //                                          casava pelo primeiro e parava.
+  //   sem sku, ean 7900377004201           → a linha casou pelo sku de OUTRA
+  //                                          variação e nunca olhou o EAN.
+  //
+  // Uma linha do ERP identifica UM item físico, e as duas chaves apontam para
+  // ele. A propriedade que continua valendo — e que este teste guarda — é que
+  // NINGUÉM recebe peso duas vezes.
   const { readFileSync } = await import("node:fs");
   const servico = readFileSync(
     new URL("../../../lib/services/importacaoPeso.ts", import.meta.url),
     "utf8"
   );
-  const laco = servico.slice(servico.indexOf("const porSku = porChave.get("));
-  assert.match(laco.slice(0, 500), /porSku && porSku\.length > 0\s*\?\s*porSku/);
+  const i = servico.indexOf("const porSku = porChave.get(");
+  assert.ok(i > 0, "o casamento por chave sumiu do laço");
+  const laco = servico.slice(i, i + 600);
+  assert.match(laco, /\[\.\.\.porSku, \.\.\.porEan\]/, "as duas chaves voltaram a competir");
   assert.match(servico, /if \(variantesFeitas\.has\(v\.id\)\) continue;/);
-  // O espaço da chave entra no identificador de "já vista": um EAN e um SKU
-  // iguais em texto são coisas diferentes.
-  assert.match(servico, /`sku:\$\{leitura\.linha\.chave\}`/);
-  assert.match(servico, /`alt:\$\{leitura\.linha\.alternativa\}`/);
+  // A marca de "já vista" é a LINHA inteira: com a soma, ela pode atingir alvos
+  // pelos dois caminhos ao mesmo tempo.
+  assert.match(servico, /const marca = `\$\{leitura\.linha\.chave\}\|\$\{leitura\.linha\.alternativa\}`/);
 });

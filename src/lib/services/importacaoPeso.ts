@@ -109,17 +109,34 @@ export async function importarPeso(
     }
     linhasCsv++;
 
-    // O SKU MANDA; o EAN entra só para quem ele não alcançou. O SKU identifica
-    // a variação no ERP, e a ordem importa: invertê-la faria um EAN repetido
-    // entre variações decidir por cima da chave própria delas.
-    const porSku = porChave.get(leitura.linha.chave);
-    const alvos =
-      porSku && porSku.length > 0
-        ? porSku
-        : porAlternativa && leitura.linha.alternativa
-          ? porAlternativa.get(leitura.linha.alternativa)
-          : undefined;
-    if (!alvos || alvos.length === 0) {
+    // AS DUAS CHAVES SOMAM, e não competem.
+    //
+    // A primeira versão era "SKU manda; EAN só se o SKU não alcançar". Medido
+    // em 18/08/2026, três variações ficaram sem peso por causa disso:
+    //
+    //   sku 01044525       e  sku 01044525_TEST   → a MESMA peça, duplicada
+    //   sem sku, ean 7900377004201                → a linha casou pelo sku de
+    //                                               outra variação e parou
+    //
+    // Uma linha do ERP identifica UM item físico, e as duas chaves apontam
+    // para ele. Quando a base tem a mesma peça duas vezes — cadastro de teste,
+    // duplicata do ML — as duas variações são aquele item, e as duas recebem.
+    //
+    // Somar não reintroduz o risco que a ordem evitava: `variantesFeitas`
+    // garante que ninguém receba peso duas vezes, e a primeira linha do arquivo
+    // continua vencendo.
+    const porSku = porChave.get(leitura.linha.chave) ?? [];
+    const porEan =
+      porAlternativa && leitura.linha.alternativa
+        ? (porAlternativa.get(leitura.linha.alternativa) ?? [])
+        : [];
+    const vistos = new Set<string>();
+    const alvos = [...porSku, ...porEan].filter((v) => {
+      if (vistos.has(v.id)) return false;
+      vistos.add(v.id);
+      return true;
+    });
+    if (alvos.length === 0) {
       naoEncontrados++;
       continue;
     }
@@ -129,9 +146,9 @@ export async function importarPeso(
     //
     // O espaço da chave entra no identificador: um EAN e um SKU iguais em texto
     // são coisas diferentes, e juntá-los faria uma linha engolir a outra.
-    const marca = porSku && porSku.length > 0
-      ? `sku:${leitura.linha.chave}`
-      : `alt:${leitura.linha.alternativa}`;
+    // A marca é a LINHA (as duas chaves juntas), porque agora ela pode atingir
+    // alvos pelos dois caminhos ao mesmo tempo.
+    const marca = `${leitura.linha.chave}|${leitura.linha.alternativa}`;
     if (jaVista.has(marca)) continue;
     jaVista.add(marca);
 
