@@ -20,7 +20,7 @@
 // colagem nunca aconteça às cegas. Ver `modules/catalog/domain/colarSkus`.
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, Check, ClipboardPaste, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, ClipboardPaste, FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
@@ -36,6 +36,13 @@ import {
   fraseDaColagem,
   rotuloDaVariante,
 } from "@/modules/catalog/domain/colarSkus";
+import { lerPlanilha } from "@/lib/planilha";
+import {
+  proporCodigos,
+  fraseDaProposta,
+  type PropostaDeCodigos,
+  type LinhaDoErp,
+} from "@/modules/catalog/domain/proporCodigosDoErp";
 
 export default function CodigosDasVariacoes() {
   const { clienteId } = useClientPortal();
@@ -51,6 +58,80 @@ export default function CodigosDasVariacoes() {
   const [gravando, setGravando] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [emUso, setEmUso] = useState<Set<string>>(new Set());
+
+  // ── A PROPOSTA VINDA DO ARQUIVO DO ERP ────────────────────────────────
+  //
+  // Ela manda o export de derivação; o domínio acha o modelo pela COR e casa
+  // cor + tamanho dentro dele. Nada grava: cada produto vira um cartão que ela
+  // confirma. Ver `proporCodigosDoErp`.
+  const [propostas, setPropostas] = useState<PropostaDeCodigos[] | null>(null);
+  const [lendoArquivo, setLendoArquivo] = useState(false);
+  const [gravandoId, setGravandoId] = useState<string | null>(null);
+
+  async function receberArquivoDoErp(arquivo: File) {
+    setLendoArquivo(true);
+    setMsg(null);
+    setPropostas(null);
+    try {
+      const planilha = await lerPlanilha(arquivo);
+      // As colunas pelo NOME, não por posição: o export do LINX ganhou uma
+      // coluna nova entre 17 e 18/08/2026, e a leitura por índice passou a ler
+      // a coluna errada em silêncio.
+      const acha = (alvos: string[]) =>
+        planilha.headers.find((h) =>
+          alvos.includes(
+            h.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+          )
+        );
+      const hCod = acha(["codigo", "sku", "codigo do produto"]);
+      const hModelo = acha(["modelo"]);
+      const hDesc = acha(["nome da derivacao", "produto - derivacao", "descricao"]);
+      if (!hCod || !hModelo || !hDesc) {
+        setMsg(
+          "Este arquivo não tem as colunas que eu preciso: código, modelo e o nome da derivação. " +
+            "É o export de Derivação do Produto, do LINX."
+        );
+        return;
+      }
+      const linhas: LinhaDoErp[] = planilha.linhas.map((r) => ({
+        codigo: r[hCod] ?? "",
+        modelo: r[hModelo] ?? "",
+        descricao: r[hDesc] ?? "",
+      }));
+      setPropostas(
+        proporCodigos(
+          linhas,
+          (produtos ?? []).map((p) => ({
+            id: p.id,
+            nome: p.nome,
+            variacoes: p.variantes.map((v) => ({ id: v.id, cor: v.cor, tamanho: v.tamanho })),
+          }))
+        )
+      );
+    } catch (e) {
+      setMsg(e instanceof Error ? `Não consegui ler o arquivo: ${e.message}` : "Não consegui ler o arquivo.");
+    } finally {
+      setLendoArquivo(false);
+    }
+  }
+
+  async function aceitarProposta(p: Extract<PropostaDeCodigos, { ok: true }>) {
+    if (gravandoId) return;
+    setGravandoId(p.produtoId);
+    setMsg(null);
+    try {
+      const n = await gravarSkus(
+        p.pares.map((x) => ({ varianteId: x.variacaoId, rotulo: x.rotulo, sku: x.codigo }))
+      );
+      setMsg(`${n} variação(ões) de ${p.nome} com código. Mande as planilhas de custo e peso de novo.`);
+      setPropostas((atual) => (atual ?? []).filter((x) => x.produtoId !== p.produtoId));
+      reload();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Não foi possível gravar agora.");
+    } finally {
+      setGravandoId(null);
+    }
+  }
 
   const aberto: ProdutoSemCodigo | null =
     (produtos ?? []).find((p) => p.id === abertoId) ?? null;
@@ -120,6 +201,84 @@ export default function CodigosDasVariacoes() {
           {msg}
         </p>
       )}
+
+      {/* ── O ARQUIVO DO ERP PROPÕE ──────────────────────────────────────
+          O caminho barato: ela manda o export de derivação e o Zion acha o
+          modelo pela COR, casando cor + tamanho dentro dele. Medido em
+          18/08/2026: resolve 6 dos 15 produtos, e diz dos outros por quê. */}
+      {produtos && produtos.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm text-white/75">
+            Tem o arquivo de <strong className="text-white">Derivação do Produto</strong> do LINX?
+            Mande aqui e eu proponho os códigos — acho o modelo pela cor e caso cor e tamanho
+            dentro dele. Nada é gravado sem você conferir.
+          </p>
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:border-violet-500 [@media(pointer:coarse)]:min-h-11">
+            {lendoArquivo ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
+            {lendoArquivo ? "Lendo…" : "Escolher o arquivo do ERP"}
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls,text/csv"
+              className="hidden"
+              disabled={lendoArquivo}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void receberArquivoDoErp(f);
+              }}
+            />
+          </label>
+        </div>
+      )}
+
+      {/* As propostas, uma por produto. Cada uma carrega a PROVA: o modelo e a
+          cor que o identificou — é isso que permite conferir em vez de confiar. */}
+      {(propostas ?? []).map((prop) => (
+        <div
+          key={prop.produtoId}
+          className={`rounded-xl border p-4 ${
+            prop.ok ? "border-emerald-500/25 bg-emerald-500/[0.06]" : "border-white/10 bg-white/[0.02]"
+          }`}
+        >
+          <p className="text-sm font-medium">{prop.nome}</p>
+          <p className="mt-1 text-sm text-white/65">{fraseDaProposta(prop)}</p>
+          {prop.ok && (
+            <>
+              <div className="mt-3 overflow-x-auto rounded-lg border border-white/10">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-white/5 text-xs uppercase tracking-wide text-white/40">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Variação</th>
+                      <th className="px-3 py-2 font-medium">Código proposto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prop.pares.map((x) => (
+                      <tr key={x.variacaoId} className="border-t border-white/5">
+                        <td className="px-3 py-2 text-white/70">{x.rotulo}</td>
+                        <td className="px-3 py-2 font-mono">{x.codigo}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3">
+                <Button
+                  onClick={() => void aceitarProposta(prop)}
+                  disabled={gravandoId === prop.produtoId}
+                >
+                  {gravandoId === prop.produtoId ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  Está certo, pode gravar
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
 
       {/* `produtos &&` NÃO é detalhe: `useLiveQuery` devolve `null` enquanto
           busca, e sem este teste a tela afirmaria "todas têm código" para quem
