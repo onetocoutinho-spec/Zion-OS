@@ -77,12 +77,21 @@ export default function CodigosDasVariacoes() {
       // As colunas pelo NOME, não por posição: o export do LINX ganhou uma
       // coluna nova entre 17 e 18/08/2026, e a leitura por índice passou a ler
       // a coluna errada em silêncio.
-      const acha = (alvos: string[]) =>
-        planilha.headers.find((h) =>
-          alvos.includes(
-            h.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
-          )
-        );
+      // A ORDEM DOS ALVOS MANDA, não a ordem dos cabeçalhos.
+      //
+      // A primeira versão usava `headers.find(h => alvos.includes(h))`, que
+      // devolve o primeiro CABEÇALHO a casar com qualquer alvo — e o arquivo do
+      // LINX tem "Produto - Derivação" ANTES de "Nome da Derivação". Pegava a
+      // coluna suja, que traz o nome comercial junto e mais números no meio.
+      const acha = (alvos: string[]) => {
+        const norm = (h: string) =>
+          h.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+        for (const alvo of alvos) {
+          const achado = planilha.headers.find((h) => norm(h) === alvo);
+          if (achado) return achado;
+        }
+        return undefined;
+      };
       const hCod = acha(["codigo", "sku", "codigo do produto"]);
       const hModelo = acha(["modelo"]);
       const hDesc = acha(["nome da derivacao", "produto - derivacao", "descricao"]);

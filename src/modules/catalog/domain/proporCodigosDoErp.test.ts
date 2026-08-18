@@ -134,3 +134,50 @@ test("arquivo vazio não propõe nada, e não quebra", () => {
   assert.ok(!r.ok);
   assert.match(r.motivo, /Nenhuma das cores/);
 });
+
+test("quando o modelo é achado e NADA casa, a frase mostra as cores do ERP", () => {
+  // Medido em 18/08/2026: o "Tênis Sorano" tem cor "SOR AREIA" no Zion e
+  // "15745a/sor preto 01" no ERP. Dizer só "nada casou" manda a lojista
+  // adivinhar; mostrar as cores de lá deixa a diferença visível na hora.
+  const erp: LinhaDoErp[] = [
+    // A cor "sor areia" existe no modelo — é ela que o identifica — mas só em
+    // tamanhos que a lojista NÃO tem.
+    { codigo: "007042", modelo: "4916.518 SORANO", descricao: "tenis casual actvitta 4916.518 sorano (sor areia 42)" },
+    ...[35, 36].map((t) => ({
+      codigo: `00700${t}`,
+      modelo: "4916.518 SORANO",
+      descricao: `tenis casual actvitta 4916.518 sorano (15745a sor preto 01 ${t})`,
+    })),
+  ];
+  const [r] = proporCodigos(erp, [
+    {
+      id: "s",
+      nome: "Tênis Sorano",
+      // "sor" existe no ERP e isola o modelo; "areia" não existe em linha nenhuma.
+      variacoes: [{ id: "v", cor: "sor areia", tamanho: "35 BR" }],
+    },
+  ]);
+  assert.ok(!r.ok);
+  assert.match(r.motivo, /nenhuma variação casou/);
+  assert.match(r.motivo, /As cores desse modelo no ERP são/);
+  assert.match(r.motivo, /sor areia/);
+});
+
+test("a tela prefere MEU alvo, não o primeiro cabeçalho que casa", async () => {
+  // O arquivo do LINX tem "Produto - Derivação" ANTES de "Nome da Derivação".
+  // A primeira versão pegava a coluna suja — com o nome comercial junto e mais
+  // números no meio — porque procurava pelo cabeçalho em vez de pelo alvo.
+  const { readFileSync } = await import("node:fs");
+  const tela = readFileSync(
+    new URL("../../../app/cliente/codigos/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const i = tela.indexOf("const acha = (alvos: string[])");
+  assert.ok(i > 0, "a detecção de colunas sumiu da tela");
+  const corpo = tela.slice(i, i + 420);
+  assert.match(corpo, /for \(const alvo of alvos\)/, "voltou a varrer cabeçalhos em vez de alvos");
+  assert.ok(
+    !/headers\.find\(\(h\) =>\s*\n?\s*alvos\.includes/.test(corpo),
+    "voltou o `headers.find(h => alvos.includes(h))`, que ignora a ordem dos alvos"
+  );
+});

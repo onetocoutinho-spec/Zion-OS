@@ -94,6 +94,18 @@ const norm = (s: string) =>
 const rotulo = (v: VariacaoParaCasar) =>
   [limpar(v.cor), limpar(v.tamanho)].filter(Boolean).join(" · ") || "(sem cor nem tamanho)";
 
+/**
+ * A COR, tal como o ERP a escreve: o que está entre parênteses, sem o tamanho.
+ *
+ * Serve só para EXPLICAR a recusa — "as cores desse modelo no ERP são X, Y" —
+ * quando o modelo foi achado e nenhuma variação casou. Nunca decide nada.
+ */
+function corDaDescricao(desc: string): string {
+  const m = desc.match(/\(([^)]*)\)/);
+  const dentro = m ? m[1] : desc;
+  return dentro.replace(/\s*\d+\s*$/, "").trim();
+}
+
 /** O número do calçado, tal como a derivação o escreve: o ÚLTIMO da descrição. */
 function tamanhoDaDescricao(descricao: string): string {
   const nums = descricao.match(/\d+/g);
@@ -201,13 +213,22 @@ export function proporCodigos(
     }
 
     if (pares.length === 0) {
+      // AS CORES DO MODELO ENTRAM NA FRASE, e não é enfeite.
+      //
+      // Medido em 18/08/2026: o "Tênis Sorano" tem cor "SOR AREIA" no Zion e
+      // "15745a/sor preto 01" no ERP. Dizer só "nada casou" manda a lojista
+      // adivinhar; mostrar as cores de lá deixa a diferença visível.
+      const cores = [...new Set(linhasDoModelo.map((l) => corDaDescricao(l.desc)).filter(Boolean))];
       return {
         produtoId: p.id,
         nome: p.nome,
         ok: false,
         motivo:
           `Achei o modelo "${modelo}" pela cor "${melhor.cor}", mas nenhuma variação casou por ` +
-          `cor e tamanho dentro dele.`,
+          `cor e tamanho dentro dele.` +
+          (cores.length > 0
+            ? ` As cores desse modelo no ERP são: ${cores.slice(0, 8).join(", ")}.`
+            : ""),
       };
     }
 
