@@ -244,6 +244,17 @@ export function fraseDaColagem(l: LeituraDeColagem): string {
   ].filter(Boolean);
   return (
     `${l.atribuicoes.length} variação(ões) receberiam código, ${como}.` +
-    (restos.length > 0 ? ` ${restos.join(" e ")}.` : "")
+    (restos.length > 0 ? ` ${restos.join(" e ")}.` : "") +
+    // O LIMITE DECLARADO, e ele custou dado errado em 18/08/2026.
+    //
+    // O Zion não tem o cadastro do ERP: ele confere a FORMA da colagem
+    // (duplicata, ambiguidade, quantidade) e nada mais. Um código bem
+    // formatado que pertence a OUTRO produto passa por todas as guardas.
+    //
+    // Aconteceu: dois códigos de exemplo que eu inventei — 010399 e 010400 —
+    // eram códigos reais de tênis Molekinha, e foram parar em duas variações
+    // de um chinelo Modare. Nada aqui teria acusado.
+    " Não consigo conferir se estes códigos existem no seu ERP, nem de qual" +
+    " produto são — isso é com você."
   );
 }

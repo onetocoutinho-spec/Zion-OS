@@ -160,3 +160,35 @@ test("o EXATO continua ganhando do relaxado", () => {
   assert.equal(l.atribuicoes.length, 1);
   assert.equal(l.atribuicoes[0].varianteId, "b2");
 });
+
+test("a frase DECLARA que o Zion não valida o código", () => {
+  // 18/08/2026: dois códigos de EXEMPLO que eu inventei para o placeholder —
+  // 010399 e 010400 — eram códigos reais de tênis Molekinha. A lojista copiou
+  // o exemplo e gravou, e eles foram parar em duas variações de um chinelo
+  // Modare. Nenhuma guarda deste módulo acusou, porque nenhuma pode: o Zion não
+  // tem o cadastro do ERP.
+  //
+  // O que ele pode fazer é DIZER que não sabe.
+  const l = lerColagem("Preto 34\t010399", VARIANTES);
+  assert.match(fraseDaColagem(l), /Não consigo conferir se estes códigos existem no seu ERP/);
+  assert.match(fraseDaColagem(l), /nem de qual produto são/);
+});
+
+test("o EXEMPLO da tela nunca parece um código de verdade", async () => {
+  // A causa raiz. Um exemplo com cara de dado convida a gravá-lo — e foi
+  // exatamente isso que aconteceu.
+  const { readFileSync } = await import("node:fs");
+  const tela = readFileSync(
+    new URL("../../../app/cliente/codigos/page.tsx", import.meta.url),
+    "utf8"
+  );
+  const i = tela.indexOf("placeholder=");
+  assert.ok(i > 0, "o placeholder sumiu da tela");
+  const trecho = tela.slice(i, i + 320);
+  assert.ok(
+    !/\d{4,}/.test(trecho),
+    "o exemplo do campo voltou a conter um número com cara de código — " +
+      "foi assim que 010399 e 010400, códigos reais de OUTROS produtos, " +
+      "foram gravados em duas variações"
+  );
+});
