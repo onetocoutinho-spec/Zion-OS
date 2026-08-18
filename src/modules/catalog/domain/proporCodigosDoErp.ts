@@ -98,6 +98,18 @@ export interface CandidatoDeModelo {
   casam: number;
   /** As cores desse modelo no ERP, para ela reconhecer o produto. */
   cores: string[];
+  /**
+   * O nome do modelo aparece no nome do produto?
+   *
+   * Medido na tela em 18/08/2026, e por pouco não custou caro: para
+   * "Chinelo Havaianas Masculino BRASIL Bandeira Original", o modelo "top liso"
+   * casava 28 variações e o "brasil" casava 21 — e a lista ordenada só por
+   * contagem punha o ERRADO em cima. Havaianas partilham cores e numeração
+   * entre linhas, então casar mais não quer dizer ser o certo.
+   *
+   * É PISTA, não decisão: continua sendo ela quem escolhe.
+   */
+  nomeBate: boolean;
 }
 
 const limpar = (s: string) => (s ?? "").trim();
@@ -242,16 +254,29 @@ export function proporCodigos(
       // OS CANDIDATOS VÊM COM A CONTAGEM, e é ela que torna a escolha barata:
       // "Alecrim" aparece em 4 modelos, mas normalmente só um casa TODAS as
       // variações. O software não escolhe — mas não deixa escolher no escuro.
+      const nomeDoProduto = norm(p.nome);
       const candidatos: CandidatoDeModelo[] = melhor.modelos
         .map((m) => {
           const ls = porModelo.get(m) ?? [];
+          // O nome do modelo bate quando TODAS as palavras dele (fora números
+          // soltos) aparecem no nome do produto. "brasil" bate em "…Brasil
+          // Bandeira Original"; "top liso" não.
+          const palavras = m.split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
           return {
             modelo: m,
             casam: casarDentroDoModelo(ls, p).pares.length,
             cores: [...new Set(ls.map((l) => corDaDescricao(l.desc)).filter(Boolean))].slice(0, 6),
+            nomeBate: palavras.length > 0 && palavras.every((t) => nomeDoProduto.includes(t)),
           };
         })
-        .sort((a, b) => b.casam - a.casam || a.modelo.localeCompare(b.modelo));
+        // O NOME MANDA ANTES DA CONTAGEM. Ordenar só por contagem punha
+        // "top liso" (28) na frente de "brasil" (21) num produto Brasil.
+        .sort(
+          (a, b) =>
+            Number(b.nomeBate) - Number(a.nomeBate) ||
+            b.casam - a.casam ||
+            a.modelo.localeCompare(b.modelo)
+        );
       return {
         produtoId: p.id,
         nome: p.nome,

@@ -69,6 +69,8 @@ export default function CodigosDasVariacoes() {
   // As linhas do ERP ficam à mão: quando a cor não desempata, ela escolhe o
   // modelo e o casamento roda de novo SEM pedir o arquivo outra vez.
   const [linhasDoErp, setLinhasDoErp] = useState<LinhaDoErp[]>([]);
+  /** Quais produtos estão com a lista de modelos aberta por inteiro. */
+  const [verTodos, setVerTodos] = useState<Set<string>>(new Set());
   const [lendoArquivo, setLendoArquivo] = useState(false);
   const [gravandoId, setGravandoId] = useState<string | null>(null);
 
@@ -280,25 +282,68 @@ export default function CodigosDasVariacoes() {
               A lista vem ordenada por quantas variações cada modelo casaria:
               "Alecrim" aparece em 4 modelos, mas normalmente só um casa todas.
               O software não escolhe; só não deixa escolher no escuro. */}
+          {/* A COR NÃO DESEMPATOU — ela escolhe, e escolhe INFORMADA.
+              NÃO é um <select>: o popup nativo é desenhado pelo sistema, fica
+              ilegível e corta o texto. Ela mandou o print — "não consigo nem
+              enxergar" — e cada opção era um parágrafo cortado na borda.
+              Botão é markup que eu controlo: quebra linha, destaca a contagem
+              e cabe no dedo. */}
           {!prop.ok && prop.candidatos && prop.candidatos.length > 0 && (
-            <label className="mt-3 flex flex-col gap-1">
-              <span className="text-xs text-white/45">
-                Qual destes é o modelo dele no seu ERP? O número é quantas variações casariam.
-              </span>
-              <select
-                defaultValue=""
-                onChange={(e) => escolherModelo(prop.produtoId, e.target.value)}
-                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
-              >
-                <option value="">Escolher o modelo…</option>
-                {prop.candidatos.map((c) => (
-                  <option key={c.modelo} value={c.modelo}>
-                    {c.modelo} — casa {c.casam} variação(ões)
-                    {c.cores.length > 0 ? ` · cores: ${c.cores.join(", ")}` : ""}
-                  </option>
+            <div className="mt-3">
+              <p className="text-xs text-white/45">
+                Qual destes é o modelo dele no seu ERP?
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {prop.candidatos.slice(0, verTodos.has(prop.produtoId) ? 99 : 5).map((c) => (
+                  <li key={c.modelo}>
+                    <button
+                      onClick={() => escolherModelo(prop.produtoId, c.modelo)}
+                      className={`w-full rounded-lg border p-2.5 text-left transition-colors [@media(pointer:coarse)]:min-h-11 ${
+                        c.nomeBate
+                          ? "border-violet-500/40 bg-violet-500/10 hover:bg-violet-500/20"
+                          : "border-white/10 bg-white/[0.03] hover:border-violet-500/40"
+                      }`}
+                    >
+                      <span className="flex flex-wrap items-baseline gap-2">
+                        <span className="font-medium">{c.modelo}</span>
+                        {c.nomeBate && (
+                          <span className="rounded bg-violet-500/25 px-1.5 py-0.5 text-[11px] text-violet-200">
+                            o nome bate
+                          </span>
+                        )}
+                        <span
+                          className={`text-xs ${c.casam > 0 ? "text-emerald-300" : "text-white/35"}`}
+                        >
+                          casa {c.casam} variação(ões)
+                        </span>
+                      </span>
+                      {c.cores.length > 0 && (
+                        <span className="mt-1 block text-[11px] leading-4 text-white/40">
+                          cores: {c.cores.join(" · ")}
+                        </span>
+                      )}
+                    </button>
+                  </li>
                 ))}
-              </select>
-            </label>
+              </ul>
+              {prop.candidatos.length > 5 && (
+                <button
+                  onClick={() =>
+                    setVerTodos((s) => {
+                      const n = new Set(s);
+                      if (n.has(prop.produtoId)) n.delete(prop.produtoId);
+                      else n.add(prop.produtoId);
+                      return n;
+                    })
+                  }
+                  className="mt-2 text-xs text-white/50 underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-11"
+                >
+                  {verTodos.has(prop.produtoId)
+                    ? "Mostrar menos"
+                    : `Ver os outros ${prop.candidatos.length - 5} modelos`}
+                </button>
+              )}
+            </div>
           )}
           {prop.ok && (
             <>

@@ -259,7 +259,7 @@ test("modelo escolhido que não existe no arquivo é recusado", () => {
   assert.match(r.motivo, /Não achei o modelo/);
 });
 
-test("a tela oferece o seletor e reusa as linhas do ERP sem pedir o arquivo de novo", async () => {
+test("a tela NÃO usa <select> para o modelo, e reusa as linhas do ERP", async () => {
   const { readFileSync } = await import("node:fs");
   const tela = readFileSync(
     new URL("../../../app/cliente/codigos/page.tsx", import.meta.url),
@@ -268,13 +268,25 @@ test("a tela oferece o seletor e reusa as linhas do ERP sem pedir o arquivo de n
   // O seletor só existe quando há candidatos — as outras recusas não têm
   // escolha a oferecer, e um seletor vazio convidaria a mexer no que não dá.
   assert.match(tela, /!prop\.ok && prop\.candidatos && prop\.candidatos\.length > 0/);
-  assert.match(tela, /escolherModelo\(prop\.produtoId, e\.target\.value\)/);
+  assert.match(tela, /escolherModelo\(prop\.produtoId, c\.modelo\)/);
+  // NÃO PODE SER <select>: o popup nativo é desenhado pelo sistema, corta o
+  // texto e fica ilegível. Ela mandou o print — "não consigo nem enxergar" —
+  // com sete opções viradas parágrafo. Botão é markup que a gente controla.
+  const bloco = tela.slice(
+    tela.indexOf("prop.candidatos && prop.candidatos.length > 0"),
+    tela.indexOf("Ver os outros")
+  );
+  assert.ok(bloco.length > 100, "nao achei o bloco dos candidatos");
+  assert.ok(!/<select/.test(bloco), "o <select> voltou — e com ele a lista ilegivel");
+  assert.match(bloco, /<button/);
   // As linhas ficam em estado: pedir o arquivo de novo a cada escolha seria
   // reler 14.629 linhas por clique.
   assert.match(tela, /setLinhasDoErp\(linhas\)/);
   assert.match(tela, /proporComModelo\(\s*\n?\s*linhasDoErp/);
   // E a contagem aparece no rótulo: é ela que torna a escolha barata.
   assert.match(tela, /casa \{c\.casam\} variação\(ões\)/);
+  // A pista do nome fica VISÍVEL, senão a contagem sozinha engana.
+  assert.match(tela, /o nome bate/);
 });
 
 // ===========================================================================
@@ -352,4 +364,40 @@ test("o SUFIXO é o critério: código de cor antes do tamanho não atrapalha", 
   }, "4916.518 SORANO");
   assert.ok(r.ok);
   assert.equal(r.pares[0].codigo, "0070037");
+});
+
+test("o NOME do modelo manda antes da contagem — a contagem sozinha engana", () => {
+  // Visto na tela em 18/08/2026, e por pouco não custou caro: para
+  // "Chinelo Havaianas Masculino BRASIL Bandeira Original", o modelo "top liso"
+  // casava 28 variações e o "brasil" casava 21. Ordenar só por contagem punha o
+  // ERRADO em cima — Havaianas partilham cores e numeração entre linhas, então
+  // casar mais não quer dizer ser o certo.
+  const erp: LinhaDoErp[] = [
+    // "top liso" casa as duas variações...
+    ...[33, 35].map((t) => ({
+      codigo: `0063${t}`,
+      modelo: "TOP LISO",
+      descricao: `chinelo dedo havaianas top liso top l azul naval ${t} ${t + 1}`,
+    })),
+    // ...e "brasil" casa só uma, mas é o modelo do produto.
+    { codigo: "0062433", modelo: "BRASIL", descricao: "chinelo havaianas brasil azul naval azul naval hav br 33 34" },
+  ];
+  const [r] = proporCodigos(erp, [
+    {
+      id: "b",
+      nome: "Chinelo Havaianas Masculino Brasil Bandeira Original",
+      variacoes: [
+        { id: "v33", cor: "Azul Naval", tamanho: "33-34 BR" },
+        { id: "v35", cor: "Azul Naval", tamanho: "35-36 BR" },
+      ],
+    },
+  ]);
+  assert.ok(!r.ok && r.candidatos);
+  assert.equal(r.candidatos[0].modelo, "brasil", "a contagem colocou o modelo errado em cima");
+  assert.equal(r.candidatos[0].nomeBate, true);
+  assert.equal(r.candidatos[0].casam, 1);
+  // O que casa mais fica em segundo, e continua disponível: é PISTA, não decisão.
+  assert.equal(r.candidatos[1].modelo, "top liso");
+  assert.equal(r.candidatos[1].casam, 2);
+  assert.equal(r.candidatos[1].nomeBate, false);
 });
