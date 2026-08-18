@@ -80,7 +80,25 @@ export type PropostaDeCodigos =
       ok: false;
       /** Por que não deu, em português e acionável. */
       motivo: string;
+      /**
+       * Os modelos que a cor NÃO conseguiu desempatar, ordenados por quantas
+       * variações cada um casaria.
+       *
+       * Existe porque recusar sem oferecer saída empurra o problema para um
+       * lugar onde ninguém o vê. A contagem torna a escolha informada:
+       * "Alecrim" aparece em 4 modelos, mas normalmente só um casa TODAS as
+       * variações. Presente só na ambiguidade.
+       */
+      candidatos?: CandidatoDeModelo[];
     };
+
+export interface CandidatoDeModelo {
+  modelo: string;
+  /** Quantas variações do produto casariam por cor + tamanho neste modelo. */
+  casam: number;
+  /** As cores desse modelo no ERP, para ela reconhecer o produto. */
+  cores: string[];
+}
 
 const limpar = (s: string) => (s ?? "").trim();
 const norm = (s: string) =>
@@ -176,6 +194,19 @@ export function proporCodigos(
     //    de qual produto do ERP este anúncio é — e o preço do erro é custo e
     //    peso de outro item, calados.
     if (melhor.modelos.length > 1) {
+      // OS CANDIDATOS VÊM COM A CONTAGEM, e é ela que torna a escolha barata:
+      // "Alecrim" aparece em 4 modelos, mas normalmente só um casa TODAS as
+      // variações. O software não escolhe — mas não deixa escolher no escuro.
+      const candidatos: CandidatoDeModelo[] = melhor.modelos
+        .map((m) => {
+          const ls = porModelo.get(m) ?? [];
+          return {
+            modelo: m,
+            casam: casarDentroDoModelo(ls, p).pares.length,
+            cores: [...new Set(ls.map((l) => corDaDescricao(l.desc)).filter(Boolean))].slice(0, 6),
+          };
+        })
+        .sort((a, b) => b.casam - a.casam || a.modelo.localeCompare(b.modelo));
       return {
         produtoId: p.id,
         nome: p.nome,
@@ -183,6 +214,7 @@ export function proporCodigos(
         motivo:
           `A cor mais específica deste produto ("${melhor.cor}") aparece em ${melhor.modelos.length} ` +
           `modelos diferentes do ERP. Não dá para saber qual é o dele sem você dizer.`,
+        candidatos,
       };
     }
 
@@ -190,27 +222,7 @@ export function proporCodigos(
     const linhasDoModelo = porModelo.get(modelo) ?? [];
 
     // 3 e 4) cor + tamanho, dentro do modelo, e só o casamento ÚNICO.
-    const pares: ParDeCodigo[] = [];
-    const semPar: string[] = [];
-    const usados = new Set<string>();
-    for (const v of p.variacoes) {
-      const partes = norm(v.cor).split(" ").filter(Boolean);
-      const tam = tamanhoDaVariacao(v);
-      const cand = linhasDoModelo.filter(
-        (l) =>
-          !usados.has(l.codigo) &&
-          partes.length > 0 &&
-          partes.every((t) => l.desc.includes(t)) &&
-          tam !== "" &&
-          tamanhoDaDescricao(l.desc) === tam
-      );
-      if (cand.length === 1) {
-        usados.add(cand[0].codigo);
-        pares.push({ variacaoId: v.id, rotulo: rotulo(v), codigo: cand[0].codigo });
-      } else {
-        semPar.push(rotulo(v));
-      }
-    }
+    const { pares, semPar } = casarDentroDoModelo(linhasDoModelo, p);
 
     if (pares.length === 0) {
       // AS CORES DO MODELO ENTRAM NA FRASE, e não é enfeite.
@@ -244,6 +256,83 @@ export function proporCodigos(
   });
 }
 
+/** Cor + tamanho, dentro de UM modelo. Só o casamento único conta. PURA. */
+function casarDentroDoModelo(
+  linhasDoModelo: readonly { codigo: string; desc: string }[],
+  p: ProdutoParaPropor
+): { pares: ParDeCodigo[]; semPar: string[] } {
+  const pares: ParDeCodigo[] = [];
+  const semPar: string[] = [];
+  const usados = new Set<string>();
+  for (const v of p.variacoes) {
+    const partes = norm(v.cor).split(" ").filter(Boolean);
+    const tam = tamanhoDaVariacao(v);
+    const cand = linhasDoModelo.filter(
+      (l) =>
+        !usados.has(l.codigo) &&
+        partes.length > 0 &&
+        partes.every((t) => l.desc.includes(t)) &&
+        tam !== "" &&
+        tamanhoDaDescricao(l.desc) === tam
+    );
+    if (cand.length === 1) {
+      usados.add(cand[0].codigo);
+      pares.push({ variacaoId: v.id, rotulo: rotulo(v), codigo: cand[0].codigo });
+    } else {
+      semPar.push(rotulo(v));
+    }
+  }
+  return { pares, semPar };
+}
+
+/**
+ * O pareamento quando a LOJISTA escolheu o modelo.
+ *
+ * Mesmo casamento por cor + tamanho do caminho automático — a única coisa que
+ * muda é quem identificou o modelo. `corQueIdentificou` fica vazia de
+ * propósito, e é por ela que a frase sabe dizer "escolhido por você": a prova
+ * na tela tem que ser honesta sobre de onde veio a decisão.
+ */
+export function proporComModelo(
+  linhas: readonly LinhaDoErp[],
+  produto: ProdutoParaPropor,
+  modeloEscolhido: string
+): PropostaDeCodigos {
+  const alvo = norm(modeloEscolhido);
+  const ls = linhas
+    .filter((l) => norm(l.modelo) === alvo && limpar(l.codigo))
+    .map((l) => ({ codigo: limpar(l.codigo), desc: norm(l.descricao) }));
+  if (ls.length === 0) {
+    return {
+      produtoId: produto.id,
+      nome: produto.nome,
+      ok: false,
+      motivo: `Não achei o modelo "${modeloEscolhido}" no arquivo.`,
+    };
+  }
+  const { pares, semPar } = casarDentroDoModelo(ls, produto);
+  if (pares.length === 0) {
+    const cores = [...new Set(ls.map((l) => corDaDescricao(l.desc)).filter(Boolean))];
+    return {
+      produtoId: produto.id,
+      nome: produto.nome,
+      ok: false,
+      motivo:
+        `Nenhuma variação casou por cor e tamanho no modelo "${modeloEscolhido}".` +
+        (cores.length > 0 ? ` As cores dele no ERP são: ${cores.slice(0, 8).join(", ")}.` : ""),
+    };
+  }
+  return {
+    produtoId: produto.id,
+    nome: produto.nome,
+    ok: true,
+    modelo: alvo,
+    corQueIdentificou: "",
+    pares,
+    semPar,
+  };
+}
+
 /**
  * A frase que a tela mostra por produto, com a PROVA junto.
  *
@@ -253,10 +342,14 @@ export function proporCodigos(
  */
 export function fraseDaProposta(p: PropostaDeCodigos): string {
   if (!p.ok) return p.motivo;
+  // A PROCEDÊNCIA DO MODELO muda a frase, e não é detalhe: "eu achei" e "você
+  // escolheu" pedem conferências diferentes de quem lê.
+  const comoAchou = p.corQueIdentificou
+    ? `achei esse modelo porque a cor "${p.corQueIdentificou}" só aparece nele`
+    : "modelo escolhido por você";
   return (
     `${p.pares.length} de ${p.pares.length + p.semPar.length} variações casaram com o modelo ` +
-    `"${p.modelo}" do seu ERP — achei esse modelo porque a cor "${p.corQueIdentificou}" só ` +
-    `aparece nele. Dentro do modelo, cada variação casou por cor e tamanho.` +
+    `"${p.modelo}" do seu ERP — ${comoAchou}. Dentro do modelo, cada variação casou por cor e tamanho.` +
     (p.semPar.length > 0 ? ` Ficaram de fora: ${p.semPar.join(", ")}.` : "")
   );
 }

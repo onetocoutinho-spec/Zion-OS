@@ -39,6 +39,7 @@ import {
 import { lerPlanilha } from "@/lib/planilha";
 import {
   proporCodigos,
+  proporComModelo,
   fraseDaProposta,
   type PropostaDeCodigos,
   type LinhaDoErp,
@@ -65,6 +66,9 @@ export default function CodigosDasVariacoes() {
   // cor + tamanho dentro dele. Nada grava: cada produto vira um cartão que ela
   // confirma. Ver `proporCodigosDoErp`.
   const [propostas, setPropostas] = useState<PropostaDeCodigos[] | null>(null);
+  // As linhas do ERP ficam à mão: quando a cor não desempata, ela escolhe o
+  // modelo e o casamento roda de novo SEM pedir o arquivo outra vez.
+  const [linhasDoErp, setLinhasDoErp] = useState<LinhaDoErp[]>([]);
   const [lendoArquivo, setLendoArquivo] = useState(false);
   const [gravandoId, setGravandoId] = useState<string | null>(null);
 
@@ -107,6 +111,7 @@ export default function CodigosDasVariacoes() {
         modelo: r[hModelo] ?? "",
         descricao: r[hDesc] ?? "",
       }));
+      setLinhasDoErp(linhas);
       setPropostas(
         proporCodigos(
           linhas,
@@ -122,6 +127,25 @@ export default function CodigosDasVariacoes() {
     } finally {
       setLendoArquivo(false);
     }
+  }
+
+  /**
+   * Ela escolheu o modelo. O casamento é o MESMO do caminho automático — muda
+   * só quem identificou o modelo, e a frase da proposta diz isso.
+   */
+  function escolherModelo(produtoId: string, modelo: string) {
+    const alvo = (produtos ?? []).find((x) => x.id === produtoId);
+    if (!alvo || !modelo) return;
+    const nova = proporComModelo(
+      linhasDoErp,
+      {
+        id: alvo.id,
+        nome: alvo.nome,
+        variacoes: alvo.variantes.map((v) => ({ id: v.id, cor: v.cor, tamanho: v.tamanho })),
+      },
+      modelo
+    );
+    setPropostas((atual) => (atual ?? []).map((x) => (x.produtoId === produtoId ? nova : x)));
   }
 
   async function aceitarProposta(p: Extract<PropostaDeCodigos, { ok: true }>) {
@@ -251,6 +275,31 @@ export default function CodigosDasVariacoes() {
         >
           <p className="text-sm font-medium">{prop.nome}</p>
           <p className="mt-1 text-sm text-white/65">{fraseDaProposta(prop)}</p>
+
+          {/* A COR NÃO DESEMPATOU — ela escolhe, e escolhe INFORMADA.
+              A lista vem ordenada por quantas variações cada modelo casaria:
+              "Alecrim" aparece em 4 modelos, mas normalmente só um casa todas.
+              O software não escolhe; só não deixa escolher no escuro. */}
+          {!prop.ok && prop.candidatos && prop.candidatos.length > 0 && (
+            <label className="mt-3 flex flex-col gap-1">
+              <span className="text-xs text-white/45">
+                Qual destes é o modelo dele no seu ERP? O número é quantas variações casariam.
+              </span>
+              <select
+                defaultValue=""
+                onChange={(e) => escolherModelo(prop.produtoId, e.target.value)}
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
+              >
+                <option value="">Escolher o modelo…</option>
+                {prop.candidatos.map((c) => (
+                  <option key={c.modelo} value={c.modelo}>
+                    {c.modelo} — casa {c.casam} variação(ões)
+                    {c.cores.length > 0 ? ` · cores: ${c.cores.join(", ")}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {prop.ok && (
             <>
               <div className="mt-3 overflow-x-auto rounded-lg border border-white/10">

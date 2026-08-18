@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   proporCodigos,
   fraseDaProposta,
+  proporComModelo,
   type LinhaDoErp,
   type ProdutoParaPropor,
 } from "./proporCodigosDoErp";
@@ -180,4 +181,98 @@ test("a tela prefere MEU alvo, não o primeiro cabeçalho que casa", async () =>
     !/headers\.find\(\(h\) =>\s*\n?\s*alvos\.includes/.test(corpo),
     "voltou o `headers.find(h => alvos.includes(h))`, que ignora a ordem dos alvos"
   );
+});
+
+// ===========================================================================
+// QUANDO A COR NÃO DESEMPATA: a lojista escolhe, e escolhe INFORMADA
+// ===========================================================================
+//
+// Medido em 18/08/2026: "Alecrim" aparece em 4 modelos, "Creme" em 30. Recusar
+// sem oferecer saída empurra o problema para onde ninguém o vê. A contagem é o
+// que torna a escolha barata — normalmente só um dos candidatos casa TODAS as
+// variações.
+
+const DOIS_MODELOS: LinhaDoErp[] = [
+  ...[35, 36, 37].map((t) => ({
+    codigo: `01111${t}`,
+    modelo: "7208.101 NOBUCK",
+    descricao: `papete slide modare 7208.101 nobuck (alecrim n ${t})`,
+  })),
+  // O outro modelo tem a cor, mas só um tamanho — casaria 1 de 3.
+  { codigo: "022235", modelo: "9999.999 OUTRO", descricao: "sandalia outra 9999.999 (alecrim n 35)" },
+];
+
+const ALECRIM: ProdutoParaPropor = {
+  id: "a",
+  nome: "Sandália Alecrim",
+  variacoes: [
+    { id: "v35", cor: "Alecrim", tamanho: "35 BR" },
+    { id: "v36", cor: "Alecrim", tamanho: "36 BR" },
+    { id: "v37", cor: "Alecrim", tamanho: "37 BR" },
+  ],
+};
+
+test("a ambiguidade devolve CANDIDATOS ordenados por quantas variações casam", () => {
+  const [r] = proporCodigos(DOIS_MODELOS, [ALECRIM]);
+  assert.ok(!r.ok, "propôs sozinho num caso ambíguo");
+  assert.ok(r.candidatos && r.candidatos.length === 2, "não ofereceu os candidatos");
+  // O que casa mais vem primeiro: é isso que torna a escolha óbvia.
+  assert.match(r.candidatos[0].modelo, /7208 101 nobuck/);
+  assert.equal(r.candidatos[0].casam, 3);
+  assert.equal(r.candidatos[1].casam, 1);
+  // E cada candidato mostra as cores dele no ERP, para ela reconhecer.
+  assert.ok(r.candidatos[0].cores.some((c) => /alecrim/.test(c)));
+});
+
+test("as outras recusas NÃO ganham candidato — não há o que escolher", () => {
+  const [semCor] = proporCodigos(DOIS_MODELOS, [
+    { id: "x", nome: "Meias", variacoes: [{ id: "m", cor: "Branc/Cinza/Preta", tamanho: "33-38" }] },
+  ]);
+  assert.ok(!semCor.ok);
+  assert.equal(semCor.candidatos, undefined);
+});
+
+test("com o modelo ESCOLHIDO, o casamento é o mesmo — e a frase diz de quem foi a escolha", () => {
+  const r = proporComModelo(DOIS_MODELOS, ALECRIM, "7208.101 NOBUCK");
+  assert.ok(r.ok);
+  assert.equal(r.pares.length, 3);
+  assert.equal(r.pares.find((x) => x.variacaoId === "v36")?.codigo, "0111136");
+  // A procedência é honesta: aqui quem identificou o modelo foi ela.
+  assert.equal(r.corQueIdentificou, "");
+  assert.match(fraseDaProposta(r), /modelo escolhido por você/);
+  assert.ok(!/só aparece nele/.test(fraseDaProposta(r)));
+});
+
+test("modelo escolhido que não casa nada: recusa mostrando as cores dele", () => {
+  const r = proporComModelo(DOIS_MODELOS, {
+    ...ALECRIM,
+    variacoes: [{ id: "z", cor: "Verde", tamanho: "35 BR" }],
+  }, "7208.101 NOBUCK");
+  assert.ok(!r.ok);
+  assert.match(r.motivo, /Nenhuma variação casou/);
+  assert.match(r.motivo, /alecrim/);
+});
+
+test("modelo escolhido que não existe no arquivo é recusado", () => {
+  const r = proporComModelo(DOIS_MODELOS, ALECRIM, "0000.000 FANTASMA");
+  assert.ok(!r.ok);
+  assert.match(r.motivo, /Não achei o modelo/);
+});
+
+test("a tela oferece o seletor e reusa as linhas do ERP sem pedir o arquivo de novo", async () => {
+  const { readFileSync } = await import("node:fs");
+  const tela = readFileSync(
+    new URL("../../../app/cliente/codigos/page.tsx", import.meta.url),
+    "utf8"
+  );
+  // O seletor só existe quando há candidatos — as outras recusas não têm
+  // escolha a oferecer, e um seletor vazio convidaria a mexer no que não dá.
+  assert.match(tela, /!prop\.ok && prop\.candidatos && prop\.candidatos\.length > 0/);
+  assert.match(tela, /escolherModelo\(prop\.produtoId, e\.target\.value\)/);
+  // As linhas ficam em estado: pedir o arquivo de novo a cada escolha seria
+  // reler 14.629 linhas por clique.
+  assert.match(tela, /setLinhasDoErp\(linhas\)/);
+  assert.match(tela, /proporComModelo\(\s*\n?\s*linhasDoErp/);
+  // E a contagem aparece no rótulo: é ela que torna a escolha barata.
+  assert.match(tela, /casa \{c\.casam\} variação\(ões\)/);
 });
