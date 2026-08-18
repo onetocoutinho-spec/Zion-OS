@@ -27,6 +27,28 @@
 :root {
   --background: #08080d;
   --foreground: #e4e4e7;
+
+  /* O POPUP DO <select> É DESENHADO PELO SISTEMA, NÃO PELO CSS.
+   *
+   * Reportado em 17/08/2026, na conferência da planilha: a caixa fechada
+   * aparece escura (Tailwind pinta), mas ao abrir, o Windows desenha a lista
+   * com fundo BRANCO e herda a cor clara do texto — as opções ficam cinza-claro
+   * sobre branco e somem. A lojista não conseguia ler o que estava escolhendo,
+   * e a escolha ali decide para onde vai dinheiro.
+   *
+   * Nenhuma classe resolve: `<option>` não aceita estilo de forma confiável em
+   * nenhum navegador. `color-scheme` existe exatamente para isto — declara ao
+   * sistema em que tema os controles nativos devem ser desenhados.
+   *
+   * Vai no `:root` e não em cada campo porque são 14 `<select>` espalhados por
+   * 12 arquivos, e o próximo nasceria com o mesmo defeito. De quebra, arruma
+   * barra de rolagem, seletor de data e caixa de arquivo, que têm o mesmo
+   * problema pelo mesmo motivo.
+   *
+   * Seguro para o app inteiro: ele é escuro em toda parte — `--background` é
+   * #08080d e o `body` acima usa esse valor sem alternativa clara.
+   */
+  color-scheme: dark;
 }
 
 @theme inline {
