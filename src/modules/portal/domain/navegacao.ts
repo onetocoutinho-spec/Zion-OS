@@ -69,6 +69,11 @@ export const AREAS: readonly AreaDoPortal[] = [
       { href: "/cliente/produtos", label: "Produtos" },
       { href: "/cliente/imagens", label: "Fotos" },
       { href: "/cliente/peso", label: "Peso e caixa" },
+      // O codigo da variacao e a CHAVE de tudo que vem do ERP. Fica no
+      // Catalogo, ao lado de peso, porque e a mesma pergunta: o que sabemos
+      // deste produto? Doze produtos desta base ficaram fora de TODAS as
+      // importacoes de 18/08/2026 por nao terem codigo.
+      { href: "/cliente/codigos", label: "Códigos das variações" },
       { href: "/cliente/medidas", label: "Tabela de medidas" },
       { href: "/cliente/precificacao", label: "Precificação" },
     ],
