@@ -33,6 +33,7 @@ import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import {
   importarCustos,
+  type OpcoesDeImportacao,
   definirCustoEscolhido,
   type AmbiguidadeCusto,
 } from "@/lib/services/importacaoCustos";
@@ -281,13 +282,13 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function gravarCustos(mapa: Mapeamento) {
+  async function gravarCustos(mapa: Mapeamento, opcoes?: OpcoesDeImportacao) {
     if (!conferindo || importandoCusto) return;
     setImportandoCusto(true);
     setMsgML(null);
     try {
       const planilha = conferindo;
-      const r = await importarCustos(clienteId, planilha, mapa);
+      const r = await importarCustos(clienteId, planilha, mapa, opcoes);
 
       // O aviso pode vir JUNTO com um resultado bom (ex.: casou 800 produtos e
       // 12 ficaram ambíguos). Tratar todo aviso como erro escondia o que deu
@@ -998,7 +999,8 @@ export default function ClienteProdutos() {
           onTrocarTabela={(aba, linha) =>
             setConferindo((p) => (p ? trocarTabela(p, aba, linha) : p))
           }
-          onConfirmar={(mapa) => void gravarCustos(mapa)}
+          clienteId={clienteId}
+          onConfirmar={(mapa, opcoes) => void gravarCustos(mapa, opcoes)}
         />
       )}
 

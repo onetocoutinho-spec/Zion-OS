@@ -16,12 +16,17 @@
 // salta aos olhos de quem conhece o próprio catálogo, e não saltaria nunca de
 // dentro de um relatório de "1374 linhas processadas".
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatBRLExato } from "@/lib/format";
 import type { PlanilhaLida } from "@/lib/planilha";
-import { alcancePorNome } from "@/lib/services/importacaoCustos";
+import {
+  alcancePorNome,
+  type OpcoesDeImportacao,
+} from "@/lib/services/importacaoCustos";
+import { preverCasamentoPorSku, type CasamentoPorPrefixo } from "@/lib/services/casamentoDeSku";
+import { fraseDoCasamento } from "@/modules/catalog/domain/casamentoPorPrefixo";
 import {
   colunaDoPapel,
   montarPrevia,
@@ -43,8 +48,13 @@ interface Props {
    * espalhamento. Melhor isso do que uma tela que não abre.
    */
   nomesDoCatalogo?: readonly string[];
+  /**
+   * Quem é a loja — para medir se os códigos da planilha são os SKUs sem o
+   * tamanho. Opcional: sem ele a oferta simplesmente não aparece.
+   */
+  clienteId?: string;
   onCancelar: () => void;
-  onConfirmar: (mapa: Mapeamento) => void;
+  onConfirmar: (mapa: Mapeamento, opcoes?: OpcoesDeImportacao) => void;
   /**
    * Trocar a tabela aberta por outra do mesmo arquivo.
    *
@@ -59,6 +69,7 @@ interface Props {
 export function ConferirPlanilha({
   planilha,
   nomesDoCatalogo,
+  clienteId,
   onCancelar,
   onConfirmar,
   onTrocarTabela,
@@ -98,6 +109,36 @@ export function ConferirPlanilha({
     [planilha.linhas, mapa, nomesDoCatalogo]
   );
   const linhasQueEspalham = alcance.size;
+  // A OFERTA DO CASAMENTO POR PREFIXO.
+  //
+  // Medida contra o catálogo real, e só oferecida quando o padrão existe. A
+  // decisao e dela: "tira os dois ultimos digitos" e a convencao do ERP dela,
+  // nao uma verdade sobre SKUs. Ver `casamentoPorPrefixo`.
+  const colunaSku = colunaDoPapel(mapa, "sku");
+  const codigosDaPlanilha = useMemo(
+    () => (colunaSku ? planilha.linhas.map((r) => r[colunaSku] ?? "") : []),
+    [planilha.linhas, colunaSku]
+  );
+  const [prefixo, setPrefixo] = useState<CasamentoPorPrefixo | null>(null);
+  const [usarPrefixo, setUsarPrefixo] = useState(false);
+  useEffect(() => {
+    if (!clienteId || codigosDaPlanilha.length === 0) {
+      setPrefixo(null);
+      return;
+    }
+    let ativo = true;
+    void preverCasamentoPorSku(clienteId, codigosDaPlanilha).then((a) => {
+      if (!ativo) return;
+      setPrefixo(a);
+      // Trocar de coluna ou de aba invalida a decisao anterior: ela confirmou
+      // um padrao que talvez nao seja mais o que esta na tela.
+      setUsarPrefixo(false);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [clienteId, codigosDaPlanilha]);
+
   const alertas = useMemo(() => sinaisDaPlanilha(planilha.linhas, mapa), [planilha.linhas, mapa]);
   const liberado = podeImportar(alertas);
 
@@ -191,6 +232,23 @@ export function ConferirPlanilha({
           </label>
         ))}
       </div>
+
+      {/* ── A OFERTA: os códigos são os seus SKUs sem o tamanho? ─────────
+          Aparece só quando o padrão foi MEDIDO no catálogo. Vem desmarcada:
+          gravar dinheiro por um padrão que o software deduziu sozinho é
+          exatamente o que a conferência existe para impedir. */}
+      {prefixo && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-500/25 bg-violet-500/5 p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={usarPrefixo}
+            onChange={(e) => setUsarPrefixo(e.target.checked)}
+            disabled={ocupado}
+            className="mt-0.5 size-4 shrink-0 accent-violet-500"
+          />
+          <span className="text-white/75">{fraseDoCasamento(prefixo)}</span>
+        </label>
+      )}
 
       {/* ── O que a planilha denuncia sobre si mesma ────────────────────── */}
       {alertas.map((a) => (
@@ -295,7 +353,12 @@ export function ConferirPlanilha({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={() => onConfirmar(mapa)} disabled={!liberado || ocupado}>
+        <Button
+          onClick={() =>
+            onConfirmar(mapa, usarPrefixo && prefixo ? { sufixoDoSku: prefixo.sufixo } : undefined)
+          }
+          disabled={!liberado || ocupado}
+        >
           <Check size={15} /> {ocupado ? "Gravando…" : "Está certo, pode gravar"}
         </Button>
         <Button variant="ghost" onClick={onCancelar} disabled={ocupado}>

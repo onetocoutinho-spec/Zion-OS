@@ -223,10 +223,27 @@ export function alcancePorNome(
   return alcance;
 }
 
+/** O que a lojista decidiu na conferência, além do mapa de colunas. */
+export interface OpcoesDeImportacao {
+  /**
+   * Quantos dígitos o SKU do catálogo tem A MAIS que o código da planilha.
+   *
+   * Só entra quando ela CONFIRMOU o padrão na tela — ver
+   * `modules/catalog/domain/casamentoPorPrefixo`. Ausente é o comportamento de
+   * sempre: SKU casa por igualdade e mais nada.
+   *
+   * Não é default e não pode virar: "tira os dois últimos dígitos" é a
+   * convenção do ERP dela, não uma verdade sobre SKUs, e aplicá-la sozinho num
+   * catálogo de outro formato gravaria custo errado em silêncio.
+   */
+  sufixoDoSku?: number;
+}
+
 export async function importarCustos(
   clienteId: string,
   planilha: PlanilhaLida,
-  mapa?: Mapeamento
+  mapa?: Mapeamento,
+  opcoes?: OpcoesDeImportacao
 ): Promise<ResultadoCustos> {
   const { headers, linhas } = planilha;
   const mapeamento = mapa ?? sugerirMapeamento(headers);
@@ -321,6 +338,26 @@ export async function importarCustos(
     const skuV = norm(v.sku);
     let c = porSku.get(skuV) ?? porSku.get(semZeros(skuV));
     if (c != null) usados.add(skuV);
+
+    // O CÓDIGO DA PLANILHA É O SKU SEM O TAMANHO — só quando ela confirmou.
+    //
+    // O LINX identifica o item por código de 6 dígitos ("006427"); o SKU da
+    // variação aqui é esse código mais o número do calçado ("00642743"). Sem
+    // isto, 26 de 26 códigos existiam no arquivo e nenhum casava.
+    //
+    // `usados.add(raiz)` e não `skuV`: quem conta `naoEncontrados` olha a chave
+    // da LINHA da planilha, que é a raiz. Marcar o SKU da variação deixaria a
+    // linha contada como "sem produto" depois de ter gravado — um relatório que
+    // se contradiz treina a pessoa a ignorar o relatório.
+    const sufixo = opcoes?.sufixoDoSku;
+    if (c == null && sufixo && skuV.length > sufixo && /^\d+$/.test(skuV.slice(-sufixo))) {
+      const raiz = skuV.slice(0, -sufixo);
+      const porRaiz = porSku.get(raiz) ?? porSku.get(semZeros(raiz));
+      if (porRaiz != null) {
+        c = porRaiz;
+        usados.add(raiz);
+      }
+    }
     if (c == null && v.ean) {
       const ean = v.ean.replace(/\D/g, "");
       c = porEan.get(ean);

@@ -128,7 +128,11 @@ import { lerPlanilha, trocarTabela, type PlanilhaLida } from "@/lib/planilha";
 import { ConferirPeso } from "./ConferirPeso";
 import { ImportarCatalogoPdf } from "./ImportarCatalogoPdf";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
-import { importarCustos, type ResultadoCustos } from "@/lib/services/importacaoCustos";
+import {
+  importarCustos,
+  type ResultadoCustos,
+  type OpcoesDeImportacao,
+} from "@/lib/services/importacaoCustos";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 
 /**
@@ -1308,14 +1312,18 @@ export function ChatDaOperacao({
     }
   }
 
-  async function confirmarPlanilha(indice: number, mapa: Mapeamento) {
+  async function confirmarPlanilha(
+    indice: number,
+    mapa: Mapeamento,
+    opcoes?: OpcoesDeImportacao
+  ) {
     const alvo = turnos[indice];
     if (!alvo?.planilha || !clienteId) return;
     setTurnos((t) =>
       t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
     );
     try {
-      const r = await importarCustos(clienteId, alvo.planilha, mapa);
+      const r = await importarCustos(clienteId, alvo.planilha, mapa, opcoes);
       setTurnos((t) =>
         t.map((turno, i) =>
           i === indice
@@ -1507,7 +1515,8 @@ export function ChatDaOperacao({
                       )
                     )
                   }
-                  onConfirmar={(mapa) => void confirmarPlanilha(i, mapa)}
+                  clienteId={clienteId ?? undefined}
+                  onConfirmar={(mapa, opcoes) => void confirmarPlanilha(i, mapa, opcoes)}
                 />
                 )
               ) : t.custosImportados ? (
