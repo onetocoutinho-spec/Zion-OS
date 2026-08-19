@@ -239,6 +239,30 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "duplicatas_e_faltantes",
+    efeito: "le",
+    // A FERRAMENTA QUE FALTAVA — e a recusa que provou a falta.
+    //
+    // Em 19/08/2026 a lojista pediu: "antes de tudo analise os skus de cada
+    // anúncio, pois temos alguns que estão repetidos e outros faltando
+    // derivações". O assistente respondeu, corretamente:
+    //
+    //   "eu não tenho uma ferramenta que varra o catálogo inteiro procurando
+    //    SKUs duplicados ou variações sem SKU de uma vez. Não quero inventar um
+    //    'escaneei tudo' que a ferramenta não me deu."
+    //
+    // A recusa foi o comportamento certo. Mas o DADO existia: a mesma pergunta,
+    // em SQL, achou 143 códigos de barras repetidos em 296 linhas — 17 deles em
+    // produtos diferentes e 9 com SKUs divergentes.
+    //
+    // `pendencias` não responde isso: ela olha custo, peso e conflito. Uma
+    // ferramenta que quase serve é pior que nenhuma, porque o modelo a chama e
+    // conclui pela ausência.
+    descricao:
+      "Varre o catálogo INTEIRO atrás do que está repetido e do que falta: códigos de barras (EAN) que aparecem em mais de uma variação, SKUs repetidos, cor+tamanho duplicado dentro do mesmo produto (rótulo de tamanho que mudou entre importações), e quais variações estão sem SKU ou sem EAN — com o nome do produto e exemplos de cor/tamanho. Use SEMPRE que a lojista falar em \"SKU repetido\", \"duplicado\", \"faltando derivação\", \"variação faltando\" ou pedir para conferir os códigos. O EAN é a chave porque é o código do fabricante: se repete, é fisicamente o mesmo sapato. NÃO diga que não consegue varrer — esta ferramenta varre. E NÃO se ofereça para apagar linha: o que parece linha repetida no Zion pode ser ANÚNCIO repetido no Mercado Livre, e o remédio é oposto — relate e deixe a decisão com ela.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
     nome: "o_que_impede",
     efeito: "le",
     descricao: "O que impede a loja de precificar, anunciar ou publicar hoje. Use para \"por que não consigo publicar?\" e \"o que está travando?\".",

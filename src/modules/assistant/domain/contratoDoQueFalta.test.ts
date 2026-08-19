@@ -379,8 +379,14 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // sendo `/api/ml/aplicar-capa`, com o aviso antes do clique e o desfazer no
   // turno. Um caminho próprio até o ML aqui seria uma segunda cópia daquelas
   // guardas — e, além disso, cada chamada ao ML renova o refresh_token dela.
-  assert.equal(FERRAMENTAS.length, 24);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 14);
+  // De 24 para 25 em 19/08/2026: `duplicatas_e_faltantes`, LEITURA. Nenhuma
+  // das que agem mudou de classe — o poder de escrever é o mesmo de ontem.
+  //
+  // A decisão está em primeiraAcao.test.ts (T2). Em uma linha: o chat recusou
+  // uma varredura de SKUs repetidos que não sabia fazer, e a recusa era certa;
+  // o dado existia e faltava a ferramenta.
+  assert.equal(FERRAMENTAS.length, 25);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -390,10 +396,10 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  // 14 desde 14/08/2026 (`fotos_do_produto`). O que o C1R garante NÃO mudou
+  // 15 desde 19/08/2026 (`duplicatas_e_faltantes`). O que o C1R garante NÃO mudou
   // e é o que a linha seguinte prova: toda ferramenta da primeira ação tem
   // efeito `le`. O número trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 14);
+  assert.equal(PRIMEIRA_ACAO.length, 15);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

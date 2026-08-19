@@ -47,19 +47,42 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 14 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 15 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 14);
+  assert.equal(PRIMEIRA_ACAO.length, 15);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas catorze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", () => {
+  // A DÉCIMA QUINTA entrou em 19/08/2026: `duplicatas_e_faltantes`.
+  //
+  // A DECISÃO. A lojista pediu ao chat "analise os skus de cada anúncio, pois
+  // temos alguns que estão repetidos e outros faltando derivações". O
+  // assistente respondeu, corretamente, que não tinha ferramenta para isso e
+  // que não ia inventar um "escaneei tudo". A recusa foi o comportamento certo
+  // — e a resposta errada, porque o dado existia: a mesma pergunta em SQL
+  // achou 143 códigos de barras repetidos em 296 linhas, 17 em produtos
+  // diferentes e 9 com SKUs divergentes para o mesmo código.
+  //
+  // `pendencias` não cobre isso: ela olha custo, peso e conflito. Uma
+  // ferramenta que quase serve é pior que nenhuma — o modelo a chama, não acha
+  // e conclui pela ausência. Era o caso.
+  //
+  // Ela lê o MESMO porto de `pendencias` (`analise.catalogo`), não fala com o
+  // Mercado Livre, e não escreve. Sem porto, ela DIZ que não olhou em vez de
+  // devolver lista vazia — vazio sem ter olhado é a afirmação de ausência que
+  // este repositório passou o mês arrancando.
+  //
+  // Por que pode ser a PRIMEIRA ação: o pior caso de um "obrigado" disparando-a
+  // é a lojista ver quais códigos estão repetidos sem ter pedido. Mesmo dano de
+  // `estado_da_loja` — nenhum.
+  //
   // A DÉCIMA QUARTA entrou em 14/08/2026: `fotos_do_produto`.
   //
   // Ela responde, por produto, se as capas dos anúncios estão fora do padrão e
@@ -108,6 +131,7 @@ test("T2: são exatamente estas catorze — a matriz que autorizou a decisão", 
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "contar",
+    "duplicatas_e_faltantes",
     "estado_da_loja",
     "fotos_do_produto",
     "meus_custos",
@@ -324,8 +348,20 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // Entra na PRIMEIRA AÇÃO porque é leitura pura: o pior caso de um "obrigado"
   // dispará-la é a lojista ver o estado das fotos de um produto sem ter
   // pedido. Mesmo dano de `estado_da_loja` — nenhum.
-  assert.equal(FERRAMENTAS.length, 24);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 14);
+  // De 24 para 25 em 19/08/2026: `duplicatas_e_faltantes`, LEITURA. O poder de
+  // agir não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão está registrada em T2. Em resumo: o chat recusou uma varredura de
+  // SKUs repetidos que ele não tinha como fazer, e a recusa foi correta; o dado
+  // existia (143 EANs repetidos em 296 linhas) e faltava a ferramenta.
+  //
+  // Ela RELATA e não apaga, e isso é decisão, não omissão: em 18/08/2026 onze
+  // linhas que pareciam duplicatas do banco carregavam, cada uma, o MLB de um
+  // anúncio VIVO diferente. Apagá-las teria deixado 11 anúncios no ar sem
+  // variante. O que parece linha repetida pode ser anúncio repetido, e o
+  // remédio é oposto — então a ferramenta não ganha poder de apagar.
+  assert.equal(FERRAMENTAS.length, 25);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

@@ -79,9 +79,27 @@ test("o catálogo não muda sem alguém decidir", () => {
   // `le`: não escreve em lugar nenhum, e NÃO fala com o Mercado Livre — cada
   // chamada de lá renova o refresh_token da lojista, e uma ferramenta de chat
   // que faz isso a cada pergunta derruba a conexão dela.
+  // 24 → 25 em 19/08/2026: entrou `duplicatas_e_faltantes`. O motivo, medido:
+  // a lojista pediu "analise os skus de cada anúncio, pois temos alguns que
+  // estão repetidos e outros faltando derivações", e o chat respondeu que não
+  // tinha ferramenta para varrer o catálogo — e que preferia não inventar um
+  // "escaneei tudo". A recusa foi o comportamento certo.
+  //
+  // A resposta, porém, estava errada por falta de porta: a mesma pergunta em
+  // SQL, no mesmo dia, achou 143 códigos de barras repetidos em 296 linhas —
+  // 17 espalhados por produtos DIFERENTES e 9 com SKUs divergentes para o
+  // mesmo código, que é sempre erro de cadastro indo para o estoque dela.
+  //
+  // `pendencias` não cobria: ela olha custo, peso e conflito. Uma ferramenta
+  // que quase serve é pior que nenhuma — o modelo a chama, não acha, e conclui
+  // pela ausência.
+  //
+  // `le`: não escreve, e não fala com o Mercado Livre. E não ganha poder de
+  // apagar de propósito — em 18/08/2026 onze linhas que pareciam duplicatas do
+  // banco carregavam, cada uma, o MLB de um anúncio VIVO diferente.
   assert.equal(
     FERRAMENTAS.length,
-    24,
+    25,
     "o número de ferramentas mudou; isso é um ato, não um efeito colateral"
   );
 });

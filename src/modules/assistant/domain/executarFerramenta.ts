@@ -26,6 +26,10 @@ import {
   type Proposta,
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import {
+  varrerCatalogo,
+  fraseDaVarredura,
+} from "../../catalog/domain/duplicatasDoCatalogo";
 import { situacaoDePeso } from "../../catalog/domain/familiaDeProduto";
 import {
   classificar,
@@ -1223,6 +1227,65 @@ export async function executarFerramenta(
 
     case "pendencias":
       return analisarPendencias(args, ctx);
+
+    // A VARREDURA de repetidos e faltantes.
+    //
+    // Usa o MESMO porto de `pendencias` (`analise.catalogo`) porque a pergunta
+    // é sobre o mesmo catálogo. Sem o porto ela DIZ que não olhou, em vez de
+    // devolver listas vazias — vazio sem ter olhado é a afirmação de ausência
+    // que este repositório passou o mês arrancando.
+    case "duplicatas_e_faltantes": {
+      if (!ctx.analise) {
+        return {
+          saida: {
+            erro: "Não consigo varrer o catálogo por aqui agora — a análise não está disponível nesta tela.",
+          },
+        };
+      }
+      const { produtos, totalNoCatalogo, truncado } = await ctx.analise.catalogo();
+      const v = varrerCatalogo(
+        produtos.map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          variantes: p.variantes.map((x) => ({
+            id: x.id,
+            sku: x.sku,
+            ean: x.ean,
+            cor: x.cor,
+            tamanho: x.tamanho,
+          })),
+        }))
+      );
+      return {
+        saida: {
+          frase: fraseDaVarredura(v),
+          varridos: { produtos: v.produtosVarridos, variantes: v.variantesVarridas },
+          // TRUNCADO É DITO. Uma varredura parcial que se apresenta como
+          // completa é pior que não varrer: ela autoriza "não há mais nada".
+          truncado: truncado ? { sim: true, totalNoCatalogo } : { sim: false },
+          gravidade: {
+            mesmoEanSkusDiferentes: v.eansRepetidos.filter((r) => r.skusDivergentes).length,
+            mesmoEanProdutosDiferentes: v.eansRepetidos.filter(
+              (r) => r.entreProdutos && !r.skusDivergentes
+            ).length,
+            corTamanhoRepetido: v.corTamanhoRepetido.length,
+            skusRepetidos: v.skusRepetidos.length,
+          },
+          linhasAMais: v.linhasAMais,
+          semSku: v.totalSemSku,
+          semEan: v.totalSemEan,
+          // Amostras curtas: o chat não é lugar de 143 linhas.
+          exemplosGraves: v.eansRepetidos
+            .filter((r) => r.skusDivergentes || r.entreProdutos)
+            .slice(0, 5)
+            .map((r) => ({
+              ean: r.valor,
+              onde: r.ondes.map((o) => `${o.produto} · ${o.cor} ${o.tamanho} · SKU ${o.sku || "—"}`),
+            })),
+          faltandoPorProduto: v.faltando.slice(0, 8),
+        },
+      };
+    }
 
     case "meus_custos": {
       if (!ctx.preco?.configuracao) {
