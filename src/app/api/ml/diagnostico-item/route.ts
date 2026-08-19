@@ -74,16 +74,23 @@ export async function GET(request: Request) {
     // `attributes` VAZIO. Medido em 18/08/2026: 0 de 24 variações traziam
     // qualquer atributo, e eu quase concluí (de novo) que o SKU não existia —
     // enquanto o painel da lojista mostrava `00895337` na variação 37 BR.
-    const [itemResp, precosResp, variacoesResp] = await Promise.all([
+    const [itemResp, precosResp, variacoesResp, visitasResp] = await Promise.all([
       fetch(`${API}/items/${itemId}?include_attributes=all`, { headers: auth }),
       fetch(`${API}/items/${itemId}/prices`, { headers: auth }),
       // O endpoint dedicado às variações. Existe justamente porque o objeto do
       // item nem sempre carrega tudo o que a variação tem.
       fetch(`${API}/items/${itemId}/variations`, { headers: auth }),
+      // AS VISITAS. Sem elas não dá para decidir entre dois anúncios do mesmo
+      // produto: um pode não vender porque ninguém o vê, e não porque o
+      // comprador o rejeitou. São coisas diferentes e o remédio é diferente.
+      fetch(`${API}/visits/items?ids=${itemId}`, { headers: auth }),
     ]);
 
     const item = itemResp.ok ? ((await itemResp.json()) as Record<string, unknown>) : null;
     const precos = precosResp.ok ? ((await precosResp.json()) as Record<string, unknown>) : null;
+    const visitas = visitasResp.ok
+      ? ((await visitasResp.json()) as Record<string, number>)
+      : null;
     const variacoesDedicadas = variacoesResp.ok
       ? ((await variacoesResp.json()) as Record<string, unknown>[] | Record<string, unknown>)
       : null;
@@ -221,6 +228,26 @@ export async function GET(request: Request) {
         // responde se ela usa vídeo, e é essa resposta que decide se isso é
         // dado dela sendo perdido ou oportunidade que nunca existiu.
         video_id: (item?.video_id as string | null) ?? null,
+        // ===================================================================
+        // O QUE DECIDE ENTRE DOIS ANÚNCIOS DO MESMO PRODUTO
+        // ===================================================================
+        //
+        // Em 18/08/2026 a base tinha 12 PARES de anúncios vendendo o mesmo
+        // par de sapato, mesmo EAN, mesmo tamanho — descobertos porque cada
+        // "variante duplicada" carregava um MLB diferente em `observacoes`.
+        //
+        // Eles competem entre si: dividem visita, dividem relevância, e o ML
+        // não soma o histórico dos dois. Decidir qual pausar sem estes números
+        // é apostar — e apostar aqui apaga o histórico de venda do lado certo.
+        //
+        // `sold_quantity` é o que já vendeu; `health` é a nota do ML;
+        // `start_time` diz qual é o mais antigo (histórico não se recupera).
+        sold_quantity: (item?.sold_quantity as number | null) ?? null,
+        health: (item?.health as number | null) ?? null,
+        listing_type_id: (item?.listing_type_id as string | null) ?? null,
+        start_time: (item?.start_time as string | null) ?? null,
+        available_quantity: (item?.available_quantity as number | null) ?? null,
+        visitas: visitas ? (visitas[itemId] ?? null) : null,
       },
       // AS FOTOS DESTE ANÚNCIO, com o tamanho que o ML guarda de cada uma.
       //
