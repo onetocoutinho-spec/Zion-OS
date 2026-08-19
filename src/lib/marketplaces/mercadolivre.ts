@@ -1334,7 +1334,22 @@ export async function buscarAnunciosDoVendedor(
 
   async function buscarLote(lote: string, campos: string): Promise<AnuncioML[] | "recusado"> {
     try {
-      const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+      // `include_attributes=all` OU AS VARIAÇÕES VÊM SEM SKU.
+      //
+      // MEDIDO EM 18/08/2026. Sete anúncios de grade, 96 variações, e o SKU
+      // chegava vazio em todas. A lojista mandou o print do painel dela:
+      // `00895337` na variação 37 BR, preenchido, visível. O ML respondia 200,
+      // com o array `variations` completo — e `variations[].attributes` VAZIO.
+      //
+      // Pedir `attributes` na lista de campos traz os atributos DO ITEM. Os da
+      // VARIAÇÃO, onde moram SELLER_SKU e GTIN, só vêm com este parâmetro. Sem
+      // ele o ML não recusa nem avisa: entrega o silêncio como se fosse a
+      // resposta.
+      //
+      // Com o parâmetro: 96 de 96. Sem ele: 0 de 96.
+      const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}&include_attributes=all`, {
+        headers,
+      });
       if (!r.ok) {
         registrar(`HTTP ${r.status} — ${await extrairErro(r)}`);
         return "recusado";
