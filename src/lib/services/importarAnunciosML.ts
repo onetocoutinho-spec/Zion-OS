@@ -16,7 +16,15 @@ import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { lerJson } from "../http/respostaJson";
 import { criarProdutos, excluirProdutosImportadosML, listarProdutosDoCliente } from "./produtos";
-import { criarVariantesBulk, listarTodasVariantes } from "./produtoVariantes";
+import {
+  criarVariantesBulk,
+  listarTodasVariantes,
+  atualizarVariantesBulk,
+} from "./produtoVariantes";
+import {
+  planejarCompletarSku,
+  fraseDoCompletarSku,
+} from "@/modules/integration/domain/completarSkuDoMarketplace";
 import {
   atualizarEstadoNoMarketplaceBulk,
   criarAnunciosGeradosBulk,
@@ -90,7 +98,16 @@ const MAX_FOTOS = 10;
  * A busca no ML é a mesma nos três — a rota só LÊ, e toda a escrita acontece
  * deste lado. Então medir é devolver antes de escrever, e custa uma leitura.
  */
-export type ModoImportacao = "substituir" | "novos" | "medir" | "enriquecer";
+export type ModoImportacao =
+  | "substituir"
+  | "novos"
+  | "medir"
+  | "enriquecer"
+  // COMPLETAR-SKU: preenche o SKU/EAN das variantes que estão vazias, com o
+  // que o ML já tem. Existe porque `novos` pula anúncio conhecido antes de
+  // olhar as variações, e `substituir` apaga o catálogo para consertar um
+  // campo. Medido em 18/08/2026: a lojista importou e zero linha foi tocada.
+  | "completar-sku";
 
 /** Quantos anúncios informaram cada atributo, sem tocar em nada. */
 export interface MedicaoDaFicha {
@@ -756,6 +773,58 @@ export async function importarAnunciosDoCliente(
   // O vínculo anúncio→produto já existe em `anuncios_gerados` (`ml_item_id` →
   // `produto_id`). Não é preciso reagrupar por família nem adivinhar: quem já
   // sabe qual MLB é de qual produto é a própria base.
+  // COMPLETAR O SKU — só preenche vazio, não cria e não apaga.
+  //
+  // Fica ANTES de `enriquecer` e, como ele, sai antes das operações
+  // destrutivas. A regra posicional que o teste guarda continua inteira:
+  // perguntar ao ML nunca pode apagar o catálogo.
+  if (modo === "completar-sku") {
+    const registros = await listarResumoDeAnunciosDoCliente(clienteId);
+    const produtoPorMlb = new Map<string, string>();
+    for (const r of registros) {
+      if (r.mlItemId && r.produtoId) produtoPorMlb.set(r.mlItemId, r.produtoId);
+    }
+
+    const plano = planejarCompletarSku(
+      todos.map((a) => ({
+        mlItemId: a.mlb,
+        sku: a.sku ?? "",
+        ean: a.ean ?? "",
+        cor: a.cor ?? "",
+        tamanho: a.tamanho ?? "",
+        variacoes: (a.variacoes ?? []).map((v) => ({
+          cor: v.cor ?? "",
+          tamanho: v.tamanho ?? "",
+          sku: v.sku ?? "",
+          ean: v.ean ?? "",
+        })),
+      })),
+      produtoPorMlb,
+      (await listarTodasVariantes()).map((v) => ({
+        id: v.id,
+        produtoId: v.produtoId,
+        cor: v.cor ?? "",
+        tamanho: v.tamanho ?? "",
+        sku: v.sku ?? "",
+        ean: v.ean ?? "",
+      }))
+    );
+
+    // UMA escrita, não um laço. O mesmo motivo de `enriquecer`: cada gravação
+    // dispara `notificarMudanca()` e recarrega as `useLiveQuery` da tela.
+    if (plano.paraGravar.length > 0) await atualizarVariantesBulk(plano.paraGravar);
+
+    return {
+      produtos: 0,
+      anuncios: 0,
+      variacoes: plano.comSku,
+      imagens: 0,
+      pulados: 0,
+      leitura,
+      aviso: fraseDoCompletarSku(plano),
+    };
+  }
+
   if (modo === "enriquecer") {
     const registros = await listarResumoDeAnunciosDoCliente(clienteId);
     const produtoPorMlb = new Map<string, string>();

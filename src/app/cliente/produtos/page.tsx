@@ -479,7 +479,9 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function importarDoML(modo: "substituir" | "novos" | "medir" | "enriquecer") {
+  async function importarDoML(
+    modo: "substituir" | "novos" | "medir" | "enriquecer" | "completar-sku"
+  ) {
     if (importandoML) return;
     setEscolhendoML(false);
     setImportandoML(true);
@@ -940,6 +942,26 @@ export default function ClienteProdutos() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Copia para cá o que você já preencheu no Mercado Livre — material, palmilha, solado. Só
                 acrescenta: custo, peso e fotos ficam como estão.
+              </p>
+            </button>
+            {/* COMPLETAR O SKU.
+                Fica ao lado de "Trazer as informações" porque é o mesmo gesto:
+                copiar para cá o que já está preenchido lá. Separado dela
+                porque atributo e código não são a mesma coisa para quem lê —
+                ela procura "SKU", não "informações do anúncio".
+
+                Existe desde 18/08/2026, quando 108 variações estavam sem SKU
+                aqui e COM SKU no painel dela. Reimportar não resolvia: o modo
+                "novos" pula anúncio conhecido, e "substituir" apagaria custo,
+                peso e fotos para consertar um campo. */}
+            <button
+              onClick={() => importarDoML("completar-sku")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-violet-500/40"
+            >
+              <p className="text-sm font-medium text-violet-300">Trazer os SKUs</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Copia o código (SKU) e o código de barras que você já cadastrou em cada variação no
+                Mercado Livre. Só preenche o que está vazio — nunca sobrescreve o que já tem.
               </p>
             </button>
             <button
