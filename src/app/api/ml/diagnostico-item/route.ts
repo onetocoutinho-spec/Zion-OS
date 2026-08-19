@@ -112,7 +112,14 @@ export async function GET(request: Request) {
         // e eu o cometi olhando para a ferramenta errada. Agora o valor vem.
         seller_custom_field: (item?.seller_custom_field as string | null) ?? null,
         // E POR VARIAÇÃO, que é onde ele de fato mora num anúncio com grade.
-        skuDasVariacoes: variacoes.slice(0, 8).map((v) => ({
+        //
+        // SEM CORTE. O corte era 8, e em 18/08/2026 ele me fez ver 46 de 83
+        // variações e quase escrever "nenhuma tem SKU" — a mesma frase que eu
+        // já tinha errado uma vez hoje, agora só que por amostragem em vez de
+        // por leitura no lugar errado. Um anúncio tem no máximo 100 variações
+        // no ML; devolver todas custa alguns KB e compra a diferença entre
+        // medir e estimar.
+        skuDasVariacoes: variacoes.map((v) => ({
           id: (v.id as string | number) ?? null,
           seller_custom_field: (v.seller_custom_field as string | null) ?? null,
           atributos: Array.isArray(v.attribute_combinations)
