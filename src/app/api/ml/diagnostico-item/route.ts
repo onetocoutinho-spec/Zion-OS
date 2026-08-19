@@ -69,20 +69,69 @@ export async function GET(request: Request) {
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     // Os dois lados da pergunta, em paralelo.
-    const [itemResp, precosResp] = await Promise.all([
-      fetch(`${API}/items/${itemId}`, { headers: auth }),
+    //
+    // `include_attributes=all` porque SEM ele o ML devolve as variações com
+    // `attributes` VAZIO. Medido em 18/08/2026: 0 de 24 variações traziam
+    // qualquer atributo, e eu quase concluí (de novo) que o SKU não existia —
+    // enquanto o painel da lojista mostrava `00895337` na variação 37 BR.
+    const [itemResp, precosResp, variacoesResp] = await Promise.all([
+      fetch(`${API}/items/${itemId}?include_attributes=all`, { headers: auth }),
       fetch(`${API}/items/${itemId}/prices`, { headers: auth }),
+      // O endpoint dedicado às variações. Existe justamente porque o objeto do
+      // item nem sempre carrega tudo o que a variação tem.
+      fetch(`${API}/items/${itemId}/variations`, { headers: auth }),
     ]);
 
     const item = itemResp.ok ? ((await itemResp.json()) as Record<string, unknown>) : null;
     const precos = precosResp.ok ? ((await precosResp.json()) as Record<string, unknown>) : null;
+    const variacoesDedicadas = variacoesResp.ok
+      ? ((await variacoesResp.json()) as Record<string, unknown>[] | Record<string, unknown>)
+      : null;
 
-    const variacoes = Array.isArray(item?.variations)
+    const doItem = Array.isArray(item?.variations)
       ? (item!.variations as Record<string, unknown>[])
       : [];
+    const dedicadas = Array.isArray(variacoesDedicadas)
+      ? (variacoesDedicadas as Record<string, unknown>[])
+      : [];
+
+    // Prefere a fonte que TROUXE atributos. Não escolher por regra fixa: quem
+    // manda é quem tem o dado, e isso varia por anúncio (grade antiga x
+    // inventário novo com `user_product_id`).
+    const temAtributos = (vs: Record<string, unknown>[]) =>
+      vs.some((v) => Array.isArray(v.attributes) && (v.attributes as unknown[]).length > 0);
+    const variacoes = temAtributos(doItem) || dedicadas.length === 0 ? doItem : dedicadas;
+
+    // ONDE O SKU ESTAVA, de verdade. Três fontes, contadas lado a lado, para
+    // que a próxima pessoa não precise adivinhar qual endpoint responde.
+    const contar = (vs: Record<string, unknown>[]) =>
+      vs.filter((v) => {
+        const as = Array.isArray(v.attributes)
+          ? (v.attributes as { id?: string; value_name?: string | null }[])
+          : [];
+        return (
+          Boolean(v.seller_custom_field) ||
+          as.some((a) => a.id === "SELLER_SKU" && a.value_name)
+        );
+      }).length;
+    const ondeEstaOSku = {
+      noObjetoDoItem: `${contar(doItem)} de ${doItem.length}`,
+      noEndpointDeVariacoes: `${contar(dedicadas)} de ${dedicadas.length}`,
+      statusDoEndpointDeVariacoes: variacoesResp.status,
+      // Se o anúncio usa inventário novo, o SKU mora no "user product", que é
+      // um objeto separado — nem no item, nem na variação.
+      userProductIds: [
+        ...new Set(
+          [item, ...doItem, ...dedicadas]
+            .map((o) => (o?.user_product_id as string | null) ?? null)
+            .filter(Boolean)
+        ),
+      ].slice(0, 5),
+    };
 
     return Response.json({
       itemId,
+      ondeEstaOSku,
       // O INVENTÁRIO: o que o ML tem, o que pedimos, e o que ignoramos.
       //
       // A busca acima é `/items/{id}` SEM `?attributes=`, então vem o objeto
