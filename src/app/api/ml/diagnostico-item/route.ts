@@ -148,7 +148,20 @@ export async function GET(request: Request) {
       inventario: inventariarItem(item, CAMPOS_PEDIDOS_AO_ML),
       // O que a importação lê HOJE:
       deItems: {
-        status: itemResp.status,
+        // `httpStatus`, não `status`.
+        //
+        // Chamava-se `status` e era o código HTTP da REQUISIÇÃO. Em 18/08/2026
+        // eu levantei 12 pares de anúncios para decidir qual pausar, li
+        // `status: 200` nos 24 e entendi "todos no ar". O ML então recusou a
+        // primeira pausa com `status:inactive` — o anúncio já estava fora.
+        //
+        // Dois campos com o mesmo nome e significados diferentes; o levantamento
+        // inteiro saiu errado por isso. Renomear é o conserto: `httpStatus` é a
+        // requisição, `statusDoAnuncio` é o anúncio.
+        httpStatus: itemResp.status,
+        // O ESTADO REAL: active, paused, closed, inactive, under_review.
+        statusDoAnuncio: (item?.status as string | null) ?? null,
+        subStatus: Array.isArray(item?.sub_status) ? (item!.sub_status as string[]) : [],
         price: item?.price ?? null,
         base_price: item?.base_price ?? null,
         original_price: item?.original_price ?? null,
