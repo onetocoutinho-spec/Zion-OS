@@ -101,9 +101,24 @@ export async function POST(request: Request) {
     // voltar como `under_review`, e é esse o estado que tem de ser gravado.
     return Response.json({ id: resultado.id, status: resultado.status });
   } catch (e) {
+    // 422, NÃO 502 — a recusa do ML não é falha de gateway.
+    //
+    // MEDIDO EM 18/08/2026. Ao pausar `MLB7041100974` a tela recebeu
+    // "502 Bad gateway" em HTML do Cloudflare. A rota estava viva (a validação
+    // respondia 400 em 300ms) e o `catch` montava a mensagem CERTA — "ML
+    // recusou pausar o anúncio X: <motivo>". Só que num 5xx o Cloudflare
+    // descarta o corpo e serve a página dele.
+    //
+    // Ou seja: o motivo real da recusa era calculado e jogado fora na borda.
+    // É o mesmo defeito que este repo persegue o dia inteiro — o dado existe,
+    // o caminho não entrega, e sobra um erro genérico que manda procurar no
+    // lugar errado.
+    //
+    // 422 é o código honesto: a requisição chegou, foi entendida, e a operação
+    // foi recusada pelo marketplace. E atravessa a borda com o corpo intacto.
     return Response.json(
       { erro: e instanceof Error ? e.message : "Falha ao mudar o estado do anúncio." },
-      { status: 502 }
+      { status: 422 }
     );
   }
 }
