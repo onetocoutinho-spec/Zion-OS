@@ -171,6 +171,24 @@ export async function importarPeso(
       if (alturaCm > 0) dados.altura = alturaCm;
       if (larguraCm > 0) dados.largura = larguraCm;
       if (comprimentoCm > 0) dados.comprimento = comprimentoCm;
+      // O EAN QUE JÁ ESTAVA NO ARQUIVO — e que era lido e descartado.
+      //
+      // MEDIDO EM 19/08/2026. A base tinha 160 variações sem código de barras,
+      // e o assistente dizia à lojista "preciso dos 160 EANs". O arquivo que
+      // ela já tinha mandado trazia 107 deles: esta função usava a coluna EAN
+      // como CHAVE de casamento e depois jogava o valor fora, gravando só o
+      // peso.
+      //
+      // É o defeito que este repositório persegue há semanas — o dado chega e
+      // é descartado na borda — cometido aqui em uma linha que faltava.
+      //
+      // Só preenche VAZIO. Sobrescrever um EAN existente com o do arquivo
+      // trocaria o que a lojista conferiu por um valor não auditado, e o EAN é
+      // a chave que este mesmo módulo usa para casar: mudá-lo por baixo mudaria
+      // o alvo das próximas importações.
+      if (!(v.ean ?? "").trim() && leitura.linha.alternativa) {
+        dados.ean = leitura.linha.alternativa;
+      }
       atualizacoes.push(dados);
       produtosTocados.add(v.produtoId);
     }
