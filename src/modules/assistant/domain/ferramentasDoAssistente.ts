@@ -412,7 +412,7 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_gravacao",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm.",
+      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm. SKU e EAN são de UMA VARIAÇÃO, nunca do produto: passe `cor` e `tamanho` junto, e se você não souber qual variação é, PERGUNTE em vez de chutar — o mesmo código em duas variações é o pior defeito que a varredura acusa. EAN precisa ter 8, 12, 13 ou 14 dígitos. Nunca em lote.",
     parametros: {
       type: "object",
       properties: {
@@ -422,7 +422,24 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
           items: { type: "string" },
           description: "Vários produtos, para aplicar peso em lote. Todos vindos de achar_produto.",
         },
-        campo: { type: "string", enum: ["peso", "custo"] },
+        campo: { type: "string", enum: ["peso", "custo", "sku", "ean"] },
+        // SKU E EAN EXIGEM A VARIAÇÃO — e a exigência não é burocracia.
+        //
+        // Peso e custo são do PRODUTO: uma Havaiana pesa 420 g nas 39 variações.
+        // SKU e EAN IDENTIFICAM UMA UNIDADE. Aceitá-los sem cor e tamanho faria
+        // o chat gravar o mesmo código em 24 variações — que é exatamente o
+        // defeito mais grave que a varredura de 19/08/2026 acusa: 128 SKUs em
+        // mais de uma variação.
+        cor: {
+          type: "string",
+          description:
+            "A COR da variação. Obrigatória para sku e ean; ignorada em peso e custo.",
+        },
+        tamanho: {
+          type: "string",
+          description:
+            "O TAMANHO da variação, como ele disse. Obrigatório para sku e ean; ignorado em peso e custo.",
+        },
         valor: {
           type: "string",
           description:

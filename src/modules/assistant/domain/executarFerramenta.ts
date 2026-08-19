@@ -30,6 +30,7 @@ import {
   varrerCatalogo,
   fraseDaVarredura,
 } from "../../catalog/domain/duplicatasDoCatalogo";
+import { montarPropostaDeCodigo, type PropostaDeCodigo } from "./propostaDeCodigo";
 import { situacaoDePeso } from "../../catalog/domain/familiaDeProduto";
 import {
   classificar,
@@ -471,6 +472,16 @@ export interface ResultadoDaFerramenta {
    */
   acao?: { tipo: "reativar"; mlb: string };
   proposta?: Proposta;
+  /**
+   * A proposta de CÓDIGO — SKU ou EAN — de UMA variação.
+   *
+   * Separada de `proposta` porque o alvo é outro: `Proposta` aponta para um
+   * produto e carrega `valor: number`; um código aponta para uma VARIAÇÃO e é
+   * texto. Enfiar os dois no mesmo tipo faria o cartão e a gravação decidirem
+   * por `campo` a cada linha — e foi decidir por campo, no lugar errado, que
+   * quase gravou o mesmo SKU em 24 variações.
+   */
+  propostaDeCodigo?: PropostaDeCodigo;
   /**
    * O escopo de um LOTE, quando a proposta atinge mais de um alvo.
    *
@@ -1148,6 +1159,60 @@ export async function executarFerramenta(
             amostra: escopo.incluidos.slice(0, 5).map((c) => c.nome),
             unidadeDeduzida: emGramas.deduzida,
           },
+        };
+      }
+
+      // ---- CÓDIGO (SKU / EAN) — caminho PRÓPRIO, e o motivo está no domínio.
+      //
+      // Peso e custo são do produto; SKU e EAN identificam UMA unidade. Passar
+      // um código pelo caminho do peso o gravaria nas 24 variações do Zaxy Air —
+      // fabricando o defeito mais grave que a varredura acusa.
+      if (campo === "sku" || campo === "ean") {
+        if (!ctx.analise) {
+          return {
+            saida: {
+              montada: false,
+              motivo: "Não consigo ler as variações por aqui agora, e sem elas eu não gravo código nenhum.",
+            },
+          };
+        }
+        const produtoId = ids(args)[0] ?? "";
+        const alvo = await ctx.analise.produto(produtoId);
+        if (!alvo) {
+          return {
+            saida: { montada: false, motivo: "Não achei esse produto. Use achar_produto antes." },
+          };
+        }
+        const { produtos: todos } = await ctx.analise.catalogo();
+        const paraDominio = (p: typeof alvo) => ({
+          id: p.id,
+          nome: p.nome,
+          variantes: p.variantes.map((v) => ({
+            id: v.id,
+            sku: v.sku,
+            ean: v.ean,
+            cor: v.cor,
+            tamanho: v.tamanho,
+          })),
+        });
+        const pc = montarPropostaDeCodigo({
+          produto: paraDominio(alvo),
+          campo,
+          valor: texto(args, "valor"),
+          cor: texto(args, "cor"),
+          tamanho: texto(args, "tamanho"),
+          catalogo: todos.map(paraDominio),
+        });
+        return {
+          propostaDeCodigo: pc,
+          // O modelo recebe o RESUMO ou o MOTIVO — nunca o objeto. Quem executa
+          // é o clique, como em toda proposta desta ferramenta.
+          saida:
+            pc.tipo === "pronta"
+              ? { montada: true, resumo: pc.resumo, substitui: pc.anterior || null }
+              : pc.tipo === "ambigua"
+                ? { montada: false, motivo: pc.mensagem, variacoes: pc.candidatos }
+                : { montada: false, motivo: pc.mensagem },
         };
       }
 
