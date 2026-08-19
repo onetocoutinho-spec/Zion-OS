@@ -119,16 +119,50 @@ export async function GET(request: Request) {
         // por leitura no lugar errado. Um anúncio tem no máximo 100 variações
         // no ML; devolver todas custa alguns KB e compra a diferença entre
         // medir e estimar.
-        skuDasVariacoes: variacoes.map((v) => ({
-          id: (v.id as string | number) ?? null,
-          seller_custom_field: (v.seller_custom_field as string | null) ?? null,
-          atributos: Array.isArray(v.attribute_combinations)
-            ? (v.attribute_combinations as { value_name?: string }[])
-                .map((a) => a.value_name ?? "")
-                .filter(Boolean)
-                .join(" · ")
-            : "",
-        })),
+        //
+        // O SKU MORA EM DOIS LUGARES, E EU SÓ OLHAVA UM.
+        //
+        // `seller_custom_field` é o campo LEGADO. O painel do vendedor hoje
+        // grava o SKU como ATRIBUTO `SELLER_SKU` dentro da variação, e o GTIN
+        // como atributo `GTIN`. Em 18/08/2026 eu li só o campo legado, vi 96
+        // variações vazias e escrevi "o SKU não existe no ML". A lojista
+        // mandou o print do painel dela: `00895337`, ali, na variação 37 BR.
+        //
+        // Foi a TERCEIRA vez no mesmo dia que afirmei ausência olhando o lugar
+        // errado. Por isso `todosOsAtributos` vem INTEIRO: eu não filtro mais
+        // por palpite sobre qual campo importa. O que o ML manda, a rota mostra.
+        skuDasVariacoes: variacoes.map((v) => {
+          const atributos = Array.isArray(v.attributes)
+            ? (v.attributes as { id?: string; value_name?: string | null }[])
+            : [];
+          const acharAtributo = (id: string) =>
+            atributos.find((a) => a.id === id)?.value_name ?? null;
+          return {
+            id: (v.id as string | number) ?? null,
+            // Os três candidatos a SKU, lado a lado, sem eu decidir qual vale.
+            seller_custom_field: (v.seller_custom_field as string | null) ?? null,
+            SELLER_SKU: acharAtributo("SELLER_SKU"),
+            GTIN: acharAtributo("GTIN"),
+            combinacao: Array.isArray(v.attribute_combinations)
+              ? (v.attribute_combinations as { value_name?: string }[])
+                  .map((a) => a.value_name ?? "")
+                  .filter(Boolean)
+                  .join(" · ")
+              : "",
+            todosOsAtributos: atributos
+              .map((a) => `${a.id ?? "?"}=${a.value_name ?? ""}`)
+              .join(" | "),
+          };
+        }),
+        // E NO NÍVEL DO ITEM, pelo mesmo motivo: anúncio sem grade também pode
+        // ter o SKU no atributo em vez do campo legado.
+        atributosDoItem: (Array.isArray(item?.attributes)
+          ? (item!.attributes as { id?: string; value_name?: string | null }[])
+          : []
+        )
+          .filter((a) => a.id === "SELLER_SKU" || a.id === "GTIN")
+          .map((a) => `${a.id}=${a.value_name ?? ""}`)
+          .join(" | "),
         // O VÍDEO. O ML devolve `video_id` e a importação do Zion o LÊ — ele
         // aparece entre os campos usados — mas ninguém o guarda: não existe
         // coluna de vídeo em tabela nenhuma. É o mesmo formato que já custou
