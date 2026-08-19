@@ -101,6 +101,27 @@ export async function GET(request: Request) {
         shipping_dimensions: (item?.shipping as { dimensions?: string })?.dimensions ?? null,
         variacoes: variacoes.length,
         precoDaPrimeiraVariacao: variacoes[0]?.price ?? null,
+        // O SKU DO VENDEDOR, com VALOR — não só o nome do campo.
+        //
+        // Em 18/08/2026 eu procurei "seller_custom_field" no corpo desta
+        // resposta, achei só a menção dentro de `inventario.usados`, e concluí
+        // que o campo estava VAZIO no anúncio. Era inferência: a rota nunca
+        // devolveu o valor. A lojista corrigiu — os SKUs estão lá.
+        //
+        // Ausência afirmada sem medição é o defeito que este repo mais persegue,
+        // e eu o cometi olhando para a ferramenta errada. Agora o valor vem.
+        seller_custom_field: (item?.seller_custom_field as string | null) ?? null,
+        // E POR VARIAÇÃO, que é onde ele de fato mora num anúncio com grade.
+        skuDasVariacoes: variacoes.slice(0, 8).map((v) => ({
+          id: (v.id as string | number) ?? null,
+          seller_custom_field: (v.seller_custom_field as string | null) ?? null,
+          atributos: Array.isArray(v.attribute_combinations)
+            ? (v.attribute_combinations as { value_name?: string }[])
+                .map((a) => a.value_name ?? "")
+                .filter(Boolean)
+                .join(" · ")
+            : "",
+        })),
         // O VÍDEO. O ML devolve `video_id` e a importação do Zion o LÊ — ele
         // aparece entre os campos usados — mas ninguém o guarda: não existe
         // coluna de vídeo em tabela nenhuma. É o mesmo formato que já custou
