@@ -400,6 +400,67 @@ function casarDentroDoModelo(
 }
 
 /**
+ * OS MODELOS DO ARQUIVO QUE CASAM COM O QUE ELA DIGITOU.
+ *
+ * ===========================================================================
+ * POR QUE ISTO EXISTE — a correção dela, em 18/08/2026
+ * ===========================================================================
+ *
+ * Eu montei a proposta ao contrário: usava a COR para descobrir o modelo. Ela
+ * corrigiu em uma frase — "esses números 7142.106 não representam a cor e sim
+ * representam o modelo do produto".
+ *
+ * No ERP e na cabeça dela, quem identifica o produto é o MODELO; a cor é uma
+ * variação dele. Por isso a tela ficava confusa: eu pedia que ela reconhecesse
+ * o produto por uma pista secundária, quando ela sabe o número de cor.
+ *
+ * Então: ela digita "7142.106" e isto devolve os modelos que batem, com o nome
+ * comercial, as cores e quantas variações casariam. Buscar é mais barato que
+ * escolher numa lista de trinta — e é a pergunta que ela consegue responder.
+ *
+ * A busca é por PEDAÇO, não igualdade: "7142" já traz os três 7142.xxx, e ela
+ * refina. Igualdade exigiria que ela soubesse a grafia exata do ERP.
+ */
+export function procurarModelos(
+  linhas: readonly LinhaDoErp[],
+  termo: string,
+  produto: ProdutoParaPropor,
+  limite = 8
+): CandidatoDeModelo[] {
+  const busca = norm(termo);
+  if (busca.length < 3) return [];
+
+  const porModelo = new Map<string, { codigo: string; desc: string; nome: string }[]>();
+  for (const l of linhas) {
+    const m = norm(l.modelo);
+    if (!m || !limpar(l.codigo)) continue;
+    const arr = porModelo.get(m) ?? [];
+    arr.push({ codigo: limpar(l.codigo), desc: norm(l.descricao), nome: limpar(l.nomeComercial ?? "") });
+    porModelo.set(m, arr);
+  }
+
+  const nomeDoProduto = norm(produto.nome);
+  const achados: CandidatoDeModelo[] = [];
+  for (const [modelo, ls] of porModelo) {
+    const nome = nomeComumDoModelo(ls);
+    // Casa no CÓDIGO do modelo ou no nome comercial: ela pode digitar
+    // "7142.106" ou "np sense".
+    if (!modelo.includes(busca) && !norm(nome).includes(busca)) continue;
+    const palavras = modelo.split(" ").filter((t) => t.length > 2 && !/^\d+$/.test(t));
+    achados.push({
+      modelo,
+      nome,
+      casam: casarDentroDoModelo(ls, produto).pares.length,
+      cores: [...new Set(ls.map((l) => corDaDescricao(l.desc)).filter(Boolean))].slice(0, 6),
+      nomeBate: palavras.length > 0 && palavras.every((t) => nomeDoProduto.includes(t)),
+    });
+  }
+  return achados
+    .sort((a, b) => b.casam - a.casam || a.modelo.localeCompare(b.modelo))
+    .slice(0, limite);
+}
+
+/**
  * O pareamento quando a LOJISTA escolheu o modelo.
  *
  * Mesmo casamento por cor + tamanho do caminho automático — a única coisa que

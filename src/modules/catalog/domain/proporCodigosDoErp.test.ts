@@ -5,6 +5,7 @@ import {
   proporCodigos,
   fraseDaProposta,
   proporComModelo,
+  procurarModelos,
   type LinhaDoErp,
   type ProdutoParaPropor,
 } from "./proporCodigosDoErp";
@@ -459,4 +460,83 @@ test("o modelo ESCOLHIDO também aparece pelo nome comercial na frase", () => {
   assert.ok(r.ok);
   assert.match(r.modelo, /Chinelo Havaianas Brasil/);
   assert.match(r.modelo, /\(brasil\)/, "o código do modelo sumiu — sem ele não dá para rastrear");
+});
+
+// ===========================================================================
+// BUSCAR O MODELO PELO NÚMERO — a correção dela, em 18/08/2026
+// ===========================================================================
+//
+// "esses números 7142.106 não representam a cor e sim representam o modelo do
+// produto". Eu tinha montado tudo ao contrário: usava a COR para descobrir o
+// modelo. No ERP e na cabeça dela, quem identifica o produto é o MODELO — a cor
+// é variação dele, e ela sabe o número de cor.
+
+const CATALOGO: LinhaDoErp[] = [
+  ...[35, 36, 37].map((t) => ({
+    codigo: `009396${t}`,
+    modelo: "7142.106 NP/SEN FLEX",
+    descricao: `tamanco modare 7142 106 np sen flex 96782 oliva ${t}`,
+    nomeComercial: "Chinelo Tamanco Modare 7142.106 NP/Sense Flex - tamanco modare",
+  })),
+  ...[35, 36].map((t) => ({
+    codigo: `008205${t}`,
+    modelo: "7142.106 TRESSE ALBA",
+    descricao: `tamanco modare 7142 106 tresse alba 96903 oliva ${t}`,
+    nomeComercial: "Tamanco Modare 7142.106 Tresse Alba - tamanco modare",
+  })),
+  {
+    codigo: "0098793",
+    modelo: "7215.102 SUPREMA",
+    descricao: "tamanco slide modare 7215 102 suprema verde salvia 38",
+    nomeComercial: "Tamanco Slide Modare 7215.102 Suprema - tamanco slide",
+  },
+];
+
+const OLIVA: ProdutoParaPropor = {
+  id: "o",
+  nome: "Chinelo Ortopedico Modare Feminino Esporao Massageador Macio",
+  variacoes: [
+    { id: "o35", cor: "Oliva", tamanho: "35 BR" },
+    { id: "o36", cor: "Oliva", tamanho: "36 BR" },
+    { id: "o37", cor: "Oliva", tamanho: "37 BR" },
+  ],
+};
+
+test('digitar "7142.106" traz os DOIS modelos que começam assim', () => {
+  // Busca por PEDAÇO, não igualdade: ela não tem como saber a grafia exata do
+  // ERP ("NP/SEN FLEX"), mas sabe o número.
+  const r = procurarModelos(CATALOGO, "7142.106", OLIVA);
+  assert.equal(r.length, 2);
+  assert.ok(r.every((x) => x.modelo.startsWith("7142 106")));
+  // E o que CASA MAIS vem primeiro: o NP/Sense tem os três tamanhos dela.
+  assert.equal(r[0].casam, 3);
+  assert.equal(r[1].casam, 2);
+});
+
+test('digitar só "7142" traz a família inteira, para ela refinar', () => {
+  const r = procurarModelos(CATALOGO, "7142", OLIVA);
+  assert.equal(r.length, 2);
+});
+
+test("também acha pelo NOME comercial — nem sempre ela lembra o número", () => {
+  const r = procurarModelos(CATALOGO, "tresse", OLIVA);
+  assert.equal(r.length, 1);
+  assert.match(r[0].modelo, /tresse alba/);
+});
+
+test("termo curto demais não devolve nada — 2 letras traria o arquivo inteiro", () => {
+  assert.deepEqual(procurarModelos(CATALOGO, "71", OLIVA), []);
+  assert.deepEqual(procurarModelos(CATALOGO, "", OLIVA), []);
+});
+
+test("termo que não existe devolve vazio, e a tela diz isso", () => {
+  assert.deepEqual(procurarModelos(CATALOGO, "9999.999", OLIVA), []);
+});
+
+test("o modelo achado pela busca casa igual ao caminho automático", () => {
+  const r = proporComModelo(CATALOGO, OLIVA, "7142.106 NP/SEN FLEX");
+  assert.ok(r.ok);
+  assert.equal(r.pares.length, 3);
+  assert.equal(r.pares.find((x) => x.variacaoId === "o37")?.codigo, "00939637");
+  assert.match(fraseDaProposta(r), /modelo escolhido por você/);
 });

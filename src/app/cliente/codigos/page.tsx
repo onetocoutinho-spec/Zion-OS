@@ -40,6 +40,7 @@ import { lerPlanilha } from "@/lib/planilha";
 import {
   proporCodigos,
   proporComModelo,
+  procurarModelos,
   fraseDaProposta,
   type PropostaDeCodigos,
   type LinhaDoErp,
@@ -71,6 +72,14 @@ export default function CodigosDasVariacoes() {
   const [linhasDoErp, setLinhasDoErp] = useState<LinhaDoErp[]>([]);
   /** Quais produtos estão com a lista de modelos aberta por inteiro. */
   const [verTodos, setVerTodos] = useState<Set<string>>(new Set());
+  /**
+   * O que ela digitou na busca de modelo, por produto.
+   *
+   * "esses números 7142.106 não representam a cor e sim representam o modelo do
+   * produto" — quem identifica o produto no ERP é o modelo, e ela o sabe de
+   * cor. Digitar é mais barato que reconhecer numa lista de trinta.
+   */
+  const [busca, setBusca] = useState<Record<string, string>>({});
   const [lendoArquivo, setLendoArquivo] = useState(false);
   const [gravandoId, setGravandoId] = useState<string | null>(null);
 
@@ -292,6 +301,70 @@ export default function CodigosDasVariacoes() {
               enxergar" — e cada opção era um parágrafo cortado na borda.
               Botão é markup que eu controlo: quebra linha, destaca a contagem
               e cabe no dedo. */}
+          {/* DIGITAR O MODELO — o caminho que ela pediu. */}
+          {!prop.ok && linhasDoErp.length > 0 && (
+            <div className="mt-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-white/55">
+                  Sabe o modelo no seu ERP? Digite o número — ex.:{" "}
+                  <span className="font-mono text-white/70">7142.106</span>
+                </span>
+                <input
+                  value={busca[prop.produtoId] ?? ""}
+                  onChange={(e) =>
+                    setBusca((b) => ({ ...b, [prop.produtoId]: e.target.value }))
+                  }
+                  placeholder="modelo ou parte do nome"
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 font-mono text-sm outline-none focus:border-violet-500"
+                />
+              </label>
+              {(() => {
+                const alvo = (produtos ?? []).find((x) => x.id === prop.produtoId);
+                const termo = busca[prop.produtoId] ?? "";
+                if (!alvo || termo.trim().length < 3) return null;
+                const achados = procurarModelos(linhasDoErp, termo, {
+                  id: alvo.id,
+                  nome: alvo.nome,
+                  variacoes: alvo.variantes.map((v) => ({ id: v.id, cor: v.cor, tamanho: v.tamanho })),
+                });
+                if (achados.length === 0) {
+                  return (
+                    <p className="mt-2 text-xs text-white/45">
+                      Nenhum modelo do arquivo tem &quot;{termo}&quot;.
+                    </p>
+                  );
+                }
+                return (
+                  <ul className="mt-2 space-y-1.5">
+                    {achados.map((c) => (
+                      <li key={c.modelo}>
+                        <button
+                          onClick={() => escolherModelo(prop.produtoId, c.modelo)}
+                          className="w-full rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-left transition-colors hover:border-violet-500/40 [@media(pointer:coarse)]:min-h-11"
+                        >
+                          <span className="flex flex-wrap items-baseline gap-2">
+                            <span className="font-medium">{c.nome || c.modelo}</span>
+                            <span className="text-[11px] text-white/30">{c.modelo}</span>
+                            <span
+                              className={`text-xs ${c.casam > 0 ? "text-emerald-300" : "text-white/35"}`}
+                            >
+                              casa {c.casam} variação(ões)
+                            </span>
+                          </span>
+                          {c.cores.length > 0 && (
+                            <span className="mt-1 block text-[11px] leading-4 text-white/40">
+                              cores: {c.cores.join(" · ")}
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+          )}
+
           {!prop.ok && prop.candidatos && prop.candidatos.length > 0 && (
             <div className="mt-3">
               <p className="text-xs text-white/45">
