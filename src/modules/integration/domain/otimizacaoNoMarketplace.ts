@@ -54,6 +54,14 @@ export interface PassoDeOtimizacao {
   valor: string | { id: string; value_id?: string | null; value_name?: string | null }[];
   /** O que a pessoa lê antes de confirmar. */
   resumo: string;
+  /**
+   * Este passo SUBSTITUI valor que já estava preenchido.
+   *
+   * A tela usa para pedir um sim próprio: acrescentar campo vazio não tira nada
+   * de ninguém, trocar valor conferido é outro risco. Um "confirmar" só não
+   * pode aprovar os dois.
+   */
+  troca?: true;
 }
 
 export interface PlanoDeOtimizacao {
@@ -142,31 +150,95 @@ export function planejarOtimizacao(item: ItemNoAr, texto: TextoProposto): PlanoD
       });
   }
 
-  // FICHA: só os atributos que o anúncio NÃO tem preenchidos.
+  // FICHA: acrescenta o vazio E PROPÕE TROCA do preenchido.
   //
-  // Sobrescrever atributo já preenchido trocaria o que ela conferiu por uma
-  // sugestão do modelo. Acrescentar o que falta é a melhoria; substituir o que
-  // existe é outra conversa, e não é esta.
+  // ===========================================================================
+  // A CORREÇÃO DA LOJISTA, 19/08/2026
+  // ===========================================================================
+  //
+  // A primeira versão só acrescentava campo vazio, e a justificativa parecia
+  // boa: "sobrescrever trocaria o que ela conferiu por uma sugestão do modelo".
+  //
+  // Ela desfez isso em uma frase: "a questão não é somente ver qual está sem e
+  // colocar, mas sim verificar o que tem e melhorar".
+  //
+  // Está certa. Um anúncio com a ficha preenchida ERRADA é pior que um com a
+  // ficha vazia — ele aparece no filtro errado do comprador, e o Mercado Livre
+  // pune "os dados do produto não correspondem ao produto original" (8 vezes
+  // nesta conta). Uma otimização que se recusa a olhar o que existe não é
+  // otimização: é preenchimento de lacuna.
+  //
+  // A regra certa nunca foi "não toque no preenchido" — é **não troque sem
+  // mostrar o que sai**. É a mesma regra do título, que já dizia "de X para Y",
+  // e da proposta de SKU, que exibe o valor anterior. Aqui ela passa a valer
+  // para a ficha: acréscimo e TROCA vão em passos separados, e a troca nomeia
+  // o valor que está sendo substituído, atributo por atributo.
   if (texto.ficha && texto.ficha.length > 0) {
     if (!permissoes.ficha.pode) {
       recusados.push(permissoes.ficha.porque);
     } else {
-      const jaTem = new Set(
-        item.atributos.filter((a) => a.valueId || limpo(a.valueName)).map((a) => a.id)
-      );
-      const novos = texto.ficha
-        .filter((a) => a.id && !jaTem.has(a.id) && (a.valueId || limpo(a.valueName)))
-        .map((a) => ({
+      const atual = new Map(item.atributos.map((a) => [a.id, a]));
+      const preenchido = (a: AtributoNoAr | undefined) =>
+        Boolean(a && (a.valueId || limpo(a.valueName)));
+
+      const novos: { id: string; value_id?: string | null; value_name?: string | null }[] = [];
+      const trocas: {
+        id: string;
+        de: string;
+        para: string;
+        payload: { id: string; value_id?: string | null; value_name?: string | null };
+      }[] = [];
+
+      for (const a of texto.ficha) {
+        if (!a.id || !(a.valueId || limpo(a.valueName))) continue;
+        const payload = a.valueId
+          ? { id: a.id, value_id: a.valueId }
+          : { id: a.id, value_name: limpo(a.valueName) };
+        const antes = atual.get(a.id);
+        if (!preenchido(antes)) {
+          novos.push(payload);
+          continue;
+        }
+        // MESMO VALOR NÃO É TROCA. Compara pelo `value_id` quando os dois o
+        // têm — dois textos diferentes podem ser o mesmo valor do ML ("Preto" e
+        // "PRETO"), e propor a troca deles seria ruído com cara de melhoria.
+        const igualPorId = Boolean(a.valueId && antes!.valueId && a.valueId === antes!.valueId);
+        const igualPorTexto =
+          !a.valueId &&
+          !antes!.valueId &&
+          limpo(a.valueName).toLowerCase() === limpo(antes!.valueName).toLowerCase();
+        if (igualPorId || igualPorTexto) continue;
+        trocas.push({
           id: a.id,
-          ...(a.valueId ? { value_id: a.valueId } : { value_name: limpo(a.valueName) }),
-        }));
-      if (novos.length === 0) recusados.push("A ficha proposta não acrescenta nenhum campo novo.");
-      else
+          de: limpo(antes!.valueName) || antes!.valueId || "(preenchido)",
+          para: limpo(a.valueName) || a.valueId || "",
+          payload,
+        });
+      }
+
+      if (novos.length > 0) {
         passos.push({
           campo: "ficha",
           valor: novos,
-          resumo: `Ficha: acrescenta ${novos.length} atributo(s) que estão vazios — nenhum preenchido é trocado.`,
+          resumo: `Ficha: preenche ${novos.length} atributo(s) que estão vazios.`,
         });
+      }
+      if (trocas.length > 0) {
+        // PASSO SEPARADO, e a separação é a decisão. Acrescentar campo vazio não
+        // tira nada de ninguém; trocar valor conferido é outro risco e merece
+        // outro sim. Juntos, um "confirmar" aprovaria os dois de uma vez.
+        passos.push({
+          campo: "ficha",
+          valor: trocas.map((t) => t.payload),
+          resumo:
+            `Ficha: TROCA ${trocas.length} atributo(s) já preenchidos — ` +
+            trocas.map((t) => `${t.id}: "${t.de}" → "${t.para}"`).join("; "),
+          troca: true,
+        });
+      }
+      if (novos.length === 0 && trocas.length === 0) {
+        recusados.push("A ficha proposta é igual à que já está no anúncio.");
+      }
     }
   }
 

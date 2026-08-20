@@ -97,9 +97,17 @@ test("título acima de 60 é recusado com o número, não cortado", () => {
   assert.match(p.porque, /61 caracteres/);
 });
 
-// A ficha ACRESCENTA. Sobrescrever atributo já preenchido trocaria o que ela
-// conferiu por uma sugestão do modelo — e é o oposto de melhorar.
-test("ficha só acrescenta o que está vazio; o preenchido não é tocado", () => {
+// A CORREÇÃO DA LOJISTA, 19/08/2026.
+//
+// A primeira versão só acrescentava campo vazio. Ela desfez isso em uma frase:
+// "a questão não é somente ver qual está sem e colocar, mas sim verificar o que
+// tem e melhorar".
+//
+// Ficha preenchida ERRADA é pior que ficha vazia: o anúncio aparece no filtro
+// errado, e o ML pune "os dados do produto não correspondem ao produto
+// original" — 8 vezes nesta conta. A regra certa nunca foi "não toque no
+// preenchido"; é NÃO TROQUE SEM MOSTRAR O QUE SAI.
+test("ficha propõe TROCA do preenchido, em passo separado, nomeando o que sai", () => {
   const p = planejarOtimizacao(
     item({ atributos: [{ id: "MATERIAL", valueId: null, valueName: "Couro" }] }),
     {
@@ -109,8 +117,28 @@ test("ficha só acrescenta o que está vazio; o preenchido não é tocado", () =
       ],
     }
   );
-  assert.equal(p.passos.length, 1);
-  assert.deepEqual(p.passos[0].valor, [{ id: "GENERO", value_name: "Masculino" }]);
+  assert.equal(p.passos.length, 2);
+
+  const acrescimo = p.passos.find((x) => !x.troca)!;
+  assert.deepEqual(acrescimo.valor, [{ id: "GENERO", value_name: "Masculino" }]);
+
+  // Acréscimo e troca em passos SEPARADOS: um "confirmar" não pode aprovar os
+  // dois de uma vez, porque preencher vazio não tira nada de ninguém.
+  const troca = p.passos.find((x) => x.troca)!;
+  assert.deepEqual(troca.valor, [{ id: "MATERIAL", value_name: "Borracha" }]);
+  assert.match(troca.resumo, /"Couro" → "Borracha"/);
+});
+
+// Dois textos diferentes podem ser o MESMO valor do ML. Propor a troca de
+// "Preto" por "PRETO" seria ruído com cara de melhoria — e gastaria uma escrita
+// que conta como edição no anúncio.
+test("mesmo value_id não vira troca, mesmo com texto diferente", () => {
+  const p = planejarOtimizacao(
+    item({ atributos: [{ id: "COLOR", valueId: "52049", valueName: "Preto" }] }),
+    { ficha: [{ id: "COLOR", valueId: "52049", valueName: "PRETO" }] }
+  );
+  assert.deepEqual(p.passos, []);
+  assert.match(p.porque, /igual à que já está/);
 });
 
 // `value_id` manda quando existe. Um atributo de lista enviado só com
