@@ -562,6 +562,117 @@ export async function definirFotosDoItem(
   return { id: j.id, quantasFotos: (j.pictures ?? []).length };
 }
 
+// ---- Escrita de TEXTO no anúncio que já está no ar ------------------------
+//
+// ===========================================================================
+// A LACUNA QUE ESTAS TRÊS FUNÇÕES FECHAM
+// ===========================================================================
+//
+// Até 19/08/2026 o cliente do ML tinha TRÊS escritas em anúncio existente:
+// encerrar, pausar/reativar e fotos. Nenhuma tocava título, descrição ou ficha.
+//
+// O efeito, medido: o chat oferecia "melhorar o título", rodava o agente da
+// Zion, a lojista confirmava — e o anúncio no ar continuava idêntico. A
+// mensagem chegou a dizer isso em voz alta ("o anúncio que já está no ar não
+// muda com isso"), que é honesto e não resolve: 480 anúncios ativos, e a
+// otimização era ensaio.
+//
+// O texto sempre existiu — quem o escreve é o Opus 5 na esteira. Faltava a
+// entrega.
+
+/**
+ * TROCA O TÍTULO de um anúncio no ar.
+ *
+ * O ML recusa em dois casos que valem ser distinguidos na mensagem, porque o
+ * remédio é diferente: anúncio de CATÁLOGO não tem título próprio (o título é
+ * do catálogo, e mudar exige sair dele), e anúncio COM VENDAS tem o título
+ * congelado — quem comprou comprou aquilo.
+ */
+export async function definirTituloDoItem(
+  accessToken: string,
+  itemId: string,
+  titulo: string
+): Promise<{ id: string; titulo: string }> {
+  const limpo = titulo.trim();
+  if (!limpo) throw new Error("Título vazio: não mando isso ao Mercado Livre.");
+  // 60 é o teto do ML. Cortar aqui em silêncio publicaria um título truncado no
+  // meio de uma palavra — recusar devolve a decisão a quem escreveu.
+  if (limpo.length > 60) {
+    throw new Error(
+      `O título tem ${limpo.length} caracteres e o Mercado Livre aceita 60. Encurte antes.`
+    );
+  }
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title: limpo }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar o título de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; title?: string };
+  // Devolvemos o título que o ML CONFIRMOU, não o que mandamos. Em 03/08/2026
+  // alguém deu uma capa como trocada com base no 200 e ela era a antiga.
+  return { id: j.id, titulo: j.title ?? "" };
+}
+
+/**
+ * TROCA A DESCRIÇÃO — e é um ENDPOINT SEPARADO, não um campo do item.
+ *
+ * `PUT /items/{id}` com `description` é ignorado em silêncio: a descrição mora
+ * em `/items/{id}/description`. Mandar pelo caminho errado devolveria 200 com
+ * o texto antigo no ar — o formato de falha que este repositório mais persegue.
+ *
+ * `plain_text` e não `text`: `text` é o campo HTML legado, que o ML desativou
+ * para categorias novas.
+ */
+export async function definirDescricaoDoItem(
+  accessToken: string,
+  itemId: string,
+  descricao: string
+): Promise<{ ok: true; tamanho: number }> {
+  const limpo = descricao.trim();
+  if (!limpo) throw new Error("Descrição vazia: não mando isso ao Mercado Livre.");
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}/description`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ plain_text: limpo }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar a descrição de ${itemId}: ${await extrairErro(r)}`);
+  return { ok: true, tamanho: limpo.length };
+}
+
+/**
+ * PREENCHE ATRIBUTOS da ficha — e ACRESCENTA, nunca substitui o conjunto.
+ *
+ * Diferença que custou caro em `pictures`: lá o ML SUBSTITUI a lista inteira, e
+ * mandar uma lista parcial apagou fotos. Em `attributes` ele faz merge por
+ * `id` — os que não vão continuam lá. Mas a assimetria é fácil de esquecer, e
+ * por isso está escrita aqui.
+ *
+ * Atributo com `value_id` DEVE ir com `value_id`: mandar só `value_name` num
+ * atributo de lista faz o ML criar um valor livre que não casa com o filtro de
+ * busca — o comprador que filtra por "Preto" não acha o anúncio.
+ */
+export async function definirAtributosDoItem(
+  accessToken: string,
+  itemId: string,
+  atributos: readonly { id: string; value_id?: string | null; value_name?: string | null }[]
+): Promise<{ id: string; quantosVieram: number }> {
+  const uteis = atributos.filter((a) => a.id && (a.value_id || a.value_name));
+  if (uteis.length === 0) throw new Error("Nenhum atributo preenchido para enviar.");
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      attributes: uteis.map((a) =>
+        a.value_id ? { id: a.id, value_id: a.value_id } : { id: a.id, value_name: a.value_name }
+      ),
+    }),
+  });
+  if (!r.ok) throw new Error(`ML recusou a ficha de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; attributes?: unknown[] };
+  return { id: j.id, quantosVieram: (j.attributes ?? []).length };
+}
+
 // ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
 
 export interface TarifaDeVenda {
