@@ -38,7 +38,7 @@ import {
 } from "@/modules/catalog/domain/ensaioDaCapa";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
 import { quadrarCapa } from "@/modules/integration/domain/quadrarCapa";
-import { LADO_MINIMO_DA_CAPA } from "@/modules/integration/domain/capaForaDoPadrao";
+import { LADO_ACEITAVEL_DA_CAPA } from "@/modules/integration/domain/capaForaDoPadrao";
 
 const API = "https://api.mercadolibre.com";
 const clientId = process.env.ML_CLIENT_ID as string;
@@ -304,7 +304,11 @@ export async function POST(request: Request) {
         const m = /^(\d+)x(\d+)$/.exec(String(antes[0]?.max_size ?? ""));
         return m ? Math.min(Number(m[1]), Number(m[2])) : 0;
       })();
-      if (ladoDaCapa >= LADO_MINIMO_DA_CAPA) {
+      // `LADO_ACEITAVEL_DA_CAPA`, não `LADO_MINIMO_DA_CAPA` — ver a constante.
+      // Mandamos 1200x1200 e o ML serve 991x1200 (ele recorta a borda branca),
+      // então comparar com 1200 fazia a trava nunca fechar e cada rodada
+      // empilhar outra cópia da mesma foto.
+      if (ladoDaCapa >= LADO_ACEITAVEL_DA_CAPA) {
         registrar("info", "pulado-capa-ja-boa", { mlb: a.mlb, capa: antes[0]?.max_size });
         pulados.push({ mlb: a.mlb, motivo: `a capa já está ${antes[0]?.max_size}` });
         continue;

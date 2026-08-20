@@ -109,10 +109,20 @@ test("anúncio não modificável é PULADO, não interrompe a cor inteira", () =
 // Sem esta trava, cada tentativa de alcançar um anúncio no fim da fila
 // acrescenta uma cópia da capa em todos os que já estavam prontos.
 test("capa que já cumpre o mínimo é PULADA, comparando por TAMANHO", () => {
+  // `LADO_ACEITAVEL_DA_CAPA` (500), NÃO `LADO_MINIMO_DA_CAPA` (1200).
+  //
+  // A primeira versão usava 1200 e a trava nunca fechou: mandamos 1200x1200 e o
+  // ML serve `991x1200`, porque ele recorta a borda branca lateral que o
+  // quadrado acrescenta. Nossa própria capa correta nunca alcançava o limiar, e
+  // cada rodada empilhava outra cópia — quatro anúncios foram de 4 fotos para 7
+  // na conta da lojista.
+  //
+  // 1200 é o IDEAL (o tamanho em que o ML rende zoom); 500 é o que separa capa
+  // aceita de capa recusada. Confundir os dois foi o defeito.
   assert.match(
     CODIGO,
-    /ladoDaCapa >= LADO_MINIMO_DA_CAPA/,
-    "sumiu a checagem de capa já boa — reaplicar volta a empilhar foto duplicada"
+    /ladoDaCapa >= LADO_ACEITAVEL_DA_CAPA/,
+    "a trava voltou a comparar com o IDEAL (1200) — nossa própria capa nunca passa e a duplicação volta"
   );
   assert.match(
     CODIGO,
