@@ -109,15 +109,43 @@ export function ConferirFoto({
               </p>
             </>
           ) : (
-            <p className="mt-1 text-xs text-amber-300">
-              {c && !c.quadrada
-                ? "Esta foto não é quadrada. "
-                : ""}
-              {c && !c.grandeOSuficiente
-                ? `O lado menor tem ${Math.min(medida.largura, medida.altura)}px e o Mercado Livre exige ${LADO_MINIMO_DA_CAPA}. `
-                : ""}
-              Subir assim não destrava o anúncio — ele continua como está.
-            </p>
+            (() => {
+              // O VEREDITO PRECISA SEPARAR "NÃO SERVE" DE "NÃO SERVE ASSIM".
+              //
+              // ===================================================================
+              // O CASO, 20/08/2026
+              // ===================================================================
+              //
+              // A lojista mandou uma foto 960x1280 do Papete Creme. O cartão
+              // respondeu "não é quadrada, o lado menor tem 960 e o ML exige
+              // 1200. Subir assim não destrava o anúncio — ele continua como
+              // está." Ela guardou a foto e foi procurar outra.
+              //
+              // A foto SERVIA. O Zion tem `quadrar-capa`, que completa a lateral
+              // com branco (`contain`: nunca corta, nunca estica) e devolve
+              // 1280x1280. A regra dela é o MAIOR lado >= 1200 — e 1280 passa.
+              //
+              // O cartão media o lado MENOR e concluía pelo pior caso. Certo para
+              // "esta foto já serve como está?"; errado como conselho, porque
+              // mandava procurar foto nova existindo caminho para esta.
+              //
+              // É o formato que este repositório persegue há semanas — o software
+              // sabe fazer e a mensagem diz que não dá — e aqui ele custava uma
+              // viagem ao fabricante.
+              const maiorLado = Math.max(medida.largura, medida.altura);
+              const daParaQuadrar = maiorLado >= LADO_MINIMO_DA_CAPA;
+              return (
+                <p className={`mt-1 text-xs ${daParaQuadrar ? "text-sky-300" : "text-amber-300"}`}>
+                  {c && !c.quadrada ? "Esta foto não é quadrada. " : ""}
+                  {c && !c.grandeOSuficiente
+                    ? `O lado menor tem ${Math.min(medida.largura, medida.altura)}px e o Mercado Livre exige ${LADO_MINIMO_DA_CAPA}. `
+                    : ""}
+                  {daParaQuadrar
+                    ? `Mas o maior lado tem ${maiorLado}px, e isso basta: dá para completar a lateral com branco e usar como ${LADO_MINIMO_DA_CAPA}x${LADO_MINIMO_DA_CAPA}. Nada é cortado nem esticado.`
+                    : `O maior lado tem ${maiorLado}px — abaixo de ${LADO_MINIMO_DA_CAPA}. Ampliar inventaria pixel e ficaria borrada: esta precisa de foto nova.`}
+                </p>
+              );
+            })()
           )}
         </div>
       </div>
