@@ -143,6 +143,37 @@ function mapearColunas(headers: string[]): Record<string, string> {
     const canon = ALIASES[normalizarHeader(h)];
     if (canon && !achado[canon]) achado[canon] = h;
   }
+
+  // ===========================================================================
+  // A ASSINATURA DO LINX: `Código` + `Código Pai` juntos
+  // ===========================================================================
+  //
+  // MEDIDO EM 19/08/2026. Sete produtos do ERP viraram QUATORZE no Zion —
+  // todos rachados em exatamente dois, o que denuncia regra e não acidente. O
+  // Papete Modare 7208.101 (pai 2344016) virou "Chinelo Ortopédico
+  // Ultraconforto Laço" E "Papete Slide Modare 7208.101"; o Tênis Loc Salem
+  // virou "Calce Fácil Slip On" E "Loc Salem". Cada metade ficou com um pedaço
+  // das cores, os estoques divergiram, e 14 variações não puderam receber SKU
+  // porque o código "pertencia a outro produto" — que era o mesmo produto.
+  //
+  // A causa: o export do LINX chama a coluna da derivação de `Código`, e o
+  // mapeador não conhecia esse nome. Sem `skuVariacao`, o arquivo inteiro caía
+  // em modo FLAT — uma linha, um produto —, e o agrupamento passava a ser pelo
+  // NOME DA DERIVAÇÃO, que é escolha de quem digitou.
+  //
+  // A regra é ESTREITA de propósito. `codigo` sozinho é genérico demais: numa
+  // planilha de produtos simples ele é o código do próprio produto, e tratá-lo
+  // como derivação forçaria modo agrupado onde não há grade. Só o PAR
+  // `Código` + `Código Pai` é assinatura de arquivo com derivação — e aí as
+  // duas colunas dizem, juntas, exatamente o que o Zion precisa saber: qual é a
+  // unidade e a que produto ela pertence.
+  if (!achado["skuVariacao"] && achado["codErp"]) {
+    const codigoCru = headers.find((h) => normalizarHeader(h) === "codigo");
+    // E não pode ser a MESMA coluna que já virou o pai: `Código Pai` também
+    // começa com "codigo", e usar a mesma coluna nos dois papéis faria cada
+    // variação ser o próprio pai — um produto por linha, de novo.
+    if (codigoCru && codigoCru !== achado["codErp"]) achado["skuVariacao"] = codigoCru;
+  }
   return achado;
 }
 
