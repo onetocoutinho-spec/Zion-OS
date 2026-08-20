@@ -37,6 +37,7 @@ import {
   idDaFotoNoML,
 } from "@/modules/catalog/domain/ensaioDaCapa";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
+import { quadrarCapa } from "@/modules/integration/domain/quadrarCapa";
 
 const API = "https://api.mercadolibre.com";
 const clientId = process.env.ML_CLIENT_ID as string;
@@ -187,8 +188,51 @@ export async function POST(request: Request) {
         return Response.json({ erro: "Não consegui baixar a foto do seu cadastro." }, { status: 502 });
       }
       const bytes = Buffer.from(await arquivo.arrayBuffer());
-      novaFotoId = await subirFoto(tokens.accessToken, bytes, `${produtoId}-${foto.cor}.jpg`);
-      registrar("info", "foto-no-acervo", { novaFotoId, bytes: bytes.length });
+
+      // ===================================================================
+      // QUADRAR AQUI — a ligação que faltava entre três peças prontas
+      // ===================================================================
+      //
+      // MEDIDO EM 20/08/2026. O Papete Modare tinha CINCO fotos boas no acervo
+      // da lojista, uma por cor, todas em 960x1280. Os anúncios dela no ML
+      // continuavam com capa `492x245`, e 7 deles derrubados por isso.
+      //
+      // O software tinha as três peças e elas nunca se encontraram:
+      //
+      //   `melhor-capa`  promove foto que JÁ está no padrão — nenhuma estava,
+      //                  então respondeu `trocariam: 0` e parou.
+      //   `quadrar-capa` completa a lateral com branco — mas só sabe pegar a
+      //                  foto que já está DENTRO do anúncio, e lá só há a ruim.
+      //   `aplicar-capa` sobe a foto do acervo — e subia 960x1280 como estava,
+      //                  que o ML recusa por não ser quadrada.
+      //
+      // Cada uma parou na própria trava, e as três estavam certas. Faltava
+      // esta linha: a foto do acervo passa por `quadrarCapa` antes de subir.
+      //
+      // `contain` nunca corta e nunca estica — o produto continua inteiro, e o
+      // que entra é branco na lateral. E a recusa dela é 422 com motivo: foto
+      // cujo MAIOR lado é menor que o mínimo precisa mesmo de foto nova, e
+      // ampliar inventaria pixel.
+      //
+      // Só o caminho do ACERVO quadra. O `idNoML` acima reusa a foto que já
+      // vive no ML sem reprocessar — e quadrar ali criaria um id novo, que é
+      // exatamente o defeito de 13/08 (capa "trocada" por cópia pior de si).
+      const pronta = await quadrarCapa(bytes);
+      // `quadrarCapa` RECUSA quando a foto já está no padrão — e essa recusa é
+      // sucesso, não erro: significa que ela serve como está. Tratá-la como
+      // falha impediria de aplicar justamente a foto boa.
+      const jaEstavaNoPadrao = !pronta.ok && /dentro do padrão/i.test(pronta.motivo);
+      if (!pronta.ok && !jaEstavaNoPadrao) {
+        registrar("warn", "capa-nao-quadravel", { motivo: pronta.motivo });
+        return Response.json({ erro: pronta.motivo, motivo: "nao-quadravel" }, { status: 422 });
+      }
+      const enviar = pronta.ok ? pronta.imagem : bytes;
+      novaFotoId = await subirFoto(tokens.accessToken, enviar, `${produtoId}-${foto.cor}.jpg`);
+      registrar("info", "foto-no-acervo", {
+        novaFotoId,
+        bytes: enviar.length,
+        quadrada: pronta.ok,
+      });
     }
 
     // ---- UM ANÚNCIO POR VEZ, PARANDO NO PRIMEIRO ERRO ----
