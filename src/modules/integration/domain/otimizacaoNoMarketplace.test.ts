@@ -158,3 +158,57 @@ test("sem nada a fazer, o plano explica por quê", () => {
   assert.deepEqual(p.passos, []);
   assert.match(p.porque, /Nada foi proposto/);
 });
+
+// ===========================================================================
+// A TRAVA DO FATOR NO PREÇO — sentinela de fonte
+// ===========================================================================
+//
+// Em 20/08/2026 a lojista pediu para subir dois anúncios de R$ 169,32 para
+// R$ 244,90. O cliente do ML não tinha escrita de preço — eu havia dito que
+// tinha, e não tinha.
+//
+// A trava não é paranoia. O ML aceita qualquer preço, inclusive um que
+// multiplique o atual por 100 num erro de vírgula: um anúncio a R$ 24.490 não é
+// recusado, é só nunca vendido. E esta base já gravou R$ 30.277.872,00 como
+// custo por uma coluna ambígua — lá o estrago ficou no nosso banco; aqui
+// ficaria na vitrine dela.
+//
+// O preço ATUAL é lido do ML na hora, nunca recebido do cliente: um preço
+// mandado de fora tornaria a trava uma formalidade que o próprio chamador
+// desativa.
+
+import { readFileSync } from "node:fs";
+
+const CLIENTE_ML = readFileSync(
+  new URL("../../../lib/marketplaces/mercadolivre.ts", import.meta.url),
+  "utf8"
+);
+const ROTA = readFileSync(
+  new URL("../../../app/api/ml/otimizar-anuncio/route.ts", import.meta.url),
+  "utf8"
+);
+
+test("a escrita de preço recusa fator absurdo antes de sair daqui", () => {
+  assert.match(
+    CLIENTE_ML,
+    /preco > atual \* fator \|\| preco < atual \/ fator/,
+    "a trava de fator sumiu — um erro de vírgula chegaria à vitrine"
+  );
+});
+
+test("o preço ATUAL vem do ML, não do corpo da requisição", () => {
+  assert.match(
+    ROTA,
+    /lerPrecoAtual\(itemId, auth\)/,
+    "o preço de referência passou a vir de fora — a trava vira formalidade"
+  );
+});
+
+// Preço e texto não compartilham o mesmo "confirmar": um sim sobre a descrição
+// não pode aprovar uma mudança de preço.
+test("preço tem caminho próprio e sai antes do plano de texto", () => {
+  const iPreco = ROTA.indexOf('typeof corpo.preco === "number"');
+  const iTexto = ROTA.indexOf("planejarOtimizacao(item, corpo.texto");
+  assert.ok(iPreco > 0 && iTexto > 0, "os dois caminhos precisam existir");
+  assert.ok(iPreco < iTexto, "preço deixou de sair antes do texto — viraram uma escrita só");
+});

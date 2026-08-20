@@ -673,6 +673,55 @@ export async function definirAtributosDoItem(
   return { id: j.id, quantosVieram: (j.attributes ?? []).length };
 }
 
+/**
+ * TROCA O PREÇO de um anúncio no ar.
+ *
+ * ===========================================================================
+ * POR QUE ESTA FUNÇÃO NASCEU, E O QUE ELA RECUSA
+ * ===========================================================================
+ *
+ * Em 20/08/2026 a lojista pausou 15 anúncios da Actvitta e escolheu manter o
+ * preço de R$ 244,90. Sobraram dois anúncios do tamanho 39 a R$ 169,32 — não
+ * porque eram melhores, mas porque eu só tinha olhado duplicidade e eles eram
+ * únicos. O 39 ficaria R$ 75 mais barato que o 38 na mesma página.
+ *
+ * Eu disse a ela "a rota de preço existe". Não existia: o cliente do ML tinha
+ * escrita de foto, de estado, e — desde hoje de manhã — de texto. Preço não.
+ *
+ * A TRAVA DO FATOR. O ML aceita qualquer preço, inclusive um que multiplique o
+ * atual por 100 num erro de vírgula — e um anúncio a R$ 24.490 não é recusado,
+ * é só nunca vendido. `fatorMaximo` recusa a troca ANTES de sair daqui.
+ *
+ * Não é paranoia: esta base já gravou R$ 30.277.872,00 como custo por uma
+ * coluna ambígua. Lá o estrago ficou no nosso banco; aqui ficaria na vitrine.
+ */
+export async function definirPrecoDoItem(
+  accessToken: string,
+  itemId: string,
+  preco: number,
+  opcoes: { precoAtual: number; fatorMaximo?: number } = { precoAtual: 0 }
+): Promise<{ id: string; preco: number }> {
+  if (!(preco > 0)) throw new Error("Preço tem de ser maior que zero.");
+  const fator = opcoes.fatorMaximo ?? 3;
+  const atual = opcoes.precoAtual;
+  if (atual > 0 && (preco > atual * fator || preco < atual / fator)) {
+    throw new Error(
+      `Recusei trocar o preço de ${itemId}: de R$ ${atual.toFixed(2)} para ` +
+        `R$ ${preco.toFixed(2)} é mais de ${fator}x de diferença. Se for mesmo isso, ` +
+        `faça em dois passos ou confirme no painel do Mercado Livre.`
+    );
+  }
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ price: preco }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar o preço de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; price?: number };
+  // O preço que o ML CONFIRMOU, não o que mandamos — a regra de 03/08/2026.
+  return { id: j.id, preco: Number(j.price ?? 0) };
+}
+
 // ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
 
 export interface TarifaDeVenda {

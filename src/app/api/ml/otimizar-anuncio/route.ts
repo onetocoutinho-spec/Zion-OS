@@ -42,6 +42,7 @@ import {
   definirTituloDoItem,
   definirDescricaoDoItem,
   definirAtributosDoItem,
+  definirPrecoDoItem,
 } from "@/lib/marketplaces/mercadolivre";
 import {
   lerCanalServidor,
@@ -87,6 +88,14 @@ async function lerItem(itemId: string, auth: HeadersInit): Promise<ItemNoAr | nu
           }))
       : [],
   };
+}
+
+/** O preço de AGORA, lido do ML — nunca o que o cliente mandou. */
+async function lerPrecoAtual(itemId: string, auth: HeadersInit): Promise<number | null> {
+  const r = await fetch(`${API}/items/${itemId}`, { headers: auth });
+  if (!r.ok) return null;
+  const j = (await r.json()) as { price?: number };
+  return typeof j.price === "number" ? j.price : null;
 }
 
 async function contexto(request: Request, clienteId: string) {
@@ -160,6 +169,14 @@ interface Corpo {
   clienteId: string;
   itemId: string;
   texto: TextoProposto;
+  /**
+   * O PREÇO NOVO. Caminho próprio, fora de `texto`, e a separação é decisão.
+   *
+   * Texto é reversível: um título ruim se troca de volta e ninguém pagou por
+   * ele. Preço no ar é o que o comprador vê e paga — juntá-lo ao mesmo
+   * "confirmar" faria um sim sobre a descrição aprovar uma mudança de preço.
+   */
+  preco?: number;
 }
 
 export async function POST(request: Request) {
@@ -186,6 +203,26 @@ export async function POST(request: Request) {
   // isso do jeito caro — lá, plano velho APAGAVA foto.
   const item = await lerItem(itemId, auth);
   if (!item) return Response.json({ erro: `Não consegui ler ${itemId} no ML.` }, { status: 404 });
+
+  // PREÇO primeiro, e sozinho: quem manda preço não manda texto na mesma
+  // chamada. Uma escrita por vez é a mesma disciplina de `aplicar-capa`.
+  if (typeof corpo.preco === "number") {
+    const precoAtual = Number((await lerPrecoAtual(itemId, auth)) ?? 0);
+    try {
+      const r = await definirPrecoDoItem(c.token, itemId, corpo.preco, { precoAtual });
+      const confirmado = Math.abs(r.preco - corpo.preco) < 0.005;
+      return Response.json({
+        aplicados: [
+          { campo: "preco", ok: confirmado, confirmado: `R$ ${r.preco.toFixed(2)}`, de: precoAtual },
+        ],
+      });
+    } catch (e) {
+      return Response.json(
+        { aplicados: [], erro: e instanceof Error ? e.message : "Falha ao trocar o preço." },
+        { status: 422 }
+      );
+    }
+  }
 
   const plano = planejarOtimizacao(item, corpo.texto ?? {});
   if (plano.passos.length === 0) {
