@@ -72,3 +72,57 @@ test("o que entra em `ean` é a alternativa (o EAN do arquivo), nunca a chave", 
     "o campo `ean` está recebendo outra coisa que não o EAN lido do arquivo"
   );
 });
+
+// ===========================================================================
+// O SKU QUE O EAN ALCANÇA
+// ===========================================================================
+//
+// MEDIDO EM 19/08/2026. Restavam 14 variações sem SKU com estoque real — 164
+// pares —, e todas as 14 tinham código de barras. Cruzado contra o mesmo export
+// de derivação: 14 de 14 alcançaram um `Código` do ERP pelo EAN, nenhum
+// ambíguo, com o final do código batendo com o tamanho em todos.
+//
+// O EAN é o código do FABRICANTE: se bate, é fisicamente a mesma peça, e o
+// `Código` daquela linha é o SKU dela. O leitor usava o EAN só para ACHAR a
+// variação e nunca para NOMEÁ-LA.
+
+test("a importação preenche o SKU quando o EAN alcança um código do ERP", () => {
+  assert.match(
+    FONTE,
+    /dados\.sku\s*=\s*leitura\.linha\.chave/,
+    "sumiu o preenchimento de SKU pelo EAN — 14 variações com 164 pares dependiam disso"
+  );
+});
+
+// AMBIGUIDADE 1. O mesmo EAN em duas linhas do ERP: o arquivo não sabe qual
+// código é o certo, e a primeira venceria por ordem de digitação.
+test("EAN que aponta para mais de um código NÃO vira SKU", () => {
+  assert.match(
+    FONTE,
+    /candidatos\.size === 1/,
+    "a guarda de EAN ambíguo sumiu: o código passaria a ser escolhido por ordem no arquivo"
+  );
+});
+
+// AMBIGUIDADE 2. Código já em uso por outra variação. Escrevê-lo criaria a
+// duplicata que a varredura acusa como o defeito mais grave — 128 SKUs em mais
+// de uma variação. E a guarda vale DENTRO do lote: duas variações sem SKU com o
+// mesmo EAN receberiam o mesmo código, e a duplicata nasceria aqui.
+test("código já em uso não é reescrito, nem dentro do mesmo lote", () => {
+  assert.match(
+    FONTE,
+    /!skusEmUso\.has\(leitura\.linha\.chave\)/,
+    "a guarda de SKU já em uso sumiu — a importação viraria fábrica de duplicata"
+  );
+  assert.match(
+    FONTE,
+    /skusEmUso\.add\(leitura\.linha\.chave\)/,
+    "o lote parou de se proteger de si mesmo: duas linhas com o mesmo EAN gravariam o mesmo código"
+  );
+});
+
+// Contado separado do peso: preencher identidade sem dizer transforma
+// "importei o peso" numa frase incompleta.
+test("o resultado CONTA os SKUs preenchidos, separado do peso", () => {
+  assert.match(FONTE, /skusPreenchidos,/, "o número de SKUs preenchidos sumiu do resultado");
+});

@@ -38,6 +38,14 @@ export interface ResultadoPeso {
   semPeso: number;
   /** Quantas também trouxeram as três medidas (habilita a cubagem). */
   comMedidas: number;
+  /**
+   * Variações que ganharam SKU porque o EAN alcançou um `Código` único do ERP.
+   *
+   * Contado separado do peso de propósito: é OUTRA coisa que aconteceu, e uma
+   * importação que preenche identidade sem dizer transforma "importei o peso"
+   * em uma frase incompleta. Zero é resposta legítima.
+   */
+  skusPreenchidos: number;
   unidade: "kg" | "g";
   chave: "sku" | "ean";
   aviso?: string;
@@ -87,6 +95,46 @@ export async function importarPeso(
   // 7 variações desta base ficaram sem peso porque o SKU delas está vazio ou é
   // de teste (`01044525_TEST`) — o EAN estava lá, e o arquivo o conhecia.
   const porAlternativa = colunas.tipoAlternativa ? indexar(colunas.tipoAlternativa) : null;
+
+  // ===========================================================================
+  // O CÓDIGO QUE O EAN ALCANÇA — e as duas ambiguidades que o impedem
+  // ===========================================================================
+  //
+  // MEDIDO EM 19/08/2026. Restavam 14 variações sem SKU com estoque real (164
+  // pares), e TODAS as 14 tinham código de barras. Cruzado contra este mesmo
+  // arquivo: 14 de 14 alcançaram um `Código` do ERP pelo EAN, nenhum ambíguo.
+  //
+  // O EAN é o código do FABRICANTE. Se ele bate, é fisicamente a mesma peça — e
+  // o `Código` daquela linha é o SKU dela. O dado sempre esteve no arquivo; o
+  // leitor usava o EAN só para achar a variação e nunca para nomeá-la.
+  //
+  // DUAS AMBIGUIDADES BLOQUEIAM A ESCRITA, e as duas já morderam esta base:
+  //
+  //   1. O MESMO EAN EM DUAS LINHAS DO ERP. Aí o arquivo não sabe qual código é
+  //      o certo, e a primeira linha venceria por ordem de digitação.
+  //
+  //   2. O CÓDIGO JÁ EM USO por outra variação. Escrevê-lo criaria a duplicata
+  //      que a varredura acusa como o defeito mais grave — 128 SKUs em mais de
+  //      uma variação.
+  //
+  // Nos dois casos não se escreve, e o `sem_sku` continua visível. Pendência é
+  // mais honesta que código adivinhado: em 15/08 um casamento frouxo colou
+  // códigos de um tênis Molekinha num chinelo Modare.
+  const codigosPorEan = new Map<string, Set<string>>();
+  if (colunas.tipoAlternativa === "ean") {
+    for (const reg of planilha.linhas) {
+      const l = lerLinha(reg, colunas);
+      if (!l.ok || !l.linha.alternativa || !l.linha.chave) continue;
+      const set = codigosPorEan.get(l.linha.alternativa) ?? new Set<string>();
+      set.add(l.linha.chave);
+      codigosPorEan.set(l.linha.alternativa, set);
+    }
+  }
+  /** SKUs já em uso — o que impede a duplicata nascer aqui. */
+  const skusEmUso = new Set(
+    variantes.map((v) => (v.sku ?? "").trim()).filter(Boolean)
+  );
+  let skusPreenchidos = 0;
 
   const atualizacoes: (Partial<ProdutoVariante> & { id: string })[] = [];
   const produtosTocados = new Set<string>();
@@ -189,6 +237,19 @@ export async function importarPeso(
       if (!(v.ean ?? "").trim() && leitura.linha.alternativa) {
         dados.ean = leitura.linha.alternativa;
       }
+      // O SKU, quando o EAN alcança um código ÚNICO e livre. Ver o bloco de
+      // `codigosPorEan` acima para as duas ambiguidades que bloqueiam.
+      if (!(v.sku ?? "").trim() && leitura.linha.alternativa && leitura.linha.chave) {
+        const candidatos = codigosPorEan.get(leitura.linha.alternativa);
+        const unico = candidatos && candidatos.size === 1;
+        if (unico && !skusEmUso.has(leitura.linha.chave)) {
+          dados.sku = leitura.linha.chave;
+          // Dentro do MESMO lote também: duas variações sem SKU com o mesmo EAN
+          // receberiam o mesmo código, e a duplicata nasceria aqui.
+          skusEmUso.add(leitura.linha.chave);
+          skusPreenchidos++;
+        }
+      }
       atualizacoes.push(dados);
       produtosTocados.add(v.produtoId);
     }
@@ -215,6 +276,7 @@ export async function importarPeso(
     naoEncontrados,
     semPeso,
     comMedidas,
+    skusPreenchidos,
     unidade: colunas.unidade,
     chave: colunas.tipoChave,
     ...(avisos.length > 0 ? { aviso: avisos.join(" ") } : {}),

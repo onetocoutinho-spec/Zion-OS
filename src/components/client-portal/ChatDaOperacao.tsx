@@ -1291,6 +1291,16 @@ export function ChatDaOperacao({
                     : "") +
                   (r.semPeso > 0
                     ? ` ${r.semPeso} linha(s) vieram sem peso utilizável (vazio, zero ou texto) e ficaram de fora.`
+                    : "") +
+                  // O SKU É OUTRA COISA QUE ACONTECEU, e por isso é outra frase.
+                  //
+                  // Desde 19/08/2026 a importação também preenche o SKU quando o
+                  // código de barras alcança um `Código` único do ERP. Calar
+                  // isso faria "gravei o peso" descrever pela metade uma
+                  // gravação que mexeu na IDENTIDADE das variações — e
+                  // identidade é o campo mais caro de errar nesta base.
+                  (r.skusPreenchidos > 0
+                    ? ` E preenchi o SKU de ${r.skusPreenchidos} variação(ões) que estavam sem: o código de barras delas achou o código do seu ERP.`
                     : ""),
               }
             : turno
