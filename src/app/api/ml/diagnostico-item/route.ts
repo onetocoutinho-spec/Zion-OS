@@ -225,12 +225,31 @@ export async function GET(request: Request) {
         }),
         // E NO NÍVEL DO ITEM, pelo mesmo motivo: anúncio sem grade também pode
         // ter o SKU no atributo em vez do campo legado.
+        //
+        // 20/08/2026 — E AQUI EU REPETI O DEFEITO DENTRO DO PRÓPRIO CONSERTO.
+        //
+        // Três linhas acima está escrito "eu não filtro mais por palpite sobre
+        // qual campo importa". Na VARIAÇÃO isso é verdade. No ITEM eu filtrava
+        // por `SELLER_SKU` e `GTIN` e descartava o resto.
+        //
+        // O custo apareceu no Papete Modare: 17 anúncios rachados em 4 famílias
+        // no ML, e a lojista perguntando por quê. Nesta conta cada TAMANHO é um
+        // item separado (modelo User Products) — então `SIZE_GRID_ID` e
+        // `SIZE_GRID_ROW_ID`, que são o que o ML usa para agrupar a família,
+        // moram no NÍVEL DO ITEM. O filtro os jogava fora, e a pergunta "por que
+        // o Bege 36 está sozinho" não tinha como ser respondida com o que a
+        // rota devolvia.
+        //
+        // Agora vem INTEIRO, no mesmo formato da variação.
         atributosDoItem: (Array.isArray(item?.attributes)
-          ? (item!.attributes as { id?: string; value_name?: string | null }[])
+          ? (item!.attributes as {
+              id?: string;
+              value_name?: string | null;
+              value_id?: string | null;
+            }[])
           : []
         )
-          .filter((a) => a.id === "SELLER_SKU" || a.id === "GTIN")
-          .map((a) => `${a.id}=${a.value_name ?? ""}`)
+          .map((a) => `${a.id ?? "?"}=${a.value_name ?? a.value_id ?? ""}`)
           .join(" | "),
         // O VÍDEO. O ML devolve `video_id` e a importação do Zion o LÊ — ele
         // aparece entre os campos usados — mas ninguém o guarda: não existe
