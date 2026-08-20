@@ -38,6 +38,7 @@ import {
 } from "@/modules/catalog/domain/ensaioDaCapa";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
 import { quadrarCapa } from "@/modules/integration/domain/quadrarCapa";
+import { LADO_MINIMO_DA_CAPA } from "@/modules/integration/domain/capaForaDoPadrao";
 
 const API = "https://api.mercadolibre.com";
 const clientId = process.env.ML_CLIENT_ID as string;
@@ -133,6 +134,8 @@ export async function POST(request: Request) {
   const feitos: { mlb: string; titulo: string; fotosAntes: number; fotosDepois: number }[] = [];
   /** Os que o teto deixou para a próxima chamada. Nunca fica em silêncio. */
   let naoAlcancados = 0;
+  /** Anúncios que a rota deixou como estavam, e por quê. Vazio é resposta. */
+  const pulados: { mlb: string; motivo: string }[] = [];
   const registrar = (nivel: "info" | "warn" | "error", evento: string, extra: Record<string, unknown> = {}) =>
     console.log(
       JSON.stringify({ src: "ml.aplicarCapa", clienteId, produtoId, cor: foto.cor, nivel, evento, ...extra })
@@ -245,13 +248,67 @@ export async function POST(request: Request) {
       }
       // O estado de AGORA, relido por anúncio. Compor a partir do que o ensaio
       // viu minutos atrás apagaria foto que entrou nesse meio-tempo.
-      const rLer = await fetch(`${API}/items/${a.mlb}?attributes=id,pictures`, { headers: auth });
+      //
+      // `status` e o TAMANHO DA CAPA vêm junto — os dois decidem PULAR, e a
+      // diferença entre pular e parar é o que este conserto trouxe. Ver abaixo.
+      const rLer = await fetch(
+        `${API}/items/${a.mlb}?attributes=id,pictures,status,sub_status`,
+        { headers: auth }
+      );
       if (!rLer.ok) {
         registrar("error", "falha-ao-ler", { mlb: a.mlb, status: rLer.status });
         return parcial(feitos, a, `não consegui ler as fotos deste anúncio (ML ${rLer.status})`, foto.cor as string, novaFotoId);
       }
-      const antes = ((await rLer.json()) as { pictures?: { id?: string }[] }).pictures ?? [];
+      const itemAgora = (await rLer.json()) as {
+        pictures?: { id?: string; max_size?: string }[];
+        status?: string;
+      };
+      const antes = itemAgora.pictures ?? [];
       const idsAntes = antes.map((p) => String(p.id ?? "")).filter(Boolean);
+
+      // =====================================================================
+      // PULAR NÃO É PARAR — os dois defeitos de 20/08/2026
+      // =====================================================================
+      //
+      // A lojista aplicou a capa do Papete Marrom. Sete anúncios da cor; o de
+      // tamanho 39 estava INACTIVE, e o ML recusa foto em anúncio fora do ar:
+      // "pictures is not modifiable". A rota parou ali — correto para erro, e
+      // errado para ESTE erro, porque os tamanhos 38 e 40 vinham depois na fila
+      // e nunca foram alcançados.
+      //
+      // Rodar de novo não resolvia: a ordem é a mesma, então travava no mesmo
+      // 39. E aí o segundo defeito aparecia — os QUATRO que já estavam com a
+      // capa certa eram refeitos, cada rodada acrescentando uma cópia da mesma
+      // foto. De 4 fotos para 5, depois para 6.
+      //
+      // A causa do segundo é a de 13/08: todo upload cria um id NOVO no ML, e
+      // `ja-e-a-capa` compara por id. Uma reenviada nunca é reconhecida como a
+      // que já está lá.
+      //
+      // As duas travas abaixo são "pule este e siga", não "pare tudo":
+      //
+      //   1. NÃO MODIFICÁVEL. Anúncio fora do ar não aceita foto — não é falha
+      //      nossa nem dela, e não deve bloquear os outros da mesma cor.
+      //   2. CAPA JÁ BOA. Se a capa atual já cumpre o mínimo do ML, reenviar só
+      //      empilha cópia. Compara pelo TAMANHO, não pelo id, justamente
+      //      porque o id novo nunca bate.
+      const naoModificavel = ["inactive", "closed", "payment_required"].includes(
+        String(itemAgora.status ?? "")
+      );
+      if (naoModificavel) {
+        registrar("info", "pulado-nao-modificavel", { mlb: a.mlb, status: itemAgora.status });
+        pulados.push({ mlb: a.mlb, motivo: `está ${itemAgora.status} — o ML não deixa trocar foto` });
+        continue;
+      }
+      const ladoDaCapa = (() => {
+        const m = /^(\d+)x(\d+)$/.exec(String(antes[0]?.max_size ?? ""));
+        return m ? Math.min(Number(m[1]), Number(m[2])) : 0;
+      })();
+      if (ladoDaCapa >= LADO_MINIMO_DA_CAPA) {
+        registrar("info", "pulado-capa-ja-boa", { mlb: a.mlb, capa: antes[0]?.max_size });
+        pulados.push({ mlb: a.mlb, motivo: `a capa já está ${antes[0]?.max_size}` });
+        continue;
+      }
 
       const plano = ensaiarTrocaDeCapa(
         [{ mlb: a.mlb, titulo: a.titulo, fotos: idsAntes }],
@@ -348,10 +405,17 @@ export async function POST(request: Request) {
       trocados: feitos.length,
       naoAlcancados,
       feitos,
+      // O QUE FOI PULADO, e por quê. Silêncio aqui vira "então trocou todos".
+      pulados,
       frase:
         (feitos.length === 0
-          ? `Nenhum anúncio de ${foto.cor} precisava de troca — todos já estavam com essa capa.`
-          : `Troquei a capa de ${feitos.length} anúncio(s) de ${foto.cor}.`) + sobra,
+          ? `Nenhum anúncio de ${foto.cor} precisava de troca.`
+          : `Troquei a capa de ${feitos.length} anúncio(s) de ${foto.cor}.`) +
+        (pulados.length > 0
+          ? ` Deixei ${pulados.length} como estava: ` +
+            pulados.map((p) => `${p.mlb} (${p.motivo})`).join("; ") + "."
+          : "") +
+        sobra,
     });
   } catch (e) {
     return Response.json(

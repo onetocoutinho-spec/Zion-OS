@@ -61,7 +61,18 @@ test("REGRA 4 — o teto conta ESCRITAS, e o que sobrou entra na frase", () => {
   // E o número tem que chegar na FRASE, não só no JSON: é a frase que ela lê.
   const resposta = CODIGO.slice(CODIGO.indexOf("const sobra ="));
   assert.match(resposta, /faltam \$\{naoAlcancados\}/, "a sobra sumiu da frase");
-  assert.match(resposta, /frase:[\s\S]{0,300}\+ sobra/, "a frase deixou de somar a sobra");
+  // AJUSTADA EM 20/08/2026 — e o ajuste é de PRECISÃO, não de rigor.
+  //
+  // A frase ganhou a lista de PULADOS: anúncio fora do ar e capa que já estava
+  // boa passaram a ser pulados em vez de interromper a cor inteira, e cada pulo
+  // é nomeado. Com isso a expressão cresceu e o formatador quebrou `+ sobra` em
+  // duas linhas — a sentinela reprovou por causa da QUEBRA DE LINHA, não porque
+  // a soma tivesse sumido.
+  //
+  // Exigir os dois na mesma linha era proteger a formatação, e formatação não é
+  // o que importa aqui. O que importa é a sobra do teto chegar na FRASE, não só
+  // no JSON, porque é a frase que a lojista lê — e é isso que `\+\s*sobra` diz.
+  assert.match(resposta, /frase:[\s\S]{0,900}\+\s*sobra/, "a frase deixou de somar a sobra");
 });
 
 test("REGRA 5 — o que trocamos fica ANOTADO, ou a pendência cobra o que já foi", () => {
