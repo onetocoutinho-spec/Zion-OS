@@ -85,3 +85,50 @@ test("o título continua servindo para quem não tem vínculo", () => {
     "o caminho do título sumiu — anúncio sem vínculo ficou sem conserto possível"
   );
 });
+
+// ===========================================================================
+// A SEGUNDA PORTA — consertar um lugar só não bastou
+// ===========================================================================
+//
+// Depois de fazer o vínculo mandar no filtro da rota, a chamada achou os cinco
+// anúncios Alecrim e mesmo assim trocou ZERO. A dedução pelo título vivia em
+// DOIS lugares: no filtro e outra vez dentro de `ensaiarTrocaDeCapa`, que
+// recebia `cores` e `corDaFoto` e refazia a mesma pergunta. Os quatro entravam
+// e eram descartados lá dentro, porque o título deles diz "Marrom".
+//
+// E saíam CALADOS: o `continue` não entrava em `pulados`, então a frase final
+// era "Nenhum anúncio de Alecrim precisava de troca" — enquanto os quatro
+// seguiam com a foto de outra cor.
+
+import { ensaiarTrocaDeCapa } from "@/modules/catalog/domain/ensaioDaCapa";
+
+test("a cor decidida por vínculo atravessa o ensaio", () => {
+  const e = ensaiarTrocaDeCapa(
+    [{ mlb: "MLB1", titulo: "Papete Modare Nobuck Marrom 37 Br", fotos: ["velha"], cor: "Alecrim" }],
+    ["Alecrim", "Marrom", "Nude"],
+    "Alecrim",
+    "nova"
+  );
+  assert.equal(e.alvos.length, 1, "o ensaio voltou a deduzir a cor do título e descartou o alvo");
+  assert.deepEqual(e.alvos[0].novaOrdem, ["nova", "velha"]);
+});
+
+// Sem `cor`, nada muda para quem não tem vínculo: o título continua decidindo.
+test("sem cor no vínculo, o ensaio continua lendo o título", () => {
+  const e = ensaiarTrocaDeCapa(
+    [{ mlb: "MLB1", titulo: "Papete Modare Nobuck Marrom 37 Br", fotos: ["velha"] }],
+    ["Alecrim", "Marrom", "Nude"],
+    "Alecrim",
+    "nova"
+  );
+  assert.equal(e.alvos.length, 0, "o ensaio parou de respeitar o título para quem não tem vínculo");
+});
+
+test("anúncio que não vira alvo entra em `pulados`, com o motivo", () => {
+  const trecho = CODIGO.slice(CODIGO.indexOf("const alvo = plano.alvos[0]"));
+  assert.match(
+    trecho.slice(0, 500),
+    /pulados\.push\(\{ mlb: a\.mlb, motivo \}\)/,
+    "voltou o pulo calado — a frase diz 'nenhum precisava' sobre anúncios que precisavam"
+  );
+});

@@ -380,16 +380,30 @@ export async function POST(request: Request) {
       }
 
       const plano = ensaiarTrocaDeCapa(
-        [{ mlb: a.mlb, titulo: a.titulo, fotos: idsAntes }],
+        // A cor vai JUNTO quando veio do vínculo: sem isso o ensaio a deduz do
+        // título outra vez e descarta o que a rota já tinha selecionado.
+        [
+          {
+            mlb: a.mlb,
+            titulo: a.titulo,
+            fotos: idsAntes,
+            cor: mlbsPorVinculo.has(a.mlb) ? String(foto.cor) : null,
+          },
+        ],
         cores,
         String(foto.cor),
         novaFotoId
       );
       const alvo = plano.alvos[0];
       if (!alvo) {
-        // Já era a capa, ou o título deixou de casar. Não é erro: é um anúncio
-        // que não precisa de nada, e seguir para o próximo é o certo.
-        registrar("info", "sem-mudanca", { mlb: a.mlb, motivo: plano.fora[0]?.motivo ?? "nao-e-alvo" });
+        // Não é erro — mas também não pode ser SILÊNCIO.
+        //
+        // 20/08/2026: quatro anúncios saíram por aqui e a resposta foi
+        // "Nenhum anúncio de Alecrim precisava de troca". A lojista leria que
+        // estava tudo certo; estavam os quatro com a foto de outra cor.
+        const motivo = plano.fora[0]?.motivo ?? "nao-e-alvo";
+        registrar("info", "sem-mudanca", { mlb: a.mlb, motivo });
+        pulados.push({ mlb: a.mlb, motivo });
         continue;
       }
       // A ÚLTIMA TRANCA ANTES DE ESCREVER. `definirFotosDoItem` substitui o

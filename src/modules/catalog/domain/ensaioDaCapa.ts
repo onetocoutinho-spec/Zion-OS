@@ -68,6 +68,20 @@ export interface AnuncioParaEnsaio {
   titulo: string;
   /** Os ids das fotos NO ML, na ordem atual. A primeira é a capa. */
   fotos: readonly string[];
+  /**
+   * A cor JÁ DECIDIDA por quem chamou, quando ela é conhecida por vínculo.
+   *
+   * 20/08/2026: a cor do anúncio era deduzida do título em DOIS lugares — no
+   * filtro da rota e outra vez aqui dentro. Consertar só o primeiro não
+   * adiantou: a rota entregava os quatro anúncios Alecrim e o ensaio os
+   * descartava de novo, porque o título deles diz "Marrom" (a lista COLOR do
+   * ML não tem Alecrim).
+   *
+   * Quando `produto_variantes.observacoes` liga a variação ao MLB, isso é
+   * DADO e o título é só texto. Preenchido aqui, ele manda. Ausente, o título
+   * continua sendo a melhor pista disponível.
+   */
+  cor?: string | null;
 }
 
 export type MotivoDeFora =
@@ -146,7 +160,8 @@ export function ensaiarTrocaDeCapa(
   const querida = normalizarCor(corDaFoto);
 
   for (const a of anuncios) {
-    const cor = corDoTitulo(a.titulo, cores);
+    // O vínculo, quando existe, responde antes do título — ver `AnuncioParaEnsaio.cor`.
+    const cor = (a.cor ?? "").trim() ? String(a.cor).trim() : corDoTitulo(a.titulo, cores);
     if (cor === null) {
       // Duas causas diferentes, e a lojista precisa saber qual: título sem cor
       // nenhuma é anúncio que talvez nem seja da grade; título com duas é
