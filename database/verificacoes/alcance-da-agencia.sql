@@ -66,6 +66,7 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('produtos',                true,  'o catálogo'),
   ('relatorios',              true,  'o relatório da loja'),
   ('tabelas_medidas',         true,  'a tabela de tamanhos'),
+  ('consumo_ia',              true,  'o ledger de cota da loja: quantas chamadas de IA ela ja gastou no mes. A agencia precisa disso para explicar "acabou a cota". SO LEITURA — escreve so o servidor (060)'),
 
   -- ---------------------------------------------------------------
   -- NÃO É OPERAÇÃO — a agência NÃO alcança

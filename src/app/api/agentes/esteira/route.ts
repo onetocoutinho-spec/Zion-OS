@@ -8,6 +8,8 @@
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 
 // 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
 // ~25–40s. Em plano pago dá para subir para 300.
@@ -34,8 +36,9 @@ function montarMensagem(briefing: string, contexto: string): string {
 export async function POST(request: Request) {
   // Autorização: só usuário autenticado (no modo demo, libera). Evita que a
   // rota de IA (paga) seja chamada sem sessão.
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -64,6 +67,17 @@ export async function POST(request: Request) {
       { erro: "Informe um produto (contexto) ou um briefing para rodar a esteira." },
       { status: 400 }
     );
+  }
+
+  // ZION-QUOTA-001: a cota é cobrada AQUI, antes do provedor — não no botão.
+  // Atômica no banco; falha fechada se a reserva não responder. Equipe e
+  // agência não têm cliente_id e seguem sem cota (ver cotaDeIA.ts).
+  if (ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "esteira", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
   }
 
   try {
