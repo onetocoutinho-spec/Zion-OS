@@ -82,6 +82,14 @@ function ctxPreco(
         const p = produtos[id];
         return p ? { produtoId: id, nome: p.nome, entradas: p.entradas } : null;
       },
+      // A CONFIGURAÇÃO do lojista — zerada, e a escolha não é arbitrária: o
+      // `PROCEDENCIA` deste arquivo declara `custosDoLojista: "zerados"`, e um
+      // contexto que dissesse outra coisa faria o teste provar uma conta que a
+      // procedência nega.
+      configuracao: async () => ({
+        margemMinima: o.margemMinima ?? 5,
+        custos: normalizarCustos(null),
+      }),
       catalogo: async () => ({
         produtos: o.catalogo ?? [],
         margemMinima: o.margemMinima ?? 5,
