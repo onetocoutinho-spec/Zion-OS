@@ -48,7 +48,13 @@ const clientSecret = process.env.ML_CLIENT_SECRET as string;
 const MAXIMO_POR_CHAMADA = 12;
 
 export async function POST(request: Request) {
-  let corpo: { clienteId?: string; produtoId?: string; imagemId?: string };
+  let corpo: {
+    clienteId?: string;
+    produtoId?: string;
+    imagemId?: string;
+    /** A foto é OUTRA, não a que já está no ar — ver a nota abaixo. */
+    trocarMesmoAssim?: boolean;
+  };
   try {
     corpo = await request.json();
   } catch {
@@ -57,6 +63,23 @@ export async function POST(request: Request) {
   const clienteId = (corpo.clienteId ?? "").trim();
   const produtoId = (corpo.produtoId ?? "").trim();
   const imagemId = (corpo.imagemId ?? "").trim();
+  // A TRAVA DE TAMANHO PERGUNTA A COISA ERRADA QUANDO A FOTO MUDA.
+  //
+  // `pulado-capa-ja-boa` existe para não reenviar a MESMA foto — todo upload
+  // cria id novo no ML, então a comparação possível é por tamanho. Isso está
+  // certo enquanto a foto é a mesma.
+  //
+  // 20/08/2026 mostrou o outro caso. Quatro anúncios da cor Alecrim (verde)
+  // estavam publicados como "Marrom" e receberam, por isso, a foto da Avelã,
+  // que é marrom. Ao corrigir a cor e pedir a foto certa, a trava respondeu
+  // "a capa já está 991x1200" e recusou: o tamanho está ótimo e o sapato é
+  // outro.
+  //
+  // A rota não tem como saber QUAL foto está no ar — só o tamanho é anotado.
+  // Então quem chama, que sabe, diz. Isto NÃO afrouxa mais nada: o anúncio
+  // fora do ar continua sendo pulado, e a tranca que impede foto de sumir
+  // continua valendo.
+  const trocarMesmoAssim = corpo.trocarMesmoAssim === true;
   if (!clienteId || !produtoId || !imagemId) {
     return Response.json({ erro: "clienteId, produtoId e imagemId são obrigatórios." }, { status: 400 });
   }
@@ -350,7 +373,7 @@ export async function POST(request: Request) {
       // Mandamos 1200x1200 e o ML serve 991x1200 (ele recorta a borda branca),
       // então comparar com 1200 fazia a trava nunca fechar e cada rodada
       // empilhar outra cópia da mesma foto.
-      if (ladoDaCapa >= LADO_ACEITAVEL_DA_CAPA) {
+      if (ladoDaCapa >= LADO_ACEITAVEL_DA_CAPA && !trocarMesmoAssim) {
         registrar("info", "pulado-capa-ja-boa", { mlb: a.mlb, capa: antes[0]?.max_size });
         pulados.push({ mlb: a.mlb, motivo: `a capa já está ${antes[0]?.max_size}` });
         continue;
