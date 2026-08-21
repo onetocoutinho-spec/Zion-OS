@@ -90,7 +90,10 @@ export async function POST(request: Request) {
   }
 
   const [{ data: variantes }, { data: anuncios }] = await Promise.all([
-    ctx.supabase.from("produto_variantes").select("cor").eq("produto_id", produtoId),
+    ctx.supabase
+      .from("produto_variantes")
+      .select("cor, observacoes")
+      .eq("produto_id", produtoId),
     ctx.supabase
       .from("anuncios_gerados")
       .select("ml_item_id, anuncio")
@@ -98,6 +101,40 @@ export async function POST(request: Request) {
       .eq("produto_id", produtoId)
       .not("ml_item_id", "is", null),
   ]);
+
+  // O VÍNCULO MANDA; O TÍTULO É O ÚLTIMO RECURSO.
+  //
+  // 20/08/2026 — o Papete Modare mostrou o custo de decidir pelo título.
+  //
+  // Cinco anúncios da cor ALECRIM (um verde-oliva) estavam publicados como
+  // "Marrom" e "Bege", porque a lista COLOR do ML nesta categoria não tem
+  // Alecrim e quem cadastrou escolheu o mais parecido. Corrigimos a cor na
+  // base — e a rota parou de achá-los, porque procurava a palavra "Alecrim"
+  // dentro de um título que diz "Marrom".
+  //
+  // Pior: ANTES da correção ela os achava como Marrom e aplicou neles a foto
+  // da Avelã, que é marrom de verdade. Quatro anúncios de sapato verde
+  // passaram a mostrar um sapato marrom, com confiança.
+  //
+  // `produto_variantes.observacoes` guarda o MLB da variação. Esse vínculo é
+  // o dado; o título é texto que alguém digitou e que o marketplace limita.
+  // Quando o vínculo existe, ele decide. O título continua servindo para o
+  // que não tem vínculo — e aí, sim, é o melhor que temos.
+  const mlbsPorVinculo = new Set(
+    (variantes ?? [])
+      .filter(
+        (v) =>
+          String((v as { cor: string | null }).cor ?? "").toLowerCase() ===
+          String(foto.cor).toLowerCase()
+      )
+      .map((v) => String((v as { observacoes: string | null }).observacoes ?? "").trim())
+      .filter(Boolean)
+  );
+  const vinculados = new Set(
+    (variantes ?? [])
+      .map((v) => String((v as { observacoes: string | null }).observacoes ?? "").trim())
+      .filter(Boolean)
+  );
 
   const cores = coresDoProduto(variantes ?? []);
   const daCor = (anuncios ?? [])
@@ -108,6 +145,11 @@ export async function POST(request: Request) {
         (a.ml_item_id as string),
     }))
     .filter((a) => {
+      if (mlbsPorVinculo.has(a.mlb)) return true;
+      // Um anúncio vinculado a OUTRA cor não volta pela porta do título: o
+      // vínculo já respondeu, e responder duas vezes é como o verde virou
+      // marrom.
+      if (vinculados.has(a.mlb)) return false;
       const c = corDoTitulo(a.titulo, cores);
       return c !== null && c.toLowerCase() === String(foto.cor).toLowerCase();
     });
