@@ -48,7 +48,15 @@ const clientSecret = process.env.ML_CLIENT_SECRET as string;
 const MAXIMO_POR_CHAMADA = 12;
 
 export async function POST(request: Request) {
-  let corpo: { clienteId?: string; produtoId?: string; fotoNoML?: string };
+  let corpo: {
+    clienteId?: string;
+    produtoId?: string;
+    fotoNoML?: string;
+    /**
+     * Recorte OPCIONAL: só estes anúncios. Ver a nota em `alvos`.
+     */
+    mlbs?: string[];
+  };
   try {
     corpo = await request.json();
   } catch {
@@ -83,12 +91,31 @@ export async function POST(request: Request) {
     .eq("produto_id", produtoId)
     .not("ml_item_id", "is", null);
 
-  const alvos = (anuncios ?? []).map((a) => ({
-    mlb: a.ml_item_id as string,
-    titulo:
-      ((a.anuncio as { tituloOtimizado?: string } | null)?.tituloOtimizado ?? "") ||
-      (a.ml_item_id as string),
-  }));
+  // O RECORTE, e por que ele precisou existir — 20/08/2026.
+  //
+  // Uma MESMA foto no ML tem UM id, e ela pode estar CERTA num anúncio e
+  // ERRADA em outro do mesmo produto.
+  //
+  // Medido: `604761-MLB116507673175_082026` (a foto da Avelã, marrom) era a
+  // capa correta dos anúncios Avelã 34, 36 e 40 — e estava, ao mesmo tempo,
+  // dentro dos anúncios Alecrim 35, 37 e 38, que são verdes, porque a cor
+  // deles fora deduzida do título e o título diz "Marrom".
+  //
+  // Tirar pelo produto inteiro consertaria os três verdes e ARRANCARIA A CAPA
+  // dos três marrons. A remoção precisa poder mirar.
+  //
+  // Sem `mlbs`, nada muda: continua valendo para todos os anúncios do produto.
+  const recorte = new Set(
+    (Array.isArray(corpo.mlbs) ? corpo.mlbs : []).map((m) => String(m).trim().toUpperCase()).filter(Boolean)
+  );
+  const alvos = (anuncios ?? [])
+    .map((a) => ({
+      mlb: a.ml_item_id as string,
+      titulo:
+        ((a.anuncio as { tituloOtimizado?: string } | null)?.tituloOtimizado ?? "") ||
+        (a.ml_item_id as string),
+    }))
+    .filter((a) => recorte.size === 0 || recorte.has(String(a.mlb).toUpperCase()));
   if (alvos.length === 0) {
     return Response.json({ erro: "Este produto não tem anúncio no Mercado Livre." }, { status: 409 });
   }
