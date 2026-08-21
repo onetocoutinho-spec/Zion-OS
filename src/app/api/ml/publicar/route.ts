@@ -27,7 +27,7 @@ import {
   precisaUserProducts,
   dominioDaCategoria,
 } from "@/modules/integration/domain/exigenciaModeloCanal";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guardasDaPublicacao";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
@@ -137,10 +137,10 @@ export async function POST(request: Request) {
     // e `infracaoNaoConferida` são os mesmos campos, com as mesmas frases.
     const veredicto = await conferirGuardasDaPublicacao(
       {
-        lerCanal: () => lerCanalServidor(ctx.supabase!, corpo.clienteId, marketplace),
+        lerCanal: () => lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace),
         renovar: (refreshToken) => renovarToken({ clientId, clientSecret, refreshToken }),
         guardarRefresh: (rt) =>
-          atualizarRefreshTokenServidor(ctx.supabase!, corpo.clienteId, rt, marketplace),
+          atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, rt, marketplace),
         mlbsComInfracao,
       },
       { marketplace, go: corpo.go === true, mlbsDoProduto: corpo.mlbsDoProduto ?? [] }

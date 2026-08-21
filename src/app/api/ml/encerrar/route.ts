@@ -14,7 +14,7 @@
 // rotacionado persistido antes de qualquer operação externa.
 
 import { encerrarItem } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json(
         { erro: "Cliente não conectado ao Mercado Livre." },
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     const tokens = renovacao.tokens;
     // Persiste o refresh_token rotacionado ANTES da operação externa — se o
     // encerramento falhar, a conexão do cliente continua íntegra.
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const resultado = await encerrarItem(tokens.accessToken, itemId);
     return Response.json({ id: resultado.id, status: resultado.status });

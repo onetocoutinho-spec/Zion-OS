@@ -8,7 +8,7 @@
 // ⚠️ O refresh_token NUNCA é devolvido ao navegador (R3).
 
 import { trocarCodigoPorToken } from "@/lib/marketplaces/mercadolivre";
-import { salvarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { salvarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import {
   exigirAcessoAoCliente,
   exigirAutenticado,
@@ -125,8 +125,7 @@ export async function POST(request: Request) {
     // Grava o refresh_token no canal, no servidor — o navegador nunca o vê.
     // A loja e o marketplace saem do TICKET, não do corpo — é o ponto inteiro
     // desta rota. `corpo.marketplace` deixou de ser lido.
-    await salvarRefreshTokenServidor(
-      ctx.supabase,
+    await salvarRefreshTokenServidor(clienteDaCredencial(),
       doTicket.cliente_id,
       tokens.refreshToken,
       doTicket.marketplace ?? "Mercado Livre",

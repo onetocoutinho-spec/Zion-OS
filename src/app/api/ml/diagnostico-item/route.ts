@@ -17,6 +17,7 @@ import { inventariarItem } from "@/modules/integration/domain/inventarioDoItemML
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     // Os dois lados da pergunta, em paralelo.

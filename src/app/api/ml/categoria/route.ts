@@ -38,7 +38,7 @@ import {
   renovarToken,
   RenovacaoRecusadaError,
 } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
 export async function POST(request: Request) {
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
   const marketplace = corpo.marketplace ?? "Mercado Livre";
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, marketplace);
     if (!canal?.refreshToken) {
       // NÃO é erro: descobrir a categoria é um ganho, não um pré-requisito. Sem
       // conexão a lojista informa a categoria à mão, e o resto do sistema segue
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, marketplace);
 
     const categoriaId = await preverCategoria(tokens.accessToken, titulo);
     if (!categoriaId) {

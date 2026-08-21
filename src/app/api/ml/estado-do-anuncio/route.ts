@@ -20,7 +20,7 @@
 // conexão do cliente continua íntegra.
 
 import { definirEstadoDoItem } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const resultado = await definirEstadoDoItem(tokens.accessToken, itemId, estado);
     // `status` é o que o ML CONFIRMOU, não o que pedimos: uma reativação pode
