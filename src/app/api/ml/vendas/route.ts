@@ -9,7 +9,7 @@ import { buscarPedidosML } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 

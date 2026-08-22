@@ -101,7 +101,7 @@ import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 

@@ -8,7 +8,7 @@ import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedor
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;

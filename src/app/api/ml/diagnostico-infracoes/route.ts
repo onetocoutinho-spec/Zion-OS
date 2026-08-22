@@ -35,7 +35,7 @@ import {
   referenciaDeModeracao,
 } from "@/modules/integration/domain/infracoesDaConta";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 300: o teto do Pro. A conta real declarou 1.060 infrações e o `limit` da rota
 // do ML é 20 — são 53 páginas. Com 60s isto não terminaria.

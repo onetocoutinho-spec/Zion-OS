@@ -47,7 +47,7 @@ import {
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 const API = "https://api.mercadolibre.com";
 

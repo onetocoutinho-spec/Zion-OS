@@ -14,7 +14,7 @@ import {
   exigirAutenticado,
   respostaErroAutorizacao,
 } from "@/lib/auth/serverAuthorization";
-import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 30;
 
