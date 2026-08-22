@@ -40,7 +40,7 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const SELECT_CLASSES =
-  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "w-full rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 function SelectContexto({
   label,

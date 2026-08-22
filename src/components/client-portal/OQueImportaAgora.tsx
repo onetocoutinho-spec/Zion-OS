@@ -83,7 +83,7 @@ export function OQueImportaAgora({
          vermelha, o vermelho deixaria de significar alguma coisa — a mesma
          regra que o ícone da lista já seguia. */
       className={`rounded-xl border p-5 ${
-        parede ? "border-red-500/25 bg-red-500/[0.06]" : "border-white/10 bg-[#0e0e16]"
+        parede ? "border-red-500/25 bg-red-500/[0.06]" : "border-white/10 bg-surface-raised"
       }`}
     >
       {/* A FRASE é o elemento primário da tela inteira, e o tamanho diz isso.

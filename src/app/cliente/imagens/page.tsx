@@ -214,7 +214,7 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   if (!produtoId) {
     return (
       <Card title="Escolha o produto">
-        <div className="mb-3 flex items-center gap-2 rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
           <Search size={14} />
           <input
             value={busca}
@@ -525,7 +525,7 @@ function EstudioIA({
               onChange={(e) => setBeneficios(e.target.value)}
               rows={2}
               placeholder="Ex.: palmilha ortopédica, ultraconforto, antiderrapante…"
-              className="w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+              className="w-full rounded-lg border border-white/10 bg-surface-input px-2.5 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
             />
           </div>
         </div>
@@ -692,7 +692,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                       )
                     )
                   }
-                  className="max-w-56 rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500"
+                  className="max-w-56 rounded-lg border border-white/10 bg-surface-input px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500"
                 >
                   <option value="">— escolher produto —</option>
                   {produtos.map((p) => (

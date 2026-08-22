@@ -32,7 +32,7 @@ export function FilterSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500 [@media(pointer:coarse)]:min-h-11"
+        className="rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500 [@media(pointer:coarse)]:min-h-11"
       >
         {!semTodos && <option value="Todos">{rotuloTodos}</option>}
         {options.map((o) => {

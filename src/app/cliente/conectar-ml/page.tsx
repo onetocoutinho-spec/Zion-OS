@@ -231,7 +231,7 @@ function Conexao() {
         )}
       </Card>
 
-      <div className="rounded-xl border border-white/5 bg-[#0e0e16] p-4 text-sm text-zinc-400">
+      <div className="rounded-xl border border-white/5 bg-surface-raised p-4 text-sm text-zinc-400">
         <p className="font-medium text-zinc-200">Como funciona</p>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs leading-relaxed">
           <li>Clique em <b>Conectar</b> — você vai para o Mercado Livre.</li>

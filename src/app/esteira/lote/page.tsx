@@ -264,7 +264,7 @@ export default function EsteiraLotePage() {
             <select
               value={quantidade}
               onChange={(e) => setQuantidade(e.target.value)}
-              className="rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none hover:border-white/20 focus:border-violet-500"
+              className="rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none hover:border-white/20 focus:border-violet-500"
             >
               {QUANTIDADES.map((q) => (
                 <option key={q} value={q}>{q}</option>

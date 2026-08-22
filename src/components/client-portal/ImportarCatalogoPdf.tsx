@@ -221,7 +221,7 @@ export function ImportarCatalogoPdf({
   }
 
   return (
-    <div className="rounded-xl border border-white/5 bg-[#0e0e16] p-4">
+    <div className="rounded-xl border border-white/5 bg-surface-raised p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
           <FileText size={19} />
@@ -320,7 +320,7 @@ export function ImportarCatalogoPdf({
 
               <div className="max-h-[26rem] overflow-auto rounded-lg border border-white/10">
                 <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-[#12121c] text-xs uppercase tracking-wide text-white/40">
+                  <thead className="sticky top-0 bg-surface-input text-xs uppercase tracking-wide text-white/40">
                     <tr>
                       <th className="px-3 py-2 font-medium">Importar</th>
                       <th className="px-3 py-2 font-medium">Pág.</th>

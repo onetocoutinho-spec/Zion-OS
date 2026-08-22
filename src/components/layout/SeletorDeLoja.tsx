@@ -166,7 +166,7 @@ export function SeletorDeLoja({ nomeDaAgencia, podeAdicionar }: Props) {
       >
         <div className="p-2">
           {total >= BUSCA_A_PARTIR_DE || termo ? (
-            <label className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-zinc-500 focus-within:border-violet-500/60">
+            <label className="mb-2 flex items-center gap-2 rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-zinc-500 focus-within:border-violet-500/60">
               <Search size={14} />
               <input
                 ref={campoBusca}

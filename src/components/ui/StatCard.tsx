@@ -27,7 +27,7 @@ interface StatCardProps {
 }
 
 export function StatCard({ label, value, hint, icon: Icon, tone = "violet", href }: StatCardProps) {
-  const classe = `relative block rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10 ${
+  const classe = `relative block rounded-xl border border-white/5 bg-surface-raised p-4 transition-colors hover:border-white/10 ${
     href ? "hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500" : ""
   }`;
   const conteudo = (

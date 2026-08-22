@@ -994,7 +994,7 @@ export default function ClienteProdutos() {
           {null}
         </Table>
       ) : total === 0 ? (
-        <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
+        <p className="rounded-xl border border-dashed border-white/10 bg-surface-raised px-6 py-8 text-center text-sm text-zinc-500">
           <Package size={20} className="mx-auto mb-2 text-zinc-600" />
           {/* Não diz mais "importe sua planilha": a planilha do ERP é UMA das
               três portas, e quem chegou com o catálogo do fornecedor em PDF
@@ -1004,7 +1004,7 @@ export default function ClienteProdutos() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
+            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
               <Search size={14} />
               <input
                 value={busca}
@@ -1228,7 +1228,7 @@ export default function ClienteProdutos() {
           onClick={() => setMedindo(null)}
         >
           <div
-            className="w-full max-w-lg rounded-xl border border-white/10 bg-[#0e0e16] p-5"
+            className="w-full max-w-lg rounded-xl border border-white/10 bg-surface-raised p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1253,7 +1253,7 @@ export default function ClienteProdutos() {
               onChange={(e) => setTextoMedida(e.target.value)}
               disabled={carregandoMedida}
               rows={10}
-              className="mt-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
+              className="mt-3 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
             />
 
             <div className="mt-3 flex items-center gap-2">
@@ -1277,7 +1277,7 @@ export default function ClienteProdutos() {
           onClick={() => setKitProd(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl border border-white/10 bg-[#0e0e16] p-5"
+            className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl border border-white/10 bg-surface-raised p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1297,7 +1297,7 @@ export default function ClienteProdutos() {
               <select
                 value={kitTipo}
                 onChange={(e) => setKitTipo(e.target.value as "nenhum" | "kit" | "combo")}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               >
                 <option value="kit">Kit (várias unidades / itens)</option>
                 <option value="combo">Combo (produtos diferentes)</option>
@@ -1324,19 +1324,19 @@ export default function ClienteProdutos() {
                         min={1}
                         value={c.quantidade}
                         onChange={(e) => setItemKit(i, { quantidade: Math.max(1, Number(e.target.value) || 1) })}
-                        className="w-14 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
+                        className="w-14 rounded border border-white/10 bg-surface-input px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <input
                         value={c.nome}
                         onChange={(e) => setItemKit(i, { nome: e.target.value })}
                         placeholder="Item"
-                        className="min-w-[8rem] flex-1 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
+                        className="min-w-[8rem] flex-1 rounded border border-white/10 bg-surface-input px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <input
                         value={c.sku ?? ""}
                         onChange={(e) => setItemKit(i, { sku: e.target.value })}
                         placeholder="SKU"
-                        className="w-24 rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
+                        className="w-24 rounded border border-white/10 bg-surface-input px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500"
                       />
                       <button
                         onClick={() => setItemKit(i, { brinde: !c.brinde })}
@@ -1368,7 +1368,7 @@ export default function ClienteProdutos() {
                       if (p) addItemKit(p);
                       e.target.value = "";
                     }}
-                    className="rounded-lg border border-white/10 bg-[#12121c] px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500"
+                    className="rounded-lg border border-white/10 bg-surface-input px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-violet-500"
                   >
                     <option value="">+ item da base…</option>
                     {(produtos ?? []).slice(0, 300).map((p) => (

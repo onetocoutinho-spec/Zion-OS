@@ -54,7 +54,7 @@ function Sidebar({ nome, operando, onNavigate }: { nome: string; operando: boole
   const pathname = usePathname();
   const areaAtual = areaDaRota(pathname);
   return (
-    <div className="flex h-full flex-col bg-[#0b0b12] border-r border-white/5">
+    <div className="flex h-full flex-col bg-surface-sidebar border-r border-white/5">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/20">
           <Sparkles className="text-white" size={17} />
@@ -273,7 +273,7 @@ function CascaOperando({ perfil, children }: { perfil: Perfil; children: React.R
     }
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#08080d] p-6 text-zinc-200">
-        <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0e0e16] p-6 text-center">
+        <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-raised p-6 text-center">
           <p className="text-sm font-semibold text-white">Esta loja não está na sua agência</p>
           <p className="mt-2 text-sm text-zinc-400">Se precisa operá-la, peça acesso à Zion.</p>
           <button

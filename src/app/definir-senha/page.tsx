@@ -95,7 +95,7 @@ export default function DefinirSenhaPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/5 bg-[#0e0e16] p-6">
+        <div className="rounded-xl border border-white/5 bg-surface-raised p-6">
           {estado === "verificando" && (
             <p className="flex items-center justify-center gap-2 text-sm text-zinc-400">
               <Loader2 size={15} className="animate-spin" /> Verificando o convite…

@@ -96,7 +96,7 @@ function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNo
 
 export function Table({ headers, children, carregando = false, marcaMestre }: TableProps) {
   return (
-    <div className="tabela-cartao rounded-xl border border-white/5 bg-[#0e0e16] sm:overflow-x-auto">
+    <div className="tabela-cartao rounded-xl border border-white/5 bg-surface-raised sm:overflow-x-auto">
       {/* `aria-busy`: as linhas fantasma são `aria-hidden` (o leitor de tela não
           lê cinco linhas vazias), e sem este sinal a tabela pareceria vazia na
           leitura — a mesma mentira, só que em voz alta. */}

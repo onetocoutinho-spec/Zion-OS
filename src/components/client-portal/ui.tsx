@@ -6,17 +6,8 @@
 import Link from "next/link";
 import { type LucideIcon, ArrowRight } from "lucide-react";
 import { type Tone } from "@/lib/status";
-
-const TONE_BG: Record<Tone, string> = {
-  green: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
-  yellow: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
-  red: "bg-red-500/10 text-red-400 ring-red-500/20",
-  blue: "bg-sky-500/10 text-sky-400 ring-sky-500/20",
-  violet: "bg-violet-500/10 text-violet-400 ring-violet-500/20",
-  orange: "bg-orange-500/10 text-orange-400 ring-orange-500/20",
-  cyan: "bg-cyan-500/10 text-cyan-400 ring-cyan-500/20",
-  gray: "bg-zinc-500/10 text-zinc-400 ring-zinc-500/20",
-};
+import { Badge, TONE_STYLES } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 /** Cabeçalho de página: título grande + subtítulo amigável + ação opcional. */
 export function PageHeader({
@@ -41,15 +32,9 @@ export function PageHeader({
   );
 }
 
-/** Etiqueta colorida de status. */
+/** Etiqueta colorida de status — é o `Badge`; o nome fica por compatibilidade. */
 export function Pill({ children, tone = "gray" }: { children: React.ReactNode; tone?: Tone }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${TONE_BG[tone]}`}
-    >
-      {children}
-    </span>
-  );
+  return <Badge tone={tone}>{children}</Badge>;
 }
 
 /** Botão grande de ação da home ("O que você quer fazer hoje?"). */
@@ -69,9 +54,9 @@ export function ActionTile({
   onClick?: () => void;
 }) {
   const inner = (
-    <div className="group flex h-full items-start gap-3 rounded-xl border border-white/5 bg-[#0e0e16] p-4 text-left transition-colors hover:border-violet-500/30 hover:bg-white/[0.02]">
+    <div className="group flex h-full items-start gap-3 rounded-xl border border-white/5 bg-surface-raised p-4 text-left transition-colors hover:border-violet-500/30 hover:bg-white/[0.02]">
       <div
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${TONE_BG[tone]}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${TONE_STYLES[tone]}`}
       >
         <Icon size={19} />
       </div>
@@ -121,9 +106,9 @@ export function Section({
   );
 }
 
-/** Estado vazio amigável. */
+/** Estado vazio amigável — é o `EmptyState` com moldura; o nome fica por compatibilidade. */
 export function VazioAmigavel({
-  icon: Icon,
+  icon,
   titulo,
   descricao,
   acao,
@@ -133,14 +118,5 @@ export function VazioAmigavel({
   descricao: string;
   acao?: React.ReactNode;
 }) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-12 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
-        <Icon size={22} />
-      </div>
-      <p className="mt-3 text-sm font-medium text-zinc-200">{titulo}</p>
-      <p className="mt-1 max-w-sm text-xs leading-relaxed text-zinc-500">{descricao}</p>
-      {acao && <div className="mt-4">{acao}</div>}
-    </div>
-  );
+  return <EmptyState icon={icon} titulo={titulo} mensagem={descricao} acao={acao} moldura />;
 }

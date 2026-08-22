@@ -165,7 +165,7 @@ export default function ClienteAuditoria() {
             <StatCard label="Problemas de SEO" value={m.seo} icon={Search} tone="cyan" />
             <StatCard label="Problemas de imagem" value={m.imagem} icon={ImageIcon} tone="blue" />
             <StatCard label="Problemas de preço" value={m.preco} icon={DollarSign} tone="green" />
-            <div className="flex items-center justify-center rounded-xl border border-dashed border-white/10 bg-[#0e0e16] p-4">
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-white/10 bg-surface-raised p-4">
               <Link href="/cliente/anunciar">
                 <Button variant="ghost">
                   <Wand2 size={15} /> Gerar otimização

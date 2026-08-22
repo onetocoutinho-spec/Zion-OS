@@ -108,7 +108,7 @@ export function Dialog({
         aria-labelledby={idTitulo}
         aria-describedby={descricao ? idDescricao : undefined}
         tabIndex={-1}
-        className={`relative flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-white/10 bg-[#0e0e16] outline-none sm:max-h-[85vh] sm:rounded-xl ${LARGURA[tamanho]}`}
+        className={`relative flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-white/10 bg-surface-raised outline-none sm:max-h-[85vh] sm:rounded-xl ${LARGURA[tamanho]}`}
       >
         <div className="flex items-start justify-between gap-4 border-b border-white/5 px-5 py-3">
           <div className="min-w-0">

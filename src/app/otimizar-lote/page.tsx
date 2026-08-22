@@ -19,7 +19,7 @@ import {
 import type { Produto } from "@/lib/types";
 
 const SELECT =
-  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 export default function OtimizarLoteEquipe() {
   // A loja vem do contexto global. Antes esta tela auto-selecionava a PRIMEIRA

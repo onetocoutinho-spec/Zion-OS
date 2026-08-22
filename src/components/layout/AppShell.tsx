@@ -53,7 +53,7 @@ function Sidebar({
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0b12] border-r border-white/5">
+    <div className="flex h-full flex-col bg-surface-sidebar border-r border-white/5">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/20">
           <Zap className="h-4.5 w-4.5 text-white" size={18} />

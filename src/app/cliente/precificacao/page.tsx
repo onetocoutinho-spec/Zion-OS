@@ -365,7 +365,7 @@ function Precificacao() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
+        <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-zinc-500 focus-within:border-violet-500/50">
           <Search size={14} />
           <input
             value={busca}

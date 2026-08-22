@@ -96,7 +96,7 @@ export default function AgenciaPage() {
               value={escolhida}
               onChange={(e) => setEscolhida(e.target.value)}
               aria-label="Loja a vincular"
-              className="min-w-56 flex-1 rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 [@media(pointer:coarse)]:min-h-11"
+              className="min-w-56 flex-1 rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 [@media(pointer:coarse)]:min-h-11"
             >
               <option value="">Vincular uma loja sem agência…</option>
               {disponiveis.map((l) => (

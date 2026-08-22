@@ -43,7 +43,7 @@ export function MissaoRepublicacao({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-amber-500/30 bg-[#0e0e16]">
+      <div className="relative flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-amber-500/30 bg-surface-raised">
         <div className="flex items-start gap-2.5 border-b border-white/5 px-5 py-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>

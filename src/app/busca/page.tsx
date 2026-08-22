@@ -45,7 +45,7 @@ function Resultados() {
           <li key={`${r.href}-${i}`}>
             <Link
               href={r.href}
-              className="flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-[#0e0e16] px-4 py-3 transition-colors hover:border-violet-500/30"
+              className="flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-surface-raised px-4 py-3 transition-colors hover:border-violet-500/30"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Search size={14} className="shrink-0 text-zinc-600" />

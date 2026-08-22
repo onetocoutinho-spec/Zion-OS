@@ -261,7 +261,7 @@ export default function ClienteMedidas() {
                 value={rasc.nome}
                 onChange={(e) => setRasc({ ...rasc, nome: e.target.value })}
                 placeholder="Ex.: Havaianas / Camiseta P-M-G"
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               />
             </label>
             <label className="text-xs text-zinc-400">
@@ -270,7 +270,7 @@ export default function ClienteMedidas() {
                 value={rasc.marca}
                 onChange={(e) => setRasc({ ...rasc, marca: e.target.value })}
                 placeholder="Ex.: Havaianas (deixe vazio se for avulsa)"
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
               />
             </label>
           </div>
@@ -281,7 +281,7 @@ export default function ClienteMedidas() {
               onChange={(e) => setRasc({ ...rasc, linhasTexto: e.target.value })}
               rows={8}
               placeholder={"37/38 = 24,5 cm\n39/40 = 25,8 cm\nP = 60cm de busto\nM = 64cm de busto"}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 font-mono text-xs text-zinc-200 outline-none focus:border-violet-500"
             />
           </label>
           <label className="mt-3 block text-xs text-zinc-400">
@@ -291,7 +291,7 @@ export default function ClienteMedidas() {
               onChange={(e) => setRasc({ ...rasc, comoMedir: e.target.value })}
               rows={2}
               placeholder="Ex.: meça o pé descalço do calcanhar ao dedo maior…"
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
             />
           </label>
           <div className="mt-3 flex items-center gap-2">
@@ -315,7 +315,7 @@ export default function ClienteMedidas() {
           <EsqueletoDeBloco altura="h-28" />
         </div>
       ) : lista.length === 0 && !rasc ? (
-        <p className="rounded-xl border border-dashed border-white/10 bg-[#0e0e16] px-6 py-8 text-center text-sm text-zinc-500">
+        <p className="rounded-xl border border-dashed border-white/10 bg-surface-raised px-6 py-8 text-center text-sm text-zinc-500">
           <Ruler size={20} className="mx-auto mb-2 text-zinc-600" />
           Nenhuma tabela ainda. Clique em <b>Importar modelos</b> (já vem com as marcas prontas),
           suba um <b>CSV</b>, ou crie uma <b>nova tabela</b>.
@@ -323,7 +323,7 @@ export default function ClienteMedidas() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {lista.map((t) => (
-            <div key={t.id} className="flex flex-col rounded-xl border border-white/5 bg-[#0e0e16] p-4">
+            <div key={t.id} className="flex flex-col rounded-xl border border-white/5 bg-surface-raised p-4">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-zinc-100">{t.nome || "(sem nome)"}</p>
