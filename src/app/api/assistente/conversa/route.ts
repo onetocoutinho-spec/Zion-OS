@@ -36,6 +36,7 @@ import {
 } from "@/lib/agentes/conversaComFerramentas";
 import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
 import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
+import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
 import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
 import {
   executarFerramenta,
@@ -731,12 +732,21 @@ export async function POST(request: Request) {
         });
       /** Estourou o TEMPO (não os passos). Decidido antes de cada passo. */
       let semTempo = false;
+      /** O navegador abortou ("Parar"). Decidido antes de cada passo. */
+      let cancelado = false;
 
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
           // ---- O ORÇAMENTO DE TEMPO. Ver `ORCAMENTO_DO_LACO_MS`.
           if (passo > 0 && relogio.ms() > ORCAMENTO_DO_LACO_MS) {
             semTempo = true;
+            break;
+          }
+          // ---- "PARAR". O navegador abortou o fetch: ninguém vai ler o que o
+          // próximo passo produziria, e cada passo é pago. O que já foi lido
+          // fica no banco (as falas do turno), então "continua" retoma.
+          if (passo > 0 && request.signal?.aborted) {
+            cancelado = true;
             break;
           }
           passos = passo + 1;
@@ -1228,7 +1238,26 @@ export async function POST(request: Request) {
             // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
             // ferramenta roda, no lugar do silêncio.
             mandar({ tipo: "ferramenta", nome: c.nome });
-            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+            // UMA FERRAMENTA QUE EXPLODE NÃO DERRUBA O TURNO.
+            //
+            // O padrão das ferramentas é devolver `{ erro }` — o modelo lê a
+            // recusa e narra. Mas uma exceção de repositório dentro de qualquer
+            // uma delas (banco fora, coluna ausente) subia até o catch genérico
+            // e virava "Não consegui responder agora" — sem dizer QUAL fonte
+            // falhou, e jogando fora o que as outras ferramentas já tinham
+            // lido. Agora a exceção vira saída da ferramenta, com a fonte, e o
+            // modelo diz "não consegui ler X" em vez de nada.
+            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx).catch((e: unknown) => {
+              console.error(`[assistente/conversa] ferramenta ${c.nome} falhou:`, e);
+              return {
+                saida: {
+                  erro: `Não consegui consultar "${rotuloDaFerramenta(c.nome)}" agora.`,
+                  fonte: c.nome,
+                  comoResponder:
+                    "Diga que NÃO conseguiu consultar essa fonte e o que isso impede. Não preencha o que faltou com estimativa. Se outras ferramentas responderam, use o que elas devolveram.",
+                },
+              } as Awaited<ReturnType<typeof executarFerramenta>>;
+            });
 
             // A AÇÃO ACONTECE AQUI, não no domínio.
             //
@@ -1524,10 +1553,15 @@ export async function POST(request: Request) {
         // Duas portas de saída, duas frases: passos esgotados é "me perdi";
         // tempo esgotado é "demorei demais" — e o que já foi lido continua no
         // histórico do banco, então "continua" retoma de onde parou.
-        const textoDoEstouro = semTempo
-          ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
-          : "Me perdi no meio do caminho. Pode reformular?";
-        await registrar(semTempo ? "timeout" : "parcial", semTempo ? "orcamento_de_tempo" : "teto_de_passos");
+        const textoDoEstouro = cancelado
+          ? "Parei a pedido. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+          : semTempo
+            ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+            : "Me perdi no meio do caminho. Pode reformular?";
+        await registrar(
+          semTempo ? "timeout" : "parcial",
+          cancelado ? "cancelado_pelo_navegador" : semTempo ? "orcamento_de_tempo" : "teto_de_passos"
+        );
         if (conversaId) {
           await gravarTurno(clienteDaSessao, conversaId, {
             pergunta: mensagem,

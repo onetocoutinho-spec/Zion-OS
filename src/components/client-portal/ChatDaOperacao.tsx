@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   Sparkles,
@@ -37,6 +38,8 @@ import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
 import type { Consequencia } from "@/modules/workspace/domain/consequencia";
 import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
 import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTela";
+import { continuacoes, sugestoesDoContexto } from "@/modules/assistant/domain/sugestoesDoContexto";
+import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -315,24 +318,10 @@ interface Turno {
   erro?: string;
 }
 
-/**
- * Sugestões de partida.
- *
- * Uma caixa de texto vazia com "pergunte alguma coisa" transfere para quem
- * pergunta o trabalho de adivinhar o vocabulário. Estas três são clicáveis e
- * cobrem os três formatos de resposta — número, passo e lista.
- */
-const SUGESTOES_LOJA = [
-  "O que eu resolvo primeiro?",
-  "Quantos produtos estão sem custo?",
-  "Por que não consigo precificar?",
-];
-
-const SUGESTOES_PRODUTO = [
-  "O que falta neste produto?",
-  "Por que ele não pode ser anunciado?",
-  "Quantos produtos estão sem peso?",
-];
+// As sugestões de partida vêm do DOMÍNIO (`sugestoesDoContexto`): por rota e
+// pelo estado medido da loja, e não só quando a conversa está vazia. Eram duas
+// listas fixas aqui, escolhidas por "tem produto aberto ou não", que sumiam
+// depois do primeiro turno — um usuário recorrente nunca mais as via.
 
 export function ChatDaOperacao({
   contexto,
@@ -371,6 +360,9 @@ export function ChatDaOperacao({
   const [frase, setFrase] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [ocupado, setOcupado] = useState(false);
+  const pathname = usePathname();
+  /** A requisição em voo — para o botão "Parar" ter o que parar. */
+  const emVoo = useRef<AbortController | null>(null);
   /**
    * Relógio SÓ para o vencimento do cartão (INC-006).
    *
@@ -399,7 +391,12 @@ export function ChatDaOperacao({
    * operação sem base de comparação e sem saída se o custo doer.
    */
   const [conversando, setConversando] = useState(false);
-  /** Tokens gastos no fio atual — medidos, não estimados. Zera ao trocar de modo. */
+  /**
+   * Tokens gastos no fio atual — medidos, não estimados. Saíram da TELA do
+   * lojista (métrica interna de custo não é informação dele); ficam aqui para
+   * telemetria e depuração via React DevTools.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ver acima
   const [tokensDoFio, setTokensDoFio] = useState(0);
   /** O fio. Vive aqui, não no servidor: fechar a aba encerra a conversa. */
   const [falas, setFalas] = useState<readonly Fala[]>([]);
@@ -442,7 +439,14 @@ export function ChatDaOperacao({
   }, [clienteId]);
 
   useEffect(() => {
-    fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // SÓ quando já se está no fim. `turnos` muda a cada delta de texto, e o
+    // scroll forçado dezenas de vezes por segundo sobrepunha qualquer rolagem
+    // manual — ninguém conseguia reler o começo enquanto a resposta chegava.
+    const fim = fimDaLista.current;
+    const lista = fim?.parentElement;
+    if (!fim || !lista) return;
+    const distanciaDoFim = lista.scrollHeight - lista.scrollTop - lista.clientHeight;
+    if (distanciaDoFim < 120) fim.scrollIntoView({ behavior: "auto", block: "nearest" });
   }, [turnos]);
 
   // O tique só roda enquanto existe cartão vivo — turno com autorização e sem
@@ -527,6 +531,8 @@ export function ChatDaOperacao({
       setFrase("");
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
+      const controle = new AbortController();
+      emVoo.current = controle;
       try {
         // O caminho de conversa vira FUNÇÃO porque agora tem dois chamadores: o
         // modo explícito e a escalada automática de uma pergunta que a rota
@@ -558,7 +564,8 @@ export function ChatDaOperacao({
               produtoAbertoId: contexto.produto?.id ?? null,
               ...(conversaId ? { conversaId } : {}),
             },
-            aoVivo
+            aoVivo,
+            controle.signal
           );
           // O id do SERVIDOR é a autoridade. Se o que mandamos não existia, era
           // malformado ou de outro cliente, `garantirConversa` criou outro — e é
@@ -752,13 +759,22 @@ export function ChatDaOperacao({
           )
         );
       } catch (e) {
-        const erro = e instanceof Error ? e.message : "Não consegui responder agora.";
+        // PARAR não é erro: a pessoa pediu. O que já chegou fica na tela, e a
+        // linha diz que parou a pedido. A resposta parcial também fica nos
+        // outros erros — quem já leu metade não perde a metade.
+        const parou = controle.signal.aborted;
+        const erro = parou
+          ? "Parei a pedido. O que chegou até aqui está acima."
+          : e instanceof Error
+            ? e.message
+            : "Não consegui responder agora.";
         setTurnos((t) => t.map((turno, i) => (i === t.length - 1 ? { ...turno, erro } : turno)));
       } finally {
+        emVoo.current = null;
         setOcupado(false);
       }
     },
-    [contexto, ocupado, produtos, conversando, falas, conversaId, guardarFio]
+    [contexto, ocupado, produtos, conversando, conversaId, guardarFio, clienteId]
   );
 
   /**
@@ -1280,7 +1296,23 @@ export function ChatDaOperacao({
     }
   }
 
-  const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
+  // As sugestões: por rota e estado quando a conversa está vazia; continuações
+  // curtas depois de uma resposta com ferramenta. Nunca durante o voo.
+  const ultimoTurno = turnos[turnos.length - 1];
+  const sugestoes = ocupado
+    ? []
+    : turnos.length === 0
+      ? sugestoesDoContexto({ rota: pathname ?? "", loja: contexto?.loja ?? null, produto: contexto?.produto ?? null })
+      : continuacoes(ultimoTurno?.ferramentas ?? []);
+
+  /** Uma conversa nova: limpa a tela, o fio e o histórico guardado. */
+  function novaConversa() {
+    if (ocupado) return;
+    setTurnos([]);
+    setFalas([]);
+    setTokensDoFio(0);
+    esquecerFio();
+  }
 
   return (
     <div
@@ -1324,11 +1356,19 @@ export function ChatDaOperacao({
       >
         <MessagesSquare size={12} />
         {conversando
-          ? `Conversa contínua ligada — guarda o fio entre as perguntas${
-              tokensDoFio > 0 ? ` · ${tokensDoFio.toLocaleString("pt-BR")} tokens` : ""
-            }. Desligar`
+          ? "Conversa contínua ligada — guarda o fio entre as perguntas. Desligar"
           : "Manter o fio entre as perguntas"}
       </button>
+      {turnos.length > 0 && (
+        <button
+          type="button"
+          onClick={novaConversa}
+          disabled={ocupado}
+          className="ml-3 mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-500 transition hover:text-violet-300 disabled:opacity-50"
+        >
+          Nova conversa
+        </button>
+      )}
 
       {/* Em altura cheia o container existe SEMPRE, mesmo vazio: e ele que
           come o espaco e empurra a barra de digitar para o pe. Sem isso a
@@ -1336,6 +1376,9 @@ export function ChatDaOperacao({
           que a mao espera num chat. */}
       {(alturaCheia || turnos.length > 0) && (
         <div
+          role="log"
+          aria-live="polite"
+          aria-busy={ocupado}
           className={`mt-4 space-y-4 overflow-y-auto pr-1 ${
             alturaCheia ? "min-h-0 flex-1" : "max-h-96"
           }`}
@@ -1347,10 +1390,15 @@ export function ChatDaOperacao({
                 {t.pergunta}
               </p>
               {t.erro ? (
-                <p className="flex items-start gap-2 text-sm text-amber-300">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                  {t.erro}
-                </p>
+                // O que JÁ chegou fica; o erro vai embaixo. Antes o erro
+                // substituía a resposta parcial — quem leu metade perdia a metade.
+                <div className="space-y-2">
+                  {t.texto && <Markdown texto={t.texto} />}
+                  <p className="flex items-start gap-2 text-sm text-amber-300" role="alert">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    {t.erro}
+                  </p>
+                </div>
               ) : t.foto ? (
                 /* A CONFERÊNCIA DA FOTO julga ANTES de subir: 127 anúncios
                    desta conta estão travados por capa pequena, e uma foto que
@@ -1449,8 +1497,17 @@ export function ChatDaOperacao({
                 t.pendencias ||
                 t.preparacao ||
                 t.pricing ||
-                t.propostaDePreco ? (
+                t.propostaDePreco ||
+                (t.ferramentas?.length ?? 0) > 0 ? (
                 <div className="space-y-2">
+                  {/* A ETAPA, não um spinner mudo: enquanto só há chamadas de
+                      ferramenta (o caso comum — o modelo consulta antes de
+                      escrever), a tela diz QUAL fonte está lendo. */}
+                  {ocupado && i === turnos.length - 1 && t.texto === undefined && (t.ferramentas?.length ?? 0) > 0 && (
+                    <p className="flex items-center gap-2 text-sm text-zinc-500" aria-live="polite">
+                      <Loader2 size={14} className="animate-spin" /> Consultando {rotuloDaFerramenta(t.ferramentas![t.ferramentas!.length - 1])}…
+                    </p>
+                  )}
                   {t.texto && <Markdown texto={t.texto} />}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
                   {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
@@ -1531,9 +1588,9 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.ferramentas && t.ferramentas.length > 0 && (
-                    <p className="text-[11px] text-zinc-600">
-                      Consultei: {t.ferramentas.join(" · ")}
+                  {t.ferramentas && t.ferramentas.length > 0 && !(ocupado && i === turnos.length - 1) && (
+                    <p className="text-[11px] text-zinc-500">
+                      Consultei: {[...new Set(t.ferramentas.map(rotuloDaFerramenta))].join(" · ")}
                     </p>
                   )}
                 </div>
@@ -1541,7 +1598,7 @@ export function ChatDaOperacao({
                 <Resposta r={t.resposta} interpretacao={t.interpretacao} />
               ) : ocupado && i === turnos.length - 1 ? (
                 <p className="flex items-center gap-2 text-sm text-zinc-500">
-                  <Loader2 size={14} className="animate-spin" /> Lendo os seus dados…
+                  <Loader2 size={14} className="animate-spin" /> Entendendo a pergunta…
                 </p>
               ) : (
                 /* SEM RESPOSTA E SEM VOO NÃO É CARREGAMENTO.
@@ -1560,7 +1617,7 @@ export function ChatDaOperacao({
         </div>
       )}
 
-      {turnos.length === 0 && (
+      {sugestoes.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {sugestoes.map((s) => (
             <button
@@ -1593,10 +1650,12 @@ export function ChatDaOperacao({
         >
           <Paperclip size={15} />
           <span className="sr-only">Enviar planilha de custos</span>
+          {/* `sr-only`, não `hidden`: `display:none` tira o campo da ordem de
+              tabulação e a importação virava mouse-only. */}
           <input
             type="file"
             accept=".csv,.xlsx,.xls,text/csv,.pdf,application/pdf,image/*"
-            className="hidden"
+            className="sr-only"
             disabled={ocupado}
             onChange={(e) => {
               const arquivo = e.target.files?.[0];
@@ -1612,14 +1671,27 @@ export function ChatDaOperacao({
           disabled={ocupado}
           className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={ocupado || !frase.trim()}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {ocupado ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          <span className="hidden sm:inline">Perguntar</span>
-        </button>
+        {ocupado && emVoo.current ? (
+          // TODA operação longa precisa de saída. Parar aborta o fetch; o
+          // servidor percebe entre um passo e outro e grava o que já leu.
+          <button
+            type="button"
+            onClick={() => emVoo.current?.abort()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-400/10 [@media(pointer:coarse)]:min-h-11"
+          >
+            <Loader2 size={14} className="animate-spin" />
+            <span>Parar</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={ocupado || !frase.trim()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            <Send size={14} />
+            <span className="hidden sm:inline">Perguntar</span>
+          </button>
+        )}
       </form>
     </div>
   );

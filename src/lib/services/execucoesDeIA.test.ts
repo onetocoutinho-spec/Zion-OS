@@ -44,7 +44,8 @@ test("as chamadas aninhadas do chat (título, descrição, palavras) carimbam a 
 test("o turno do chat é registrado nos QUATRO desfechos: ok, parcial, timeout, erro", () => {
   const rota = ler("app/api/assistente/conversa/route.ts");
   assert.match(rota, /await registrar\("ok"\)/);
-  assert.match(rota, /await registrar\(semTempo \? "timeout" : "parcial"/);
+  assert.match(rota, /await registrar\(\s*semTempo \? "timeout" : "parcial"/);
+  assert.match(rota, /cancelado_pelo_navegador/, "o Parar também conta como desfecho");
   assert.match(rota, /await registrar\("erro", msg \|\| "desconhecido"\)/);
   assert.match(rota, /modelo: MODELO_DA_CONVERSA/);
   assert.match(rota, /cacheEscritos: noCacheEscrito/, "o que foi ESCRITO no cache (1,25×) não é medido");

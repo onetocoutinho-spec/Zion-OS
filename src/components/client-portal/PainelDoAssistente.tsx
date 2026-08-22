@@ -16,7 +16,7 @@
  * zero, e ninguém entende por quê.
  */
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessagesSquare, X } from "lucide-react";
 import { ChatDaOperacao } from "./ChatDaOperacao";
@@ -36,6 +36,28 @@ export function PainelDoAssistente() {
 function Painel() {
   const { clienteId } = useClientPortal();
   const [aberto, setAberto] = useState(false);
+  /**
+   * O FOCO tem ida e volta. O gatilho era DESMONTADO no mesmo render em que o
+   * painel abria: o elemento focado deixava de existir, o foco caía no <body>,
+   * e quem usa teclado tabulava pela sidebar inteira até achar o campo. Ao
+   * fechar, idem. Agora o gatilho fica montado (escondido), o painel foca o
+   * primeiro campo ao abrir, e devolve o foco ao gatilho ao fechar.
+   */
+  const gatilho = useRef<HTMLButtonElement | null>(null);
+  const painel = useRef<HTMLElement | null>(null);
+  // Só devolve o foco se o painel ESTEVE aberto: na montagem da página o
+  // efeito roda com `aberto = false`, e focar o gatilho ali roubaria o foco
+  // de onde a pessoa estava.
+  const jaAbriu = useRef(false);
+  useEffect(() => {
+    if (aberto) {
+      jaAbriu.current = true;
+      const campo = painel.current?.querySelector<HTMLElement>("input:not([type=file]), textarea");
+      campo?.focus();
+    } else if (jaAbriu.current) {
+      gatilho.current?.focus({ preventScroll: true });
+    }
+  }, [aberto]);
   /**
    * Qual produto está aberto — lido da URL.
    *
@@ -77,17 +99,21 @@ function Painel() {
 
   return (
     <>
-      {!aberto && (
-        <button
-          type="button"
-          onClick={() => setAberto(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 [@media(pointer:coarse)]:min-h-12"
-          aria-label="Abrir o assistente"
-        >
-          <MessagesSquare size={16} />
-          <span className="hidden sm:inline">Assistente</span>
-        </button>
-      )}
+      <button
+        ref={gatilho}
+        type="button"
+        onClick={() => setAberto(true)}
+        aria-expanded={aberto}
+        aria-controls="painel-do-assistente"
+        className={`fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 [@media(pointer:coarse)]:min-h-12 ${
+          aberto ? "pointer-events-none opacity-0" : ""
+        }`}
+        aria-label="Abrir o assistente"
+        tabIndex={aberto ? -1 : 0}
+      >
+        <MessagesSquare size={16} />
+        <span className="hidden sm:inline">Assistente</span>
+      </button>
 
       {aberto && (
         <>
@@ -99,7 +125,10 @@ function Painel() {
             aria-hidden
           />
           <aside
+            ref={painel}
+            id="painel-do-assistente"
             role="dialog"
+            aria-modal="true"
             aria-label="Assistente"
             className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-white/10 bg-zinc-950 shadow-2xl"
           >

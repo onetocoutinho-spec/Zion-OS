@@ -25,19 +25,48 @@ export type Bloco =
 export type Trecho =
   | { tipo: "texto"; texto: string }
   | { tipo: "forte"; texto: string }
-  | { tipo: "codigo"; texto: string };
+  | { tipo: "codigo"; texto: string }
+  /**
+   * Um link — `[rótulo](destino)` ou uma URL https solta.
+   *
+   * Existe desde 22/08/2026 porque o permalink do anúncio publicado chegava
+   * como TEXTO MORTO: "Está no ar: https://…" sem clique. `destino` só sai
+   * daqui se `destinoPermitido` aceitar — o resto vira texto, não link.
+   */
+  | { tipo: "link"; texto: string; destino: string };
+
+/**
+ * Para onde um link do assistente pode apontar.
+ *
+ * Caminhos internos (`/cliente/...`) e https. Nada de `javascript:`, `data:`,
+ * http puro ou host vazio: o texto vem do modelo, e o modelo lê conteúdo de
+ * fora (títulos importados, PDFs). Um link é o único trecho que executa algo
+ * no clique, então é o único que passa por uma lista.
+ */
+export function destinoPermitido(destino: string): boolean {
+  const d = destino.trim();
+  if (d.startsWith("/") && !d.startsWith("//")) return true;
+  try {
+    const u = new URL(d);
+    return u.protocol === "https:" && u.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Quebra uma linha em trechos com ênfase.
  *
  * A ordem importa: `código` é resolvido ANTES de **negrito**, porque um trecho
- * de código pode conter asteriscos e eles não são ênfase ali dentro.
+ * de código pode conter asteriscos e eles não são ênfase ali dentro. Link
+ * explícito `[x](y)` vem antes da URL solta, senão a URL dentro dos parênteses
+ * casaria sozinha.
  */
 export function trechosDaLinha(linha: string): Trecho[] {
   const saida: Trecho[] = [];
-  // Um passo só, alternando entre os três padrões, para não reprocessar o que
+  // Um passo só, alternando entre os padrões, para não reprocessar o que
   // já virou código.
-  const padrao = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  const padrao = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)\s]+)\)|(https:\/\/[^\s<>()]+[^\s<>().,;:!?])/g;
   let ultimo = 0;
   let m: RegExpExecArray | null;
   while ((m = padrao.exec(linha)) !== null) {
@@ -46,6 +75,13 @@ export function trechosDaLinha(linha: string): Trecho[] {
     }
     if (m[1] !== undefined) saida.push({ tipo: "codigo", texto: m[1] });
     else if (m[2] !== undefined) saida.push({ tipo: "forte", texto: m[2] });
+    else if (m[3] !== undefined && m[4] !== undefined) {
+      if (destinoPermitido(m[4])) saida.push({ tipo: "link", texto: m[3], destino: m[4] });
+      else saida.push({ tipo: "texto", texto: m[0] });
+    } else if (m[5] !== undefined) {
+      if (destinoPermitido(m[5])) saida.push({ tipo: "link", texto: m[5], destino: m[5] });
+      else saida.push({ tipo: "texto", texto: m[5] });
+    }
     ultimo = m.index + m[0].length;
   }
   if (ultimo < linha.length) saida.push({ tipo: "texto", texto: linha.slice(ultimo) });

@@ -188,10 +188,13 @@ export interface PonteirosDaConversa {
 export async function conversar(
   mensagem: string,
   ponteiros: PonteirosDaConversa,
-  aoVivo?: AoVivo
+  aoVivo?: AoVivo,
+  /** Para o botão "Parar": aborta o fetch, e o servidor percebe e para o laço. */
+  signal?: AbortSignal
 ): Promise<RespostaDaConversa> {
   const resposta = await fetch("/api/assistente/conversa", {
     method: "POST",
+    ...(signal ? { signal } : {}),
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       mensagem,
