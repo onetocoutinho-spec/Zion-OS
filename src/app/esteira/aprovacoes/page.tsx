@@ -11,7 +11,6 @@ import {
   Send,
   Rocket,
   ExternalLink,
-  X,
   AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -22,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -403,20 +403,10 @@ function ModalPublicar({
   const semFotos = !Array.isArray(payload.pictures) || payload.pictures.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-surface-raised">
-        <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-          <div>
-            <p className="text-sm font-semibold text-white">Publicar no Mercado Livre</p>
-            <p className="text-xs text-zinc-500">{registro.anuncio?.tituloOtimizado}</p>
-          </div>
-          <button onClick={onFechar} className="text-zinc-500 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+    // A moldura é a primitiva Dialog (foco preso, Esc, aria-modal) — antes
+    // era um fixed inset-0 escrito à mão, sem nada disso.
+    <Dialog aberto aoFechar={onFechar} titulo="Publicar no Mercado Livre" descricao={registro.anuncio?.tituloOtimizado}>
+        <div className="px-5 py-4">
           <p className="mb-2 text-xs text-zinc-400">
             Prévia do que será enviado ao ML (dry-run). Revise antes de publicar de verdade.
           </p>
@@ -450,7 +440,6 @@ function ModalPublicar({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

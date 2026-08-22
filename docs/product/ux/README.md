@@ -36,7 +36,7 @@ Princípio que governa a série: **o Zion OS deve ter experiências diferentes, 
 | 4 Agency overview | `0c2ccc3` | `/` com KPIs clicáveis, "Precisa de atenção" com ação exata, tabela de lojas, 3 estados | KPI de vendas com delta (depende de resumo agregado no banco) |
 | 5 Operar a loja | `8397197` | agência/equipe entram em `/cliente/*` com a loja do contexto; barra "Operando"; seletor na sidebar | migração 064 **aplicada em 2026-08-22** no projeto Supabase principal (ledger 064; varredura `alcance-da-agencia.sql` = 0 linhas) |
 | 6 Onboarding de agência | `aa3f382` | Zion › Agências (criar, vincular lojas), Zion › Usuários, papel `agencia` criável pela UI | e-mail na lista de usuários (exige rota admin) |
-| 7 Design system | `4b84562` | tokens `surface-*` (46 arquivos), Badge⊃Pill, EmptyState⊃VazioAmigavel | Dialog nos 3 modais antigos; `text-[11px]` → `text-xs`; tabelas cruas |
+| 7 Design system | `4b84562` | tokens `surface-*` (46 arquivos), Badge⊃Pill, EmptyState⊃VazioAmigavel; ModalPublicar e MissaoRepublicacao sobre `Dialog` | `PainelDoAssistente` (é painel lateral, não modal — avaliar); `text-[11px]` → `text-xs`; tabelas cruas |
 | 8 Vocabulário + rotas | `b2afaf6` | área "Loja" no portal, colunas Loja/Situação/Nota, redirects canônicos (`/lojas`, `/anuncios`, `/auditoria`, `/loja/*`) | mover as rotas físicas (bloqueado pelo `redirect_uri` do ML em `/cliente/conectar-ml`) |
 
 Verificado no navegador a cada fatia (seeds locais, sem Supabase): seletor, trilha, 403, home, modo operando, redirects, 375px sem scroll horizontal e sem alvo < 44px na home.
