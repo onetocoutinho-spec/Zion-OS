@@ -31,31 +31,75 @@ import type { NextConfig } from "next";
  * do app em lugar nenhum, não há MIME sniffing a preservar, e o referrer
  * completo nunca foi necessário para nada.
  *
- * A CSP vai em `Report-Only` DE PROPÓSITO. Aplicar de uma vez é como a 005:
- * alega e não mede. O Next injeta scripts inline (precisa de nonce ou hash),
- * e as imagens de produto vêm de domínios que o lojista escolhe ao importar
- * do ML — uma `img-src` estrita quebraria a galeria em silêncio. Em
- * Report-Only o navegador reporta o que VIOLARIA e não bloqueia nada: a
- * lista de violações no console é o que diz qual política dá para aplicar.
- * Quando estiver limpa, troca o nome do cabeçalho. Não antes.
+ * A CSP nasceu em Report-Only (21/08/2026) e foi promovida no mesmo dia,
+ * DEPOIS de medida — em dev e em produção, com o navegador aberto no site
+ * real. A medição achou o que o código não mostra: o domínio está atrás da
+ * Cloudflare, que injeta o beacon de Web Analytics
+ * (static.cloudflareinsights.com). Uma CSP escrita só a partir do código
+ * teria quebrado isso em silêncio. Está na política por isso.
+ *
+ * DOIS CABEÇALHOS, de propósito:
+ *
+ *   · `Content-Security-Policy` (BLOQUEIA): a política medida. Fecha o que
+ *     importa hoje — exfiltração por `connect-src` (a sessão do Supabase
+ *     vive no localStorage), script de origem alheia, `object-src`,
+ *     `base-uri`, `form-action`, `frame-ancestors`.
+ *
+ *   · `Content-Security-Policy-Report-Only` (MEDE): a PRÓXIMA promoção —
+ *     `script-src` sem `'unsafe-inline'`. O Next injeta inline no HTML;
+ *     fechar isso exige nonce, e nonce exige middleware, que este projeto
+ *     não tem por decisão. O Report-Only diz quanto quebraria; a decisão
+ *     fica documentada por dados, não por palpite.
+ *
+ * Os dois mandam violações para /api/csp-report, que escreve nos Runtime
+ * Logs (`grep "csp.violacao"`). `disposicao: "enforce"` é algo que QUEBROU
+ * para alguém — olhar no mesmo dia. `"report"` é a medição da próxima.
+ *
+ * As imagens de produto continuam `https:` amplo: a origem é escolhida pelo
+ * lojista ao importar do ML, e não há como enumerá-la.
  */
-const CSP_REPORT_ONLY = [
+const ORIGENS = {
+  supabase: "https://*.supabase.co wss://*.supabase.co",
+  // Beacon do Web Analytics da Cloudflare — medido em produção, não no código.
+  cloudflare: "https://static.cloudflareinsights.com",
+  // Toolbar de preview da Vercel: script + iframe + websocket em vercel.live.
+  // Só aparece em deploy de preview; sem isto, a toolbar quebra e parece bug.
+  vercel: "https://vercel.live wss://*.vercel.live",
+};
+
+const DIRETIVAS_COMUNS = [
   "default-src 'self'",
-  // O Next injeta inline no HTML; 'unsafe-inline' aqui é o ponto de partida
-  // da medição, não o destino. O destino é nonce.
-  "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  // next/font serve a fonte do próprio domínio no build.
   "font-src 'self' data:",
-  // Galeria de produto: origem escolhida na importação. Medir antes de fechar.
   "img-src 'self' data: blob: https:",
-  // Supabase: REST + Realtime (wss). O host exato vem da env no build; aqui
-  // fica o sufixo do projeto para a política ser a mesma em preview e prod.
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+  `connect-src 'self' ${ORIGENS.supabase} ${ORIGENS.cloudflare} ${ORIGENS.vercel}`,
+  `frame-src ${ORIGENS.vercel}`,
   "frame-ancestors 'none'",
   "form-action 'self'",
   "base-uri 'self'",
   "object-src 'none'",
+  "report-uri /api/csp-report",
+];
+
+/**
+ * `'unsafe-eval'` SÓ em desenvolvimento local. Medido em 21/08/2026 com a
+ * política em bloqueio no `next dev`: o React avisou, com todas as letras,
+ * que usa eval() em modo de desenvolvimento para reconstruir stacks, e que
+ * "will never use eval() in production mode". Em qualquer deploy na Vercel
+ * (`VERCEL_ENV` presente — production E preview) a diretiva não entra.
+ */
+const EVAL_EM_DEV = process.env.VERCEL_ENV ? "" : " 'unsafe-eval'";
+
+/** A política que BLOQUEIA: medida, e com o inline que o Next precisa. */
+const CSP = [
+  `script-src 'self' 'unsafe-inline'${EVAL_EM_DEV} ${ORIGENS.cloudflare} ${ORIGENS.vercel}`,
+  ...DIRETIVAS_COMUNS,
+].join("; ");
+
+/** A política que MEDE a próxima promoção: sem 'unsafe-inline' em script. */
+const CSP_REPORT_ONLY = [
+  `script-src 'self'${EVAL_EM_DEV} ${ORIGENS.cloudflare} ${ORIGENS.vercel}`,
+  ...DIRETIVAS_COMUNS,
 ].join("; ");
 
 const CABECALHOS_DE_SEGURANCA = [
@@ -69,6 +113,7 @@ const CABECALHOS_DE_SEGURANCA = [
   // domínio próprio também. Sem `preload`: entrar na lista é irreversível
   // e é decisão do dono do domínio.
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+  { key: "Content-Security-Policy", value: CSP },
   { key: "Content-Security-Policy-Report-Only", value: CSP_REPORT_ONLY },
 ];
 
