@@ -371,7 +371,7 @@ export default function ClienteOtimizar() {
               <button
                 key={f.key}
                 onClick={() => setFerramentaKey(f.key)}
-                className="group flex h-full flex-col rounded-xl border border-white/5 bg-[#0e0e16] p-4 text-left transition-colors hover:border-violet-500/30"
+                className="group flex h-full flex-col rounded-xl border border-white/5 bg-surface-raised p-4 text-left transition-colors hover:border-violet-500/30"
               >
                 <div className="flex items-center gap-2.5">
                   <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${TONE_ICON[f.tone]}`}>
@@ -397,7 +397,7 @@ export default function ClienteOtimizar() {
             value={buscaProd}
             onChange={(e) => setBuscaProd(e.target.value)}
             placeholder="Buscar produto…"
-            className="mb-3 w-full rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
+            className="mb-3 w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500"
           />
           <ul className="max-h-96 divide-y divide-white/[0.04] overflow-y-auto">
             {produtosFiltrados.map((p) => {

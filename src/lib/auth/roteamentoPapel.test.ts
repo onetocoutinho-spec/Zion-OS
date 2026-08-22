@@ -33,9 +33,12 @@ test("equipe em / (e rotas da agência) → ok (fica no Painel da Agência)", ()
   assert.deepEqual(decidirRota(equipe, "/vendas"), { tipo: "ok" });
 });
 
-test("equipe em /cliente → redireciona para / (não fica preso na casca do cliente)", () => {
-  assert.deepEqual(decidirRota(equipe, "/cliente"), { tipo: "redirect", para: "/" });
-  assert.deepEqual(decidirRota(equipe, "/cliente/produtos"), { tipo: "redirect", para: "/" });
+test("equipe em /cliente → ok: OPERA a loja do contexto (fatia 5)", () => {
+  // Até a fatia 5 a equipe era expulsa do portal — ela via a casca do lojista
+  // com loja nula. Agora a casca resolve a loja pelo contexto global e mostra
+  // a barra "Operando"; sem loja, pede para escolher. Ver ClientPortalShell.
+  assert.deepEqual(decidirRota(equipe, "/cliente"), { tipo: "ok" });
+  assert.deepEqual(decidirRota(equipe, "/cliente/produtos"), { tipo: "ok" });
 });
 
 // ---- decidirRota: CLIENTE ----
@@ -100,12 +103,12 @@ test("o que não se reconhece vira null — nunca equipe", () => {
 // A AGÊNCIA MORA NO PAINEL, NÃO NO PORTAL
 // ---------------------------------------------------------------------------
 
-test("agência fora do portal segue; dentro do portal é mandada para o painel", () => {
+test("agência segue no painel E entra no portal para operar a loja do contexto", () => {
   const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
   assert.deepEqual(decidirRota(agencia, "/clientes"), { tipo: "ok" });
   assert.deepEqual(decidirRota(agencia, "/esteira"), { tipo: "ok" });
-  assert.deepEqual(decidirRota(agencia, "/cliente"), { tipo: "redirect", para: "/" });
-  assert.deepEqual(decidirRota(agencia, "/cliente/produtos"), { tipo: "redirect", para: "/" });
+  assert.deepEqual(decidirRota(agencia, "/cliente"), { tipo: "ok" });
+  assert.deepEqual(decidirRota(agencia, "/cliente/produtos"), { tipo: "ok" });
 });
 
 test("agência SEM vínculo é perfil incompleto — pela mesma razão que cliente sem empresa", () => {
@@ -135,16 +138,13 @@ test("a agência ENTRA na página de conexão do marketplace", () => {
   assert.deepEqual(decidirRota(agencia, "/cliente/conectar-ml"), { tipo: "ok" });
 });
 
-test("e continua expulsa do resto do portal", () => {
-  // A exceção é de UMA rota. Se ela vazasse para o prefixo, a agência veria a
-  // casca do portal com a loja de quem está logado — que não existe para ela.
+test("e o resto do portal também abre — é a MESMA casca, com a loja do contexto", () => {
+  // Antes a exceção era de UMA rota (o OAuth). Agora o portal inteiro é a
+  // Store experience de quem opera; a segurança continua no RLS e no portão
+  // loja_em_operacao() (migração 064), não neste redirecionamento.
   const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
   for (const rota of ["/cliente", "/cliente/produtos", "/cliente/vendas", "/cliente/conectar-ml/x"]) {
-    assert.deepEqual(
-      decidirRota(agencia, rota),
-      { tipo: "redirect", para: "/" },
-      `${rota} deixou a agência entrar`
-    );
+    assert.deepEqual(decidirRota(agencia, rota), { tipo: "ok" }, `${rota} fechou para a agência`);
   }
 });
 
@@ -162,10 +162,33 @@ test("a lojista continua entrando na mesma página, como sempre", () => {
   );
 });
 
-test("a equipe continua sendo mandada para o painel", () => {
-  // Ela não conecta marketplace por esta tela; se cair aqui, foi engano.
+test("a equipe também conecta o marketplace de uma loja pelo portal", () => {
   assert.deepEqual(
     decidirRota({ papel: "equipe", clienteId: null }, "/cliente/conectar-ml"),
-    { tipo: "redirect", para: "/" }
+    { tipo: "ok" }
   );
+});
+
+// ---------------------------------------------------------------------------
+// OFERECER ≠ ENTREGAR — também pela URL (fatia 3, docs/product/ux/02 P1)
+// ---------------------------------------------------------------------------
+
+test("agência digitando rota da Zion recebe 'proibido' — nunca tela vazia", () => {
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  for (const rota of ["/agentes", "/ail/padroes", "/ail/inteligencia", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
+    assert.deepEqual(decidirRota(agencia, rota), { tipo: "proibido" }, `${rota} abriu para a agência`);
+  }
+});
+
+test("agência alcança o que opera, inclusive detalhe e busca", () => {
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  for (const rota of ["/", "/clientes", "/clientes/abc", "/produtos/xyz/editar", "/esteira/lote", "/fila-otimizacao", "/otimizar-lote", "/vendas", "/busca"]) {
+    assert.deepEqual(decidirRota(agencia, rota), { tipo: "ok" }, `${rota} fechou para a agência`);
+  }
+});
+
+test("equipe alcança tudo, inclusive /z", () => {
+  for (const rota of ["/", "/agentes", "/z", "/clientes/abc"]) {
+    assert.deepEqual(decidirRota(equipe, rota), { tipo: "ok" });
+  }
 });

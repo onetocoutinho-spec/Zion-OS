@@ -17,6 +17,8 @@ export interface ClienteRow {
   proxima_acao: string | null;
   risco: string;
   observacoes: string | null;
+  /** A agência que opera a loja (migração 054). NULL = loja sem agência, o padrão. */
+  agencia_id?: string | null;
 }
 
 export interface OnboardingRow {

@@ -6,6 +6,7 @@
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { lerPapel, type PapelPerfil } from "../auth/roteamentoPapel";
+import { argumentoDaLoja } from "../contexto/lojaEmOperacao";
 
 export interface Perfil {
   papel: PapelPerfil;
@@ -141,10 +142,11 @@ export interface QuotaEsteira {
   restante: number;
 }
 
-export async function quotaEsteira(): Promise<QuotaEsteira> {
+export async function quotaEsteira(clienteId?: string | null): Promise<QuotaEsteira> {
   if (!supabaseConfigurado) return { limite: 30, usado: 0, restante: 30 };
   try {
-    const { data } = await getSupabase().rpc("quota_esteira");
+    // Com loja em operação (agência/equipe), a sobrecarga da 064; senão a de sempre.
+    const { data } = await getSupabase().rpc("quota_esteira", argumentoDaLoja(clienteId));
     const limite = Number((data as { limite?: number })?.limite ?? 0);
     const usado = Number((data as { usado?: number })?.usado ?? 0);
     return { limite, usado, restante: Math.max(0, limite - usado) };

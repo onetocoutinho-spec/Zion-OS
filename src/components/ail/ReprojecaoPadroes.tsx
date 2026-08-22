@@ -41,7 +41,7 @@ export function ReprojecaoPadroes({ aoConcluir }: { aoConcluir?: () => void }) {
           type="button"
           onClick={executar}
           disabled={executando}
-          className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#12121c] px-3 py-1.5 font-medium text-zinc-200 transition-colors hover:border-white/20 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-surface-input px-3 py-1.5 font-medium text-zinc-200 transition-colors hover:border-white/20 disabled:opacity-50"
         >
           <RefreshCw size={13} className={executando ? "animate-spin" : ""} />
           {executando ? "Reprojetando…" : "Reprojetar padrões"}

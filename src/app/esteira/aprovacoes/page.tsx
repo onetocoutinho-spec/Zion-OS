@@ -11,15 +11,17 @@ import {
   Send,
   Rocket,
   ExternalLink,
-  X,
   AlertTriangle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatDateTime } from "@/lib/format";
 import {
@@ -46,20 +48,20 @@ const HEADERS = [
   "Pend.",
   "Origem",
   "Tipo",
-  "Status",
+  "Situação",
   "Criado",
   "",
 ];
 
 export default function AprovacoesPage() {
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const [status, setStatus] = useState("Todos");
   const [busy, setBusy] = useState(false);
 
   const { data } = useLiveQuery(listarAnunciosGerados);
   const registros = data ?? [];
 
-  const clientes = useMemo(() => [...new Set(registros.map((r) => r.cliente))], [registros]);
+  const lojasComRegistro = useMemo(() => [...new Set(registros.map((r) => r.clienteId))], [registros]);
 
   const aguardando = registros.filter((r) => r.status === "aguardando_aprovacao").length;
   const rascunhos = registros.filter((r) => r.status === "rascunho").length;
@@ -68,7 +70,7 @@ export default function AprovacoesPage() {
 
   const filtrados = registros.filter(
     (r) =>
-      (cliente === "Todos" || r.cliente === cliente) &&
+      (!lojaId || r.clienteId === lojaId) &&
       (status === "Todos" || ROTULO_STATUS_ANUNCIO_GERADO[r.status] === status)
   );
 
@@ -95,9 +97,7 @@ export default function AprovacoesPage() {
       <ConteudoAprovacoes
         registros={registros}
         filtrados={filtrados}
-        clientes={clientes}
-        cliente={cliente}
-        setCliente={setCliente}
+        lojasComRegistro={lojasComRegistro}
         status={status}
         setStatus={setStatus}
         busy={busy}
@@ -113,9 +113,7 @@ export default function AprovacoesPage() {
 function ConteudoAprovacoes({
   registros,
   filtrados,
-  clientes,
-  cliente,
-  setCliente,
+  lojasComRegistro,
   status,
   setStatus,
   busy,
@@ -126,9 +124,7 @@ function ConteudoAprovacoes({
 }: {
   registros: AnuncioGeradoRegistro[];
   filtrados: AnuncioGeradoRegistro[];
-  clientes: string[];
-  cliente: string;
-  setCliente: (v: string) => void;
+  lojasComRegistro: string[];
   status: string;
   setStatus: (v: string) => void;
   busy: boolean;
@@ -226,7 +222,7 @@ function ConteudoAprovacoes({
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+        <FiltroDeLoja apenasIds={lojasComRegistro} />
         <FilterSelect
           label="Status"
           value={status}
@@ -407,20 +403,10 @@ function ModalPublicar({
   const semFotos = !Array.isArray(payload.pictures) || payload.pictures.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
-        <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-          <div>
-            <p className="text-sm font-semibold text-white">Publicar no Mercado Livre</p>
-            <p className="text-xs text-zinc-500">{registro.anuncio?.tituloOtimizado}</p>
-          </div>
-          <button onClick={onFechar} className="text-zinc-500 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+    // A moldura é a primitiva Dialog (foco preso, Esc, aria-modal) — antes
+    // era um fixed inset-0 escrito à mão, sem nada disso.
+    <Dialog aberto aoFechar={onFechar} titulo="Publicar no Mercado Livre" descricao={registro.anuncio?.tituloOtimizado}>
+        <div className="px-5 py-4">
           <p className="mb-2 text-xs text-zinc-400">
             Prévia do que será enviado ao ML (dry-run). Revise antes de publicar de verdade.
           </p>
@@ -454,7 +440,6 @@ function ModalPublicar({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

@@ -5,19 +5,22 @@
 // para ser testável com mocks. A rota /api/usuarios liga estas funções ao
 // Supabase Admin (service_role, só no servidor).
 //
-// Modelo real do projeto: papel ∈ {equipe, cliente} em `perfis`; cliente é
-// escopado por `cliente_id` (não há `team_id`/`company_id`). O "tenant" é a
-// própria agência Zion — só usuário de equipe pode criar usuários.
+// Modelo real do projeto: papel ∈ {equipe, cliente, agencia} em `perfis`.
+// cliente é escopado por `cliente_id`; agencia por `agencia_id` (migração 054).
+// Só usuário de equipe pode criar usuários — e até a fatia 6 (docs/product/ux)
+// o papel `agencia` só nascia por insert manual no banco.
 
-export const PAPEIS_PERMITIDOS = ["equipe", "cliente"] as const;
+export const PAPEIS_PERMITIDOS = ["equipe", "cliente", "agencia"] as const;
 export type PapelNovo = (typeof PAPEIS_PERMITIDOS)[number];
 
 export interface DadosNovoUsuario {
   nome: string;
   email: string;
   papel: PapelNovo;
-  /** Obrigatório e válido para cliente; sempre null para equipe. */
+  /** Obrigatório e válido para cliente; sempre null para equipe e agência. */
   clienteId: string | null;
+  /** Obrigatório e válido para agência; sempre null para os outros. */
+  agenciaId: string | null;
 }
 
 export type ValidacaoPayload =
@@ -26,7 +29,7 @@ export type ValidacaoPayload =
 
 // Só estes campos são aceitos do navegador. Qualquer outro (team_id, user_id,
 // ativo, role, service_role, etc.) é REJEITADO — o cliente não decide privilégio.
-const CAMPOS_PERMITIDOS = new Set(["nome", "email", "papel", "clienteId"]);
+const CAMPOS_PERMITIDOS = new Set(["nome", "email", "papel", "clienteId", "agenciaId"]);
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_NOME = 120;
@@ -56,24 +59,31 @@ export function validarPayloadNovoUsuario(bruto: unknown): ValidacaoPayload {
   }
 
   const papel = obj.papel;
-  if (papel !== "equipe" && papel !== "cliente") {
+  if (papel !== "equipe" && papel !== "cliente" && papel !== "agencia") {
     return { ok: false, erro: "Papel inválido.", campo: "papel" };
   }
 
   let clienteId: string | null = null;
+  let agenciaId: string | null = null;
   if (papel === "cliente") {
     if (typeof obj.clienteId !== "string" || !RE_UUID.test(obj.clienteId)) {
-      return { ok: false, erro: "Empresa obrigatória e válida para cliente.", campo: "clienteId" };
+      return { ok: false, erro: "Loja obrigatória e válida para lojista.", campo: "clienteId" };
     }
     clienteId = obj.clienteId;
-  } else {
-    // Equipe não recebe empresa; se vier valor, rejeita (não decide livremente).
-    if (obj.clienteId != null && obj.clienteId !== "") {
-      return { ok: false, erro: "Usuário de equipe não recebe empresa.", campo: "clienteId" };
+  } else if (obj.clienteId != null && obj.clienteId !== "") {
+    // Só o lojista recebe loja; se vier valor, rejeita (não decide livremente).
+    return { ok: false, erro: "Só o lojista recebe uma loja.", campo: "clienteId" };
+  }
+  if (papel === "agencia") {
+    if (typeof obj.agenciaId !== "string" || !RE_UUID.test(obj.agenciaId)) {
+      return { ok: false, erro: "Agência obrigatória e válida para usuário de agência.", campo: "agenciaId" };
     }
+    agenciaId = obj.agenciaId;
+  } else if (obj.agenciaId != null && obj.agenciaId !== "") {
+    return { ok: false, erro: "Só o usuário de agência recebe uma agência.", campo: "agenciaId" };
   }
 
-  return { ok: true, dados: { nome, email, papel, clienteId } };
+  return { ok: true, dados: { nome, email, papel, clienteId, agenciaId } };
 }
 
 // ---- Orquestração (dependências injetadas → testável sem Supabase) ----
@@ -81,12 +91,14 @@ export function validarPayloadNovoUsuario(bruto: unknown): ValidacaoPayload {
 export interface DepsCriacaoUsuario {
   /** A empresa (cliente) existe? (mesmo tenant = existe em `clientes`). */
   empresaExiste(clienteId: string): Promise<boolean>;
+  /** A agência existe em `agencias`? Opcional só por compatibilidade dos mocks. */
+  agenciaExiste?(agenciaId: string): Promise<boolean>;
   /** Usuário do Auth já existe para este e-mail? (idempotência) */
   buscarAuthPorEmail(email: string): Promise<{ id: string } | null>;
   /** Convida (cria) o usuário no Auth. Retorna o id. NÃO retorna senha/token. */
   convidarAuthUser(email: string, nome: string): Promise<{ id: string }>;
   /** Cria o perfil (id = user_id do Auth). */
-  criarPerfil(userId: string, papel: PapelNovo, clienteId: string | null, nome: string): Promise<void>;
+  criarPerfil(userId: string, papel: PapelNovo, clienteId: string | null, nome: string, agenciaId?: string | null): Promise<void>;
   /** Compensação: remove SOMENTE o usuário recém-criado nesta operação. */
   removerAuthUser(userId: string): Promise<void>;
 }
@@ -95,6 +107,7 @@ export type ResultadoCriacao =
   | { tipo: "convidado"; userId: string } //         sucesso (Auth + perfil)
   | { tipo: "ja_existe" } //                          e-mail já cadastrado (idempotente)
   | { tipo: "empresa_invalida" } //                   cliente sem empresa válida
+  | { tipo: "agencia_invalida" } //                   agência inexistente
   | { tipo: "falha_perfil" } //                       Auth criado, perfil falhou, usuário removido (compensado)
   | { tipo: "inconsistente"; userId: string }; //     compensação também falhou (requer intervenção)
 
@@ -114,6 +127,13 @@ export async function criarUsuarioComPerfil(
     }
   }
 
+  // 1b) agência obrigatória e existente para papel agencia
+  if (dados.papel === "agencia") {
+    if (!dados.agenciaId || !deps.agenciaExiste || !(await deps.agenciaExiste(dados.agenciaId))) {
+      return { tipo: "agencia_invalida" };
+    }
+  }
+
   // 2) idempotência: e-mail já cadastrado → não duplica
   const existente = await deps.buscarAuthPorEmail(dados.email);
   if (existente) return { tipo: "ja_existe" };
@@ -123,7 +143,7 @@ export async function criarUsuarioComPerfil(
 
   // 4) cria o perfil; 5) compensa se falhar
   try {
-    await deps.criarPerfil(novo.id, dados.papel, dados.clienteId, dados.nome);
+    await deps.criarPerfil(novo.id, dados.papel, dados.clienteId, dados.nome, dados.agenciaId);
     return { tipo: "convidado", userId: novo.id };
   } catch {
     try {

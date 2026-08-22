@@ -15,12 +15,12 @@ import { lojasConectadas } from "@/lib/services/canaisMarketplace";
 import { formatDate } from "@/lib/format";
 
 const HEADERS = [
-  "Empresa",
+  "Loja",
   "Segmento",
   "Marketplaces",
   "Mercado Livre",
   "Plano",
-  "Status",
+  "Situação",
   "Risco",
   "Entrada",
   "Próxima reunião",

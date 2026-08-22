@@ -58,7 +58,7 @@ export function MargemMinima({
             Sua margem mínima
           </label>
           <div className="mt-1 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 focus-within:border-violet-500/50">
+            <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 focus-within:border-violet-500/50">
               <input
                 id="margem-minima"
                 type="number"

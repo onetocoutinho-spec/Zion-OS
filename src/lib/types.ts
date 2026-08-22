@@ -35,6 +35,8 @@ export interface Cliente {
   proximaAcao: string;
   risco: Risco;
   observacoes: string;
+  /** A agência que opera a loja; `null` = loja sem agência (self-service). */
+  agenciaId: string | null;
 }
 
 export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Com erro";

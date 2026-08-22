@@ -27,11 +27,28 @@
 :root {
   --background: #08080d;
   --foreground: #e4e4e7;
+  /*
+   * AS SUPERFÍCIES DO PRODUTO — três valores que estavam copiados à mão em
+   * 50+ arquivos (`bg-[#0e0e16]` em 24, `bg-[#12121c]` em 27, `bg-[#0b0b12]`
+   * em 2). Agora são tokens: `bg-surface-raised`, `bg-surface-input`,
+   * `bg-surface-sidebar`. Mudar a cor de "cartão" é mudar UMA linha.
+   *
+   * De propósito NÃO importa src/design/foundation: aquele é o sistema
+   * tokenizado da Vertical Slice Zero (/z), e o gerador dele diz "jamais no
+   * globals.css de produção". Consolidar é tokenizar o que a produção JÁ usa.
+   * (docs/product/ux/07-COMPONENT-IMPACT.md, "Tokens")
+   */
+  --surface-raised: #0e0e16;
+  --surface-input: #12121c;
+  --surface-sidebar: #0b0b12;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-input: var(--surface-input);
+  --color-surface-sidebar: var(--surface-sidebar);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);

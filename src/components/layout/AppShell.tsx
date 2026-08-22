@@ -4,54 +4,132 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, Search, Zap } from "lucide-react";
-import { NAV_ITEMS, navDoPapel, type NavItem } from "./nav";
+import { GRUPOS, gruposDoPapel, type NavGrupo, type NavItem } from "./nav";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 import { useTituloDaAba } from "./tituloDaAba";
+import { LojaAtualProvider, useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { buscarAgencia } from "@/lib/services/agencias";
+import { SeletorDeLoja } from "./SeletorDeLoja";
+import { EsqueletoDeTexto } from "@/components/ui/Skeleton";
+
+/** O item "casa" com a rota se ele ou um filho dele for o prefixo dela. */
+function itemCasa(item: NavItem, pathname: string): boolean {
+  const hrefs = [item.href, ...(item.filhos?.map((f) => f.href) ?? [])];
+  return hrefs.some((h) => (h === "/" ? pathname === "/" : pathname === h || pathname.startsWith(h + "/")));
+}
+
+/** O filho que casa com a rota — o de prefixo MAIS LONGO vence ("/esteira" não rouba "/esteira/aprovacoes"). */
+function filhoAtivo(item: NavItem, pathname: string) {
+  return (item.filhos ?? [])
+    .filter((f) => pathname === f.href || pathname.startsWith(f.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+}
+
+/** O rótulo da tela atual: o filho mais específico, senão o item, senão o 1º. */
+function telaAtual(grupos: NavGrupo[], pathname: string): string {
+  const itens = grupos.flatMap((g) => g.itens);
+  const item = itens.find((i) => itemCasa(i, pathname));
+  if (!item) return GRUPOS[0].itens[0].label;
+  const filho = filhoAtivo(item, pathname);
+  return filho && filho.href !== item.href ? `${item.label} · ${filho.label}` : item.label;
+}
 
 function Sidebar({
   onNavigate,
-  itens,
+  grupos,
+  perfilCarregado,
+  nomeDaAgencia,
+  podeAdicionarLoja,
 }: {
   onNavigate?: () => void;
-  itens: NavItem[];
+  grupos: NavGrupo[];
+  /** Enquanto o perfil não chega, o menu é um esqueleto — nunca o da Zion inteira. */
+  perfilCarregado: boolean;
+  nomeDaAgencia: string | null;
+  podeAdicionarLoja: boolean;
 }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full flex-col bg-[#0b0b12] border-r border-white/5">
+    <div className="flex h-full flex-col bg-surface-sidebar border-r border-white/5">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/20">
           <Zap className="h-4.5 w-4.5 text-white" size={18} />
         </div>
-        <div>
-          <p className="text-sm font-semibold tracking-wide text-white">Zion OS</p>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Zion Company</p>
-        </div>
+        <p className="text-sm font-semibold tracking-wide text-white">Zion OS</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {itens.map((item) => {
-          const active =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-violet-500/10 text-violet-300 font-medium"
-                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              }`}
-            >
-              <Icon size={17} className={active ? "text-violet-400" : "text-zinc-500"} />
-              {item.label}
-            </Link>
-          );
-        })}
+      {/* O CONTEXTO — agência em cima, loja embaixo; clicar troca (Ctrl+K).
+          É a resposta permanente a "onde estou?" (docs/product/ux/03). */}
+      <div className="px-3 pt-3">
+        <SeletorDeLoja nomeDaAgencia={nomeDaAgencia} podeAdicionar={podeAdicionarLoja} />
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5" aria-busy={!perfilCarregado}>
+        {!perfilCarregado &&
+          Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2">
+              <span className="h-4 w-4 animate-pulse rounded bg-white/10" />
+              <EsqueletoDeTexto linhas={1} className={i % 3 === 0 ? "w-28" : i % 3 === 1 ? "w-20" : "w-24"} />
+            </div>
+          ))}
+        {perfilCarregado &&
+          grupos.map((grupo) => (
+            <div key={grupo.titulo ?? "inicio"} className="pb-3">
+              {grupo.titulo && (
+                <p
+                  className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-widest text-zinc-600"
+                  title={grupo.pergunta}
+                >
+                  {grupo.titulo}
+                </p>
+              )}
+              {grupo.itens.map((item) => {
+                const active = itemCasa(item, pathname);
+                const Icon = item.icon;
+                return (
+                  <div key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? "bg-violet-500/10 text-violet-300 font-medium"
+                          : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                      }`}
+                    >
+                      <Icon size={17} className={active ? "text-violet-400" : "text-zinc-500"} />
+                      {item.label}
+                    </Link>
+                    {/* O 2º nível só aparece com o item aberto — mesma regra do portal. */}
+                    {active && item.filhos && (
+                      <div className="ml-[38px] mt-0.5 space-y-0.5 border-l border-white/5 pl-3">
+                        {item.filhos.map((filho) => {
+                          const ativoF = filhoAtivo(item, pathname)?.href === filho.href;
+                          return (
+                            <Link
+                              key={filho.href}
+                              href={filho.href}
+                              onClick={onNavigate}
+                              aria-current={ativoF ? "page" : undefined}
+                              className={`block rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                                ativoF ? "text-violet-300" : "text-zinc-500 hover:text-zinc-300"
+                              }`}
+                            >
+                              {filho.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
       </nav>
 
       <div className="border-t border-white/5 p-4">
@@ -66,11 +144,43 @@ function Sidebar({
   );
 }
 
+/**
+ * A trilha no header: "Loja X › Tela" (ou "Todas as lojas › Tela").
+ * Redundante com o seletor de propósito — o contexto precisa aparecer em
+ * mais de um lugar para nunca haver dúvida de onde se está.
+ */
+function TrilhaDeContexto({ tela }: { tela: string }) {
+  const { lojaId, loja, definirLoja } = useLojaAtual();
+  return (
+    <nav aria-label="Contexto" className="flex min-w-0 items-center gap-1.5 text-sm">
+      {lojaId ? (
+        <>
+          <button
+            type="button"
+            onClick={() => definirLoja(null)}
+            title="Voltar para todas as lojas"
+            className="hidden max-w-40 truncate text-zinc-500 transition-colors hover:text-zinc-300 sm:block"
+          >
+            Todas as lojas
+          </button>
+          <span className="hidden text-zinc-700 sm:block" aria-hidden="true">›</span>
+          <span className="max-w-48 truncate font-medium text-violet-300">{loja?.empresa ?? "…"}</span>
+        </>
+      ) : (
+        <span className="hidden text-zinc-500 sm:block">Todas as lojas</span>
+      )}
+      <span className="hidden text-zinc-700 sm:block" aria-hidden="true">›</span>
+      <h1 className="truncate font-medium text-zinc-200">{tela}</h1>
+    </nav>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [emailUsuario, setEmailUsuario] = useState<string | null>(null);
   const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [nomeDaAgencia, setNomeDaAgencia] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -79,12 +189,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     getSupabase()
       .auth.getUser()
       .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
-    // O papel decide o MENU. Enquanto não chega, `perfil` é null e o menu
-    // completo aparece — é o comportamento de sempre para equipe, que é a
-    // maioria absoluta de quem abre esta casca, e some num piscar para a
-    // agência. Esconder tudo até saber faria a tela nascer sem navegação.
+    // O papel decide o MENU. Enquanto não chega, a sidebar mostra um
+    // esqueleto — antes mostrava o menu COMPLETO da Zion, e a agência via por
+    // um instante "Agentes IA", "Memória (AIL)"… a cada carga.
     meuPerfil()
-      .then(setPerfil)
+      .then((p) => {
+        setPerfil(p);
+        // A equipe Zion é a "agência de todas as lojas"; a agência-cliente
+        // tem nome próprio na tabela `agencias` (migração 054).
+        if (p?.papel === "agencia" && p.agenciaId) {
+          buscarAgencia(p.agenciaId)
+            .then((a) => setNomeDaAgencia(a?.nome ?? "Sua agência"))
+            .catch(() => setNomeDaAgencia("Sua agência"));
+        } else if (p) {
+          setNomeDaAgencia("Zion");
+        }
+      })
       .catch(() => setPerfil(null));
   }, []);
 
@@ -119,12 +239,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // O RLS já esvazia a maioria dessas telas, e esvaziar não basta: OFERECER É
   // DIFERENTE DE ENTREGAR. Ela clica, vê tela vazia, e conclui que o produto
   // está quebrado.
-  const itens = navDoPapel(perfil?.papel ?? "equipe");
-  const current =
-    itens.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href))) ??
-    itens[0] ??
-    NAV_ITEMS[0];
-  useTituloDaAba(foraDestaCasca ? null : current.label);
+  const grupos = gruposDoPapel(perfil?.papel ?? "equipe");
+  const tela = telaAtual(grupos, pathname);
+  useTituloDaAba(foraDestaCasca ? null : tela);
 
   if (foraDestaCasca) return <>{children}</>;
 
@@ -139,11 +256,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push(`/busca?q=${encodeURIComponent(busca.trim())}`);
   }
 
+  // A LOJA ATUAL envolve todo o painel: é a única fonte de "em qual loja eu
+  // estou" para as telas da equipe/agência (docs/product/ux/03 §Contexto global).
   return (
+    <LojaAtualProvider perfil={perfil}>
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
-        <Sidebar itens={itens} />
+        <Sidebar
+          grupos={grupos}
+          perfilCarregado={perfil !== null || !supabaseConfigurado}
+          nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
+          podeAdicionarLoja={perfil?.papel !== "agencia"}
+        />
       </aside>
 
       {/* Sidebar mobile (drawer) */}
@@ -154,7 +279,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 w-64">
-            <Sidebar itens={itens} onNavigate={() => setMobileOpen(false)} />
+            <Sidebar
+              grupos={grupos}
+              onNavigate={() => setMobileOpen(false)}
+              perfilCarregado={perfil !== null || !supabaseConfigurado}
+              nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
+              podeAdicionarLoja={perfil?.papel !== "agencia"}
+            />
           </aside>
         </div>
       )}
@@ -177,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          <h1 className="text-sm font-medium text-zinc-200">{current.label}</h1>
+          <TrilhaDeContexto tela={tela} />
 
           <div className="ml-auto flex items-center gap-3">
             <form
@@ -216,5 +347,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
+    </LojaAtualProvider>
   );
 }

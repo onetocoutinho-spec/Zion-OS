@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
@@ -24,15 +26,15 @@ function Campo({ label, children }: { label: string; children: React.ReactNode }
 
 export default function RelatoriosPage() {
   const [status, setStatus] = useState("Todos");
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const { data: relatorios } = useLiveQuery(listarRelatorios);
 
-  const clientesComRelatorio = [...new Set((relatorios ?? []).map((r) => r.cliente))];
+  const lojasComRelatorio = [...new Set((relatorios ?? []).map((r) => r.clienteId))];
 
   const filtrados = (relatorios ?? []).filter(
     (r) =>
       (status === "Todos" || r.status === status) &&
-      (cliente === "Todos" || r.cliente === cliente)
+      (!lojaId || r.clienteId === lojaId)
   );
 
   return (
@@ -46,7 +48,7 @@ export default function RelatoriosPage() {
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4">
-          <FilterSelect label="Cliente" value={cliente} options={clientesComRelatorio} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasComRelatorio} />
           <FilterSelect label="Status" value={status} options={RELATORIO_STATUS} onChange={setStatus} />
         </div>
         <LinkButton href="/relatorios/novo">

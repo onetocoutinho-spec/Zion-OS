@@ -18,7 +18,7 @@ import {
 import type { Produto, ProdutoVariante } from "@/lib/types";
 
 const inputCls =
-  "w-full rounded border border-white/10 bg-[#12121c] px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500";
+  "w-full rounded border border-white/10 bg-surface-input px-2 py-1 text-xs text-zinc-200 outline-none focus:border-violet-500";
 const numeroCls = inputCls + " text-right";
 
 /** Linha editável de uma variante — salva no onBlur/onChange. */
@@ -71,7 +71,7 @@ function LinhaVariante({ v }: { v: ProdutoVariante }) {
           onChange={(e) => atualizarVariante(v.id, { status: e.target.value as ProdutoVariante["status"] })}
           className={inputCls + " cursor-pointer"}>
           {VARIANTE_STATUS.map((s) => (
-            <option key={s} value={s} className="bg-[#12121c]">{s}</option>
+            <option key={s} value={s} className="bg-surface-input">{s}</option>
           ))}
         </select>
       </td>

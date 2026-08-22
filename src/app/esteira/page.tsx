@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarClientes } from "@/lib/services/clientes";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
@@ -36,7 +36,7 @@ const STATUS_PASSO: Record<PassoCadeia["status"], { rotulo: string; classe: stri
 };
 
 const SELECT =
-  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "w-full rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -48,7 +48,9 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 export default function EsteiraPage() {
-  const [clienteId, setClienteId] = useState("");
+  // A loja vem do contexto global (cookie + ?loja=); o select abaixo só o escreve.
+  const { lojaId, loja: cliente, lojas: clientes, definirLoja } = useLojaAtual();
+  const clienteId = lojaId ?? "";
   const [produtoId, setProdutoId] = useState("");
   const [briefing, setBriefing] = useState("");
   const [modo, setModo] = useState<"rapido" | "aprofundado">("rapido");
@@ -62,11 +64,9 @@ export default function EsteiraPage() {
   /** Id do registro persistido (fila de aprovação); null = não salvo (sem cliente). */
   const [registroId, setRegistroId] = useState<string | null>(null);
 
-  const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const produtosFiltrados = (produtos ?? []).filter((p) => !clienteId || p.clienteId === clienteId);
-  const cliente = (clientes ?? []).find((c) => c.id === clienteId) ?? null;
   const produto = produtosFiltrados.find((p) => p.id === produtoId) ?? null;
 
   const contexto = useMemo(
@@ -80,13 +80,13 @@ export default function EsteiraPage() {
     !anuncio || anuncio.vereditoA10 === "reprovado" || anuncio.pendencias.length > 0;
 
   function selecionarCliente(id: string) {
-    setClienteId(id);
+    definirLoja(id || null);
     setProdutoId("");
   }
   function selecionarProduto(id: string) {
     setProdutoId(id);
     const p = (produtos ?? []).find((x) => x.id === id);
-    if (p && !clienteId) setClienteId(p.clienteId);
+    if (p && !clienteId) definirLoja(p.clienteId);
   }
 
   async function rodar() {
@@ -191,9 +191,9 @@ export default function EsteiraPage() {
       <Card title="1. Produto e briefing">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-medium text-zinc-500">Cliente</span>
+            <span className="mb-1 block text-[11px] font-medium text-zinc-500">Loja</span>
             <select className={SELECT} value={clienteId} onChange={(e) => selecionarCliente(e.target.value)}>
-              <option value="">Nenhum</option>
+              <option value="">Todas as lojas</option>
               {(clientes ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.empresa}</option>
               ))}

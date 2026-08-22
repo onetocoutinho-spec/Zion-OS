@@ -232,7 +232,7 @@ function PesoDosProdutosInterno() {
             onChange={(e) => setFrase(e.target.value)}
             disabled={interpretando}
             placeholder="Pergunte sobre os produtos — ex.: quais Havaianas estão sem peso?"
-            className="min-w-[16rem] flex-1 rounded-lg border border-white/10 bg-[#12121c] px-3 py-2 text-sm text-zinc-200 outline-none transition-colors focus:border-violet-500 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+            className="min-w-[16rem] flex-1 rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none transition-colors focus:border-violet-500 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
           />
           <Button type="submit" disabled={interpretando || !frase.trim()}>
             {interpretando ? <Loader2 size={15} className="animate-spin" /> : <Scale size={15} />}{" "}

@@ -7,6 +7,8 @@
 // Isto NÃO substitui a segurança: o RLS (migração 016) e a autorização
 // server-side continuam sendo as camadas reais. Aqui é só a experiência de UI.
 
+import { rotaPermitida } from "@/components/layout/nav";
+
 export type PapelPerfil = "equipe" | "cliente" | "agencia";
 
 /** Os papéis que o sistema reconhece. Qualquer outro valor NÃO é papel. */
@@ -58,7 +60,9 @@ export interface PerfilRota {
 export type DecisaoRota =
   | { tipo: "sem_acesso" }
   | { tipo: "ok" }
-  | { tipo: "redirect"; para: string };
+  | { tipo: "redirect"; para: string }
+  /** Perfil válido, rota fora do alcance do papel — a tela explica e oferece a volta. */
+  | { tipo: "proibido" };
 
 /**
  * true só para o Portal do Cliente (/cliente e /cliente/…).
@@ -111,22 +115,24 @@ export function decidirRota(perfil: PerfilRota | null, pathname: string): Decisa
   // empresa é: não há sobre o que operar.
   if (perfil.papel === "agencia") {
     if (!perfil.agenciaId) return { tipo: "sem_acesso" };
-    // A CONEXÃO COM O MARKETPLACE É A ÚNICA EXCEÇÃO, e ela é imposta de fora.
+    // QUEM OPERA ENTRA NA LOJA. O portal (/cliente/*) deixou de ser só do
+    // lojista: para agência e equipe ele mostra a loja do CONTEXTO GLOBAL
+    // (cookie + ?loja=), com a barra "Operando" — ver ClientPortalShell. Se
+    // não há loja no contexto, a própria casca pede para escolher. Por isso
+    // aqui o portal é "ok", sem exceção para a rota do OAuth: ela é só mais
+    // uma tela de dentro da loja.
+    if (noPortal) return { tipo: "ok" };
+    // OFERECER É DIFERENTE DE ENTREGAR — e isso vale para a URL também.
     //
-    // O `redirect_uri` registrado no app do Mercado Livre é UM endereço só, e
-    // ele mora sob `/cliente/`. Todo retorno de OAuth cai ali, seja de quem
-    // for. Expulsar a agência dessa página faria o ML devolver o código para
-    // uma tela que redireciona antes de consumi-lo — e a conexão morre no meio,
-    // sem erro visível.
-    //
-    // A alternativa era registrar um segundo redirect no app do ML. Esta é a
-    // que não exige mexer na configuração de lá.
-    if (noPortal && !ehAConexaoDoMarketplace(pathname)) {
-      return { tipo: "redirect", para: "/" };
-    }
+    // O menu da agência é uma lista de permissão (nav.ts), mas até aqui a URL
+    // não era: /agentes, /ail/*, /configuracoes abriam por endereço e o RLS
+    // esvaziava a tela — lida como "produto quebrado". A mesma lista que
+    // alimenta o menu decide agora se a rota abre; o que sobra é um 403 que
+    // explica e oferece a volta, nunca uma tela em branco.
+    if (!rotaPermitida("agencia", pathname)) return { tipo: "proibido" };
     return { tipo: "ok" };
   }
 
-  // equipe: nunca dentro do Portal do Cliente (evita ver a casca do cliente).
-  return noPortal ? { tipo: "redirect", para: "/" } : { tipo: "ok" };
+  // equipe: o painel inteiro, e o portal de qualquer loja (modo "operando").
+  return { tipo: "ok" };
 }

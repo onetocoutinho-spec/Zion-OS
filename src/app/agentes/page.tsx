@@ -49,7 +49,7 @@ export default function AgentesPage() {
         {filtrados.map((a) => (
           <div
             key={a.id}
-            className="flex flex-col rounded-xl border border-white/5 bg-[#0e0e16] p-5 transition-colors hover:border-white/10"
+            className="flex flex-col rounded-xl border border-white/5 bg-surface-raised p-5 transition-colors hover:border-white/10"
           >
             <div className="flex items-start justify-between gap-3">
               <Link href={`/agentes/${a.id}`} className="flex items-center gap-3">
@@ -133,7 +133,7 @@ function SecaoEsteira() {
       {aberto && (
         <div className="mt-4 grid grid-cols-1 gap-2 lg:grid-cols-2">
           {agentes.map((a) => (
-            <details key={a.codigo} className="group rounded-lg border border-white/5 bg-[#0e0e16] p-3">
+            <details key={a.codigo} className="group rounded-lg border border-white/5 bg-surface-raised p-3">
               <summary className="flex cursor-pointer items-start gap-2.5">
                 <span className="mt-0.5 inline-flex h-6 shrink-0 items-center rounded-md bg-violet-500/10 px-1.5 text-[11px] font-semibold text-violet-300">
                   {a.codigo}

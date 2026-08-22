@@ -13,7 +13,7 @@ import { Compass } from "lucide-react";
 export default function NaoEncontrado() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0e0e16] p-6 text-center">
+      <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-raised p-6 text-center">
         <Compass size={22} className="mx-auto text-violet-400" />
         <p className="mt-3 text-sm font-medium text-zinc-100">Esta página não existe.</p>
         <p className="mt-1.5 text-sm text-zinc-400">

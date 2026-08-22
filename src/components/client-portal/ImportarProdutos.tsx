@@ -119,7 +119,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
   const naoUsadas = headers.filter((h) => !Object.values(mapeamento).includes(h));
 
   return (
-    <div className="rounded-xl border border-white/5 bg-[#0e0e16] p-4">
+    <div className="rounded-xl border border-white/5 bg-surface-raised p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400">
           <FileSpreadsheet size={19} />
@@ -192,7 +192,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                             <select
                               value={sel}
                               onChange={(e) => setCampo(c.campo, e.target.value)}
-                              className={`w-full rounded-lg border bg-[#12121c] px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 ${
+                              className={`w-full rounded-lg border bg-surface-input px-2 py-1.5 text-xs text-zinc-200 outline-none focus:border-violet-500 ${
                                 semObrig ? "border-amber-500/50" : "border-white/10"
                               }`}
                             >

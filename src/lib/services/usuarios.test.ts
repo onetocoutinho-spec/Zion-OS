@@ -86,7 +86,7 @@ test("equipe não pode receber clienteId", () => {
 
 test("3+8. equipe válida → convidado (Auth + perfil criados)", async () => {
   const { deps, calls } = fabricarDeps();
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null, agenciaId: null });
   assert.equal(r.tipo, "convidado");
   assert.equal(calls.convidar, 1);
   assert.equal(calls.criarPerfil, 1);
@@ -95,13 +95,13 @@ test("3+8. equipe válida → convidado (Auth + perfil criados)", async () => {
 
 test("cliente com empresa válida → convidado", async () => {
   const { deps } = fabricarDeps();
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "c@x.com", papel: "cliente", clienteId: UUID_A });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "c@x.com", papel: "cliente", clienteId: UUID_A, agenciaId: null });
   assert.equal(r.tipo, "convidado");
 });
 
 test("7. empresa inexistente/de outro tenant → empresa_invalida (não cria nada)", async () => {
   const { deps, calls } = fabricarDeps({ empresaExiste: async () => false });
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "c@x.com", papel: "cliente", clienteId: UUID_A });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "c@x.com", papel: "cliente", clienteId: UUID_A, agenciaId: null });
   assert.equal(r.tipo, "empresa_invalida");
   assert.equal(calls.convidar, 0);
 });
@@ -112,7 +112,7 @@ test("9. falha no perfil após Auth → compensação remove o novo usuário", a
       throw new Error("db down");
     },
   });
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null, agenciaId: null });
   assert.equal(r.tipo, "falha_perfil");
   assert.equal(calls.convidar, 1);
   assert.equal(calls.remover, 1); // compensou removendo o recém-criado
@@ -127,14 +127,14 @@ test("10. falha na compensação → inconsistente (documentado, com userId)", a
       throw new Error("delete falhou");
     },
   });
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null, agenciaId: null });
   assert.equal(r.tipo, "inconsistente");
   assert.equal(r.tipo === "inconsistente" && r.userId, "novo-user-id");
 });
 
 test("11+12. e-mail já existente / requisição repetida → ja_existe (não duplica)", async () => {
   const { deps, calls } = fabricarDeps({ buscarAuthPorEmail: async () => ({ id: "existente" }) });
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null, agenciaId: null });
   assert.equal(r.tipo, "ja_existe");
   assert.equal(calls.convidar, 0); // não cria segundo usuário
   assert.equal(calls.criarPerfil, 0);
@@ -142,10 +142,48 @@ test("11+12. e-mail já existente / requisição repetida → ja_existe (não du
 
 test("13. resultado nunca contém segredo (só tipo/userId)", async () => {
   const { deps } = fabricarDeps();
-  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "e@x.com", papel: "equipe", clienteId: null, agenciaId: null });
   const chaves = Object.keys(r);
   for (const proibida of ["password", "senha", "token", "access_token", "refresh_token", "service_role", "session"]) {
     assert.ok(!chaves.includes(proibida), `resultado não deve conter ${proibida}`);
   }
   assert.deepEqual(chaves.sort(), ["tipo", "userId"]);
+});
+
+// ---- papel agencia (fatia 6, docs/product/ux) ----
+
+test("agência exige agenciaId válido e não aceita clienteId", () => {
+  const semAgencia = validarPayloadNovoUsuario({ nome: "A", email: "a@x.com", papel: "agencia" });
+  assert.equal(semAgencia.ok, false);
+  assert.equal(semAgencia.ok === false && semAgencia.campo, "agenciaId");
+  const comLoja = validarPayloadNovoUsuario({ nome: "A", email: "a@x.com", papel: "agencia", agenciaId: UUID_A, clienteId: UUID_A });
+  assert.equal(comLoja.ok === false && comLoja.campo, "clienteId");
+  const ok = validarPayloadNovoUsuario({ nome: "A", email: "a@x.com", papel: "agencia", agenciaId: UUID_A });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.ok && ok.dados.agenciaId, UUID_A);
+});
+
+test("equipe e lojista não recebem agenciaId", () => {
+  const v = validarPayloadNovoUsuario({ nome: "X", email: "x@y.com", papel: "equipe", agenciaId: UUID_A });
+  assert.equal(v.ok === false && v.campo, "agenciaId");
+});
+
+test("agência inexistente → agencia_invalida, sem tocar o Auth", async () => {
+  const { deps, calls } = fabricarDeps({ agenciaExiste: async () => false });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "a@x.com", papel: "agencia", clienteId: null, agenciaId: UUID_A });
+  assert.equal(r.tipo, "agencia_invalida");
+  assert.equal(calls.convidar, 0);
+});
+
+test("agência existente → convidado, com agenciaId no perfil", async () => {
+  let recebido: unknown = undefined;
+  const { deps } = fabricarDeps({
+    agenciaExiste: async () => true,
+    criarPerfil: async (_u: string, _p: string, _c: string | null, _n: string, agenciaId?: string | null) => {
+      recebido = agenciaId;
+    },
+  });
+  const r = await criarUsuarioComPerfil(deps, { nome: "N", email: "a@x.com", papel: "agencia", clienteId: null, agenciaId: UUID_A });
+  assert.equal(r.tipo, "convidado");
+  assert.equal(recebido, UUID_A);
 });
