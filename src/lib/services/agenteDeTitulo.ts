@@ -16,6 +16,7 @@
 import { agentePorFerramenta } from "../agentes/catalogo";
 import { chamarIAEstruturada, provedorConfigurado } from "../agentes/provedorIA";
 import { LIMITE_DE_TITULO } from "../../modules/publication/domain/preparacaoDoAnuncio";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 const ESQUEMA_TITULO = {
   type: "object",
@@ -57,11 +58,15 @@ export async function gerarTituloOtimizado(
   const agente = agentePorFerramenta("titulo");
   if (!agente) return null;
 
+  // Nome, marca, modelo e título atual vêm de fora (ML, CSV, PDF) — são DADO,
+  // não instrução, e entram cercados. Ver `dadoExterno.ts`.
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
-    e.tituloAtual ? `Título atual: ${e.tituloAtual}` : "Título atual: (vazio)",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
+    e.tituloAtual ? `Título atual: ${dadoExterno("anuncio-titulo", e.tituloAtual)}` : "Título atual: (vazio)",
     "",
     // A trava contra fabricação, repetida junto dos dados porque é aqui que ela
     // vale: o que não está acima não existe para esta chamada.

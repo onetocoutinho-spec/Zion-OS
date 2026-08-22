@@ -25,7 +25,7 @@ import type { ContextoAutorizado } from "@/lib/auth/serverAuthorization";
 // classificação de uma frase (/api/assistente), barata mas também paga.
 // As duas ficaram FORA da cota quando a 060 nasceu: o ZION-COST-001 seguia
 // aberto na porta principal.
-export type TipoDeConsumo = "esteira" | "agente" | "catalogo" | "chat" | "intencao";
+export type TipoDeConsumo = "esteira" | "agente" | "catalogo" | "chat" | "intencao" | "imagem";
 
 export type ResultadoCota =
   | { ok: true; limite: number | null; usado: number | null }

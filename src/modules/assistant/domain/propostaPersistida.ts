@@ -245,6 +245,7 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
 export type Impedimento =
   | { motivo: "nao_encontrada" }
   | { motivo: "outro_tenant" }
+  | { motivo: "outro_usuario" }
   | { motivo: "ja_executada" }
   | { motivo: "status_invalido"; status: StatusProposta }
   | { motivo: "expirada" }
@@ -276,7 +277,14 @@ export function podeExecutar(
   proposta: PropostaPersistida | null,
   clienteIdDaSessao: string,
   agoraISO: string,
-  estadoAtual: EstadoAtual
+  estadoAtual: EstadoAtual,
+  /**
+   * Quem está clicando. `undefined` = o chamador não informou (chamadas
+   * antigas e testes de outras regras); `null` = sessão sem usuário (demo).
+   * Nos dois casos a checagem de autoria não roda — e isso fica declarado
+   * aqui, não escondido num `??`.
+   */
+  usuarioIdDaSessao?: string | null
 ): VeredictoDaProposta {
   if (!proposta) return { pode: false, impedimento: { motivo: "nao_encontrada" } };
 
@@ -285,6 +293,22 @@ export function podeExecutar(
   // distinguimos internamente, para a auditoria registrar a tentativa.
   if (proposta.clienteId !== clienteIdDaSessao) {
     return { pode: false, impedimento: { motivo: "outro_tenant" } };
+  }
+
+  // QUEM VIU O DIFF É QUEM CONFIRMA — para o que mexe em dinheiro ou frete.
+  //
+  // `criadaPor` existia "para a auditoria" e nunca era conferido: numa loja
+  // com três operadores, B confirmava a proposta de preço montada na
+  // conversa privada de A, que B nunca leu. O portão virava "alguém do
+  // tenant clicou". Para `medio`/`baixo` (título, descrição) o custo de
+  // errar é reversível e a regra não se aplica. (Auditoria do Copilot, P2.)
+  if (
+    usuarioIdDaSessao &&
+    (proposta.risco === "alto" || proposta.risco === "critico") &&
+    proposta.criadaPor &&
+    proposta.criadaPor !== usuarioIdDaSessao
+  ) {
+    return { pode: false, impedimento: { motivo: "outro_usuario" } };
   }
 
   // `ja_executada` ANTES de `status_invalido`: é o caso do duplo clique, e
@@ -350,6 +374,8 @@ export function explicarImpedimento(i: Impedimento): string {
       // A MESMA frase de propósito: distinguir contaria a quem tentou que a
       // proposta existe em outro cliente.
       return "Não encontrei essa proposta. Peça de novo e eu monto outra.";
+    case "outro_usuario":
+      return "Essa proposta foi montada na conversa de outra pessoa. Peça de novo na sua conversa e eu monto outra para você confirmar.";
     case "ja_executada":
       return "Isso já foi feito — não repeti a gravação.";
     case "expirada":

@@ -9,6 +9,7 @@ import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAut
 import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import { respostaDeErro } from "@/lib/http/respostaDeErro";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;
@@ -75,10 +76,14 @@ interface CorpoExecucao {
 
 function montarMensagem(entrada: string, contexto: string): string {
   if (!contexto) return entrada;
+  // O contexto é texto de fora (cadastro importado, planilha, PDF) — DADO,
+  // não instrução. Entra cercado; ver `dadoExterno.ts`.
   return [
+    REGRA_DO_DADO_EXTERNO,
+    ``,
     `Dados cadastrados no Zion OS para esta execução:`,
     ``,
-    contexto,
+    dadoExterno("cadastro", contexto),
     ``,
     `---`,
     ``,

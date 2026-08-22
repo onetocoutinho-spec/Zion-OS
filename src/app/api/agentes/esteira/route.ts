@@ -11,6 +11,7 @@ import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAut
 import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import { respostaDeErro } from "@/lib/http/respostaDeErro";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 // 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
 // ~25–40s. Em plano pago dá para subir para 300.
@@ -25,7 +26,16 @@ interface CorpoEsteira {
 function montarMensagem(briefing: string, contexto: string): string {
   const partes: string[] = [];
   if (contexto) {
-    partes.push("Dados cadastrados no Zion OS para este produto:", "", contexto, "", "---", "");
+    partes.push(
+      REGRA_DO_DADO_EXTERNO,
+      "",
+      "Dados cadastrados no Zion OS para este produto:",
+      "",
+      dadoExterno("cadastro", contexto),
+      "",
+      "---",
+      ""
+    );
   }
   partes.push(
     "Briefing / instruções adicionais:",

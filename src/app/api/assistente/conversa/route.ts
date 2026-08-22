@@ -41,7 +41,7 @@ import {
 import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
-import { criarProposta } from "@/lib/services/copilotPropostas";
+import { criarProposta, registrarAcao } from "@/lib/services/copilotPropostas";
 import {
   garantirConversa,
   gravarTurno,
@@ -202,7 +202,7 @@ async function estadoDoProdutoNoBanco(
   const admin = getSupabaseAdmin();
   const [pai, variantes] = await Promise.all([
     admin.from("produtos").select("custo").eq("id", produtoId).eq("cliente_id", clienteId).maybeSingle(),
-    admin.from("produto_variantes").select("peso").eq("produto_id", produtoId),
+    admin.from("produto_variantes").select("peso").eq("produto_id", produtoId).eq("cliente_id", clienteId),
   ]);
   const custoBruto = (pai.data as { custo?: number | null } | null)?.custo;
   const linhas = (variantes.data ?? []) as { peso: number | null }[];
@@ -1189,6 +1189,32 @@ export async function POST(request: Request) {
                   })
                 );
               };
+              // O RASTRO DURÁVEL. `logAcao` vai para os Runtime Logs, que
+              // rotacionam; esta é a única ação que o chat executa sem
+              // clique, e "quem mandou reativar aquele anúncio em 12/08?"
+              // precisa de resposta depois da retenção. `copilot_acoes` já
+              // aceita `proposta_id` nulo e já guarda as RECUSAS — e todo o
+              // resto que escreve passa por ela. Esta ação não podia ser a
+              // exceção. (Auditoria do Copilot, 2026-08-22.)
+              let statusAntes: string | null = null;
+              const auditar = (
+                resultado: "sucesso" | "parcial" | "falhou" | "recusada",
+                depois: unknown,
+                erro?: string
+              ) =>
+                registrarAcao({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  propostaId: null,
+                  executadaPor: usuarioId,
+                  ferramenta: "reativar_anuncio",
+                  alvos: [mlb],
+                  antes: { status_marketplace: statusAntes },
+                  depois,
+                  resultado,
+                  afetados: resultado === "sucesso" ? 1 : 0,
+                  erro,
+                });
               try {
                 logAcao("info", "pedido");
                 const admin = getSupabaseAdmin();
@@ -1225,6 +1251,7 @@ export async function POST(request: Request) {
                   );
                 }
                 const dono = (posse ?? [])[0] as { status_marketplace: string | null } | undefined;
+                statusAntes = dono?.status_marketplace ?? null;
                 if (!dono) {
                   logAcao("warn", "recusado_nao_e_da_loja");
                   throw new Error(
@@ -1278,6 +1305,7 @@ export async function POST(request: Request) {
 
                 if (bloqueados.length > 0) {
                   logAcao("warn", "infracao_bloqueado");
+                  await auditar("recusada", null, "infracao: o ML cancelou este anúncio por infração");
                   (r as { saida: unknown }).saida = {
                     recusado: true,
                     motivo: `O Mercado Livre cancelou ${mlb} por infração. Reativar conta como reincidência e pode custar a conta.`,
@@ -1291,6 +1319,13 @@ export async function POST(request: Request) {
                     "active"
                   );
                   logAcao("info", "confirmado", { estado });
+                  // `active` confirmado pelo ML é sucesso; qualquer outro
+                  // estado é "o PUT voltou, o ML disse outra coisa" — parcial.
+                  await auditar(
+                    estado === "active" ? "sucesso" : "parcial",
+                    { estadoConfirmadoPeloML: estado },
+                    estado === "active" ? undefined : `ML respondeu "${estado}"`
+                  );
                   mandar({
                     tipo: "ferramenta",
                     nome: `reativou ${mlb}`,
@@ -1354,9 +1389,11 @@ export async function POST(request: Request) {
                   };
                 }
               } catch (e) {
-                logAcao("error", "falhou", {
-                  motivo: e instanceof Error ? e.message : "desconhecido",
-                });
+                const motivo = e instanceof Error ? e.message : "desconhecido";
+                logAcao("error", "falhou", { motivo });
+                // As recusas de posse/estado também caem aqui (elas lançam).
+                // São "recusada", não "falhou": o sistema decidiu não fazer.
+                await auditar(/NÃO reativei|não há o que reativar/.test(motivo) ? "recusada" : "falhou", null, motivo);
                 (r as { saida: unknown }).saida = {
                   erro: mensagemParaONavegador(e, "Falha ao reativar no Mercado Livre."),
                   comoResponder:

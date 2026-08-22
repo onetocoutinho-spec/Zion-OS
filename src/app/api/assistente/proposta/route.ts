@@ -348,7 +348,7 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
 
     const vars = await lerTudoPorIds<{ produto_id: string; peso: number | null }>(
       "variantes da proposta", idsDaProposta, (lote, de, ate) =>
-        admin.from("produto_variantes").select("produto_id, peso").in("produto_id", lote)
+        admin.from("produto_variantes").select("produto_id, peso").in("produto_id", lote).eq("cliente_id", p.clienteId)
           .order("id", { ascending: true }).range(de, ate)
     );
     const semPeso = new Map<string, number>();
@@ -390,6 +390,7 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
       .from("produtos")
       .select("custo")
       .eq("id", produtoId)
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     // Produto sumiu ou custo nulo: `null`, que o domínio trata como mudança se
     // havia valor. Supor "continua o mesmo" gravaria sobre o desconhecido.
@@ -401,7 +402,8 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
     const { data } = await admin
       .from("produto_variantes")
       .select("id, peso")
-      .eq("produto_id", produtoId);
+      .eq("produto_id", produtoId)
+      .eq("cliente_id", p.clienteId);
     const linhas = (data ?? []) as { peso: number | null }[];
     estado.variacoesSemPeso = linhas.filter((v) => !v.peso || v.peso <= 0).length;
   }
@@ -514,6 +516,7 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
       .from("produtos")
       .select("custo")
       .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     return { antes: data };
   }
@@ -530,7 +533,7 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
     }>("variantes do retrato", p.alvos, (lote, de, ate) =>
         admin.from("produto_variantes")
           .select("id, produto_id, peso, altura, largura, comprimento")
-          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+          .in("produto_id", lote).eq("cliente_id", p.clienteId).order("id", { ascending: true }).range(de, ate)
     );
     return {
       antes: {
@@ -543,7 +546,8 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
   const { data } = await admin
     .from("produto_variantes")
     .select("id, peso")
-    .eq("produto_id", p.alvos[0]);
+    .eq("produto_id", p.alvos[0])
+    .eq("cliente_id", p.clienteId);
   return { antes: data ?? null };
 }
 
@@ -671,6 +675,7 @@ async function gravar(p: PropostaPersistida): Promise<{
       .from("produtos")
       .select("custo")
       .eq("id", produtoId)
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     const { data, error } = await admin
       .from("produtos")
@@ -706,7 +711,7 @@ async function gravar(p: PropostaPersistida): Promise<{
       "snapshot anterior do lote", p.alvos, (lote, de, ate) =>
         admin.from("produto_variantes")
           .select("id, produto_id, peso, altura, largura, comprimento")
-          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+          .in("produto_id", lote).eq("cliente_id", p.clienteId).order("id", { ascending: true }).range(de, ate)
     );
     // ELEGIVEIS conta dentro do conjunto APROVADO. Contar fora dele faria a
     // ressalva do desfecho comparar a escrita com um universo que o lojista
@@ -777,7 +782,8 @@ async function gravar(p: PropostaPersistida): Promise<{
   const { data: antes } = await admin
     .from("produto_variantes")
     .select("id, peso")
-    .eq("produto_id", produtoId);
+    .eq("produto_id", produtoId)
+    .eq("cliente_id", p.clienteId);
   const elegiveis = ((antes ?? []) as { id: string; peso: number | null }[]).filter(
     (v) => (!congelados || congelados.has(v.id)) && (!v.peso || v.peso <= 0)
   ).length;
@@ -903,7 +909,10 @@ export async function POST(request: Request) {
     proposta,
     clienteDaSessao,
     new Date().toISOString(),
-    estadoAtual
+    estadoAtual,
+    // Quem está clicando: proposta de risco alto/crítico só executa por quem
+    // a viu nascer na própria conversa.
+    usuario
   );
 
   if (!veredicto.pode) {

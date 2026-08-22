@@ -27,6 +27,7 @@ import {
   LIMITE_DE_DESCRICAO,
   MAXIMO_DE_PALAVRAS_CHAVE,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 const SEM_INVENTAR =
   "Use SOMENTE os dados acima. Não afirme material, tecnologia, garantia, origem, " +
@@ -64,11 +65,14 @@ export async function gerarDescricaoOtimizada(
   const agente = agentePorFerramenta("descricao");
   if (!agente) return null;
 
+  // Dado de fora (ML, CSV, PDF) entra cercado — ver `dadoExterno.ts`.
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
-    e.atual ? `Descrição atual: ${e.atual}` : "Descrição atual: (vazia)",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
+    e.atual ? `Descrição atual: ${dadoExterno("anuncio-descricao", e.atual)}` : "Descrição atual: (vazia)",
     "",
     SEM_INVENTAR,
     "Responda com UMA descrição recomendada e uma linha de justificativa.",
@@ -140,11 +144,13 @@ export async function gerarPalavrasChave(
   if (!agente) return null;
 
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
     e.atuais.length > 0
-      ? `Palavras-chave que o anúncio já tem: ${e.atuais.join(", ")}`
+      ? `Palavras-chave que o anúncio já tem: ${dadoExterno("anuncio-palavras", e.atuais.join(", "))}`
       : "O anúncio ainda não tem palavras-chave.",
     "",
     SEM_INVENTAR,
