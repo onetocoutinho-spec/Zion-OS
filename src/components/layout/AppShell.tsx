@@ -9,14 +9,24 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 import { useTituloDaAba } from "./tituloDaAba";
-import { LojaAtualProvider } from "@/lib/contexto/LojaAtualProvider";
+import { LojaAtualProvider, useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { buscarAgencia } from "@/lib/services/agencias";
+import { SeletorDeLoja } from "./SeletorDeLoja";
+import { EsqueletoDeTexto } from "@/components/ui/Skeleton";
 
 function Sidebar({
   onNavigate,
   itens,
+  perfilCarregado,
+  nomeDaAgencia,
+  podeAdicionarLoja,
 }: {
   onNavigate?: () => void;
   itens: NavItem[];
+  /** Enquanto o perfil não chega, o menu é um esqueleto — nunca o da Zion inteira. */
+  perfilCarregado: boolean;
+  nomeDaAgencia: string | null;
+  podeAdicionarLoja: boolean;
 }) {
   const pathname = usePathname();
 
@@ -26,14 +36,24 @@ function Sidebar({
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/20">
           <Zap className="h-4.5 w-4.5 text-white" size={18} />
         </div>
-        <div>
-          <p className="text-sm font-semibold tracking-wide text-white">Zion OS</p>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Zion Company</p>
-        </div>
+        <p className="text-sm font-semibold tracking-wide text-white">Zion OS</p>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {itens.map((item) => {
+      {/* O CONTEXTO — agência em cima, loja embaixo; clicar troca (Ctrl+K).
+          É a resposta permanente a "onde estou?" (docs/product/ux/03). */}
+      <div className="px-3 pt-3">
+        <SeletorDeLoja nomeDaAgencia={nomeDaAgencia} podeAdicionar={podeAdicionarLoja} />
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5" aria-busy={!perfilCarregado}>
+        {!perfilCarregado &&
+          Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3 px-3 py-2">
+              <span className="h-4 w-4 animate-pulse rounded bg-white/10" />
+              <EsqueletoDeTexto linhas={1} className={i % 3 === 0 ? "w-28" : i % 3 === 1 ? "w-20" : "w-24"} />
+            </div>
+          ))}
+        {perfilCarregado && itens.map((item) => {
           const active =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           const Icon = item.icon;
@@ -67,11 +87,43 @@ function Sidebar({
   );
 }
 
+/**
+ * A trilha no header: "Loja X › Tela" (ou "Todas as lojas › Tela").
+ * Redundante com o seletor de propósito — o contexto precisa aparecer em
+ * mais de um lugar para nunca haver dúvida de onde se está.
+ */
+function TrilhaDeContexto({ tela }: { tela: string }) {
+  const { lojaId, loja, definirLoja } = useLojaAtual();
+  return (
+    <nav aria-label="Contexto" className="flex min-w-0 items-center gap-1.5 text-sm">
+      {lojaId ? (
+        <>
+          <button
+            type="button"
+            onClick={() => definirLoja(null)}
+            title="Voltar para todas as lojas"
+            className="hidden max-w-40 truncate text-zinc-500 transition-colors hover:text-zinc-300 sm:block"
+          >
+            Todas as lojas
+          </button>
+          <span className="hidden text-zinc-700 sm:block" aria-hidden="true">›</span>
+          <span className="max-w-48 truncate font-medium text-violet-300">{loja?.empresa ?? "…"}</span>
+        </>
+      ) : (
+        <span className="hidden text-zinc-500 sm:block">Todas as lojas</span>
+      )}
+      <span className="hidden text-zinc-700 sm:block" aria-hidden="true">›</span>
+      <h1 className="truncate font-medium text-zinc-200">{tela}</h1>
+    </nav>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [busca, setBusca] = useState("");
   const [emailUsuario, setEmailUsuario] = useState<string | null>(null);
   const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [nomeDaAgencia, setNomeDaAgencia] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -80,12 +132,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     getSupabase()
       .auth.getUser()
       .then(({ data }) => setEmailUsuario(data.user?.email ?? null));
-    // O papel decide o MENU. Enquanto não chega, `perfil` é null e o menu
-    // completo aparece — é o comportamento de sempre para equipe, que é a
-    // maioria absoluta de quem abre esta casca, e some num piscar para a
-    // agência. Esconder tudo até saber faria a tela nascer sem navegação.
+    // O papel decide o MENU. Enquanto não chega, a sidebar mostra um
+    // esqueleto — antes mostrava o menu COMPLETO da Zion, e a agência via por
+    // um instante "Agentes IA", "Memória (AIL)"… a cada carga.
     meuPerfil()
-      .then(setPerfil)
+      .then((p) => {
+        setPerfil(p);
+        // A equipe Zion é a "agência de todas as lojas"; a agência-cliente
+        // tem nome próprio na tabela `agencias` (migração 054).
+        if (p?.papel === "agencia" && p.agenciaId) {
+          buscarAgencia(p.agenciaId)
+            .then((a) => setNomeDaAgencia(a?.nome ?? "Sua agência"))
+            .catch(() => setNomeDaAgencia("Sua agência"));
+        } else if (p) {
+          setNomeDaAgencia("Zion");
+        }
+      })
       .catch(() => setPerfil(null));
   }, []);
 
@@ -147,7 +209,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
-        <Sidebar itens={itens} />
+        <Sidebar
+          itens={itens}
+          perfilCarregado={perfil !== null || !supabaseConfigurado}
+          nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
+          podeAdicionarLoja={perfil?.papel !== "agencia"}
+        />
       </aside>
 
       {/* Sidebar mobile (drawer) */}
@@ -158,7 +225,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 w-64">
-            <Sidebar itens={itens} onNavigate={() => setMobileOpen(false)} />
+            <Sidebar
+              itens={itens}
+              onNavigate={() => setMobileOpen(false)}
+              perfilCarregado={perfil !== null || !supabaseConfigurado}
+              nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
+              podeAdicionarLoja={perfil?.papel !== "agencia"}
+            />
           </aside>
         </div>
       )}
@@ -181,7 +254,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          <h1 className="text-sm font-medium text-zinc-200">{current.label}</h1>
+          <TrilhaDeContexto tela={current.label} />
 
           <div className="ml-auto flex items-center gap-3">
             <form

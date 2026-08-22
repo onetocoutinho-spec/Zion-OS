@@ -4,9 +4,9 @@
 // Sidebar simples com 10 itens, header com o nome do cliente + marketplace
 // ativo + botão Sair. Resolve o perfil uma vez e provê via contexto.
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { PainelDoAssistente } from "./PainelDoAssistente";
 import {
   Home,
@@ -26,6 +26,7 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { useLiveQuery } from "@/lib/hooks";
 import { meuPerfil } from "@/lib/services/perfil";
 import { listarProdutos } from "@/lib/services/produtos";
+import { buscarCliente } from "@/lib/services/clientes";
 import { ClientPortalProvider } from "./context";
 import { AREAS, areaDaRota, telaAtiva, type ContextoPortal } from "@/modules/portal/domain/navegacao";
 import { useTituloDaAba } from "@/components/layout/tituloDaAba";
@@ -130,6 +131,20 @@ function Sidebar({ nome, onNavigate }: { nome: string; onNavigate?: () => void }
   );
 }
 
+/** "Operando: Loja X" no header da agência, a partir de `?cliente=<id>`. */
+function LojaEmOperacao() {
+  const params = useSearchParams();
+  const id = params.get("cliente");
+  const { data: loja } = useLiveQuery(() => (id ? buscarCliente(id) : Promise.resolve(null)), [id]);
+  if (!id) return null;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5 text-sm">
+      <span className="hidden text-zinc-500 sm:inline">Operando</span>
+      <span className="truncate font-medium text-violet-300">{loja?.empresa ?? "…"}</span>
+    </span>
+  );
+}
+
 export function ClientPortalShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
@@ -220,6 +235,12 @@ export function ClientPortalShell({ children }: { children: React.ReactNode }) {
             >
               <ArrowLeft size={15} /> Voltar para as lojas
             </Link>
+            {/* QUAL loja está sendo conectada — antes só aparecia o nome do
+                operador, e a agência podia ligar a conta do ML errada à loja
+                errada sem nada na tela denunciar. */}
+            <Suspense fallback={null}>
+              <LojaEmOperacao />
+            </Suspense>
             <span className="ml-auto text-xs text-zinc-500">{perfil.nome}</span>
           </header>
           <main className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
