@@ -22,6 +22,7 @@ import type {
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import type { PrecoNaTela, PropostaDePrecoNaTela } from "../../modules/assistant/domain/cartaoDePreco";
 import type { TarefaProposta } from "../../modules/assistant/domain/propostaDeTarefas";
+import type { PedidoDeImagem } from "../../modules/assistant/domain/propostaDeImagem";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -106,6 +107,9 @@ export interface RespostaDaConversa {
   /** A lista de tarefas a criar. Sem `propostaDeTarefasId`, sem botão. */
   propostaDeTarefas?: TarefaProposta[];
   propostaDeTarefasId?: string;
+  /** O pedido de imagem a gerar. Sem `propostaDeImagemId`, sem botão. */
+  propostaDeImagem?: PedidoDeImagem;
+  propostaDeImagemId?: string;
   /**
    * Descrição ou palavras-chave, atual e proposta lado a lado.
    *
@@ -286,6 +290,9 @@ export async function conversar(
           ...(Array.isArray(e.propostaDeTarefas) && typeof e.propostaDeTarefasId === "string"
             ? { propostaDeTarefas: e.propostaDeTarefas as TarefaProposta[], propostaDeTarefasId: e.propostaDeTarefasId }
             : {}),
+          ...(e.propostaDeImagem && typeof e.propostaDeImagemId === "string"
+            ? { propostaDeImagem: e.propostaDeImagem as PedidoDeImagem, propostaDeImagemId: e.propostaDeImagemId }
+            : {}),
           ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
           ...(e.propostaDePreco
             ? { propostaDePreco: e.propostaDePreco as RespostaDaConversa["propostaDePreco"] }
@@ -335,6 +342,9 @@ export interface ResultadoDaConfirmacao {
   mlItemId?: string;
   permalink?: string | null;
   statusNoML?: string | null;
+  /** Só na imagem: a versão gerada e a URL assinada (1 h) para mostrar. */
+  versaoId?: string;
+  imagemUrl?: string | null;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -359,5 +369,7 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     ...(typeof dados.mlItemId === "string" ? { mlItemId: dados.mlItemId } : {}),
     ...(dados.permalink !== undefined ? { permalink: dados.permalink } : {}),
     ...(dados.statusNoML !== undefined ? { statusNoML: dados.statusNoML } : {}),
+    ...(typeof dados.versaoId === "string" ? { versaoId: dados.versaoId } : {}),
+    ...(dados.imagemUrl !== undefined ? { imagemUrl: dados.imagemUrl } : {}),
   };
 }

@@ -71,6 +71,7 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('ia_precos_modelo',        false, 'sem cliente_id: a tabela de precos por modelo e da Zion, nao de uma loja. So a equipe le e escreve (067)'),
   ('perfis_de_conteudo',      true,  'como a loja vende: tom, publico, palavras preferidas/proibidas. A agencia escreve conteudo em nome da loja e precisa ler e editar isto (068)'),
   ('tarefas_da_loja',         true,  'a lista do que a LOJA decidiu fazer (nao e a tabela tarefas, que e nota da Zion — 055b). A agencia opera a loja e ve/conclui as tarefas dela (069)',
+  ('imagens_versoes',         true,  'os rascunhos de imagem gerados pela IA para a loja, com briefing e feedback. A agencia gera e aprova imagem em nome da loja. SO LEITURA — escreve so o servidor (070)'),
 
   -- ---------------------------------------------------------------
   -- NÃO É OPERAÇÃO — a agência NÃO alcança

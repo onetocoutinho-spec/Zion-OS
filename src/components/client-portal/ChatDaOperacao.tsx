@@ -41,6 +41,9 @@ import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTe
 import { continuacoes, sugestoesDoContexto } from "@/modules/assistant/domain/sugestoesDoContexto";
 import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
 import type { TarefaProposta } from "@/modules/assistant/domain/propostaDeTarefas";
+import type { PedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
+import { rotuloDoSlot } from "@/modules/assistant/domain/briefingDeImagem";
+import { aprovarImagemGerada } from "@/lib/services/imagemGeradaNoChat";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -287,6 +290,11 @@ interface Turno {
   /** A lista de tarefas a criar — e o id que autoriza. */
   propostaDeTarefas?: TarefaProposta[];
   propostaDeTarefasId?: string;
+  /** O pedido de imagem — e o id que autoriza. */
+  propostaDeImagem?: PedidoDeImagem;
+  propostaDeImagemId?: string;
+  /** A imagem que a confirmação gerou: rascunho no bucket privado, URL assinada. */
+  imagemGerada?: { versaoId: string; url: string | null; slot: string; produtoId: string; aprovada?: boolean };
   /** Já publicou? Impede o segundo clique antes de a rota precisar recusar. */
   publicando?: boolean;
   propostaDeTexto?: TextoNaTela;
@@ -598,6 +606,7 @@ export function ChatDaOperacao({
                     // ar um preço que já não é o dela.
                     r.propostaDePublicacao ||
                     r.propostaDeTarefasId ||
+                    r.propostaDeImagemId ||
                     r.cadastro?.propostaId
                       ? { chegouEm: Date.now() }
                       : {}),
@@ -629,6 +638,9 @@ export function ChatDaOperacao({
                       : {}),
                     ...(r.propostaDeTarefas && r.propostaDeTarefasId
                       ? { propostaDeTarefas: r.propostaDeTarefas, propostaDeTarefasId: r.propostaDeTarefasId }
+                      : {}),
+                    ...(r.propostaDeImagem && r.propostaDeImagemId
+                      ? { propostaDeImagem: r.propostaDeImagem, propostaDeImagemId: r.propostaDeImagemId }
                       : {}),
                     ...(r.propostaDeTexto
                       ? {
@@ -806,6 +818,7 @@ export function ChatDaOperacao({
         alvo?.propostaDeTextoId ??
         alvo?.propostaDePrecoId ??
         alvo?.propostaDeTarefasId ??
+        alvo?.propostaDeImagemId ??
         alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
@@ -833,6 +846,18 @@ export function ChatDaOperacao({
                     // Atravessa como veio do servidor. Nada é derivado aqui.
                     ...(r.consequencia !== undefined ? { consequencia: r.consequencia } : {}),
                   },
+                  // A IMAGEM gerada: vem do servidor com a URL assinada. O cartão
+                  // de imagem some e o de rascunho (aprovar / não gostei) entra.
+                  ...(r.ok && r.versaoId && turno.propostaDeImagem
+                    ? {
+                        imagemGerada: {
+                          versaoId: r.versaoId,
+                          url: r.imagemUrl ?? null,
+                          slot: turno.propostaDeImagem.slot,
+                          produtoId: turno.propostaDeImagem.produtoId,
+                        },
+                      }
+                    : {}),
                 }
               : turno
           )
@@ -851,6 +876,35 @@ export function ChatDaOperacao({
     },
     [turnos, ocupado, aoGravar]
   );
+
+  /**
+   * APROVAR a imagem gerada: ela sai do bucket privado e vira foto do produto
+   * (pública, porque o Mercado Livre precisa baixar). Quem copia é o servidor.
+   */
+  async function aprovarImagem(indice: number, comoCapa: boolean) {
+    const g = turnos[indice]?.imagemGerada;
+    if (!g || ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await aprovarImagemGerada(g.versaoId, comoCapa);
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? r.ok
+              ? {
+                  ...turno,
+                  imagemGerada: { ...g, aprovada: true },
+                  texto: `${turno.texto ?? ""}\n\nAprovada: a imagem agora é ${comoCapa ? "a capa" : "uma foto"} do produto.`.trim(),
+                }
+              : { ...turno, erro: r.mensagem }
+            : turno
+        )
+      );
+      if (r.ok) aoGravar?.();
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   /** Descarta a proposta sem gravar. O turno some da lista de pendentes. */
   const descartar = useCallback((indice: number) => {
@@ -1508,6 +1562,7 @@ export function ChatDaOperacao({
                 t.pricing ||
                 t.propostaDePreco ||
                 t.propostaDeTarefas ||
+                t.propostaDeImagem ||
                 (t.ferramentas?.length ?? 0) > 0 ? (
                 <div className="space-y-2">
                   {/* A ETAPA, não um spinner mudo: enquanto só há chamadas de
@@ -1596,6 +1651,30 @@ export function ChatDaOperacao({
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.propostaDeImagem && !t.imagemGerada && (
+                    <CartaoDeImagem
+                      p={t.propostaDeImagem}
+                      propostaId={t.propostaDeImagemId}
+                      desfecho={desfechoNaTela(t, agora)}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() =>
+                        setTurnos((ts) =>
+                          ts.map((turno, j) =>
+                            j === i ? { ...turno, propostaDeImagem: undefined, texto: "Descartei. Nenhuma imagem foi gerada." } : turno
+                          )
+                        )
+                      }
+                    />
+                  )}
+                  {t.imagemGerada && (
+                    <RascunhoDeImagem
+                      g={t.imagemGerada}
+                      ocupado={ocupado}
+                      aoAprovar={(comoCapa) => void aprovarImagem(i, comoCapa)}
+                      aoRecusar={(feedback) => void perguntar(`Não gostei da imagem (versão ${t.imagemGerada!.versaoId}): ${feedback}`)}
                     />
                   )}
                   {t.propostaDeTarefas && (
@@ -2231,6 +2310,120 @@ function CartaoDeTexto({
         <p className="mt-3 text-xs text-white/40">
           Não consegui registrar esta proposta agora, então não há botão. Peça de novo em instantes.
         </p>
+      )}
+    </div>
+  );
+}
+
+/** O cartão de IMAGEM — o que vai ser gerado, antes de gastar cota. */
+function CartaoDeImagem({
+  p,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: PedidoDeImagem;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (desfecho) {
+    return (
+      <p className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}>
+        {desfecho.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Gerar {rotuloDoSlot(p.slot)}{p.paiId ? " (nova versão)" : ""}
+      </p>
+      <p className="text-sm text-zinc-100">{p.produtoNome}</p>
+      {p.instrucao && <p className="text-xs text-zinc-400">Pedido: {p.instrucao}</p>}
+      {p.feedback && <p className="text-xs text-amber-200">Corrigir: {p.feedback}</p>}
+      <p className="text-xs text-zinc-500">
+        Parte da {p.paiId ? "versão anterior" : "foto real do produto"}. A imagem fica como rascunho até você aprovar — nada sobe sozinho. Gasta 1 da sua cota de IA.
+      </p>
+      {propostaId ? (
+        <div className="flex gap-2 pt-0.5">
+          <button type="button" onClick={aoConfirmar} disabled={ocupado} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+            {ocupado ? "Gerando…" : "Gerar"}
+          </button>
+          <button type="button" onClick={aoDescartar} disabled={ocupado} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-300">A proposta não foi registrada. Peça de novo.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O RASCUNHO gerado: a imagem (URL assinada), aprovar como capa ou como foto,
+ * ou dizer o que mudar — o feedback vira a próxima versão, a partir desta.
+ */
+function RascunhoDeImagem({
+  g,
+  ocupado,
+  aoAprovar,
+  aoRecusar,
+}: {
+  g: NonNullable<Turno["imagemGerada"]>;
+  ocupado: boolean;
+  aoAprovar: (comoCapa: boolean) => void;
+  aoRecusar: (feedback: string) => void;
+}) {
+  const [feedback, setFeedback] = useState("");
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        {rotuloDoSlot(g.slot as Parameters<typeof rotuloDoSlot>[0])} · versão {g.versaoId.slice(0, 8)}
+        {g.aprovada ? " · aprovada" : " · rascunho"}
+      </p>
+      {g.url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- URL assinada, fora do domínio configurado
+        <img src={g.url} alt={`Imagem gerada (${g.slot})`} className="max-h-72 w-auto rounded-lg border border-white/10" />
+      ) : (
+        <p className="text-xs text-amber-300">Gerei a imagem, mas não consegui montar o link para mostrar. Ela está guardada na versão acima.</p>
+      )}
+      {!g.aprovada && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => aoAprovar(true)} disabled={ocupado} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Aprovar como capa
+            </button>
+            <button type="button" onClick={() => aoAprovar(false)} disabled={ocupado} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Aprovar como foto
+            </button>
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (feedback.trim()) aoRecusar(feedback.trim());
+              setFeedback("");
+            }}
+          >
+            <input
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Não gostei: o que mudar? (ex.: fundo branco, produto maior)"
+              disabled={ocupado}
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none disabled:opacity-50"
+            />
+            <button type="submit" disabled={ocupado || !feedback.trim()} className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs text-amber-200 transition hover:bg-amber-400/10 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Refazer
+            </button>
+          </form>
+        </>
       )}
     </div>
   );

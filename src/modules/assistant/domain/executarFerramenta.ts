@@ -80,6 +80,8 @@ import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
 import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
 import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
+import { lerSlot } from "./briefingDeImagem";
+import type { PedidoDeImagem } from "./propostaDeImagem";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -529,6 +531,8 @@ export interface ResultadoDaFerramenta {
   };
   /** A lista de tarefas a criar — a tela mostra; a Proposal congela. */
   propostaDeTarefas?: { tarefas: TarefaProposta[]; cortadas: number };
+  /** O pedido de imagem — a tela mostra o que vai gerar; a Proposal congela. */
+  propostaDeImagem?: PedidoDeImagem;
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
     anuncioId: string;
@@ -1066,6 +1070,39 @@ export async function executarFerramenta(
 
     case "comparar_lojas":
       return compararAsLojas(ctx);
+
+    case "propor_imagem": {
+      const produtoId = texto(args, "produtoId");
+      const slot = lerSlot(args.slot);
+      if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+      if (!slot) return { saida: { montada: false, motivo: "Preciso saber qual imagem: capa, infográfico, detalhe, medidas, humanizada ou benefícios." } };
+      const item = await ctx.anuncio?.doProduto(produtoId);
+      if (!item) return { saida: { montada: false, motivo: "Não achei esse produto." } };
+      if (item.produto.quantidadeImagens === 0) {
+        return { saida: { montada: false, motivo: "Esse produto ainda não tem foto. A IA melhora uma foto real — ela não inventa o produto. Peça para ele enviar a foto primeiro." } };
+      }
+      const paiVersaoId = texto(args, "paiVersaoId");
+      const feedback = texto(args, "feedback").slice(0, 400);
+      const pedido: PedidoDeImagem = {
+        versao: 1,
+        produtoId,
+        produtoNome: item.produto.nome,
+        slot,
+        instrucao: texto(args, "instrucao").slice(0, 400),
+        ...(paiVersaoId ? { paiId: paiVersaoId } : {}),
+        ...(feedback ? { feedback } : {}),
+        ...(texto(args, "beneficios") ? { beneficios: texto(args, "beneficios").slice(0, 600) } : {}),
+      };
+      return {
+        propostaDeImagem: pedido,
+        saida: {
+          montada: true,
+          slot,
+          ...(paiVersaoId ? { ajusteDaVersao: paiVersaoId } : {}),
+          comoResponder: "NADA foi gerado. Diga que o pedido está no cartão para ele confirmar, e que a imagem gerada fica como rascunho até ele aprovar. Não descreva a imagem que ainda não existe.",
+        },
+      };
+    }
 
     case "propor_tarefas": {
       const { tarefas, cortadas } = normalizarTarefas(args.tarefas);

@@ -449,6 +449,24 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "propor_imagem",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de GERAR UMA IMAGEM do produto pela IA, a partir da FOTO REAL dele: capa (fundo branco, 1:1), infográfico, foto de detalhe, imagem de medidas, foto em uso ou imagem de benefícios. NÃO gera: o lojista confirma clicando, e a imagem gerada fica como rascunho até ele aprovar. Use para \"cria as imagens\", \"faz uma capa\", \"gera um infográfico\". Quando ele disser que NÃO GOSTOU de uma versão (\"quero fundo branco e o produto maior\"), chame de novo com `paiVersaoId` = o id da versão recusada (está no cartão) e `feedback` = o que ele disse — a próxima versão parte daquela e corrige exatamente isso. Produto sem foto real não gera: a IA melhora, não inventa.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: { type: "string" },
+        slot: { type: "string", enum: ["capa", "infografico", "detalhe", "medidas", "humanizada", "beneficios"] },
+        instrucao: { type: "string", description: "O que ele pediu para esta imagem, nas palavras dele. Opcional." },
+        paiVersaoId: { type: "string", description: "O id da versão recusada, quando é um ajuste." },
+        feedback: { type: "string", description: "O que ele disse da versão recusada." },
+        beneficios: { type: "string", description: "Só para infográfico/benefícios: os benefícios que ELE informou. Não invente." },
+      },
+      required: ["produtoId", "slot"],
+    },
+  },
+  {
     nome: "propor_tarefas",
     efeito: "propoe",
     descricao:

@@ -79,8 +79,11 @@ import { CAMPO_PUBLICACAO } from "@/modules/assistant/domain/propostaDePublicaca
 import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
 import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
 import { executarTarefasDaProposta } from "@/lib/services/tarefasDaProposta";
+import { executarImagemDaProposta } from "@/lib/services/imagemDaProposta";
 
-export const maxDuration = 30;
+// 60 desde a proposta de IMAGEM (070): gerar leva dezenas de segundos. É o
+// teto do plano da Vercel; o resto das propostas continua terminando em 2 s.
+export const maxDuration = 60;
 
 /**
  * O rastro de PROCEDÊNCIA de uma escrita que acabou de acontecer.
@@ -991,6 +994,25 @@ export async function POST(request: Request) {
   // A proposta existe, é deste cliente, está pendente, no prazo, e o mundo não
   // mudou. AGORA a corrida: quem reservar, executa.
   const p = proposta as PropostaPersistida;
+
+  // ---- IMAGEM: gera a versão (cota antes do provedor), bucket privado. Ver `imagemDaProposta`.
+  if (p.tipo === "imagem") {
+    const d = await executarImagemDaProposta(p, ctx);
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: 1,
+        produtoId: p.alvos[0],
+        versaoId: d.versaoId,
+        imagemUrl: d.url,
+        mensagem: d.url
+          ? `Gerei a imagem. Veja no cartão: aprove para ela virar foto do produto, ou diga o que mudar.`
+          : `Gerei a imagem e guardei a versão ${d.versaoId}, mas não consegui montar o link para mostrar agora.`,
+      });
+    }
+    if (d.jaFeito) return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não gerei de novo." });
+    return Response.json({ ok: false, mensagem: d.mensagem }, { status: 409 });
+  }
 
   // ---- TAREFAS: a lista congelada vira linhas em `tarefas_da_loja` (069).
   if (p.tipo === "tarefas") {

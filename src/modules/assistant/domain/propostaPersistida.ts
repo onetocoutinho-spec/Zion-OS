@@ -75,7 +75,11 @@ export type TipoDeProposta =
   | "publicacao"
   // TAREFAS DA LOJA, desde 22/08/2026. `texto` carrega a lista congelada (ver
   // `propostaDeTarefas.ts`); `alvos` são os produtos citados, se houver.
-  | "tarefas";
+  | "tarefas"
+  // IMAGEM, desde 22/08/2026. `texto` carrega o pedido (slot, produto,
+  // instrução, a versão recusada e o feedback); a execução GERA e guarda a
+  // versão no bucket privado. Ver `propostaDeImagem.ts`.
+  | "imagem";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -253,6 +257,9 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // toca catálogo, preço nem marketplace. Baixo — exige confirmação, não o
   // cuidado de uma escrita irreversível.
   tarefas: "baixo",
+  // Gerar imagem custa cota e tempo, e a imagem vira candidata a foto do
+  // produto — mas nada é publicado sem a aprovação seguinte. Médio.
+  imagem: "medio",
 };
 
 /** O que impede uma proposta de ser executada agora. */

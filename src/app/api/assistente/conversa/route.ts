@@ -42,6 +42,8 @@ import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
 import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
+import { congelarPedidoDeImagem, resumoDoPedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
+import { rotuloDoSlot } from "@/modules/assistant/domain/briefingDeImagem";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -732,6 +734,9 @@ export async function POST(request: Request) {
       let propostaDeTarefas:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTarefas"]>
         | undefined;
+      let propostaDeImagem:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeImagem"]>
+        | undefined;
       let propostaDeTexto:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTexto"]>
         | undefined;
@@ -1126,6 +1131,30 @@ export async function POST(request: Request) {
               }
             }
 
+            // ---- A IMAGEM vira registro ----
+            //
+            // O pedido inteiro (slot, instrução, versão recusada, feedback) em
+            // `texto`; o produto em `alvos`. A geração acontece só no clique.
+            let propostaDeImagemId: string | null = null;
+            if (propostaDeImagem && conversaId) {
+              try {
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "imagem",
+                  alvos: [propostaDeImagem.produtoId],
+                  valor: 1,
+                  texto: congelarPedidoDeImagem(propostaDeImagem),
+                  resumo: resumoDoPedidoDeImagem(propostaDeImagem, rotuloDoSlot(propostaDeImagem.slot)),
+                  precondicoes: [],
+                });
+                propostaDeImagemId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de imagem:", e);
+              }
+            }
+
             // ---- AS TAREFAS viram registro ----
             //
             // Lista congelada em `texto`; os produtos citados em `alvos`. Risco
@@ -1271,6 +1300,9 @@ export async function POST(request: Request) {
                 : {}),
               ...(propostaDeTarefas && propostaDeTarefasId
                 ? { propostaDeTarefas: propostaDeTarefas.tarefas, propostaDeTarefasId }
+                : {}),
+              ...(propostaDeImagem && propostaDeImagemId
+                ? { propostaDeImagem, propostaDeImagemId }
                 : {}),
               ...(propostaDeTexto && propostaDeTextoId
                 ? { propostaDeTexto, propostaDeTextoId }
@@ -1588,6 +1620,7 @@ export async function POST(request: Request) {
             if (r.propostaDeTexto) propostaDeTexto = r.propostaDeTexto;
             if (r.propostaDePublicacao) propostaDePublicacao = r.propostaDePublicacao;
             if (r.propostaDeTarefas) propostaDeTarefas = r.propostaDeTarefas;
+            if (r.propostaDeImagem) propostaDeImagem = r.propostaDeImagem;
             if (r.pricing) pricing = r.pricing;
             if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {

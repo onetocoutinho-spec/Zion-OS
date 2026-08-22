@@ -127,8 +127,8 @@ test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
   // o pior caso de um "obrigado" era um cartão indevido na tela de alguém. Agora
   // seria um ANÚNCIO NO AR sem ninguém ter pedido — reversível, sim, mas visível
   // para quem compra antes de ser visível para quem vende.
-  // 11 desde 22/08/2026: `propor_tarefas`, PROPOSTA (risco baixo, tabela 069).
-  assert.equal(COM_EFEITO.length, 11);
+  // 12 desde 22/08/2026: `propor_tarefas` e `propor_imagem`, PROPOSTAS.
+  assert.equal(COM_EFEITO.length, 12);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
@@ -293,10 +293,12 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // (LEITURA) e `propor_tarefas` (PROPOSTA — a lista que a loja decide fazer,
   // na tabela própria `tarefas_da_loja`, 069; gravada só no clique). O poder
   // de agir não mudou: continua 1 ação.
-  assert.equal(FERRAMENTAS.length, 26);
+  // E `propor_imagem` (PROPOSTA, risco médio): a imagem gerada fica no bucket
+  // privado como rascunho até a aprovação; nada sobe sozinho (070). 27 / 10.
+  assert.equal(FERRAMENTAS.length, 27);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 9);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
