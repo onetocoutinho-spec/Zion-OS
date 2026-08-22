@@ -39,6 +39,18 @@ export interface EntradaDoTitulo {
   marca: string;
   modelo: string;
   tituloAtual: string;
+  /**
+   * O AJUSTE pedido pelo lojista sobre um título já proposto ("deixa mais
+   * curto", "tira a marca"). Com ela, o agente parte do `tituloAtual` e muda
+   * só o que foi pedido — em vez de regerar do zero e perder os 80% que já
+   * estavam aprovados. (Auditoria do Copilot, 2026-08-22, P1.)
+   */
+  instrucao?: string;
+  /**
+   * O MOTIVO de uma retentativa — a recusa do juiz na primeira tentativa
+   * ("68 caracteres; o limite é 60"). Uma vez só, decidida por quem chama.
+   */
+  retentativaPor?: string;
 }
 
 /**
@@ -69,6 +81,14 @@ export async function gerarTituloOtimizado(
     e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
     e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
     e.tituloAtual ? `Título atual: ${dadoExterno("anuncio-titulo", e.tituloAtual)}` : "Título atual: (vazio)",
+    ...(e.instrucao
+      ? [
+          "",
+          `AJUSTE PEDIDO PELO LOJISTA: ${dadoExterno("pedido-do-lojista", e.instrucao)}`,
+          "Parta do título atual e mude SÓ o que o ajuste pede. Tudo o que ele não questionou fica como está — palavra por palavra sempre que couber.",
+        ]
+      : []),
+    ...(e.retentativaPor ? ["", `A TENTATIVA ANTERIOR FOI RECUSADA: ${e.retentativaPor}. Corrija exatamente isso, cortando do fim (o menos importante) e mantendo a keyword principal na frente.`] : []),
     "",
     // A trava contra fabricação, repetida junto dos dados porque é aqui que ela
     // vale: o que não está acima não existe para esta chamada.

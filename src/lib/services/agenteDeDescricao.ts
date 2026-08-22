@@ -56,6 +56,12 @@ export interface EntradaDoTexto {
   modelo: string;
   /** O que existe hoje. Vazio quando o anúncio ainda não tem. */
   atual: string;
+  /**
+   * O AJUSTE pedido pela lojista sobre uma descrição já proposta ("deixa mais
+   * curta", "fala do conforto"). Com ela, o agente parte da `atual` e muda só
+   * o que foi pedido, em vez de regerar do zero.
+   */
+  instrucao?: string;
 }
 
 export async function gerarDescricaoOtimizada(
@@ -74,6 +80,13 @@ export async function gerarDescricaoOtimizada(
     e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
     e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
     e.atual ? `Descrição atual: ${dadoExterno("anuncio-descricao", e.atual)}` : "Descrição atual: (vazia)",
+    ...(e.instrucao
+      ? [
+          "",
+          `AJUSTE PEDIDO PELA LOJISTA: ${dadoExterno("pedido-da-lojista", e.instrucao)}`,
+          "Parta da descrição atual e mude SÓ o que o ajuste pede. Os parágrafos que ela não questionou ficam como estão.",
+        ]
+      : []),
     "",
     SEM_INVENTAR,
     "Responda com UMA descrição recomendada e uma linha de justificativa.",

@@ -255,6 +255,10 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     tituloAtual: string;
+    /** O ajuste pedido ("deixa mais curto"). Ver `EntradaDoTitulo`. */
+    instrucao?: string;
+    /** O motivo da retentativa única (a recusa do juiz). */
+    retentativaPor?: string;
   }) => Promise<{ titulo: string; justificativa: string } | null>;
   /** O anúncio cujo título se quer melhorar. `null` = não existe anúncio. */
   anuncioParaTitulo?: (produtoId: string) => Promise<{
@@ -281,6 +285,8 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     atual: string;
+    /** O ajuste pedido ("deixa mais curta"). Ver `EntradaDoTexto`. */
+    instrucao?: string;
   }) => Promise<{ descricao: string; justificativa: string } | null>;
   /**
    * O que subiria se ela publicasse AGORA — o ensaio, sem tocar no ML.
@@ -1643,7 +1649,8 @@ async function proporTexto(
   };
 
   if (campo === "descricao") {
-    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual });
+    const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual, ...(instrucao ? { instrucao } : {}) });
     const veredicto = avaliarDescricaoProposta(gerado?.descricao ?? "", alvo.descricaoAtual);
     if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
     return {
@@ -1722,15 +1729,28 @@ async function proporTitulo(
   }
 
   const item = await a.doProduto(produtoId);
-  const gerado = await a.gerarTitulo({
+  // O AJUSTE: "deixa mais curto" vai para o agente com a ordem de preservar o
+  // resto. Sem isto, pedir de novo regerava do zero e a lojista perdia o que
+  // já tinha aprovado a cada iteração.
+  const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+  const entrada = {
     nome: item?.produto.nome ?? alvo.nome,
     marca: item?.produto.marca ?? "",
     modelo: item?.produto.modelo ?? "",
     tituloAtual: alvo.tituloAtual,
-  });
+    ...(instrucao ? { instrucao } : {}),
+  };
+  let gerado = await a.gerarTitulo(entrada);
   // O DOMÍNIO decide se o título proposto pode virar proposta — vazio, igual ao
   // atual ou acima dos 60 caracteres do ML são recusas, não opinião do modelo.
-  const veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  let veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  // UMA retentativa, só quando o juiz recusou por TAMANHO. A cota já foi
+  // gasta; devolver "68 caracteres" para a lojista em vez de encurtar era
+  // entregar o trabalho pela metade. Teto de uma: a segunda recusa é resposta.
+  if (!veredicto.ok && /caracteres/i.test(veredicto.motivo) && gerado?.titulo) {
+    gerado = await a.gerarTitulo({ ...entrada, retentativaPor: veredicto.motivo });
+    veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  }
   if (!veredicto.ok) {
     return { saida: { montada: false, motivo: veredicto.motivo } };
   }

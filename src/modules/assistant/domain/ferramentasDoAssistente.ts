@@ -394,10 +394,15 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     descricao:
       "Monta uma proposta de MELHORAR A DESCRIÇÃO de um anúncio que já existe. Devolve a descrição ATUAL e a PROPOSTA, lado a lado. NÃO grava: a lojista lê as duas e confirma clicando. " +
       "Use quando ela pedir para melhorar, reescrever ou completar a descrição. Se o produto ainda não tem anúncio gerado, não há descrição para melhorar — a ferramenta diz isso. " +
-      "Não repita o texto proposto na sua resposta: o cartão já mostra os dois lados, e reescrevê-lo faria aparecer uma terceira versão.",
+      "Não repita o texto proposto na sua resposta: o cartão já mostra os dois lados, e reescrevê-lo faria aparecer uma terceira versão. " +
+      "Quando ela pedir um AJUSTE numa descrição já proposta (\"deixa mais curta\", \"tira esse exagero\", \"fala do conforto\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
+      properties: { produtoId: { type: "string" }, instrucao: {
+          type: "string",
+          description:
+            "O que o lojista pediu de diferente, nas palavras dele: \"deixa mais curto\", \"mais premium\", \"tira o exagero\", \"põe a cor\". Só quando ele disse algo. Quem recebe isto PRESERVA o que não foi questionado.",
+        }, },
       required: ["produtoId"],
     },
   },
@@ -418,10 +423,14 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio.",
+      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
+      properties: { produtoId: { type: "string" }, instrucao: {
+          type: "string",
+          description:
+            "O que o lojista pediu de diferente, nas palavras dele: \"deixa mais curto\", \"mais premium\", \"tira o exagero\", \"põe a cor\". Só quando ele disse algo. Quem recebe isto PRESERVA o que não foi questionado.",
+        }, },
       required: ["produtoId"],
     },
   },
