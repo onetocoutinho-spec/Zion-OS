@@ -101,6 +101,7 @@ import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
+import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 
@@ -1160,6 +1161,52 @@ export async function POST(request: Request) {
               try {
                 logAcao("info", "pedido");
                 const admin = getSupabaseAdmin();
+
+                // A TRAVA DE POSSE — antes de tocar na credencial (ZION-AI-001).
+                //
+                // O `mlb` vem do MODELO, e o contexto do modelo carrega texto
+                // que a lojista não escreveu: títulos importados do ML,
+                // páginas de catálogo de fornecedor. Uma instrução embutida
+                // ali pode nomear um MLB. Até aqui o que impedia era a
+                // descrição da ferramenta ("SOMENTE para anúncios pausados por
+                // ela") — e esta base já respondeu a esse tipo de proteção
+                // logo abaixo: proibir no prompt não impede. Agora é código.
+                //
+                // A pergunta ao banco é "este MLB é desta loja E está pausado
+                // por ela?". Anúncio que não é dela: recusa. Anúncio que o
+                // banco não conhece: recusa — não se reativa o que não se
+                // sabe de quem é. Anúncio que não está pausado: recusa — não
+                // há o que reativar, e o pedido é suspeito por definição.
+                //
+                // `status_marketplace` é a mesma coluna que a tela condiciona
+                // os botões; se ela diz `paused`, o "Pausar" que desfaz esta
+                // ação existe na tela.
+                const { data: posse, error: erroPosse } = await admin
+                  .from("anuncios_gerados")
+                  .select("id, status_marketplace")
+                  .eq("cliente_id", clienteDaSessao)
+                  .eq("ml_item_id", mlb)
+                  .limit(1);
+                if (erroPosse) {
+                  logAcao("error", "posse_nao_conferida");
+                  throw new Error(
+                    `Não consegui conferir se ${mlb} é um anúncio desta loja, e por isso NÃO reativei.`
+                  );
+                }
+                const dono = (posse ?? [])[0] as { status_marketplace: string | null } | undefined;
+                if (!dono) {
+                  logAcao("warn", "recusado_nao_e_da_loja");
+                  throw new Error(
+                    `${mlb} não é um anúncio desta loja (ou o Zion ainda não o conhece), e por isso NÃO reativei. Se for dela, importe os anúncios primeiro.`
+                  );
+                }
+                if (dono.status_marketplace !== "paused") {
+                  logAcao("warn", "recusado_nao_esta_pausado", { status: dono.status_marketplace });
+                  throw new Error(
+                    `${mlb} não está pausado (está ${dono.status_marketplace ?? "em estado desconhecido"}), então não há o que reativar.`
+                  );
+                }
+
                 const canal = await lerCanalServidor(admin, clienteDaSessao, "Mercado Livre");
                 if (!canal?.refreshToken) throw new Error("Cliente não conectado ao Mercado Livre.");
                 const tk = await renovarToken({
@@ -1280,7 +1327,7 @@ export async function POST(request: Request) {
                   motivo: e instanceof Error ? e.message : "desconhecido",
                 });
                 (r as { saida: unknown }).saida = {
-                  erro: e instanceof Error ? e.message : "Falha ao reativar no Mercado Livre.",
+                  erro: mensagemParaONavegador(e, "Falha ao reativar no Mercado Livre."),
                   comoResponder:
                     "Diga que NÃO conseguiu reativar e repita o motivo. Não invente que deu certo.",
                 };

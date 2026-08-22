@@ -139,11 +139,11 @@ export async function salvarCanal(
     atualizado_em: new Date().toISOString(),
   };
   if (dados.tipoAnuncio !== undefined) linha.tipo_anuncio = dados.tipoAnuncio;
-  if (dados.ativo !== undefined) {
-    linha.ativo = dados.ativo;
-    // Desconectar: limpa a credencial (não é exposição — está apagando).
-    if (dados.ativo === false) linha.refresh_token = null;
-  }
+  // `ativo` continua sendo config pública. O que NÃO vai mais aqui é
+  // `refresh_token: null` ao desconectar: desde a migração 059 o navegador
+  // não tem GRANT nessa coluna, e a escrita falharia com "permission denied".
+  // Desconectar de verdade (apagar a credencial) é /api/ml/desconectar.
+  if (dados.ativo !== undefined) linha.ativo = dados.ativo;
 
   const { data, error } = await getSupabase()
     .from("canais_marketplace")

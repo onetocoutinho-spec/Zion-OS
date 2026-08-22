@@ -253,8 +253,26 @@ export function exigirCliente(req: Request): Promise<ContextoAutorizado> {
   return autorizar(req, "cliente");
 }
 
-/** Autenticado E com acesso ao cliente informado (equipe: qualquer; cliente: só o seu). */
+/**
+ * Autenticado E com acesso ao cliente informado (equipe: qualquer; cliente: só o seu).
+ *
+ * ZION-AUTHZ-001: `clienteId` VAZIO é recusado AQUI, e não tratado como
+ * "sem restrição". `avaliarAcesso` só aplica a checagem de tenant quando há
+ * alvo — é o desenho certo para `exigirAutenticado`, que passa `undefined`
+ * de propósito. Mas significava que `exigirAcessoAoCliente(req, "")` era
+ * silenciosamente igual a `exigirAutenticado(req)`: uma assinatura que
+ * promete verificação de tenant e não faz. As quinze rotas que chamam isto
+ * validavam `!clienteId -> 400` antes, cada uma — o comportamento seguro
+ * dependia de disciplina em quinze lugares, e a décima sexta rota nasceria
+ * sem ela. Agora a recusa mora na função que promete.
+ *
+ * 403, não 400: quem chega aqui sem alvo não está pedindo um recurso — está
+ * pedindo o guard sem o guard. A resposta é a mesma de "não é seu".
+ */
 export function exigirAcessoAoCliente(req: Request, clienteId: string): Promise<ContextoAutorizado> {
+  if (typeof clienteId !== "string" || !clienteId.trim()) {
+    return Promise.reject(new ErroAutorizacao(403, "Sem permissão para este recurso."));
+  }
   return autorizar(req, "autenticado", clienteId);
 }
 

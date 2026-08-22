@@ -167,3 +167,27 @@ test("o flag da agência não afeta cliente nem equipe", () => {
     true
   );
 });
+
+// ---- ZION-AUTHZ-001: alvo vazio NÃO é "sem restrição" ----
+
+test("exigirAcessoAoCliente com clienteId vazio -> 403, sem nem olhar a requisição", async () => {
+  // Em 106f95a isto resolvia como `exigirAutenticado`: a assinatura prometia
+  // checagem de tenant e, para "", não fazia nenhuma. Quinze rotas validavam
+  // antes; a décima sexta nasceria sem validar.
+  const { exigirAcessoAoCliente, ErroAutorizacao } = await import("./serverAuthorization.ts");
+  const req = new Request("http://x/api/qualquer", { headers: { authorization: "Bearer nada" } });
+  for (const vazio of ["", "   ", undefined as unknown as string, null as unknown as string]) {
+    await assert.rejects(
+      () => exigirAcessoAoCliente(req, vazio),
+      (e: unknown) => e instanceof ErroAutorizacao && e.status === 403,
+      `aceitou alvo ${JSON.stringify(vazio)}`
+    );
+  }
+});
+
+test("avaliarAcesso continua tratando alvo ausente como 'só autenticado' — é o contrato de exigirAutenticado", () => {
+  // O que mudou foi a função que PROMETE tenant, não a pura. `exigirAutenticado`
+  // passa `undefined` de propósito e precisa continuar passando.
+  assert.equal(avaliarAcesso({ perfil: clienteA, regra: "autenticado" }).ok, true);
+  assert.equal(avaliarAcesso({ perfil: clienteA, regra: "autenticado", clienteAlvo: undefined }).ok, true);
+});

@@ -6,6 +6,9 @@
 
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;
@@ -104,8 +107,9 @@ function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
 }
 
 export async function POST(request: Request) {
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -137,6 +141,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // ZION-QUOTA-001: a cota é cobrada AQUI, antes do provedor — não no botão.
+  // Atômica no banco; falha fechada se a reserva não responder. Equipe e
+  // agência não têm cliente_id e seguem sem cota (ver cotaDeIA.ts).
+  if (ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "agente", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
+  }
+
   try {
     const { json, modelo } = await chamarIAEstruturada({
       system: montarSystemPrompt(corpo.agente),
@@ -158,9 +173,6 @@ export async function POST(request: Request) {
       return Response.json({ resultado: json, modelo });
     }
   } catch (erro) {
-    return Response.json(
-      { erro: erro instanceof Error ? erro.message : "Falha ao executar o agente." },
-      { status: 500 }
-    );
+    return respostaDeErro("agentes/executar", erro, "Falha ao executar o agente.", 500);
   }
 }

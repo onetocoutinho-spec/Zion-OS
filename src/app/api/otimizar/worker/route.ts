@@ -7,6 +7,7 @@
 // tempo da função.
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { decidirAcessoDoCron, type DecisaoCron } from "@/lib/auth/autorizacaoDoCron";
 import {
   ESQUEMA_ANUNCIO,
   comAGradeDoCadastro,
@@ -82,10 +83,15 @@ interface FilaRow {
   tentativas: number;
 }
 
-function autorizado(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // sem secret configurado, libera (dev)
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+// ZION-CRON-001: a decisão é pura e testada em src/lib/auth/autorizacaoDoCron.ts.
+// Aqui só se liga o ambiente a ela. Em produção sem CRON_SECRET a resposta é
+// 503 — o worker se declara desligado em vez de aberto.
+function autorizado(req: Request): DecisaoCron {
+  return decidirAcessoDoCron({
+    authorization: req.headers.get("authorization"),
+    segredo: process.env.CRON_SECRET,
+    vercelEnv: process.env.VERCEL_ENV,
+  });
 }
 
 function montarMensagem(contexto: string): string {
@@ -390,11 +396,13 @@ async function rodar(): Promise<Response> {
 }
 
 export async function GET(req: Request) {
-  if (!autorizado(req)) return new Response("unauthorized", { status: 401 });
+  const acesso = autorizado(req);
+  if (!acesso.ok) return Response.json({ erro: acesso.motivo }, { status: acesso.status });
   return rodar();
 }
 
 export async function POST(req: Request) {
-  if (!autorizado(req)) return new Response("unauthorized", { status: 401 });
+  const acesso = autorizado(req);
+  if (!acesso.ok) return Response.json({ erro: acesso.motivo }, { status: acesso.status });
   return rodar();
 }

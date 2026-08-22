@@ -8,12 +8,13 @@
 // ⚠️ O refresh_token NUNCA é devolvido ao navegador (R3).
 
 import { trocarCodigoPorToken } from "@/lib/marketplaces/mercadolivre";
-import { salvarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { salvarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import {
   exigirAcessoAoCliente,
   exigirAutenticado,
   respostaErroAutorizacao,
 } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 30;
 
@@ -125,8 +126,7 @@ export async function POST(request: Request) {
     // Grava o refresh_token no canal, no servidor — o navegador nunca o vê.
     // A loja e o marketplace saem do TICKET, não do corpo — é o ponto inteiro
     // desta rota. `corpo.marketplace` deixou de ser lido.
-    await salvarRefreshTokenServidor(
-      ctx.supabase,
+    await salvarRefreshTokenServidor(clienteDaCredencial(),
       doTicket.cliente_id,
       tokens.refreshToken,
       doTicket.marketplace ?? "Mercado Livre",
@@ -134,9 +134,6 @@ export async function POST(request: Request) {
     );
     return Response.json({ ok: true, sellerId: tokens.userId ?? null });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao conectar com o Mercado Livre." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/conectar", e, "Falha ao conectar com o Mercado Livre.", 502);
   }
 }

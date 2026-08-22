@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader, Pill } from "@/components/client-portal/ui";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
-import { buscarCanal, salvarCanal } from "@/lib/services/canaisMarketplace";
+import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 type Estado = "idle" | "processando" | "ok" | "erro";
@@ -137,14 +137,22 @@ function Conexao() {
       setMsg("Não foi possível falar com o servidor. Verifique sua conexão.");
     }
   }
+  // DESCONECTAR TAMBÉM É FETCH, pelo mesmo motivo que conectar é.
+  //
+  // Antes era `salvarCanal({ ativo: false })` — uma escrita do navegador que
+  // zerava `refresh_token`. Desde a migração 059 o navegador não tem GRANT
+  // nessa coluna (ZION-SECRET-001): a credencial é lida e apagada só no
+  // servidor, e a mesma parede que autoriza publicar autoriza desligar.
   async function desconectar() {
     setEstado("processando");
     try {
-      await salvarCanal({
-        clienteId,
-        marketplace: "Mercado Livre",
-        ativo: false,
+      const r = await fetch("/api/ml/desconectar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+        body: JSON.stringify({ clienteId, marketplace: "Mercado Livre" }),
       });
+      const d = (await r.json()) as { ok?: boolean; erro?: string };
+      if (!r.ok || !d.ok) throw new Error(d.erro ?? "Falha ao desconectar.");
       setEstado("idle");
       setMsg("Conta desconectada.");
       reload();

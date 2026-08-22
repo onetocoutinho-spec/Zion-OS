@@ -9,9 +9,10 @@ import {
   buscarAnunciosDoVendedor,
   recorteDaCategoria,
 } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 300, não 60 — o teto do plano Pro, que o worker da esteira já usa desde
 // sempre (`/api/otimizar/worker`). Os 60 eram resíduo, não limite: em 02/08/2026
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const sellerId = canal.sellerId || tokens.userId;
     if (!sellerId) {
@@ -117,9 +118,6 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao importar anúncios do ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/importar-anuncios", e, "Falha ao importar anúncios do ML.", 502);
   }
 }

@@ -46,7 +46,6 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('anuncios',                true,  'o anúncio'),
   ('anuncios_gerados',        true,  'o que a IA escreveu'),
   ('auditorias_anuncios',     true,  'o diagnóstico do anúncio'),
-  ('canais_marketplace',      true,  'a conexão da loja com o marketplace'),
   ('copilot_acoes',           true,  'o que o copiloto fez na loja'),
   ('copilot_cadastros',       true,  'cadastro por conversa'),
   ('copilot_conversas',       true,  'a conversa sobre a loja'),
@@ -67,6 +66,7 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('produtos',                true,  'o catálogo'),
   ('relatorios',              true,  'o relatório da loja'),
   ('tabelas_medidas',         true,  'a tabela de tamanhos'),
+  ('consumo_ia',              true,  'o ledger de cota da loja: quantas chamadas de IA ela ja gastou no mes. A agencia precisa disso para explicar "acabou a cota". SO LEITURA — escreve so o servidor (060)'),
 
   -- ---------------------------------------------------------------
   -- NÃO É OPERAÇÃO — a agência NÃO alcança
@@ -75,7 +75,8 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('tarefas',    false, 'notas da Zion SOBRE o cliente: responsavel, prazo, proxima_acao. O que a loja precisa fazer vem de lacunasDaLoja, derivado dos dados (055b)'),
   ('reunioes',   false, 'pauta e horário de quem ATENDE, não de quem é atendido (055b)'),
   ('perfis',     false, 'identidade não é operação. Uma agência não precisa da lista de e-mails para otimizar anúncios (054, fora do laço)'),
-  ('ml_conexoes_pendentes', false, 'tickets de OAuth em voo. Tem políticas PRÓPRIAS, mais estreitas: só o próprio ticket, e sem update/delete (055)')
+  ('ml_conexoes_pendentes', false, 'tickets de OAuth em voo. Tem políticas PRÓPRIAS, mais estreitas: só o próprio ticket, e sem update/delete (055)'),
+  ('canais_marketplace', false, 'guarda o refresh_token da conta do lojista no ML: CREDENCIAL, não operação. Com ela a agência opera a conta FORA do produto e depois do contrato. A agência publica pelas rotas /api/ml/*, que leem o canal no servidor. A coluna também saiu do GRANT de authenticated (059)')
 ),
 reais as (
   select c.relname as tabela,
