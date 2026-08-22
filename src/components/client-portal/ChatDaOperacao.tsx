@@ -40,6 +40,7 @@ import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain
 import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTela";
 import { continuacoes, sugestoesDoContexto } from "@/modules/assistant/domain/sugestoesDoContexto";
 import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
+import type { TarefaProposta } from "@/modules/assistant/domain/propostaDeTarefas";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -283,6 +284,9 @@ interface Turno {
   };
   /** O id que AUTORIZA a publicação. Sem ele, não há botão. */
   propostaDePublicacaoId?: string;
+  /** A lista de tarefas a criar — e o id que autoriza. */
+  propostaDeTarefas?: TarefaProposta[];
+  propostaDeTarefasId?: string;
   /** Já publicou? Impede o segundo clique antes de a rota precisar recusar. */
   publicando?: boolean;
   propostaDeTexto?: TextoNaTela;
@@ -593,6 +597,7 @@ export function ChatDaOperacao({
                     // mostra preço e estoque, e publicar um ensaio velho põe no
                     // ar um preço que já não é o dela.
                     r.propostaDePublicacao ||
+                    r.propostaDeTarefasId ||
                     r.cadastro?.propostaId
                       ? { chegouEm: Date.now() }
                       : {}),
@@ -621,6 +626,9 @@ export function ChatDaOperacao({
                           propostaDePublicacao: r.propostaDePublicacao,
                           propostaDePublicacaoId: r.propostaDePublicacaoId,
                         }
+                      : {}),
+                    ...(r.propostaDeTarefas && r.propostaDeTarefasId
+                      ? { propostaDeTarefas: r.propostaDeTarefas, propostaDeTarefasId: r.propostaDeTarefasId }
                       : {}),
                     ...(r.propostaDeTexto
                       ? {
@@ -797,6 +805,7 @@ export function ChatDaOperacao({
         alvo?.propostaDeTituloId ??
         alvo?.propostaDeTextoId ??
         alvo?.propostaDePrecoId ??
+        alvo?.propostaDeTarefasId ??
         alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
@@ -1498,6 +1507,7 @@ export function ChatDaOperacao({
                 t.preparacao ||
                 t.pricing ||
                 t.propostaDePreco ||
+                t.propostaDeTarefas ||
                 (t.ferramentas?.length ?? 0) > 0 ? (
                 <div className="space-y-2">
                   {/* A ETAPA, não um spinner mudo: enquanto só há chamadas de
@@ -1586,6 +1596,22 @@ export function ChatDaOperacao({
                       ocupado={ocupado}
                       aoConfirmar={() => void confirmar(i)}
                       aoDescartar={() => descartar(i)}
+                    />
+                  )}
+                  {t.propostaDeTarefas && (
+                    <CartaoDeTarefas
+                      tarefas={t.propostaDeTarefas}
+                      propostaId={t.propostaDeTarefasId}
+                      desfecho={desfechoNaTela(t, agora)}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() =>
+                        setTurnos((ts) =>
+                          ts.map((turno, j) =>
+                            j === i ? { ...turno, propostaDeTarefas: undefined, texto: "Descartei. Nenhuma tarefa foi criada." } : turno
+                          )
+                        )
+                      }
                     />
                   )}
                   {t.ferramentas && t.ferramentas.length > 0 && !(ocupado && i === turnos.length - 1) && (
@@ -2205,6 +2231,79 @@ function CartaoDeTexto({
         <p className="mt-3 text-xs text-white/40">
           Não consegui registrar esta proposta agora, então não há botão. Peça de novo em instantes.
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O cartão de TAREFAS — a lista que vai ser criada, com o motivo de cada uma.
+ *
+ * Mesmo desenho dos outros cartões: o conteúdo exato antes do botão, botão só
+ * com `propostaId` persistido, desfecho vindo do servidor. Risco baixo, mas a
+ * pessoa confirma uma LISTA — por isso ela inteira está na tela, com o porquê.
+ */
+function CartaoDeTarefas({
+  tarefas,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  tarefas: readonly TarefaProposta[];
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (desfecho) {
+    return (
+      <p className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}>
+        {desfecho.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+  const cor = { alta: "text-amber-300", media: "text-zinc-400", baixa: "text-zinc-500" } as const;
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Criar {tarefas.length} tarefa{tarefas.length === 1 ? "" : "s"}
+      </p>
+      <ol className="space-y-1.5 text-sm">
+        {tarefas.map((t, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className={`mt-0.5 shrink-0 text-[10px] uppercase ${cor[t.prioridade]}`}>{t.prioridade}</span>
+            <div>
+              <p className="text-zinc-100">{t.titulo}</p>
+              {t.motivo && <p className="text-xs text-zinc-500">{t.motivo}</p>}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {propostaId ? (
+        <div className="flex gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={aoConfirmar}
+            disabled={ocupado}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            {ocupado ? "Criando…" : "Criar as tarefas"}
+          </button>
+          <button
+            type="button"
+            onClick={aoDescartar}
+            disabled={ocupado}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-300">A proposta não foi registrada. Peça de novo.</p>
       )}
     </div>
   );

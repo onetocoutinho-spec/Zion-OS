@@ -21,6 +21,7 @@ import type {
   selecionarParaPreparar,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import type { PrecoNaTela, PropostaDePrecoNaTela } from "../../modules/assistant/domain/cartaoDePreco";
+import type { TarefaProposta } from "../../modules/assistant/domain/propostaDeTarefas";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -102,6 +103,9 @@ export interface RespostaDaConversa {
   };
   /** O id que AUTORIZA a publicação. Sem ele, sem botão: a proposta não foi persistida. */
   propostaDePublicacaoId?: string;
+  /** A lista de tarefas a criar. Sem `propostaDeTarefasId`, sem botão. */
+  propostaDeTarefas?: TarefaProposta[];
+  propostaDeTarefasId?: string;
   /**
    * Descrição ou palavras-chave, atual e proposta lado a lado.
    *
@@ -278,6 +282,9 @@ export async function conversar(
             : {}),
           ...(typeof e.propostaDePublicacaoId === "string"
             ? { propostaDePublicacaoId: e.propostaDePublicacaoId }
+            : {}),
+          ...(Array.isArray(e.propostaDeTarefas) && typeof e.propostaDeTarefasId === "string"
+            ? { propostaDeTarefas: e.propostaDeTarefas as TarefaProposta[], propostaDeTarefasId: e.propostaDeTarefasId }
             : {}),
           ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
           ...(e.propostaDePreco

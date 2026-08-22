@@ -77,6 +77,9 @@ import {
 import type { Precondicao } from "./propostaPersistida";
 import type { PedidoCongelado } from "./propostaDePublicacao";
 import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
+import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
+import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
+import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -165,6 +168,8 @@ export interface ContextoDasFerramentas {
    * ofereceu (sem integração configurada), e a ferramenta diz isso.
    */
   vendas?: (dias: 7 | 14 | 30 | 60 | 90) => Promise<VendasNoServidor>;
+  /** A comparação entre as lojas do alcance — só agência/equipe recebem o porto. */
+  comparar?: () => Promise<ComparacaoDeLojas>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -295,6 +300,8 @@ export interface ContextoDoAnuncio {
    * publicação real montaria (`montarPreviewML`), porque mostrar um resumo
    * feito à parte seria mostrar uma coisa e publicar outra.
    */
+  /** O perfil de conteúdo da loja — para o juiz recusar palavra proibida. */
+  perfil?: () => Promise<PerfilDeConteudo>;
   ensaioDaPublicacao?: (produtoId: string) => Promise<{
     anuncioId: string;
     nome: string;
@@ -520,6 +527,8 @@ export interface ResultadoDaFerramenta {
     /** O pedido congelado — vai para a Proposal, não para a tela. */
     congelado?: PedidoCongelado;
   };
+  /** A lista de tarefas a criar — a tela mostra; a Proposal congela. */
+  propostaDeTarefas?: { tarefas: TarefaProposta[]; cortadas: number };
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
     anuncioId: string;
@@ -1054,6 +1063,33 @@ export async function executarFerramenta(
 
     case "vendas_da_loja":
       return consultarVendas(args, ctx);
+
+    case "comparar_lojas":
+      return compararAsLojas(ctx);
+
+    case "propor_tarefas": {
+      const { tarefas, cortadas } = normalizarTarefas(args.tarefas);
+      if (tarefas.length === 0) {
+        return { saida: { montada: false, motivo: "Preciso de pelo menos uma tarefa com título." } };
+      }
+      return {
+        propostaDeTarefas: { tarefas, cortadas },
+        saida: {
+          montada: true,
+          quantas: tarefas.length,
+          ...(cortadas > 0 ? { aviso: `Só as 10 primeiras entraram; ${cortadas} ficaram de fora.` } : {}),
+          comoResponder: "NADA foi criado. Diga que a lista está no cartão para ele confirmar. Não repita a lista no texto — o cartão já mostra.",
+        },
+      };
+    }
+
+    case "meu_perfil_de_conteudo": {
+      const perfil = (await ctx.anuncio?.perfil?.()) ?? null;
+      if (!perfil || perfilEstaVazio(perfil)) {
+        return { saida: { vazio: true, comoResponder: "Diga que a loja ainda não preencheu como gosta de vender, e que isso se faz em Configurações › Como a sua loja vende. Não sugira um tom." } };
+      }
+      return { saida: { ...perfil, comoResponder: "Mostre o que está escrito, como está. Não complete nem reinterprete." } };
+    }
 
     case "preparar_resolucao":
       return prepararResolucao(args, ctx);
@@ -1653,6 +1689,15 @@ async function proporTexto(
     const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual, ...(instrucao ? { instrucao } : {}) });
     const veredicto = avaliarDescricaoProposta(gerado?.descricao ?? "", alvo.descricaoAtual);
     if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
+    const proibidas = proibidasPresentes(veredicto.descricao, (await a.perfil?.()) ?? null);
+    if (proibidas.length > 0) {
+      return {
+        saida: {
+          montada: false,
+          motivo: `A descrição proposta usa palavra que a loja proibiu no perfil de conteúdo: ${proibidas.join(", ")}. Peça de novo dizendo para evitar.`,
+        },
+      };
+    }
     return {
       propostaDeTexto: {
         campo,
@@ -1753,6 +1798,15 @@ async function proporTitulo(
   }
   if (!veredicto.ok) {
     return { saida: { montada: false, motivo: veredicto.motivo } };
+  }
+  const proibidasNoTitulo = proibidasPresentes(veredicto.titulo, (await a.perfil?.()) ?? null);
+  if (proibidasNoTitulo.length > 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: `O título proposto usa palavra que a loja proibiu no perfil de conteúdo: ${proibidasNoTitulo.join(", ")}. Peça de novo dizendo para evitar.`,
+      },
+    };
   }
 
   return {
@@ -2457,6 +2511,36 @@ async function consultarVendas(
         "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
         "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
       ].join(" "),
+    },
+  };
+}
+
+/** "Compara minhas lojas" — uma linha por loja, a mesma régua. Só agência/equipe. */
+async function compararAsLojas(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.comparar) {
+    return { saida: { erro: "Esta conta opera uma loja só — não há o que comparar." } };
+  }
+  const r = await ctx.comparar();
+  if (!r.ok) return { saida: { erro: r.mensagem, motivo: r.motivo } };
+  return {
+    saida: {
+      lojas: r.lojas.map((l) => ({
+        nome: l.nome,
+        produtos: l.estado.produtos,
+        semCusto: l.estado.produtos - l.estado.comCusto,
+        semPeso: l.estado.produtos - l.estado.comPeso,
+        semFoto: l.estado.produtos - l.estado.comFoto,
+        semAnuncio: l.estado.produtos - l.estado.comAnuncio,
+        aguardandoAprovacao: l.estado.aguardandoAprovacao,
+        prontosParaPrecificar: l.estado.prontosParaPrecificar,
+        conectadaAoMercadoLivre: l.estado.conectadoAoMarketplace,
+        // `undefined` = não lido. Não vira zero.
+        ...(l.estado.infracoes !== undefined ? { infracoes: l.estado.infracoes } : {}),
+      })),
+      totalNoAlcance: r.totalNoAlcance,
+      ...(r.truncado ? { aviso: `Mostrei ${r.lojas.length} de ${r.totalNoAlcance} lojas (em ordem de nome).` } : {}),
+      comoResponder:
+        "Use uma TABELA, uma loja por linha, com as colunas que a pergunta pede. Os números são exatos — não some, não tire média. Aponte a loja mais atrasada pelo que está nas colunas (mais 'sem') e diga o que fazer primeiro nela. Loja sem 'infracoes' é loja cuja infração ainda não foi lida — não diga que não tem.",
     },
   };
 }

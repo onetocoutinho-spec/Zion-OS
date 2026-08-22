@@ -36,9 +36,10 @@ test("as chamadas aninhadas do chat (título, descrição, palavras) carimbam a 
   assert.match(d, /origem: "descricao" as const/);
   assert.match(d, /origem: "palavras_chave" as const/);
   const rota = ler("app/api/assistente/conversa/route.ts");
-  assert.match(rota, /gerarTituloOtimizado\(entrada, rastroDoTurno\)/);
-  assert.match(rota, /gerarDescricaoOtimizada\(entrada, rastroDoTurno\)/);
-  assert.match(rota, /gerarPalavrasChave\(entrada, rastroDoTurno\)/);
+  // Desde o perfil de conteudo (068), a entrada ganha `perfil` antes de ir.
+  for (const g of ["gerarTituloOtimizado", "gerarDescricaoOtimizada", "gerarPalavrasChave"]) {
+    assert.ok(rota.includes(`${g}({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno)`), g);
+  }
 });
 
 test("o turno do chat é registrado nos QUATRO desfechos: ok, parcial, timeout, erro", () => {

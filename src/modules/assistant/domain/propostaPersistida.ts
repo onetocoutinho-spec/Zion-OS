@@ -72,7 +72,10 @@ export type TipoDeProposta =
   // PUBLICAÇÃO, desde 22/08/2026. A única ação que o comprador vê; era a única
   // fora da Proposal. `texto` carrega o pedido congelado (ver
   // `propostaDePublicacao.ts`) e `alvos[0]` é o anúncio.
-  | "publicacao";
+  | "publicacao"
+  // TAREFAS DA LOJA, desde 22/08/2026. `texto` carrega a lista congelada (ver
+  // `propostaDeTarefas.ts`); `alvos` são os produtos citados, se houver.
+  | "tarefas";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -246,6 +249,10 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Publicar é o que o COMPRADOR vê, e o Mercado Livre não tem "desfazer":
   // um anúncio duplicado ou errado no ar é reputação, não só dado. Crítico.
   publicacao: "critico",
+  // Criar uma lista de tarefas é reversível com um clique (descartar) e não
+  // toca catálogo, preço nem marketplace. Baixo — exige confirmação, não o
+  // cuidado de uma escrita irreversível.
+  tarefas: "baixo",
 };
 
 /** O que impede uma proposta de ser executada agora. */

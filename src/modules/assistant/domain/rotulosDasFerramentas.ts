@@ -24,6 +24,8 @@ const ROTULOS: Readonly<Record<string, string>> = {
   tabela_de_medidas: "a tabela de medidas",
   procedencia: "de onde veio o dado",
   vendas_da_loja: "as vendas no Mercado Livre",
+  comparar_lojas: "a comparação entre as lojas",
+  meu_perfil_de_conteudo: "o perfil de conteúdo da loja",
   propor_gravacao: "a proposta de preenchimento",
   preparar_resolucao: "a resolução da pendência",
   propor_preco: "a proposta de preço",
@@ -32,6 +34,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   propor_palavras_chave: "a proposta de palavras-chave",
   propor_titulo: "a proposta de título",
   propor_anuncio: "a proposta de anúncio",
+  propor_tarefas: "a lista de tarefas",
   gerenciar_cadastro: "o cadastro em andamento",
   reativar_anuncio: "a reativação no Mercado Livre",
 };

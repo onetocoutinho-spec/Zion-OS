@@ -358,9 +358,11 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA — o eixo de
   // resultado comercial entra no chat (ver a matriz em primeiraAcao.test).
   // Nenhuma das outras vinte e duas mudou de efeito.
-  assert.equal(FERRAMENTAS.length, 23);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
+  // 26 / 15 / 9 desde 22/08/2026: comparar_lojas, meu_perfil_de_conteudo
+  // (leitura) e propor_tarefas (proposta). Ver a matriz em primeiraAcao.test.
+  assert.equal(FERRAMENTAS.length, 26);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 9);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.
@@ -373,7 +375,7 @@ test("T17: o C1R continua intacto", () => {
   // `vendas_da_loja` (ver a matriz em primeiraAcao.test). O que o C1R garante
   // NÃO mudou e é o que a linha seguinte prova: toda ferramenta da primeira
   // ação tem efeito `le`. O número trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 13);
+  assert.equal(PRIMEIRA_ACAO.length, 15);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

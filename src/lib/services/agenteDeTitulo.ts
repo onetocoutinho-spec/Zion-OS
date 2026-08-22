@@ -17,6 +17,7 @@ import { agentePorFerramenta } from "../agentes/catalogo";
 import { chamarIAEstruturada, provedorConfigurado, type RastroDaExecucao } from "../agentes/provedorIA";
 import { LIMITE_DE_TITULO } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
+import { blocoDoPerfil, type PerfilDeConteudo } from "@/modules/assistant/domain/perfilDeConteudo";
 
 const ESQUEMA_TITULO = {
   type: "object",
@@ -51,6 +52,8 @@ export interface EntradaDoTitulo {
    * ("68 caracteres; o limite é 60"). Uma vez só, decidida por quem chama.
    */
   retentativaPor?: string;
+  /** Como ESTA loja vende — o bloco entra no prompt quando existe. */
+  perfil?: PerfilDeConteudo | null;
 }
 
 /**
@@ -89,6 +92,7 @@ export async function gerarTituloOtimizado(
         ]
       : []),
     ...(e.retentativaPor ? ["", `A TENTATIVA ANTERIOR FOI RECUSADA: ${e.retentativaPor}. Corrija exatamente isso, cortando do fim (o menos importante) e mantendo a keyword principal na frente.`] : []),
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     // A trava contra fabricação, repetida junto dos dados porque é aqui que ela
     // vale: o que não está acima não existe para esta chamada.

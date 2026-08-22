@@ -39,6 +39,9 @@ import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
 import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
 import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
 import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
+import { compararLojas } from "@/lib/services/comparacaoDeLojas";
+import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
+import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -452,6 +455,9 @@ export async function POST(request: Request) {
   // QUEM paga as chamadas aninhadas (título, descrição, palavras-chave): o
   // mesmo tenant e usuário do turno. A `origem` cada gerador carimba a sua.
   const rastroDoTurno = { origem: "chat" as const, clienteId: clienteDaSessao, usuarioId };
+  // COMO ESTA LOJA VENDE — lido uma vez por turno e entregue aos geradores.
+  // Sem perfil (ou sem a 068 aplicada) volta vazio, e vazio não vira tom.
+  const perfilDaLoja = umaVezPorTurno(() => perfilDeConteudoNoServidor(clienteDaSessao));
   const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
   const ctx: ContextoDasFerramentas = {
     pergunta: medido.pergunta,
@@ -510,7 +516,7 @@ export async function POST(request: Request) {
       },
       // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
-      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada, rastroDoTurno),
+      gerarTitulo: async (entrada) => gerarTituloOtimizado({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
       textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
       // A TABELA VEM DO DOMÍNIO, não de agente.
       //
@@ -568,9 +574,15 @@ export async function POST(request: Request) {
       ensaioDaPublicacao: (produtoId) => ensaioDoProduto(clienteDaSessao, produtoId),
       // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
       // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
-      gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada, rastroDoTurno),
-      gerarPalavras: (entrada) => gerarPalavrasChave(entrada, rastroDoTurno),
+      gerarDescricao: async (entrada) => gerarDescricaoOtimizada({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
+      gerarPalavras: async (entrada) => gerarPalavrasChave({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
+      // As palavras PROIBIDAS pela loja: o juiz recusa um texto que as traga,
+      // antes de ele virar cartão. O prompt pede; o juiz garante.
+      perfil: perfilDaLoja,
     },
+    // ---- A COMPARAÇÃO ENTRE LOJAS — só para quem opera várias. O lojista não
+    // recebe o porto, e a ferramenta nem é declarada para ele.
+    ...(papel === "cliente" ? {} : { comparar: umaVezPorTurno(() => compararLojas(ctxAuth)) }),
     // ---- AS VENDAS ----
     //
     // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado
@@ -716,6 +728,9 @@ export async function POST(request: Request) {
       /** A proposta de trocar o título: atual e proposto, lado a lado. */
       let propostaDePublicacao:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePublicacao"]>
+        | undefined;
+      let propostaDeTarefas:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTarefas"]>
         | undefined;
       let propostaDeTexto:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTexto"]>
@@ -1111,6 +1126,30 @@ export async function POST(request: Request) {
               }
             }
 
+            // ---- AS TAREFAS viram registro ----
+            //
+            // Lista congelada em `texto`; os produtos citados em `alvos`. Risco
+            // baixo: criar uma lista se desfaz com um clique. Sem id, sem botão.
+            let propostaDeTarefasId: string | null = null;
+            if (propostaDeTarefas && conversaId) {
+              try {
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "tarefas",
+                  alvos: propostaDeTarefas.tarefas.map((t) => t.produtoId).filter((x): x is string => Boolean(x)),
+                  valor: propostaDeTarefas.tarefas.length,
+                  texto: congelarTarefas(propostaDeTarefas.tarefas),
+                  resumo: resumoDasTarefas(propostaDeTarefas.tarefas),
+                  precondicoes: [],
+                });
+                propostaDeTarefasId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de tarefas:", e);
+              }
+            }
+
             // ---- A PROPOSTA DE PRECO vira registro ----
             //
             // `valor` carrega o preco em REAIS — a unidade canonica da coluna
@@ -1229,6 +1268,9 @@ export async function POST(request: Request) {
                     propostaDePublicacao: semOCongelado(propostaDePublicacao),
                     propostaDePublicacaoId,
                   }
+                : {}),
+              ...(propostaDeTarefas && propostaDeTarefasId
+                ? { propostaDeTarefas: propostaDeTarefas.tarefas, propostaDeTarefasId }
                 : {}),
               ...(propostaDeTexto && propostaDeTextoId
                 ? { propostaDeTexto, propostaDeTextoId }
@@ -1545,6 +1587,7 @@ export async function POST(request: Request) {
             if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
             if (r.propostaDeTexto) propostaDeTexto = r.propostaDeTexto;
             if (r.propostaDePublicacao) propostaDePublicacao = r.propostaDePublicacao;
+            if (r.propostaDeTarefas) propostaDeTarefas = r.propostaDeTarefas;
             if (r.pricing) pricing = r.pricing;
             if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {

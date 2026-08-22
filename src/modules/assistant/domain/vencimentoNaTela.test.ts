@@ -107,7 +107,8 @@ test("TODOS os cartões passam pelo desfecho computado — nenhum ficou de fora"
   // pelo menos um".
   const computados = (CHAT.match(/desfecho=\{desfechoNaTela\(t, agora\)\}/g) ?? []).length;
   // SETE desde 11/08/2026: o cartão de PUBLICAR entrou.
-  assert.equal(computados, 7, `esperava 7 cartões computando o desfecho, achei ${computados}`);
+  // 8 desde 22/08/2026: `CartaoDeTarefas` ("cria as tarefas").
+  assert.equal(computados, 8, `esperava 8 cartões computando o desfecho, achei ${computados}`);
 });
 
 test("o desfecho REAL tem precedência sobre o vencimento", () => {

@@ -28,6 +28,7 @@ import {
   MAXIMO_DE_PALAVRAS_CHAVE,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
+import { blocoDoPerfil, type PerfilDeConteudo } from "@/modules/assistant/domain/perfilDeConteudo";
 
 const SEM_INVENTAR =
   "Use SOMENTE os dados acima. Não afirme material, tecnologia, garantia, origem, " +
@@ -62,6 +63,8 @@ export interface EntradaDoTexto {
    * o que foi pedido, em vez de regerar do zero.
    */
   instrucao?: string;
+  /** Como ESTA loja vende — o bloco entra no prompt quando existe. */
+  perfil?: PerfilDeConteudo | null;
 }
 
 export async function gerarDescricaoOtimizada(
@@ -87,6 +90,7 @@ export async function gerarDescricaoOtimizada(
           "Parta da descrição atual e mude SÓ o que o ajuste pede. Os parágrafos que ela não questionou ficam como estão.",
         ]
       : []),
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     SEM_INVENTAR,
     "Responda com UMA descrição recomendada e uma linha de justificativa.",
@@ -147,6 +151,7 @@ export interface EntradaDasPalavras {
   modelo: string;
   /** As que o anúncio já tem — para o agente não repetir. */
   atuais: readonly string[];
+  perfil?: PerfilDeConteudo | null;
 }
 
 export async function gerarPalavrasChave(
@@ -168,6 +173,7 @@ export async function gerarPalavrasChave(
     e.atuais.length > 0
       ? `Palavras-chave que o anúncio já tem: ${dadoExterno("anuncio-palavras", e.atuais.join(", "))}`
       : "O anúncio ainda não tem palavras-chave.",
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     SEM_INVENTAR,
     `Responda com no máximo ${MAXIMO_DE_PALAVRAS_CHAVE} termos de busca que ACRESCENTEM aos que já existem, e uma linha de justificativa.`,

@@ -22,17 +22,20 @@ const ler = (rel: string) =>
 // ferramentasParaPapel
 // ---------------------------------------------------------------------------
 
-test("lojista e agência enxergam o catálogo inteiro, inclusive reativar_anuncio", () => {
-  for (const papel of ["cliente", "agencia"] as const) {
-    const nomes = ferramentasParaPapel(papel).map((f) => f.nome);
-    assert.equal(nomes.length, FERRAMENTAS.length, papel);
-    assert.ok(nomes.includes("reativar_anuncio"), papel);
-  }
+test("lojista e agência enxergam reativar_anuncio; comparar_lojas só quem opera várias", () => {
+  const lojista = ferramentasParaPapel("cliente").map((f) => f.nome);
+  assert.ok(lojista.includes("reativar_anuncio"));
+  assert.ok(!lojista.includes("comparar_lojas"), "o lojista tem uma loja — comparar não é declarada para ele");
+  assert.equal(lojista.length, FERRAMENTAS.length - 1);
+  const agencia = ferramentasParaPapel("agencia").map((f) => f.nome);
+  assert.ok(agencia.includes("reativar_anuncio") && agencia.includes("comparar_lojas"));
+  assert.equal(agencia.length, FERRAMENTAS.length);
 });
 
 test("a equipe lê e propõe, mas não executa no marketplace sem clique", () => {
   const nomes = ferramentasParaPapel("equipe").map((f) => f.nome);
   assert.ok(!nomes.includes("reativar_anuncio"));
+  assert.ok(nomes.includes("comparar_lojas"));
   assert.equal(nomes.length, FERRAMENTAS.length - 1);
   for (const f of ferramentasParaPapel("equipe")) assert.notEqual(f.efeito, "executa");
 });

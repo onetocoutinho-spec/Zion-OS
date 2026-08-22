@@ -78,6 +78,7 @@ import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/proc
 import { CAMPO_PUBLICACAO } from "@/modules/assistant/domain/propostaDePublicacao";
 import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
 import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
+import { executarTarefasDaProposta } from "@/lib/services/tarefasDaProposta";
 
 export const maxDuration = 30;
 
@@ -990,6 +991,20 @@ export async function POST(request: Request) {
   // A proposta existe, é deste cliente, está pendente, no prazo, e o mundo não
   // mudou. AGORA a corrida: quem reservar, executa.
   const p = proposta as PropostaPersistida;
+
+  // ---- TAREFAS: a lista congelada vira linhas em `tarefas_da_loja` (069).
+  if (p.tipo === "tarefas") {
+    const d = await executarTarefasDaProposta(p, usuario);
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: d.criadas,
+        mensagem: `Criei ${d.criadas} tarefa${d.criadas === 1 ? "" : "s"}. Elas estão na sua tela inicial, em "Suas tarefas".`,
+      });
+    }
+    if (d.jaFeito) return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não criei de novo." });
+    return Response.json({ ok: false, mensagem: d.mensagem }, { status: 409 });
+  }
 
   // ---- PUBLICAÇÃO: efeito EXTERNO, caminho próprio. Ver `publicacaoDaProposta`.
   //

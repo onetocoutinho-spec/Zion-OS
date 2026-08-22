@@ -301,6 +301,20 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
       required: ["dias"],
     },
   },
+  {
+    nome: "comparar_lojas",
+    efeito: "le",
+    descricao:
+      "SÓ PARA QUEM OPERA VÁRIAS LOJAS (agência ou equipe). Mede todas as lojas no alcance da conta com a mesma régua — produtos, com custo, com peso, com foto, com anúncio, aguardando aprovação, conectada ao Mercado Livre, infrações — e devolve uma por linha, para comparar. Use para \"compara minhas lojas\", \"qual loja está mais atrasada?\", \"qual tem mais pendência?\". Não traz vendas: vendas se perguntam dentro de cada loja.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    nome: "meu_perfil_de_conteudo",
+    efeito: "le",
+    descricao:
+      "Como ESTA loja gosta de vender, escrito por ela em Configurações: tom de voz, público, palavras preferidas e palavras proibidas. Use para \"como a gente escreve?\", \"qual é o nosso tom?\", \"que palavras eu proibi?\" e antes de explicar por que um título foi recusado por palavra proibida. Perfil vazio significa que a loja ainda não preencheu — diga isso e aponte Configurações; não invente um tom.",
+    parametros: { type: "object", properties: {} },
+  },
 ];
 
 /**
@@ -432,6 +446,31 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
             "O que o lojista pediu de diferente, nas palavras dele: \"deixa mais curto\", \"mais premium\", \"tira o exagero\", \"põe a cor\". Só quando ele disse algo. Quem recebe isto PRESERVA o que não foi questionado.",
         }, },
       required: ["produtoId"],
+    },
+  },
+  {
+    nome: "propor_tarefas",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de CRIAR TAREFAS para a loja — a lista do que ela decidiu fazer a partir de um diagnóstico (\"conferir estoque da Sandália B\", \"revisar o preço dos que caíram\"). NÃO grava: o lojista vê a lista e confirma clicando. Use quando ele pedir \"cria as tarefas\", \"anota isso\", \"me lembra de\" ou aceitar um plano que você propôs. Cada tarefa leva o MOTIVO — o fato que a justifica, com o número que uma ferramenta devolveu. No máximo 10.",
+    parametros: {
+      type: "object",
+      properties: {
+        tarefas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              titulo: { type: "string", description: "O que fazer, em uma frase." },
+              motivo: { type: "string", description: "Por quê — o fato ou número que motivou." },
+              prioridade: { type: "string", enum: ["alta", "media", "baixa"] },
+              produtoId: { type: "string", description: "O id do produto, quando a tarefa é sobre um." },
+            },
+            required: ["titulo", "motivo", "prioridade"],
+          },
+        },
+      },
+      required: ["tarefas"],
     },
   },
   {
@@ -709,12 +748,23 @@ const PAPEIS_POR_EXECUCAO: Readonly<Record<string, readonly PapelDoCopilot[]>> =
   reativar_anuncio: ["cliente", "agencia"],
 };
 
+/**
+ * Leituras que só fazem sentido para quem opera VÁRIAS lojas. Para o lojista
+ * a ferramenta nem é declarada — oferecer "compare suas lojas" a quem tem uma
+ * seria convidar o modelo a responder o que não existe.
+ */
+const PAPEIS_POR_LEITURA: Readonly<Record<string, readonly PapelDoCopilot[]>> = {
+  comparar_lojas: ["agencia", "equipe"],
+};
+
 /** As ferramentas que ESTE papel enxerga. Pura. */
 export function ferramentasParaPapel(
   papel: PapelDoCopilot,
   fs: readonly Ferramenta[] = FERRAMENTAS
 ): readonly Ferramenta[] {
   return fs.filter((f) => {
+    const restricaoDeLeitura = PAPEIS_POR_LEITURA[f.nome];
+    if (restricaoDeLeitura) return restricaoDeLeitura.includes(papel);
     if (f.efeito !== "executa") return true;
     const permitidos = PAPEIS_POR_EXECUCAO[f.nome];
     // Execução sem política declarada não chega a ninguém — melhor uma
