@@ -7,6 +7,8 @@
 // Isto NÃO substitui a segurança: o RLS (migração 016) e a autorização
 // server-side continuam sendo as camadas reais. Aqui é só a experiência de UI.
 
+import { rotaPermitida } from "@/components/layout/nav";
+
 export type PapelPerfil = "equipe" | "cliente" | "agencia";
 
 /** Os papéis que o sistema reconhece. Qualquer outro valor NÃO é papel. */
@@ -58,7 +60,9 @@ export interface PerfilRota {
 export type DecisaoRota =
   | { tipo: "sem_acesso" }
   | { tipo: "ok" }
-  | { tipo: "redirect"; para: string };
+  | { tipo: "redirect"; para: string }
+  /** Perfil válido, rota fora do alcance do papel — a tela explica e oferece a volta. */
+  | { tipo: "proibido" };
 
 /**
  * true só para o Portal do Cliente (/cliente e /cliente/…).
@@ -122,8 +126,16 @@ export function decidirRota(perfil: PerfilRota | null, pathname: string): Decisa
     // A alternativa era registrar um segundo redirect no app do ML. Esta é a
     // que não exige mexer na configuração de lá.
     if (noPortal && !ehAConexaoDoMarketplace(pathname)) {
-      return { tipo: "redirect", para: "/" };
+      return { tipo: "redirect", para: "/clientes" };
     }
+    // OFERECER É DIFERENTE DE ENTREGAR — e isso vale para a URL também.
+    //
+    // O menu da agência é uma lista de permissão (nav.ts), mas até aqui a URL
+    // não era: /agentes, /ail/*, /configuracoes abriam por endereço e o RLS
+    // esvaziava a tela — lida como "produto quebrado". A mesma lista que
+    // alimenta o menu decide agora se a rota abre; o que sobra é um 403 que
+    // explica e oferece a volta, nunca uma tela em branco.
+    if (!rotaPermitida("agencia", pathname)) return { tipo: "proibido" };
     return { tipo: "ok" };
   }
 

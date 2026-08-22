@@ -104,8 +104,8 @@ test("agência fora do portal segue; dentro do portal é mandada para o painel",
   const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
   assert.deepEqual(decidirRota(agencia, "/clientes"), { tipo: "ok" });
   assert.deepEqual(decidirRota(agencia, "/esteira"), { tipo: "ok" });
-  assert.deepEqual(decidirRota(agencia, "/cliente"), { tipo: "redirect", para: "/" });
-  assert.deepEqual(decidirRota(agencia, "/cliente/produtos"), { tipo: "redirect", para: "/" });
+  assert.deepEqual(decidirRota(agencia, "/cliente"), { tipo: "redirect", para: "/clientes" });
+  assert.deepEqual(decidirRota(agencia, "/cliente/produtos"), { tipo: "redirect", para: "/clientes" });
 });
 
 test("agência SEM vínculo é perfil incompleto — pela mesma razão que cliente sem empresa", () => {
@@ -142,7 +142,7 @@ test("e continua expulsa do resto do portal", () => {
   for (const rota of ["/cliente", "/cliente/produtos", "/cliente/vendas", "/cliente/conectar-ml/x"]) {
     assert.deepEqual(
       decidirRota(agencia, rota),
-      { tipo: "redirect", para: "/" },
+      { tipo: "redirect", para: "/clientes" },
       `${rota} deixou a agência entrar`
     );
   }
@@ -168,4 +168,28 @@ test("a equipe continua sendo mandada para o painel", () => {
     decidirRota({ papel: "equipe", clienteId: null }, "/cliente/conectar-ml"),
     { tipo: "redirect", para: "/" }
   );
+});
+
+// ---------------------------------------------------------------------------
+// OFERECER ≠ ENTREGAR — também pela URL (fatia 3, docs/product/ux/02 P1)
+// ---------------------------------------------------------------------------
+
+test("agência digitando rota da Zion recebe 'proibido' — nunca tela vazia", () => {
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  for (const rota of ["/", "/agentes", "/ail/padroes", "/ail/inteligencia", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
+    assert.deepEqual(decidirRota(agencia, rota), { tipo: "proibido" }, `${rota} abriu para a agência`);
+  }
+});
+
+test("agência alcança o que opera, inclusive detalhe e busca", () => {
+  const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
+  for (const rota of ["/clientes", "/clientes/abc", "/produtos/xyz/editar", "/esteira/lote", "/fila-otimizacao", "/otimizar-lote", "/vendas", "/busca"]) {
+    assert.deepEqual(decidirRota(agencia, rota), { tipo: "ok" }, `${rota} fechou para a agência`);
+  }
+});
+
+test("equipe alcança tudo, inclusive /z", () => {
+  for (const rota of ["/", "/agentes", "/z", "/clientes/abc"]) {
+    assert.deepEqual(decidirRota(equipe, rota), { tipo: "ok" });
+  }
 });

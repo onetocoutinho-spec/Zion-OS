@@ -1,6 +1,6 @@
 import {
   LayoutDashboard,
-  Users,
+  Store,
   Package,
   Bot,
   AlertCircle,
@@ -9,100 +9,164 @@ import {
   Settings,
   Layers,
   ClipboardList,
-  ListFilter,
   Workflow,
-  ShieldCheck,
-  Sparkles,
   UserPlus,
-  Brain,
   Activity,
   type LucideIcon,
 } from "lucide-react";
+import type { PapelPerfil } from "@/lib/auth/roteamentoPapel";
+
+// A NAVEGAÇÃO DO PAINEL — por PERGUNTA, não por ferramenta.
+//
+// O menu era uma lista plana de 17 ferramentas; a agência recebia 10 delas
+// escondendo o resto — o anti-padrão "menu infinito" de docs/product/UX-010,
+// do qual o portal do lojista já tinha saído. Agora cada grupo responde uma
+// pergunta de quem opera um portfólio (docs/product/ux/04):
+//
+//   Visão geral       "Qual loja precisa de mim?"
+//   Lojas             "Quais lojas eu opero?"
+//   Operação          "O que estou fazendo nas lojas?"
+//   Acompanhamento    "O que entregamos?"
+//   Zion (só equipe)  "Como está o motor?"
+//
+// Dois níveis no máximo; o terceiro vira aba dentro da página. O mesmo objeto
+// alimenta o MENU e o GUARD DE ROTA (`rotaPermitida`): o que não está aqui para
+// um papel não aparece E não abre por URL — antes só o menu escondia, e a
+// agência que digitasse /agentes via tela vazia e lia "produto quebrado".
 
 export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Telas-filhas, reveladas quando o item está ativo (2º nível). */
+  filhos?: readonly { label: string; href: string }[];
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/", icon: LayoutDashboard },
-  { label: "Clientes", href: "/clientes", icon: Users },
-  { label: "Novo Usuário", href: "/usuarios/novo", icon: UserPlus },
-  { label: "Produtos", href: "/produtos", icon: Package },
-  { label: "Templates", href: "/templates", icon: Layers },
-  { label: "Esteira de Anúncio", href: "/esteira", icon: Workflow },
-  { label: "Otimizar em Massa", href: "/otimizar-lote", icon: Sparkles },
-  { label: "Aprovações", href: "/esteira/aprovacoes", icon: ShieldCheck },
-  { label: "Auditoria em Massa", href: "/auditoria-massa", icon: ClipboardList },
-  { label: "Fila de Otimização", href: "/fila-otimizacao", icon: ListFilter },
-  { label: "Agentes IA", href: "/agentes", icon: Bot },
-  { label: "Pendências", href: "/pendencias", icon: AlertCircle },
-  { label: "Vendas", href: "/vendas", icon: TrendingUp },
-  { label: "Memória (AIL)", href: "/ail/padroes", icon: Brain },
-  { label: "Decision Intelligence", href: "/ail/inteligencia", icon: Activity },
-  { label: "Relatórios", href: "/relatorios", icon: BarChart3 },
-  { label: "Configurações", href: "/configuracoes", icon: Settings },
+export interface NavGrupo {
+  /** `null` = sem cabeçalho (o primeiro grupo). */
+  titulo: string | null;
+  /** A pergunta que o grupo responde — é o que orienta, não o substantivo. */
+  pergunta: string;
+  /** Quem vê (e alcança). Lista de PERMISSÃO: falha fechada. */
+  papeis: readonly PapelPerfil[];
+  itens: readonly NavItem[];
+}
+
+const OPERADORES: readonly PapelPerfil[] = ["equipe", "agencia"];
+const SO_EQUIPE: readonly PapelPerfil[] = ["equipe"];
+
+export const GRUPOS: readonly NavGrupo[] = [
+  {
+    titulo: null,
+    pergunta: "Qual loja precisa de mim?",
+    // A home vira Agency overview na fatia 4; até lá é o painel da Zion.
+    papeis: SO_EQUIPE,
+    itens: [{ label: "Visão geral", href: "/", icon: LayoutDashboard }],
+  },
+  {
+    titulo: "Lojas",
+    pergunta: "Quais lojas eu opero?",
+    papeis: OPERADORES,
+    itens: [{ label: "Lojas", href: "/clientes", icon: Store }],
+  },
+  {
+    titulo: "Operação",
+    pergunta: "O que estou fazendo nas lojas?",
+    papeis: OPERADORES,
+    itens: [
+      {
+        label: "Anúncios",
+        href: "/esteira",
+        icon: Workflow,
+        filhos: [
+          { label: "Esteira", href: "/esteira" },
+          { label: "Em lote", href: "/esteira/lote" },
+          { label: "Aprovações", href: "/esteira/aprovacoes" },
+        ],
+      },
+      {
+        label: "Auditoria",
+        href: "/auditoria-massa",
+        icon: ClipboardList,
+        filhos: [
+          { label: "Auditoria em massa", href: "/auditoria-massa" },
+          { label: "Importar anúncios", href: "/auditoria-massa/importar" },
+          { label: "Fila de otimização", href: "/fila-otimizacao" },
+          { label: "Otimizar em lote", href: "/otimizar-lote" },
+        ],
+      },
+      { label: "Produtos", href: "/produtos", icon: Package },
+      { label: "Pendências", href: "/pendencias", icon: AlertCircle },
+      { label: "Vendas", href: "/vendas", icon: TrendingUp },
+    ],
+  },
+  {
+    titulo: "Acompanhamento",
+    pergunta: "O que entregamos?",
+    papeis: OPERADORES,
+    itens: [{ label: "Relatórios", href: "/relatorios", icon: BarChart3 }],
+  },
+  {
+    titulo: "Zion",
+    pergunta: "Como está o motor?",
+    papeis: SO_EQUIPE,
+    itens: [
+      { label: "Agentes IA", href: "/agentes", icon: Bot },
+      {
+        label: "Inteligência",
+        href: "/ail/inteligencia",
+        icon: Activity,
+        filhos: [
+          { label: "Decisões", href: "/ail/inteligencia" },
+          { label: "Padrões (memória)", href: "/ail/padroes" },
+        ],
+      },
+      { label: "Modelos de categoria", href: "/templates", icon: Layers },
+      { label: "Novo usuário", href: "/usuarios/novo", icon: UserPlus },
+      { label: "Configurações", href: "/configuracoes", icon: Settings },
+    ],
+  },
 ];
 
-/**
- * O que uma AGÊNCIA CLIENTE vê no menu.
- *
- * ===========================================================================
- * POR QUE UMA LISTA DE PERMISSÃO, E NÃO DE PROIBIÇÃO
- * ===========================================================================
- *
- * Uma lista de proibição erra para o lado errado: a tela nova que alguém criar
- * amanhã aparece para a agência por omissão, e ninguém percebe até ela clicar.
- * A lista abaixo falha FECHADA — o que não está aqui não aparece, e incluir é
- * uma decisão que alguém toma de propósito.
- *
- * O critério é um só: **a agência alcança o que ela OPERA.** É o mesmo que
- * deixou `perfis` fora do laço da 054 (identidade não é operação) e que tirou
- * `financeiro` na 055a (margem da Zion também não).
- *
- * O que ficou de fora, e por quê:
- *
- *   Dashboard, Novo Usuário,    são a operação da ZION sobre os clientes dela,
- *   Templates, Agentes IA,      não a operação da agência sobre as lojas.
- *   Memória (AIL),
- *   Decision Intelligence
- *
- *   Configurações               é a configuração da Zion, não a da agência.
- *
- * ANÚNCIOS TAMBÉM SAIU, e por um motivo diferente: a tela existia e estava
- * CERTA, mas lia `anuncios` — a tabela da era agência, com zero linhas desde
- * que a esteira nasceu. Os 790 anúncios publicados da loja vivem em
- * `anuncios_gerados`, que 18 arquivos usam. Quem quer VER anúncio vai em
- * /cliente/anuncios, que mostra o estado no marketplace na palavra do ML. O
- * CRUD do modelo velho (7 colunas de checklist: SEO, concorrência, revisão…)
- * não tinha para onde ser reapontado — os campos não existem no modelo novo.
- *
- * TRÊS SAÍRAM DO PRODUTO INTEIRO em 07/08 — Tarefas, Reuniões e Financeiro. O
- * filtro chegou a excluí-las daqui, mas o motivo era mais fundo do que "a
- * agência não vê": eram herança de agência de marketing, tinham ZERO linhas no
- * banco depois de meses, e sob o modelo self-service nada voltaria a escrever
- * nelas. Foram apagadas junto com Onboarding. O RLS delas já tinha sido fechado
- * antes (055a, 055b) e continua fechado — tabela sem tela ainda é tabela.
- *
- * OFERECER É DIFERENTE DE ENTREGAR, e é isso que este filtro resolve. Sem ele,
- * o RLS esvazia as telas e a agência lê tela vazia como produto quebrado.
- */
-const DA_AGENCIA = new Set<string>([
-  "/clientes",
-  "/produtos",
-  "/esteira",
-  "/otimizar-lote",
-  "/esteira/aprovacoes",
-  "/auditoria-massa",
-  "/fila-otimizacao",
-  "/pendencias",
-  "/vendas",
-  "/relatorios",
-]);
+/** Os grupos que um papel vê. Puro, falha fechada. */
+export function gruposDoPapel(papel: PapelPerfil): NavGrupo[] {
+  return GRUPOS.filter((g) => g.papeis.includes(papel));
+}
 
-/** O menu de quem está olhando. Puro. */
-export function navDoPapel(papel: "equipe" | "cliente" | "agencia"): NavItem[] {
-  if (papel !== "agencia") return NAV_ITEMS;
-  return NAV_ITEMS.filter((i) => DA_AGENCIA.has(i.href));
+/** Todos os itens, achatados — a lista completa do painel (compatibilidade). */
+export const NAV_ITEMS: NavItem[] = GRUPOS.flatMap((g) => [...g.itens]);
+
+/**
+ * O menu de quem está olhando, achatado. Puro.
+ * `cliente` nunca chega nesta casca (`decidirRota` o manda para /cliente/*);
+ * recebe a lista inteira só para não esconder o motivo num filtro vazio.
+ */
+export function navDoPapel(papel: PapelPerfil): NavItem[] {
+  if (papel === "cliente") return NAV_ITEMS;
+  return gruposDoPapel(papel).flatMap((g) => [...g.itens]);
+}
+
+/**
+ * Rotas alcançáveis por qualquer papel desta casca, mesmo fora do menu:
+ * a busca, a tela pública do convite e a aterrissagem do OAuth.
+ */
+const SEMPRE = ["/busca", "/definir-senha", "/cliente/conectar-ml"];
+/** Rotas só da equipe que não estão no menu. */
+const SO_EQUIPE_FORA_DO_MENU = ["/z"];
+
+function casa(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
+/**
+ * A MESMA lista que alimenta o menu decide se a URL abre. Puro.
+ * `cliente` não é tratado aqui: `decidirRota` já o redireciona para o portal.
+ */
+export function rotaPermitida(papel: PapelPerfil, pathname: string): boolean {
+  if (papel === "cliente") return true;
+  if (SEMPRE.some((h) => casa(pathname, h))) return true;
+  if (papel === "equipe" && SO_EQUIPE_FORA_DO_MENU.some((h) => casa(pathname, h))) return true;
+  const hrefs = navDoPapel(papel).flatMap((i) => [i.href, ...(i.filhos?.map((f) => f.href) ?? [])]);
+  return hrefs.some((h) => casa(pathname, h));
 }

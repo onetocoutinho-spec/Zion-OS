@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X, Search, Zap } from "lucide-react";
-import { NAV_ITEMS, navDoPapel, type NavItem } from "./nav";
+import { GRUPOS, gruposDoPapel, type NavGrupo, type NavItem } from "./nav";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
@@ -14,15 +14,37 @@ import { buscarAgencia } from "@/lib/services/agencias";
 import { SeletorDeLoja } from "./SeletorDeLoja";
 import { EsqueletoDeTexto } from "@/components/ui/Skeleton";
 
+/** O item "casa" com a rota se ele ou um filho dele for o prefixo dela. */
+function itemCasa(item: NavItem, pathname: string): boolean {
+  const hrefs = [item.href, ...(item.filhos?.map((f) => f.href) ?? [])];
+  return hrefs.some((h) => (h === "/" ? pathname === "/" : pathname === h || pathname.startsWith(h + "/")));
+}
+
+/** O filho que casa com a rota — o de prefixo MAIS LONGO vence ("/esteira" não rouba "/esteira/aprovacoes"). */
+function filhoAtivo(item: NavItem, pathname: string) {
+  return (item.filhos ?? [])
+    .filter((f) => pathname === f.href || pathname.startsWith(f.href + "/"))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+}
+
+/** O rótulo da tela atual: o filho mais específico, senão o item, senão o 1º. */
+function telaAtual(grupos: NavGrupo[], pathname: string): string {
+  const itens = grupos.flatMap((g) => g.itens);
+  const item = itens.find((i) => itemCasa(i, pathname));
+  if (!item) return GRUPOS[0].itens[0].label;
+  const filho = filhoAtivo(item, pathname);
+  return filho && filho.href !== item.href ? `${item.label} · ${filho.label}` : item.label;
+}
+
 function Sidebar({
   onNavigate,
-  itens,
+  grupos,
   perfilCarregado,
   nomeDaAgencia,
   podeAdicionarLoja,
 }: {
   onNavigate?: () => void;
-  itens: NavItem[];
+  grupos: NavGrupo[];
   /** Enquanto o perfil não chega, o menu é um esqueleto — nunca o da Zion inteira. */
   perfilCarregado: boolean;
   nomeDaAgencia: string | null;
@@ -53,26 +75,61 @@ function Sidebar({
               <EsqueletoDeTexto linhas={1} className={i % 3 === 0 ? "w-28" : i % 3 === 1 ? "w-20" : "w-24"} />
             </div>
           ))}
-        {perfilCarregado && itens.map((item) => {
-          const active =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-violet-500/10 text-violet-300 font-medium"
-                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              }`}
-            >
-              <Icon size={17} className={active ? "text-violet-400" : "text-zinc-500"} />
-              {item.label}
-            </Link>
-          );
-        })}
+        {perfilCarregado &&
+          grupos.map((grupo) => (
+            <div key={grupo.titulo ?? "inicio"} className="pb-3">
+              {grupo.titulo && (
+                <p
+                  className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-widest text-zinc-600"
+                  title={grupo.pergunta}
+                >
+                  {grupo.titulo}
+                </p>
+              )}
+              {grupo.itens.map((item) => {
+                const active = itemCasa(item, pathname);
+                const Icon = item.icon;
+                return (
+                  <div key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        active
+                          ? "bg-violet-500/10 text-violet-300 font-medium"
+                          : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                      }`}
+                    >
+                      <Icon size={17} className={active ? "text-violet-400" : "text-zinc-500"} />
+                      {item.label}
+                    </Link>
+                    {/* O 2º nível só aparece com o item aberto — mesma regra do portal. */}
+                    {active && item.filhos && (
+                      <div className="ml-[38px] mt-0.5 space-y-0.5 border-l border-white/5 pl-3">
+                        {item.filhos.map((filho) => {
+                          const ativoF = filhoAtivo(item, pathname)?.href === filho.href;
+                          return (
+                            <Link
+                              key={filho.href}
+                              href={filho.href}
+                              onClick={onNavigate}
+                              aria-current={ativoF ? "page" : undefined}
+                              className={`block rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                                ativoF ? "text-violet-300" : "text-zinc-500 hover:text-zinc-300"
+                              }`}
+                            >
+                              {filho.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
       </nav>
 
       <div className="border-t border-white/5 p-4">
@@ -182,12 +239,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // O RLS já esvazia a maioria dessas telas, e esvaziar não basta: OFERECER É
   // DIFERENTE DE ENTREGAR. Ela clica, vê tela vazia, e conclui que o produto
   // está quebrado.
-  const itens = navDoPapel(perfil?.papel ?? "equipe");
-  const current =
-    itens.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href))) ??
-    itens[0] ??
-    NAV_ITEMS[0];
-  useTituloDaAba(foraDestaCasca ? null : current.label);
+  const grupos = gruposDoPapel(perfil?.papel ?? "equipe");
+  const tela = telaAtual(grupos, pathname);
+  useTituloDaAba(foraDestaCasca ? null : tela);
 
   if (foraDestaCasca) return <>{children}</>;
 
@@ -210,7 +264,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
         <Sidebar
-          itens={itens}
+          grupos={grupos}
           perfilCarregado={perfil !== null || !supabaseConfigurado}
           nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
           podeAdicionarLoja={perfil?.papel !== "agencia"}
@@ -226,7 +280,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           <aside className="absolute inset-y-0 left-0 w-64">
             <Sidebar
-              itens={itens}
+              grupos={grupos}
               onNavigate={() => setMobileOpen(false)}
               perfilCarregado={perfil !== null || !supabaseConfigurado}
               nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
@@ -254,7 +308,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          <TrilhaDeContexto tela={current.label} />
+          <TrilhaDeContexto tela={tela} />
 
           <div className="ml-auto flex items-center gap-3">
             <form
