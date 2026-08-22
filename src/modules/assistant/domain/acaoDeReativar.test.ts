@@ -106,3 +106,34 @@ test("a ação deixa rastro estruturado, não só o chip da tela", () => {
   // quando ninguém estava olhando a tela.
   assert.match(BLOCO, /"confirmado", \{ estado \}/);
 });
+
+// ---------------------------------------------------------------------------
+// A trava de posse — ZION-AI-001 (auditoria de 2026-08-21)
+// ---------------------------------------------------------------------------
+//
+// O `mlb` vem do modelo, e o contexto do modelo carrega texto de terceiros
+// (títulos importados do ML, catálogo de fornecedor). O que impedia um MLB
+// alheio ou não pausado era a descrição da ferramenta. Agora é o banco.
+
+test("a posse é conferida ANTES de carregar a credencial", () => {
+  // Ordem, de novo: se a credencial fosse lida primeiro, um pedido forjado já
+  // teria renovado um token do ML antes de ser recusado.
+  const posse = BLOCO.indexOf('.eq("ml_item_id", mlb)');
+  const credencial = BLOCO.indexOf("lerCanalServidor(");
+  assert.ok(posse > 0, "a trava de posse sumiu do caminho da reativação");
+  assert.ok(posse < credencial, "a credencial é carregada antes de saber se o anúncio é da loja");
+});
+
+test("a consulta de posse é pelo tenant DA SESSÃO, e falha FECHADA", () => {
+  const ateACredencial = BLOCO.slice(0, BLOCO.indexOf("lerCanalServidor("));
+  assert.match(ateACredencial, /\.eq\("cliente_id", clienteDaSessao\)[\s\S]*?\.eq\("ml_item_id", mlb\)/,
+    "a posse não filtra pelo tenant da sessão");
+  assert.match(ateACredencial, /erroPosse[\s\S]*?throw new Error/, "erro na consulta de posse deixa passar");
+});
+
+test("MLB que não é da loja, e MLB que não está pausado, são recusados antes de agir", () => {
+  const ateACredencial = BLOCO.slice(0, BLOCO.indexOf("lerCanalServidor("));
+  assert.match(ateACredencial, /if \(!dono\)[\s\S]*?throw new Error/, "anúncio desconhecido não é recusado");
+  assert.match(ateACredencial, /status_marketplace !== "paused"[\s\S]*?throw new Error/,
+    "anúncio que não está pausado não é recusado");
+});
