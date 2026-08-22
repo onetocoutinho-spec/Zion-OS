@@ -187,6 +187,7 @@ export async function POST(request: Request) {
       // um modelo. Esforço alto aqui não melhorava a classificação e estourava
       // o tempo da rota — ver `ChamadaIA.esforco`.
       esforco: "low",
+      rastro: { origem: "intencao", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
     return Response.json({ criterio: JSON.parse(json) });
   } catch (e) {

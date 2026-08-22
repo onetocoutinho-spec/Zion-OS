@@ -12,7 +12,13 @@
 // E a geração, o item mais caro por unidade, passa a cobrar cota — era a
 // única rota de IA fora dela. (Auditoria do Copilot, 2026-08-22, P1.)
 
-import { gerarImagem, imagemIAConfigurada, motivoImagemIndisponivel } from "@/lib/agentes/provedorImagem";
+import {
+  gerarImagem,
+  imagemIAConfigurada,
+  motivoImagemIndisponivel,
+  provedorDeImagemConfigurado,
+} from "@/lib/agentes/provedorImagem";
+import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
 import {
   exigirAcessoAoCliente,
   exigirAutenticado,
@@ -142,14 +148,38 @@ export async function POST(request: Request) {
     if (!cota.ok) return respostaCotaRecusada(cota);
   }
 
+  // O REGISTRO em `ia_execucoes` (067): imagem é a chamada mais cara por
+  // unidade, e era a única sem cota E sem rastro. Provedor e modelo vêm do
+  // mesmo lugar de onde `gerarImagem` os lê; tokens não existem aqui.
+  const provedorDeImagem = provedorDeImagemConfigurado();
+  const modeloDeImagem =
+    provedorDeImagem === "openai"
+      ? process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2"
+      : process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image";
+  const relogio = cronometro();
+  const registrar = (status: "ok" | "erro", erro?: string) =>
+    registrarExecucaoIA({
+      clienteId: ctx.perfil.clienteId,
+      usuarioId: ctx.usuario?.id ?? null,
+      origem: "imagem",
+      provedor: provedorDeImagem,
+      modelo: modeloDeImagem,
+      ferramentas: [corpo.tipo],
+      ms: relogio.ms(),
+      status,
+      erro,
+    });
+
   try {
     const out = await gerarImagem({
       prompt: montarPrompt(corpo),
       imagemBase64,
       mimeType,
     });
+    await registrar("ok");
     return Response.json({ imagemBase64: out.base64, mimeType: out.mimeType });
   } catch (e) {
+    await registrar("erro", e instanceof Error ? e.message : "desconhecido");
     return respostaDeErro("imagens/gerar", e, "Falha ao gerar a imagem.", 502);
   }
 }

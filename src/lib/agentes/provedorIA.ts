@@ -10,6 +10,7 @@
 // Nunca importe este módulo no cliente — as chaves ficam só no servidor.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { cronometro, registrarExecucaoIA, type OrigemDaExecucao } from "@/lib/services/execucoesDeIA";
 
 export type Provedor = "gemini" | "anthropic";
 
@@ -84,6 +85,21 @@ export interface ChamadaIA {
    */
   esforco?: "low" | "medium" | "high" | "xhigh" | "max";
   maxTokens?: number;
+  /**
+   * QUEM está pagando e POR QUÊ — para a linha em `ia_execucoes` (067).
+   *
+   * Opcional porque nem todo chamador tem sessão (o worker do cron, por
+   * exemplo). Quem tem, passa: sem rastro a chamada acontece, mas não entra
+   * na conta de "quanto custa um usuário por mês".
+   */
+  rastro?: RastroDaExecucao;
+}
+
+export interface RastroDaExecucao {
+  origem: OrigemDaExecucao;
+  clienteId: string | null;
+  usuarioId: string | null;
+  conversaId?: string | null;
 }
 
 export interface RespostaIA {
@@ -420,7 +436,33 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
 /** Chama o provedor configurado e devolve a saída estruturada (JSON). */
 export async function chamarIAEstruturada(c: ChamadaIA): Promise<RespostaIA> {
   const p = provedorConfigurado();
-  if (p === "gemini") return chamarGemini(c);
-  if (p === "anthropic") return chamarAnthropic(c);
-  throw new Error("Nenhum provedor de IA configurado.");
+  if (p !== "gemini" && p !== "anthropic") throw new Error("Nenhum provedor de IA configurado.");
+  const relogio = cronometro();
+  try {
+    const r = p === "gemini" ? await chamarGemini(c) : await chamarAnthropic(c);
+    if (c.rastro) {
+      await registrarExecucaoIA({
+        ...c.rastro,
+        provedor: r.provedor,
+        modelo: r.modelo,
+        tokens: r.uso ? { entrada: r.uso.entrada, saida: r.uso.saida, total: r.uso.total } : null,
+        ms: relogio.ms(),
+        status: "ok",
+      });
+    }
+    return r;
+  } catch (e) {
+    // A chamada que FALHOU é a que mais importa na conta — e era a que sumia.
+    if (c.rastro) {
+      await registrarExecucaoIA({
+        ...c.rastro,
+        provedor: p,
+        modelo: null,
+        ms: relogio.ms(),
+        status: "erro",
+        erro: e instanceof Error ? e.message : "desconhecido",
+      });
+    }
+    throw e;
+  }
 }

@@ -22,7 +22,7 @@
 // ausente, agente ausente, chamada falhou.
 
 import { agentePorFerramenta } from "../agentes/catalogo";
-import { chamarIAEstruturada, provedorConfigurado } from "../agentes/provedorIA";
+import { chamarIAEstruturada, provedorConfigurado, type RastroDaExecucao } from "../agentes/provedorIA";
 import {
   LIMITE_DE_DESCRICAO,
   MAXIMO_DE_PALAVRAS_CHAVE,
@@ -59,7 +59,8 @@ export interface EntradaDoTexto {
 }
 
 export async function gerarDescricaoOtimizada(
-  e: EntradaDoTexto
+  e: EntradaDoTexto,
+  rastro?: RastroDaExecucao
 ): Promise<{ descricao: string; justificativa: string } | null> {
   if (!provedorConfigurado()) return null;
   const agente = agentePorFerramenta("descricao");
@@ -83,6 +84,7 @@ export async function gerarDescricaoOtimizada(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_DESCRICAO,
+      ...(rastro ? { rastro: { ...rastro, origem: "descricao" as const } } : {}),
       // ===================================================================
       // O TETO É DO TAMANHO DA COISA GERADA, NÃO UM NÚMERO REDONDO
       // ===================================================================
@@ -135,7 +137,8 @@ export interface EntradaDasPalavras {
 }
 
 export async function gerarPalavrasChave(
-  e: EntradaDasPalavras
+  e: EntradaDasPalavras,
+  rastro?: RastroDaExecucao
 ): Promise<{ palavras: string[]; justificativa: string } | null> {
   if (!provedorConfigurado()) return null;
   // O agente de SEO é quem sabe de busca. Reusar o de descrição aqui daria
@@ -162,6 +165,7 @@ export async function gerarPalavrasChave(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_PALAVRAS,
+      ...(rastro ? { rastro: { ...rastro, origem: "palavras_chave" as const } } : {}),
       maxTokens: 600,
     });
     const r = JSON.parse(json) as { palavras?: string[]; justificativa?: string };

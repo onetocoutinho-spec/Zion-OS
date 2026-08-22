@@ -67,6 +67,8 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('relatorios',              true,  'o relatório da loja'),
   ('tabelas_medidas',         true,  'a tabela de tamanhos'),
   ('consumo_ia',              true,  'o ledger de cota da loja: quantas chamadas de IA ela ja gastou no mes. A agencia precisa disso para explicar "acabou a cota". SO LEITURA — escreve so o servidor (060)'),
+  ('ia_execucoes',            true,  'o que cada chamada de IA da loja custou: modelo, tokens, latencia, desfecho. A agencia precisa disso para responder "quanto custa esta loja". SO LEITURA — escreve so o servidor (067); a politica agencia_escopo (SELECT) nasce na propria 067'),
+  ('ia_precos_modelo',        false, 'sem cliente_id: a tabela de precos por modelo e da Zion, nao de uma loja. So a equipe le e escreve (067)'),
 
   -- ---------------------------------------------------------------
   -- NÃO É OPERAÇÃO — a agência NÃO alcança

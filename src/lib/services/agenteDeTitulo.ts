@@ -14,7 +14,7 @@
 // produto dependendo de onde ele foi pedido, e ninguém saberia qual é o certo.
 
 import { agentePorFerramenta } from "../agentes/catalogo";
-import { chamarIAEstruturada, provedorConfigurado } from "../agentes/provedorIA";
+import { chamarIAEstruturada, provedorConfigurado, type RastroDaExecucao } from "../agentes/provedorIA";
 import { LIMITE_DE_TITULO } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
@@ -52,7 +52,9 @@ export interface EntradaDoTitulo {
  * isso que o modelo não tem como afirmá-los.
  */
 export async function gerarTituloOtimizado(
-  e: EntradaDoTitulo
+  e: EntradaDoTitulo,
+  /** Quem paga — para `ia_execucoes`. Opcional: sem sessão, sem rastro. */
+  rastro?: RastroDaExecucao
 ): Promise<{ titulo: string; justificativa: string } | null> {
   if (!provedorConfigurado()) return null;
   const agente = agentePorFerramenta("titulo");
@@ -79,6 +81,7 @@ export async function gerarTituloOtimizado(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_TITULO,
+      ...(rastro ? { rastro: { ...rastro, origem: "titulo" as const } } : {}),
       maxTokens: 400,
     });
     const r = JSON.parse(json) as { titulo?: string; justificativa?: string };

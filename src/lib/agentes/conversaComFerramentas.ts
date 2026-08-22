@@ -135,7 +135,7 @@ export type EscolhaDeFerramenta =
  * O resto do projeto (esteira, extração do catálogo) continua no Opus, onde a
  * chamada é rara e o erro entra no cadastro em escala.
  */
-const MODELO = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5";
+export const MODELO_DA_CONVERSA = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5";
 
 /**
  * Teto de saída do turno. Cobre PENSAMENTO + texto, não só o texto.
@@ -307,7 +307,7 @@ export async function pedirTurnoEmFluxo(
   const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
   try {
     const fluxo = cliente().messages.stream({
-      model: MODELO,
+      model: MODELO_DA_CONVERSA,
       max_tokens: MAX_TOKENS,
       system: sistemaCacheado(system),
       messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
@@ -346,7 +346,7 @@ export async function pedirTurno(
 ): Promise<TurnoDoModelo> {
   const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
   const corpo = {
-    model: MODELO,
+    model: MODELO_DA_CONVERSA,
     max_tokens: MAX_TOKENS,
     system: sistemaCacheado(system),
     messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),

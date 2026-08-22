@@ -126,7 +126,10 @@ export async function POST(request: Request) {
       return Response.json({ medicao: { tokensEntrada }, fileId });
     }
 
-    const { json, uso, modelo } = await chamarIAEstruturada(chamada);
+    const { json, uso, modelo } = await chamarIAEstruturada({
+      ...chamada,
+      rastro: { origem: "catalogo", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
+    });
 
     const lidos = (JSON.parse(json)?.produtos ?? []) as ProdutoLidoDoCatalogo[];
     // Um array só, e não `linhas` + `paginas` lado a lado: a página pertence ao

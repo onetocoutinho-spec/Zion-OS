@@ -97,6 +97,7 @@ export async function POST(request: Request) {
       mensagem: montarMensagem(briefing, contexto),
       schema: ESQUEMA_ANUNCIO,
       maxTokens: 16000,
+      rastro: { origem: "esteira", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
 
     let anuncio: unknown;

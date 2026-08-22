@@ -31,9 +31,11 @@
 import {
   pedirTurnoEmFluxo,
   MAXIMO_DE_PASSOS,
+  MODELO_DA_CONVERSA,
   type Fala,
 } from "@/lib/agentes/conversaComFerramentas";
 import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
 import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
 import {
   executarFerramenta,
@@ -121,11 +123,44 @@ const MAXIMO_DA_MENSAGEM = 4000;
 const MAXIMO_DE_FALAS = 40;
 const MAXIMO_DO_CORPO = 200_000;
 
+/**
+ * O orçamento de TEMPO do laço. `maxDuration` é 60 s e a Vercel mata a função
+ * no meio — o stream já entregou texto, então o corte aparece como resposta
+ * truncada com cara de completa, e NADA é gravado. Com este teto, o laço para
+ * antes, diz que parou, e grava o turno. Folga de 15 s para o último passo
+ * terminar de escrever e para a gravação.
+ */
+const ORCAMENTO_DO_LACO_MS = 45_000;
+
 /** O cartão sem o pedido congelado — ele fica no servidor, na Proposal. */
 function semOCongelado<T extends { congelado?: unknown }>(p: T): Omit<T, "congelado"> {
   const copia = { ...p };
   delete (copia as { congelado?: unknown }).congelado;
   return copia;
+}
+
+/**
+ * A MESMA leitura pesada, uma vez por turno.
+ *
+ * `pendencias` e `preparacao_de_anuncio` varrem o catálogo inteiro, e o modelo
+ * chama as duas (às vezes a mesma duas vezes) dentro de UM turno de até seis
+ * passos — cada chamada pagava a varredura de novo. O dado não muda dentro do
+ * turno: quem grava é o clique, e o clique é outra requisição. Memoizar por
+ * requisição é seguro por construção e zera as repetições.
+ *
+ * Falha NÃO é memoizada: a próxima chamada tenta de novo.
+ */
+function umaVezPorTurno<T>(ler: () => Promise<T>): () => Promise<T> {
+  let promessa: Promise<T> | null = null;
+  return () => {
+    if (!promessa) {
+      promessa = ler().catch((e) => {
+        promessa = null;
+        throw e;
+      });
+    }
+    return promessa;
+  };
 }
 
 function system(produtoAberto: string): string {
@@ -410,6 +445,9 @@ export async function POST(request: Request) {
 
   // O CONTEXTO, MEDIDO AGORA NO BANCO. As contagens da loja, o catálogo-alvo e
   // o produto aberto (se o ponteiro for desta loja) — com o tenant da sessão.
+  // QUEM paga as chamadas aninhadas (título, descrição, palavras-chave): o
+  // mesmo tenant e usuário do turno. A `origem` cada gerador carimba a sua.
+  const rastroDoTurno = { origem: "chat" as const, clienteId: clienteDaSessao, usuarioId };
   const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
   const ctx: ContextoDasFerramentas = {
     pergunta: medido.pergunta,
@@ -427,10 +465,10 @@ export async function POST(request: Request) {
     // análise em toda pergunta, inclusive nas que não a usam. Assim quem paga é
     // quem chama — e o tenant fica preso aqui, na sessão, em todos eles.
     analise: {
-      catalogo: async () => {
+      catalogo: umaVezPorTurno(async () => {
         const c = await catalogoParaAnalise(clienteDaSessao);
         return { produtos: c.produtos, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
-      },
+      }),
       produto: (id) => produtoParaAnalise(clienteDaSessao, id),
       fontes: async () => {
         // As capacidades vêm DECLARADAS pelo conector, não de um `if` de ERP.
@@ -457,18 +495,18 @@ export async function POST(request: Request) {
     // vinha em `paraAnunciar`, montado pela tela, agora vem do banco.
     anuncio: {
       doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
-      catalogo: async () => {
+      catalogo: umaVezPorTurno(async () => {
         const c = await catalogoParaPreparar(clienteDaSessao);
         return { itens: c.itens, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
-      },
-      margem: () => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO),
+      }),
+      margem: umaVezPorTurno(() => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO)),
       anuncioParaTitulo: async (produtoId) => {
         const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
         return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual } : null;
       },
       // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
-      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
+      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada, rastroDoTurno),
       textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
       // A TABELA VEM DO DOMÍNIO, não de agente.
       //
@@ -526,8 +564,8 @@ export async function POST(request: Request) {
       ensaioDaPublicacao: (produtoId) => ensaioDoProduto(clienteDaSessao, produtoId),
       // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
       // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
-      gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada),
-      gerarPalavras: (entrada) => gerarPalavrasChave(entrada),
+      gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada, rastroDoTurno),
+      gerarPalavras: (entrada) => gerarPalavrasChave(entrada, rastroDoTurno),
     },
     // ---- O PRICING ----
     //
@@ -671,9 +709,37 @@ export async function POST(request: Request) {
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePreco"]>
         | undefined;
       const usadas: string[] = [];
+      /** Quanto do total foi ESCRITO no cache — a 1,25×. Vai para `ia_execucoes`. */
+      let noCacheEscrito = 0;
+      let passos = 0;
+      const relogio = cronometro();
+      /** O registro do turno em `ia_execucoes` — em TODO desfecho, inclusive erro. */
+      const registrar = (status: "ok" | "erro" | "timeout" | "parcial", erro?: string) =>
+        registrarExecucaoIA({
+          clienteId: clienteDaSessao,
+          usuarioId,
+          conversaId: conversaId ?? null,
+          origem: "chat",
+          provedor: "anthropic",
+          modelo: MODELO_DA_CONVERSA,
+          ferramentas: usadas,
+          passos,
+          tokens: { total: tokens, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
+          ms: relogio.ms(),
+          status,
+          erro,
+        });
+      /** Estourou o TEMPO (não os passos). Decidido antes de cada passo. */
+      let semTempo = false;
 
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
+          // ---- O ORÇAMENTO DE TEMPO. Ver `ORCAMENTO_DO_LACO_MS`.
+          if (passo > 0 && relogio.ms() > ORCAMENTO_DO_LACO_MS) {
+            semTempo = true;
+            break;
+          }
+          passos = passo + 1;
           // ---- A FRONTEIRA DO INC-003.
           //
           // No PRIMEIRO passo o modelo não pode responder: ele é obrigado a
@@ -700,6 +766,7 @@ export async function POST(request: Request) {
           // mesma resposta, mesma latência aparente, só a conta é outra. Este
           // número é a única prova, e é ele que a sentinela de produção lê.
           doCache += turno.tokensLidosDoCache;
+          noCacheEscrito += turno.tokensEscritosNoCache;
 
           // ---- DEFESA DE PROTOCOLO, não classificação semântica.
           //
@@ -1066,6 +1133,7 @@ export async function POST(request: Request) {
             //
             // Seguro por construção: `gravarTurno` captura o `error`, loga e
             // NUNCA lança — esperar por ela não pode derrubar a resposta.
+            await registrar("ok");
             if (conversaId) {
               await gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
@@ -1452,7 +1520,14 @@ export async function POST(request: Request) {
         // O turno é GRAVADO mesmo assim: seis passos pagos que somem sem rastro
         // não dão para depurar, e o histórico do modelo (que agora vem do
         // banco) precisa saber o que foi consultado.
-        const textoDoEstouro = "Me perdi no meio do caminho. Pode reformular?";
+        //
+        // Duas portas de saída, duas frases: passos esgotados é "me perdi";
+        // tempo esgotado é "demorei demais" — e o que já foi lido continua no
+        // histórico do banco, então "continua" retoma de onde parou.
+        const textoDoEstouro = semTempo
+          ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+          : "Me perdi no meio do caminho. Pode reformular?";
+        await registrar(semTempo ? "timeout" : "parcial", semTempo ? "orcamento_de_tempo" : "teto_de_passos");
         if (conversaId) {
           await gravarTurno(clienteDaSessao, conversaId, {
             pergunta: mensagem,
@@ -1478,6 +1553,8 @@ export async function POST(request: Request) {
         // por horas um erro de schema que era trivial de corrigir.
         console.error("[assistente/conversa] falha:", e);
         const msg = e instanceof Error ? e.message : "";
+        // O turno que falhou também conta — é justamente o que se investiga.
+        await registrar("erro", msg || "desconhecido");
         // "sobrecarregado, tente de novo" é acionável para quem digitou; um
         // erro de schema não é, e ainda pode carregar configuração do servidor.
         mandar({

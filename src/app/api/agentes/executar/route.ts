@@ -167,6 +167,7 @@ export async function POST(request: Request) {
       mensagem: montarMensagem(entrada, contexto),
       schema: ESQUEMA_RESULTADO,
       maxTokens: 8000,
+      rastro: { origem: "agente", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
 
     try {
