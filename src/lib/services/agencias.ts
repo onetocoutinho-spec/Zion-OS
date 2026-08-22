@@ -6,6 +6,7 @@
 // lê a própria (`agencia_le_a_propria`), a equipe lê todas (`equipe_total`).
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { lerTudoPaginado } from "../supabase/paginado";
 
 export interface Agencia {
   id: string;
@@ -27,12 +28,10 @@ export async function buscarAgencia(id: string): Promise<Agencia | null> {
 
 export async function listarAgencias(): Promise<Agencia[]> {
   if (!supabaseConfigurado) return [];
-  const { data, error } = await getSupabase()
-    .from("agencias")
-    .select("id, nome, ativo")
-    .order("nome");
-  if (error) throw error;
-  return (data ?? []).map((a) => ({
+  const linhas = await lerTudoPaginado<{ id: string; nome: string; ativo: boolean | null }>("agencias", (de, ate) =>
+    getSupabase().from("agencias").select("id, nome, ativo").order("nome").range(de, ate)
+  );
+  return linhas.map((a) => ({
     id: a.id as string,
     nome: a.nome as string,
     ativo: a.ativo !== false,
