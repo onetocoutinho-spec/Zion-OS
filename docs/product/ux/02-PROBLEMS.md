@@ -250,7 +250,7 @@ Esforço: S.
 
 ## Riscos abertos — precisam de decisão do usuário
 
-> Estado em 2026-08-22: (1) continua aberto — a migração `064-a-loja-em-operacao.sql` está escrita e **não aplicada**; (2) decidido na prática: a Lente nasceu no `AppShell` como `SeletorDeLoja`, `/z` intocado; (3) aplicado como emenda na UI (Loja ≠ Cliente) — falta registrar em VOC-001; (4) só os redirects canônicos; mover `/cliente/*` segue bloqueado pelo `redirect_uri` do ML; (5) fora do escopo, inalterado; (6) inalterado.
+> Estado em 2026-08-22: (1) **resolvido em 2026-08-22** — a migração `064-a-loja-em-operacao.sql` foi aplicada no projeto principal e conferida (sobrecargas com `p_cliente_id`, `anon` sem execute, ledger 064); (2) decidido na prática: a Lente nasceu no `AppShell` como `SeletorDeLoja`, `/z` intocado; (3) aplicado como emenda na UI (Loja ≠ Cliente) — falta registrar em VOC-001; (4) só os redirects canônicos; mover `/cliente/*` segue bloqueado pelo `redirect_uri` do ML; (5) fora do escopo, inalterado; (6) inalterado.
 
 1. **RPCs `portal_*` com parâmetro de loja.** É mudança de função SQL (não de tabela), mas toca segurança (validação por `lojas_da_agencia()`/`eh_equipe()`). Sem isso, "operar a loja X" não sai do papel. Decisão: aprovar a Fase 3 mínima (doc 03 §Caminho de migração).
 2. **Destino de `/z` (Shell + Mission + design tokens).** É a arquitetura-alvo da constituição (SHELL-001, UX-010 "Lente"). Esta auditoria propõe **o Store switcher como a primeira materialização da Lente no app de produção**, sem adotar o Shell inteiro. Decisão: concordar que a Lente nasce no `AppShell`, não no `/z`.

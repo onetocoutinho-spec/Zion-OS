@@ -1,8 +1,7 @@
 -- 064 — a loja em operação
 --
--- NÃO APLICADA AUTOMATICAMENTE. Esta migração é a Fase 3 (só funções, nenhuma
--- tabela) de docs/product/ux/03-RECOMMENDED-EXPERIENCE.md. Toca autorização:
--- leia, aprove, aplique.
+-- Aplicada em 2026-08-22 no projeto principal (aprovada pelo dono). É a Fase 3
+-- (só funções, nenhuma tabela) de docs/product/ux/03-RECOMMENDED-EXPERIENCE.md.
 --
 -- O QUE MUDA
 --
