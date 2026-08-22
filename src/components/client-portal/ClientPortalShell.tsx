@@ -138,7 +138,7 @@ function Sidebar({ nome, operando, onNavigate }: { nome: string; operando: boole
       <div className="border-t border-white/5 p-4">
         <div className="rounded-lg bg-white/[0.03] border border-white/5 p-3">
           <p className="flex items-center gap-1.5 text-xs font-medium text-zinc-300">
-            <Zap size={12} className="text-violet-400" /> Powered by Zion Company
+            <Zap size={12} className="text-violet-400" /> Zion OS
           </p>
           <p className="mt-0.5 text-[11px] text-zinc-500">Sua loja, otimizada com IA</p>
         </div>

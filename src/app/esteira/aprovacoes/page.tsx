@@ -48,7 +48,7 @@ const HEADERS = [
   "Pend.",
   "Origem",
   "Tipo",
-  "Status",
+  "Situação",
   "Criado",
   "",
 ];

@@ -34,7 +34,7 @@ const TONE_PRIORIDADE: Record<PrioridadeAuditoria, Tone> = {
 const selectClasses =
   "rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
-const HEADERS_PREVIEW = ["Título", "Categoria", "Preço", "Score", "ABC", "Prioridade", "Problemas"];
+const HEADERS_PREVIEW = ["Título", "Categoria", "Preço", "Nota", "ABC", "Prioridade", "Problemas"];
 
 export default function ImportarCsvPage() {
   const router = useRouter();

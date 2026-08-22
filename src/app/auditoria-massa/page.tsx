@@ -56,13 +56,13 @@ const PESO_PRIORIDADE: Record<PrioridadeAuditoria, number> = {
 };
 
 const HEADERS_IMP = [
-  "Cliente",
+  "Loja",
   "Marketplace",
   "Arquivo",
   "Origem",
   "Anúncios",
   "Processados",
-  "Status",
+  "Situação",
   "Data",
   "Responsável",
 ];
@@ -70,14 +70,14 @@ const HEADERS_IMP = [
 const HEADERS_AUD = [
   "Anúncio / Categoria",
   "Marketplace",
-  "Score",
+  "Nota",
   "ABC",
   "Prioridade",
   "Vendas",
   "Visitas",
   "Conversão",
   "Principais problemas",
-  "Status",
+  "Situação",
 ];
 
 const PAGINA = 20;

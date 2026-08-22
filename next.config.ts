@@ -124,6 +124,28 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/(.*)", headers: CABECALHOS_DE_SEGURANCA }];
   },
+  // OS ENDEREÇOS CANÔNICOS DA ARQUITETURA DE INFORMAÇÃO (docs/product/ux/04)
+  // já existem — apontando para as rotas físicas de hoje. O caminho inverso
+  // (mover os arquivos e redirecionar os antigos) fica para quando o
+  // redirect_uri do Mercado Livre (/cliente/conectar-ml) puder mudar junto.
+  // Temporários de propósito: a URL antiga continua sendo a "de verdade".
+  async redirects() {
+    return [
+      { source: "/lojas", destination: "/clientes", permanent: false },
+      { source: "/lojas/novo", destination: "/clientes/novo", permanent: false },
+      { source: "/lojas/:id", destination: "/clientes/:id", permanent: false },
+      { source: "/lojas/:id/editar", destination: "/clientes/:id/editar", permanent: false },
+      { source: "/anuncios", destination: "/esteira", permanent: false },
+      { source: "/anuncios/lote", destination: "/esteira/lote", permanent: false },
+      { source: "/anuncios/aprovacoes", destination: "/esteira/aprovacoes", permanent: false },
+      { source: "/auditoria", destination: "/auditoria-massa", permanent: false },
+      { source: "/auditoria/importar", destination: "/auditoria-massa/importar", permanent: false },
+      { source: "/auditoria/fila", destination: "/fila-otimizacao", permanent: false },
+      { source: "/auditoria/lote", destination: "/otimizar-lote", permanent: false },
+      { source: "/loja", destination: "/cliente", permanent: false },
+      { source: "/loja/:path*", destination: "/cliente/:path*", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

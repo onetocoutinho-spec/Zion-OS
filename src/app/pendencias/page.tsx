@@ -36,7 +36,7 @@ const runtime = new Runtime(
 );
 
 const SITUACOES = ["Aberta", "Resolvida"];
-const HEADERS = ["Pendência", "Cliente", "Tarefa vinculada", "Situação", "Ações"];
+const HEADERS = ["Pendência", "Loja", "Tarefa vinculada", "Situação", "Ações"];
 
 export default function PendenciasPage() {
   const [situacao, setSituacao] = useState("Aberta");

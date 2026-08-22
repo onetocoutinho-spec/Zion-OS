@@ -37,14 +37,14 @@ const PESO_PRIORIDADE: Record<PrioridadeAuditoria, number> = {
 
 const HEADERS = [
   "Anúncio",
-  "Cliente",
+  "Loja",
   "Prioridade",
   "Ação",
   "Agente",
   "Responsável",
   "Prazo",
   "Resultado esperado",
-  "Status",
+  "Situação",
   "",
 ];
 
