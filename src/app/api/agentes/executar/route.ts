@@ -8,6 +8,7 @@ import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedor
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;
@@ -172,9 +173,6 @@ export async function POST(request: Request) {
       return Response.json({ resultado: json, modelo });
     }
   } catch (erro) {
-    return Response.json(
-      { erro: erro instanceof Error ? erro.message : "Falha ao executar o agente." },
-      { status: 500 }
-    );
+    return respostaDeErro("agentes/executar", erro, "Falha ao executar o agente.", 500);
   }
 }

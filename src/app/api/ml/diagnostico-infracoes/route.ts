@@ -35,6 +35,7 @@ import {
   referenciaDeModeracao,
 } from "@/modules/integration/domain/infracoesDaConta";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 // 300: o teto do Pro. A conta real declarou 1.060 infrações e o `limit` da rota
 // do ML é 20 — são 53 páginas. Com 60s isto não terminaria.
@@ -244,9 +245,6 @@ export async function GET(request: Request) {
       })),
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao consultar as infrações no ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/diagnostico-infracoes", e, "Falha ao consultar as infrações no ML.", 502);
   }
 }

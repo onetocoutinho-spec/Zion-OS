@@ -21,6 +21,7 @@ import {
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 const API = "https://api.mercadolibre.com";
 
@@ -110,9 +111,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao consultar o item no ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/diagnostico-item", e, "Falha ao consultar o item no ML.", 502);
   }
 }

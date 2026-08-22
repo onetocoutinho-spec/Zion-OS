@@ -47,6 +47,7 @@ import {
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 const API = "https://api.mercadolibre.com";
 
@@ -229,9 +230,6 @@ export async function POST(request: Request) {
       temVariacoes: variacoesDoItem.length > 0,
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao quadrar a capa." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/quadrar-capa", e, "Falha ao quadrar a capa.", 502);
   }
 }

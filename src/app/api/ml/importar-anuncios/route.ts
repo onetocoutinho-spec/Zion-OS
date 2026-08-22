@@ -12,6 +12,7 @@ import {
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 // 300, não 60 — o teto do plano Pro, que o worker da esteira já usa desde
 // sempre (`/api/otimizar/worker`). Os 60 eram resíduo, não limite: em 02/08/2026
@@ -117,9 +118,6 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao importar anúncios do ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/importar-anuncios", e, "Falha ao importar anúncios do ML.", 502);
   }
 }

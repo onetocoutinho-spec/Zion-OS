@@ -10,6 +10,7 @@ import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedor
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 // 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
 // ~25–40s. Em plano pago dá para subir para 300.
@@ -99,9 +100,6 @@ export async function POST(request: Request) {
     }
     return Response.json({ anuncio, provedor, modelo });
   } catch (erro) {
-    return Response.json(
-      { erro: erro instanceof Error ? erro.message : "Falha ao rodar a esteira." },
-      { status: 500 }
-    );
+    return respostaDeErro("agentes/esteira", erro, "Falha ao rodar a esteira.", 500);
   }
 }

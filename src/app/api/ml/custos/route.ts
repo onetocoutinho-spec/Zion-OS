@@ -23,6 +23,7 @@ import {
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 interface Corpo {
   clienteId?: string;
@@ -107,16 +108,13 @@ export async function POST(request: Request) {
         return Response.json({
           reputacao,
           tarifa: null,
-          aviso: e instanceof Error ? e.message : "Não foi possível consultar a tarifa.",
+          aviso: mensagemParaONavegador(e, "Não foi possível consultar a tarifa."),
         });
       }
     }
 
     return Response.json({ reputacao, tarifa });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao consultar os custos no ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/custos", e, "Falha ao consultar os custos no ML.", 502);
   }
 }

@@ -23,6 +23,7 @@ import { definirEstadoDoItem } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 interface Corpo {
   clienteId?: string;
@@ -101,9 +102,6 @@ export async function POST(request: Request) {
     // voltar como `under_review`, e é esse o estado que tem de ser gravado.
     return Response.json({ id: resultado.id, status: resultado.status });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao mudar o estado do anúncio." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/estado-do-anuncio", e, "Falha ao mudar o estado do anúncio.", 502);
   }
 }

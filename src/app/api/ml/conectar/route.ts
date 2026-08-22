@@ -14,6 +14,7 @@ import {
   exigirAutenticado,
   respostaErroAutorizacao,
 } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 30;
 
@@ -133,9 +134,6 @@ export async function POST(request: Request) {
     );
     return Response.json({ ok: true, sellerId: tokens.userId ?? null });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao conectar com o Mercado Livre." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/conectar", e, "Falha ao conectar com o Mercado Livre.", 502);
   }
 }

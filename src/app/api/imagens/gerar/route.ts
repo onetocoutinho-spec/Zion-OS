@@ -6,6 +6,7 @@
 
 import { gerarImagem, imagemIAConfigurada, motivoImagemIndisponivel } from "@/lib/agentes/provedorImagem";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 
@@ -76,10 +77,7 @@ export async function POST(request: Request) {
       const buf = Buffer.from(await r.arrayBuffer());
       imagemBase64 = buf.toString("base64");
     } catch (e) {
-      return Response.json(
-        { erro: `Não foi possível baixar a foto de origem: ${e instanceof Error ? e.message : ""}` },
-        { status: 400 }
-      );
+      return respostaDeErro("imagens/gerar", e, "Não foi possível baixar a foto de origem.", 400);
     }
   }
   if (!imagemBase64) {
@@ -97,9 +95,6 @@ export async function POST(request: Request) {
     });
     return Response.json({ imagemBase64: out.base64, mimeType: out.mimeType });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao gerar a imagem." },
-      { status: 502 }
-    );
+    return respostaDeErro("imagens/gerar", e, "Falha ao gerar a imagem.", 502);
   }
 }

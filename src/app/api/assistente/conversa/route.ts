@@ -101,6 +101,7 @@ import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 
@@ -1280,7 +1281,7 @@ export async function POST(request: Request) {
                   motivo: e instanceof Error ? e.message : "desconhecido",
                 });
                 (r as { saida: unknown }).saida = {
-                  erro: e instanceof Error ? e.message : "Falha ao reativar no Mercado Livre.",
+                  erro: mensagemParaONavegador(e, "Falha ao reativar no Mercado Livre."),
                   comoResponder:
                     "Diga que NÃO conseguiu reativar e repita o motivo. Não invente que deu certo.",
                 };

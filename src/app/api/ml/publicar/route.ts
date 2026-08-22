@@ -30,6 +30,7 @@ import {
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guardasDaPublicacao";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 // 60s = limite do plano grátis da Vercel.
 export const maxDuration = 60;
@@ -276,7 +277,10 @@ export async function POST(request: Request) {
             itemId: item.id,
           });
         } catch (e) {
+          // O log leva a mensagem inteira (é o servidor); a resposta leva só o
+          // que foi escrito para a pessoa (ZION-API-001).
           const erro = e instanceof Error ? e.message : "erro desconhecido";
+          const erroPublico = mensagemParaONavegador(e, "o Mercado Livre recusou o item");
           // k>0 → já há itens vivos no ML sem a família completa: inconsistência (FATAL).
           log(i > 0 ? "fatal" : "error", "erro", {
             status: "parcial",
@@ -290,7 +294,7 @@ export async function POST(request: Request) {
           });
           return Response.json(
             {
-              erro: `Publicação parcial: ${criados.length}/${itens.length} tamanhos publicados. Falhou em: ${erro}. IDs já criados: ${
+              erro: `Publicação parcial: ${criados.length}/${itens.length} tamanhos publicados. Falhou em: ${erroPublico}. IDs já criados: ${
                 criados.map((c) => c.id).join(", ") || "nenhum"
               }.`,
               parcial: true,
@@ -393,9 +397,6 @@ export async function POST(request: Request) {
       etapa: "publicar",
       erro: e instanceof Error ? e.message : "desconhecido",
     });
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao publicar no ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/publicar", e, "Falha ao publicar no ML.", 502);
   }
 }

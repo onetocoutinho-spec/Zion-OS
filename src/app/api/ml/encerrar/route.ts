@@ -17,6 +17,7 @@ import { encerrarItem } from "@/lib/marketplaces/mercadolivre";
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro, mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 interface Corpo {
   clienteId?: string;
@@ -85,9 +86,6 @@ export async function POST(request: Request) {
     const resultado = await encerrarItem(tokens.accessToken, itemId);
     return Response.json({ id: resultado.id, status: resultado.status });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao encerrar o anúncio." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/encerrar", e, "Falha ao encerrar o anúncio.", 502);
   }
 }
