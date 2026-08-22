@@ -288,6 +288,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
       required: ["produtoId", "campo"],
     },
   },
+  {
+    nome: "vendas_da_loja",
+    efeito: "le",
+    descricao:
+      "As vendas da loja no Mercado Livre num período (7, 14, 30, 60 ou 90 dias), COMPARADAS com o período anterior de mesmo tamanho: faturamento, pedidos, unidades, ticket médio, margem, quem mais caiu e quem mais subiu, e o que SUMIU das vendas. Use para \"como estão minhas vendas?\", \"quanto vendi?\", \"por que caíram?\" e \"o que está vendendo mais?\". Ela também devolve o que os dados NÃO cobrem (visitas, conversão) — repita isso quando a pergunta for \"por quê\".",
+    parametros: {
+      type: "object",
+      properties: {
+        dias: { type: "integer", enum: [7, 14, 30, 60, 90], description: "O tamanho da janela. Sem pista na pergunta, use 30." },
+      },
+      required: ["dias"],
+    },
+  },
 ];
 
 /**

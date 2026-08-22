@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 12 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 13 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 12);
+  assert.equal(PRIMEIRA_ACAO.length, 13);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas treze — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -77,6 +77,20 @@ test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () 
   // investigar o produto é o caminho curto — e obrigá-la a uma pergunta
   // preliminar para chegar neles seria esconder a causa mais provável atrás de
   // um passo.
+  //
+  // A DÉCIMA TERCEIRA entrou em 22/08/2026: `vendas_da_loja`.
+  //
+  // Ela lê os pedidos pagos no Mercado Livre com a credencial do SERVIDOR
+  // (o mesmo caminho de /api/ml/vendas, sem o navegador no meio) e compara a
+  // janela pedida com a anterior. O pior caso de um "obrigado" dispará-la é a
+  // lojista ver as próprias vendas sem ter pedido — e uma chamada ao ML paga
+  // em latência, não em dinheiro. Sem escrita, sem proposta.
+  //
+  // A decisão (auditoria do Copilot, NEXT item 6): "como estão minhas vendas?"
+  // e "por que caíram?" eram duas das seis frases do "pronto" sem caminho
+  // nenhum — o eixo de RESULTADO COMERCIAL inteiro estava fora do chat. E a
+  // ferramenta nasce com a lista do que NÃO sabe (visitas, conversão), para
+  // "por que caíram" não virar "refaça o título".
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "contar",
@@ -90,6 +104,7 @@ test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () 
     "procedencia",
     "proximo_passo",
     "tabela_de_medidas",
+    "vendas_da_loja",
   ]);
 });
 
@@ -258,8 +273,11 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
-  assert.equal(FERRAMENTAS.length, 22);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
+  //
+  // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA. Só a leitura
+  // subiu — continuam 1 rascunho, 8 propostas e 1 ação. Ver a matriz do T2.
+  assert.equal(FERRAMENTAS.length, 23);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 13);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

@@ -23,6 +23,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   meus_custos: "os seus custos",
   tabela_de_medidas: "a tabela de medidas",
   procedencia: "de onde veio o dado",
+  vendas_da_loja: "as vendas no Mercado Livre",
   propor_gravacao: "a proposta de preenchimento",
   preparar_resolucao: "a resolução da pendência",
   propor_preco: "a proposta de preço",

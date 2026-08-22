@@ -57,7 +57,9 @@ export function sugestoesDoContexto(c: ContextoDaSugestao): string[] {
     if (!loja.conectadoAoMarketplace) s.push("Por que não consigo publicar?");
   }
 
-  // O genérico, para a lista nunca ficar vazia.
+  // O genérico, para a lista nunca ficar vazia. Vendas entra quando há canal:
+  // sem conexão a pergunta só renderia "conecte primeiro".
+  if (loja?.conectadoAoMarketplace) s.push("Como estão as minhas vendas?");
   s.push("O que eu resolvo primeiro?", "Como está a minha loja?");
 
   return [...new Set(s)].slice(0, MAXIMO_DE_SUGESTOES);
@@ -69,6 +71,7 @@ export function continuacoes(ultimaFerramentas: readonly string[]): string[] {
   if (f.has("pendencias") || f.has("estado_da_loja") || f.has("contar")) return ["Resolve o que der", "O que eu faço primeiro?"];
   if (f.has("preparacao_de_anuncio")) return ["Prepara o anúncio", "O que ainda falta?"];
   if (f.has("pricing")) return ["Propõe um preço", "Mostra os meus custos"];
+  if (f.has("vendas_da_loja")) return ["Por que caíram?", "O que eu faço com os que sumiram?"];
   if (f.has("achar_produto") || f.has("o_que_falta_no_produto")) return ["O que falta nele?", "Por quanto vender?"];
   return [];
 }

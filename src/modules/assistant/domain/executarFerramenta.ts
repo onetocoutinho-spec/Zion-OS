@@ -76,6 +76,7 @@ import {
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
 import type { PedidoCongelado } from "./propostaDePublicacao";
+import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -158,6 +159,12 @@ export interface ContextoDasFerramentas {
    * corpo — que é a definição do problema que a Proposal existe para resolver.
    */
   cadastro?: ContextoDoCadastro;
+  /**
+   * AS VENDAS, em porto — a leitura vai ao Mercado Livre com a credencial do
+   * servidor, e só quem pergunta de venda paga por ela. Ausente = a rota não
+   * ofereceu (sem integração configurada), e a ferramenta diz isso.
+   */
+  vendas?: (dias: 7 | 14 | 30 | 60 | 90) => Promise<VendasNoServidor>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -1038,6 +1045,9 @@ export async function executarFerramenta(
 
     case "procedencia":
       return consultarProcedencia(args, ctx);
+
+    case "vendas_da_loja":
+      return consultarVendas(args, ctx);
 
     case "preparar_resolucao":
       return prepararResolucao(args, ctx);
@@ -2372,4 +2382,61 @@ function mensagemDaRecusa(p: Proposta): string {
   if (p.tipo === "pronta") return "";
   if (p.tipo === "ambigua") return p.mensagem;
   return p.mensagem;
+}
+
+/**
+ * "Como estão minhas vendas?", "por que caíram?", "o que vende mais?".
+ *
+ * A leitura é DIFERENCIAL (esta janela contra a anterior) e vem com a lista do
+ * que os dados não cobrem. O `comoResponder` existe porque "por quê" é a
+ * pergunta em que o modelo mais inventa: ele recebe a variação por produto e a
+ * instrução de separar o que os números mostram do que seria hipótese.
+ */
+async function consultarVendas(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.vendas) {
+    return { saida: { erro: "Não consigo ler as vendas por aqui agora — a integração com o Mercado Livre não está disponível neste servidor." } };
+  }
+  const bruto = Number(args.dias);
+  const dias = ([7, 14, 30, 60, 90] as const).find((d) => d === bruto) ?? 30;
+  const r = await ctx.vendas(dias);
+  if (!r.ok) {
+    return {
+      saida: {
+        erro: r.mensagem,
+        motivo: r.motivo,
+        comoResponder:
+          r.motivo === "nao_conectado"
+            ? "Diga que a loja não está conectada ao Mercado Livre e que, conectando em Conexão com o Mercado Livre, você passa a ler as vendas. Não estime venda nenhuma."
+            : r.motivo === "reconectar"
+              ? "Diga que o Mercado Livre recusou a credencial e que é preciso reconectar. Não estime venda nenhuma."
+              : "Diga que não conseguiu ler as vendas agora e por quê. Não estime.",
+      },
+    };
+  }
+  const l = r.leitura;
+  return {
+    saida: {
+      periodoDias: l.periodoDias,
+      atual: l.atual,
+      anterior: l.anterior,
+      variacaoFaturamentoPct: l.variacaoFaturamento,
+      variacaoPedidosPct: l.variacaoPedidos,
+      quedas: l.quedas,
+      altas: l.altas,
+      sumiram: l.sumiram,
+      pedidosLidos: r.pedidosLidos,
+      ...(r.truncado ? { aviso: "A leitura parou no teto de pedidos; os números cobrem os mais recentes, não o período inteiro." } : {}),
+      oQueNaoSei: l.oQueNaoSei,
+      comoResponder: [
+        "Separe em três blocos, nesta ordem: O QUE OS NÚMEROS MOSTRAM (só o que está acima, com os valores exatos e a comparação com o período anterior), O QUE ISSO SUGERE (hipóteses, ditas como hipóteses, ligadas a um produto ou número específico), O QUE EU NÃO SEI (repita a lista oQueNaoSei quando a pergunta for 'por quê').",
+        "Se a pergunta for 'por que caíram', comece pelos produtos em 'quedas' e 'sumiram' — é neles que a queda está. Não atribua a queda a título, foto ou preço sem dado: isso é hipótese e precisa ser dita como hipótese.",
+        "Quando 'anterior' for zero, não há comparação: diga isso em vez de calcular porcentagem.",
+        "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
+        "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
+      ].join(" "),
+    },
+  };
 }

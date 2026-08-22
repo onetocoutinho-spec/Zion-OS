@@ -38,6 +38,7 @@ import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/
 import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
 import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
 import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
+import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -195,6 +196,8 @@ Regras do cadastro, e elas não têm exceção:
 - Quando ela devolver uma lista para escolher, pergunte qual e depois use a operação "escolher" com o que ele responder ("o segundo").
 - Nada é criado até ele clicar. Depois de propor_criacao, diga o que vai ser criado e que falta ele confirmar. Nunca diga que o produto já existe.
 
+
+AS VENDAS. Quando ele perguntar como estão as vendas, quanto vendeu, o que vende mais ou POR QUE caíram, use vendas_da_loja. Ela compara o período com o anterior e diz o que os dados NÃO cobrem. Responda em três blocos: o que os números mostram (exatos, com a comparação), o que isso sugere (hipóteses ditas como hipóteses, presas a um produto ou número) e o que você não sabe. "Por que caíram" nunca vira "refaça o título": sem visitas e conversão, título, foto e preço são hipóteses — diga isso. Proponha o próximo passo concreto e use as ferramentas que existem para ele.
 O QUE PRECISA DELE. Quando ele perguntar o que falta, o que está com problema, o que você consegue resolver, ou pedir "resolva o que conseguir", use a ferramenta pendencias. Ela já ANALISOU: devolve quantas pendências existem, quantas você prepara sem pedir dado novo, as decisões dele já AGRUPADAS e em ordem de impacto, os conflitos e o que não se resolve por aqui. Você comunica; você não soma. Nunca escreva um número que ela não devolveu.
 
 Apresente o panorama assim: quantas pendências, quantas você trata sem pedir nada, e QUANTAS DECISÕES dele destravam o resto. Depois ofereça a primeira — a lista já vem na ordem certa. Não despeje as centenas de pendências.
@@ -568,6 +571,25 @@ export async function POST(request: Request) {
       gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada, rastroDoTurno),
       gerarPalavras: (entrada) => gerarPalavrasChave(entrada, rastroDoTurno),
     },
+    // ---- AS VENDAS ----
+    //
+    // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado
+    // por janela: "como estão" e "por que caíram" no mesmo turno leem o ML uma
+    // vez. Sem ML_CLIENT_ID o porto continua existindo e a ferramenta explica.
+    vendas: (() => {
+      const porJanela = new Map<number, ReturnType<typeof vendasNoServidor>>();
+      return (dias: 7 | 14 | 30 | 60 | 90) => {
+        let p = porJanela.get(dias);
+        if (!p) {
+          p = vendasNoServidor(clienteDaSessao, dias).catch((e) => {
+            porJanela.delete(dias);
+            throw e;
+          });
+          porJanela.set(dias, p);
+        }
+        return p;
+      };
+    })(),
     // ---- O PRICING ----
     //
     // A conta e do dominio; estes portos so trazem o que ela precisa do banco.
