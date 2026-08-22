@@ -43,6 +43,15 @@ import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
 import { congelarPedidoDeImagem, resumoDoPedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
+import {
+  descricaoParaClassificar,
+  ESPECIALISTAS,
+  ferramentasDoEspecialista,
+  instrucaoDoEspecialista,
+  lerEspecialista,
+  type Especialista,
+} from "@/modules/assistant/domain/especialistas";
+import { chamarIAEstruturada } from "@/lib/agentes/provedorIA";
 import { rotuloDoSlot } from "@/modules/assistant/domain/briefingDeImagem";
 import {
   executarFerramenta,
@@ -671,7 +680,35 @@ export async function POST(request: Request) {
   ];
   // Tudo a partir daqui é DESTE turno — é o que vai para o banco no fim.
   const inicioDoTurno = historico.length - 1;
-  const ferramentasDoPapel = ferramentasParaPapel(papel);
+  const catalogoDoPapel = ferramentasParaPapel(papel);
+  // ---- O ROTEAMENTO POR INTENÇÃO (atrás de flag) ----
+  //
+  // Com COPILOT_ROTEAMENTO=1, uma classificação barata (esforço baixo, enum
+  // fechado) escolhe o ESPECIALISTA, e a tabela `especialistas.ts` decide o
+  // subconjunto de ferramentas e a instrução extra. Desligada, tudo segue
+  // como antes: o catálogo inteiro do papel e o prompt base. A restrição por
+  // papel vem ANTES e nunca é afrouxada pelo especialista.
+  let especialista: Especialista = "geral";
+  if (process.env.COPILOT_ROTEAMENTO === "1") {
+    try {
+      const { json } = await chamarIAEstruturada({
+        system: `Classifique o pedido de um lojista num destes especialistas:
+${descricaoParaClassificar()}
+Responda só o nome.`,
+        mensagem: mensagem.slice(0, 600),
+        schema: { type: "object", properties: { especialista: { type: "string", enum: [...ESPECIALISTAS] } }, required: ["especialista"], additionalProperties: false },
+        maxTokens: 60,
+        esforco: "low",
+        rastro: { origem: "intencao", clienteId: clienteDaSessao, usuarioId },
+      });
+      especialista = lerEspecialista((JSON.parse(json) as { especialista?: unknown }).especialista);
+    } catch (e) {
+      // Sem classificação não se perde o turno: cai no geral, que é o de antes.
+      console.error("[assistente/conversa] roteamento falhou, seguindo como geral:", e);
+    }
+  }
+  const ferramentasDoPapel = ferramentasDoEspecialista(especialista, catalogoDoPapel);
+  const instrucaoExtra = instrucaoDoEspecialista(especialista);
 
   /**
    * A resposta vai em EVENTOS, uma linha de JSON cada.
@@ -803,7 +840,9 @@ export async function POST(request: Request) {
           // Do passo 1 em diante nada muda: AUTO, com as 17. A leitura já
           // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
-            system(medido.produtoAberto?.nome ?? ""),
+            system(medido.produtoAberto?.nome ?? "") + (instrucaoExtra ? `
+
+ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             historico,
             ferramentasDoPapel,
             (pedaco) => mandar({ tipo: "texto", delta: pedaco }),

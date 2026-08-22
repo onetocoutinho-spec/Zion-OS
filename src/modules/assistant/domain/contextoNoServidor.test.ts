@@ -103,7 +103,10 @@ test("o histórico do modelo é relido do banco e o turno grava as próprias fal
 });
 
 test("o catálogo de ferramentas passa pelo papel antes de chegar ao modelo", () => {
-  assert.match(ROTA, /const ferramentasDoPapel = ferramentasParaPapel\(papel\)/);
+  // Desde o roteamento (especialistas.ts): o papel libera o catálogo, o
+  // especialista estreita DENTRO dele — a ordem é o que importa.
+  assert.match(ROTA, /const catalogoDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.match(ROTA, /const ferramentasDoPapel = ferramentasDoEspecialista\(especialista, catalogoDoPapel\)/);
   assert.match(ROTA, /const papel = ctxAuth\.perfil\.papel/);
 });
 

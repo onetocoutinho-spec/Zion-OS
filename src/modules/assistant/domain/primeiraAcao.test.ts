@@ -189,7 +189,8 @@ test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo c
   // A rota passa o catálogo DO PAPEL (`ferramentasParaPapel`), não a constante
   // inteira — e continua sendo uma lista só, para `ofertaDoPasso`.
   assert.match(ROTA, /ferramentasDoPapel,/);
-  assert.match(ROTA, /const ferramentasDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.match(ROTA, /const catalogoDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.match(ROTA, /const ferramentasDoPapel = ferramentasDoEspecialista\(especialista, catalogoDoPapel\)/);
   assert.doesNotMatch(ROTA, /\bFERRAMENTAS,/, "a rota voltou a mandar o catálogo inteiro, sem papel");
 });
 
