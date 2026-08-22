@@ -100,6 +100,8 @@ export interface RespostaDaConversa {
     fotos: number;
     categoria: string;
   };
+  /** O id que AUTORIZA a publicação. Sem ele, sem botão: a proposta não foi persistida. */
+  propostaDePublicacaoId?: string;
   /**
    * Descrição ou palavras-chave, atual e proposta lado a lado.
    *
@@ -271,6 +273,9 @@ export async function conversar(
           ...(typeof e.propostaDeTituloId === "string"
             ? { propostaDeTituloId: e.propostaDeTituloId }
             : {}),
+          ...(typeof e.propostaDePublicacaoId === "string"
+            ? { propostaDePublicacaoId: e.propostaDePublicacaoId }
+            : {}),
           ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
           ...(e.propostaDePreco
             ? { propostaDePreco: e.propostaDePreco as RespostaDaConversa["propostaDePreco"] }
@@ -316,6 +321,10 @@ export interface ResultadoDaConfirmacao {
    * recalcula, não estima e não transforma `null` em zero: ela só apresenta.
    */
   consequencia?: Consequencia | null;
+  /** Só na publicação: a palavra do Mercado Livre sobre o anúncio criado. */
+  mlItemId?: string;
+  permalink?: string | null;
+  statusNoML?: string | null;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -337,5 +346,8 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     // Atravessa como veio. Este arquivo só transporta — não deriva contagem,
     // não completa campo faltante e não troca `null` por zero.
     ...(dados.consequencia !== undefined ? { consequencia: dados.consequencia } : {}),
+    ...(typeof dados.mlItemId === "string" ? { mlItemId: dados.mlItemId } : {}),
+    ...(dados.permalink !== undefined ? { permalink: dados.permalink } : {}),
+    ...(dados.statusNoML !== undefined ? { statusNoML: dados.statusNoML } : {}),
   };
 }

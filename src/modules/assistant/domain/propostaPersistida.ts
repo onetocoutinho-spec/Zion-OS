@@ -68,7 +68,11 @@ export type TipoDeProposta =
   // precisa distinguir "trocou a descrição" de "acrescentou palavras-chave",
   // e a função do banco decide a chave do jsonb por eles.
   | "descricao"
-  | "palavras_chave";
+  | "palavras_chave"
+  // PUBLICAÇÃO, desde 22/08/2026. A única ação que o comprador vê; era a única
+  // fora da Proposal. `texto` carrega o pedido congelado (ver
+  // `propostaDePublicacao.ts`) e `alvos[0]` é o anúncio.
+  | "publicacao";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -239,6 +243,9 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Preço é o número de onde sai o faturamento. Um preço abaixo do piso vende
   // no prejuízo em silêncio, e o estrago só aparece no fechamento do mês.
   preco: "alto",
+  // Publicar é o que o COMPRADOR vê, e o Mercado Livre não tem "desfazer":
+  // um anúncio duplicado ou errado no ar é reputação, não só dado. Crítico.
+  publicacao: "critico",
 };
 
 /** O que impede uma proposta de ser executada agora. */

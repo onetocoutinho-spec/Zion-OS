@@ -87,7 +87,6 @@ import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connector
 import {
   anuncioParaTitulo,
   textoDoAnuncio,
-  registroDoProduto,
   catalogoParaPreparar,
   margemDoCliente,
   produtoParaPreparar,
@@ -99,7 +98,12 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
-import { montarPreviewML } from "@/lib/services/publicacaoML";
+import { ensaioDoProduto } from "@/lib/services/ensaioDaPublicacao";
+import {
+  CAMPO_PUBLICACAO,
+  congelarPedido,
+  impressaoDaPublicacao,
+} from "@/modules/assistant/domain/propostaDePublicacao";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
@@ -116,6 +120,13 @@ export const maxDuration = 60;
 const MAXIMO_DA_MENSAGEM = 4000;
 const MAXIMO_DE_FALAS = 40;
 const MAXIMO_DO_CORPO = 200_000;
+
+/** O cartão sem o pedido congelado — ele fica no servidor, na Proposal. */
+function semOCongelado<T extends { congelado?: unknown }>(p: T): Omit<T, "congelado"> {
+  const copia = { ...p };
+  delete (copia as { congelado?: unknown }).congelado;
+  return copia;
+}
 
 function system(produtoAberto: string): string {
   return `Você é o assistente operacional do Zion OS. Ajuda um lojista a levar produtos do cadastro ao anúncio pronto para o Mercado Livre.
@@ -512,84 +523,7 @@ export async function POST(request: Request) {
       },
       // O ENSAIO usa o MESMO montador da publicação real. Um resumo feito à
       // parte mostraria uma coisa e publicaria outra.
-      ensaioDaPublicacao: async (produtoId) => {
-        const reg = await registroDoProduto(clienteDaSessao, produtoId);
-        if (!reg) return null;
-        // AS FOTOS PRECISAM ENTRAR AQUI.
-        //
-        // `montarPreviewML(reg)` sem opções passa `pictures: undefined` — só
-        // `executarPublicacao` busca as URLs. O ensaio mostrava FOTOS 0 num
-        // produto com dez, e um ensaio que mente sobre a foto é pior que
-        // nenhum: ela confirmaria achando que o anúncio sobe com imagem.
-        //
-        // Medido em produção em 11/08/2026, no cartão da Sapatilha Modare — e
-        // só apareceu porque o cartão mostra o zero em âmbar.
-        // AS FOTOS, COM O CLIENTE DE SERVIDOR.
-        //
-        // `urlsDoProduto` usa `getSupabase()` — o cliente do NAVEGADOR. Chamado
-        // daqui ele não tem sessão, a RLS recusa, e o resultado é uma lista
-        // vazia indistinguível de "produto sem foto". Foi o segundo motivo de
-        // o cartão mostrar FOTOS 0 num produto com dez.
-        //
-        // A REGRA continua sendo a de lá: "Pendente" fora (a lojista tirou do
-        // envio) e a capa primeiro. Repeti-la aqui seria a segunda fonte que
-        // este repositório passou o dia removendo — mas o serviço não é
-        // chamável do servidor, então a regra vem em comentário e a sentinela
-        // guarda as duas.
-        let fotos: string[] = [];
-        if (reg.produtoId) {
-          try {
-            const { data } = await getSupabaseAdmin()
-              .from("imagens_produto")
-              .select("url, tipo_imagem, status")
-              .eq("produto_id", reg.produtoId);
-            fotos = ((data ?? []) as { url: string; tipo_imagem?: string; status?: string }[])
-              .filter((i) => i.status !== "Pendente")
-              .sort((a, b) =>
-                a.tipo_imagem === "Principal" ? -1 : b.tipo_imagem === "Principal" ? 1 : 0
-              )
-              .map((i) => i.url);
-          } catch (e) {
-            // Falhar aqui NÃO é "produto sem foto": é não saber. O cartão
-            // mostraria 0 e ela publicaria achando que sobe sem imagem.
-            console.error("[conversa] falha ao ler as fotos do ensaio:", e);
-            throw e;
-          }
-        }
-        const payload = montarPreviewML(reg, { pictures: fotos }) as Record<string, unknown>;
-        const pics = payload.pictures;
-        return {
-          anuncioId: reg.id,
-          nome: reg.produto ?? "",
-          titulo: String(payload.title ?? ""),
-          preco: typeof payload.price === "number" ? payload.price : null,
-          // O ESTOQUE MORA EM DOIS LUGARES, e ler só um mostrava "—" para
-          // todo produto com grade — que é a maioria de um catálogo de calçado.
-          //
-          // `montarItemML` põe `available_quantity` no TOPO só quando NÃO há
-          // variações; com grade, cada variação carrega o seu. Somar é o que
-          // responde "quantas peças vão para o ar".
-          estoque: (() => {
-            const vars = payload.variations;
-            if (Array.isArray(vars) && vars.length > 0) {
-              return vars.reduce(
-                (t: number, v) =>
-                  t + (typeof (v as { available_quantity?: number }).available_quantity === "number"
-                    ? ((v as { available_quantity?: number }).available_quantity as number)
-                    : 0),
-                0
-              );
-            }
-            return typeof payload.available_quantity === "number"
-              ? payload.available_quantity
-              : null;
-          })(),
-          fotos: Array.isArray(pics) ? pics.length : 0,
-          categoria: String(payload.category_id ?? ""),
-          jaPublicado: reg.status === "publicado" || !!reg.mlItemId,
-          mlItemId: reg.mlItemId ?? null,
-        };
-      },
+      ensaioDaPublicacao: (produtoId) => ensaioDoProduto(clienteDaSessao, produtoId),
       // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
       // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
       gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada),
@@ -1042,6 +976,42 @@ export async function POST(request: Request) {
               }
             }
 
+            // ---- A PUBLICAÇÃO vira registro ----
+            //
+            // Era "SEM PROPOSAL PERSISTIDA, de propósito" — e a única ação que
+            // o comprador vê ficava sem expiração, sem idempotência de
+            // servidor e com TOCTOU entre o ensaio e o clique. Agora o pedido
+            // inteiro é congelado em `texto`, a precondição é a impressão do
+            // que ela leu, e o clique publica o que foi salvo. Sem id, sem
+            // botão — igual a todas as outras. (Auditoria do Copilot, P1.)
+            let propostaDePublicacaoId: string | null = null;
+            if (propostaDePublicacao?.congelado && conversaId) {
+              try {
+                const pub = propostaDePublicacao;
+                const c = pub.congelado!;
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "publicacao",
+                  alvos: [c.anuncioId],
+                  // O número que importa: as fotos que sobem. Zero em âmbar no
+                  // cartão foi o que denunciou o ensaio cego em 11/08.
+                  valor: c.ensaio.fotos,
+                  texto: congelarPedido(c),
+                  resumo: `Publicar "${pub.nome}" no Mercado Livre: "${c.ensaio.titulo}"${
+                    c.ensaio.preco != null ? `, R$ ${c.ensaio.preco}` : ""
+                  }, ${c.ensaio.fotos} foto(s).`,
+                  precondicoes: [
+                    { campo: `${CAMPO_PUBLICACAO}:${c.anuncioId}`, valorNaCriacao: impressaoDaPublicacao(c.ensaio) },
+                  ],
+                });
+                propostaDePublicacaoId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de publicação:", e);
+              }
+            }
+
             // ---- A PROPOSTA DE PRECO vira registro ----
             //
             // `valor` carrega o preco em REAIS — a unidade canonica da coluna
@@ -1152,7 +1122,14 @@ export async function POST(request: Request) {
               // `/api/ml/publicar`, que tem log próprio, trava de infração e a
               // recusa de republicar. Uma Proposal aqui seria um segundo
               // registro de autorização para uma ação que já tem o seu.
-              ...(propostaDePublicacao ? { propostaDePublicacao } : {}),
+              // Só com ID — e SEM o pedido congelado: ele é do servidor. O que a
+              // tela recebe é o que ela lê; o que o ML recebe é o que foi salvo.
+              ...(propostaDePublicacao && propostaDePublicacaoId
+                ? {
+                    propostaDePublicacao: semOCongelado(propostaDePublicacao),
+                    propostaDePublicacaoId,
+                  }
+                : {}),
               ...(propostaDeTexto && propostaDeTextoId
                 ? { propostaDeTexto, propostaDeTextoId }
                 : {}),

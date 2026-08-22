@@ -36,8 +36,29 @@ const PUBLICAR = CHAT.slice(
   CHAT.indexOf("async function confirmarFoto(")
 );
 
-test("o chat publica PELA ROTA, com `publicarNoML` — não por fora", () => {
-  assert.match(PUBLICAR, /publicarNoML\(reg, true\)/, "o chat parou de publicar pela rota");
+// DESDE 22/08/2026 O CLIQUE PUBLICA PELA PROPOSAL. O navegador manda o id; o
+// servidor confere a impressão do ensaio, reserva (duplo clique em duas abas
+// perde a corrida) e publica o pedido CONGELADO pelo mesmo miolo da rota da
+// equipe (`publicarNoMercadoLivre`). O que este teste guarda é o mesmo de
+// antes — nenhum caminho próprio até o ML — e mais: nada é relido no navegador.
+test("o chat publica PELA PROPOSAL — o navegador não relê nem monta payload", () => {
+  assert.match(PUBLICAR, /confirmarProposta\(propostaId\)/, "o chat parou de publicar pela Proposal");
+  assert.ok(!PUBLICAR.includes("publicarNoML("), "o chat voltou a publicar a partir de uma releitura no navegador");
+  assert.ok(!PUBLICAR.includes("registroDeAnuncio("), "o chat voltou a reler o registro no clique");
+  assert.match(PUBLICAR, /if \(!p \|\| !propostaId/, "o botão pode publicar sem Proposal persistida");
+});
+
+test("a confirmação publica pelo MESMO miolo da rota da equipe, com reserva antes", () => {
+  const exec = readFileSync(new URL("../../lib/services/publicacaoDaProposta.ts", import.meta.url), "utf8")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const reserva = exec.indexOf("reservarParaExecucao(p.id)");
+  const publica = exec.indexOf("publicarNoMercadoLivre(corpo, credenciais, p.id)");
+  assert.ok(reserva > 0 && publica > reserva, "publica antes de reservar — duplo clique em duas abas cria dois anúncios");
+  assert.match(exec, /marcarProposta\(p\.id, "falhou"/, "a recusa do ML não consome a proposta");
+  assert.match(exec, /registrarAcao\(/);
+  // O miolo é o MESMO arquivo de onde a rota lê: nenhuma segunda cópia das guardas.
+  const rota = readFileSync(new URL("../../app/api/ml/publicar/route.ts", import.meta.url), "utf8");
+  assert.match(rota, /publicarNoMercadoLivre\(corpo, \{ clientId, clientSecret \}\)/);
 });
 
 test("NENHUM caminho próprio até o Mercado Livre", () => {
@@ -99,10 +120,14 @@ test("a RECUSA da rota chega inteira à lojista", () => {
   assert.match(PUBLICAR, /e instanceof Error \? e\.message/);
 });
 
-test("sem link, sem afirmar que está no ar", () => {
+test("sem a palavra do ML, sem afirmar que está no ar", () => {
   // Foi o erro cometido três vezes em 03/08: afirmar o passo seguinte no lugar
-  // do resultado.
-  assert.match(PUBLICAR, /r\.permalink\s*\?/, "o desfecho parou de depender do link real");
+  // do resultado. A frase agora nasce no SERVIDOR, de `statusNoML`.
+  const rota = readFileSync(new URL("../../app/api/assistente/proposta/route.ts", import.meta.url), "utf8");
+  assert.match(rota, /d\.statusNoML === "active"\s*\?/, "o desfecho parou de depender do estado que o ML devolveu");
+  assert.match(rota, /Não afirmo que está no ar/);
+  // E a tela só repete: não inventa "está no ar" por conta própria.
+  assert.match(PUBLICAR, /texto: r\.mensagem/);
 });
 
 test("o segundo clique não publica de novo", () => {
@@ -131,10 +156,17 @@ const ROTA_CONVERSA = readFileSync(
   "utf8"
 );
 
-const ENSAIO = ROTA_CONVERSA.slice(
-  ROTA_CONVERSA.indexOf("ensaioDaPublicacao: async (produtoId)"),
-  ROTA_CONVERSA.indexOf("gerarDescricao:")
-);
+// O ENSAIO MUDOU DE CASA EM 22/08/2026: saiu da rota para `ensaioDaPublicacao.ts`,
+// porque ganhou um segundo leitor (a confirmação refaz a impressão). A rota só
+// chama. Reancorar, não afrouxar.
+const ENSAIO = readFileSync(new URL("../../lib/services/ensaioDaPublicacao.ts", import.meta.url), "utf8");
+
+test("a rota de conversa ensaia pelo serviço — uma fonte para os dois leitores", () => {
+  assert.match(ROTA_CONVERSA, /ensaioDaPublicacao: \(produtoId\) => ensaioDoProduto\(clienteDaSessao, produtoId\)/);
+  assert.ok(!ROTA_CONVERSA.includes("montarPreviewML("), "a rota voltou a montar o ensaio por conta própria");
+  const proposta = readFileSync(new URL("../../app/api/assistente/proposta/route.ts", import.meta.url), "utf8");
+  assert.match(proposta, /impressaoAtualDaPublicacao\(p\.clienteId, p\.alvos\[0\]\)/, "a confirmação não refaz a impressão do ensaio");
+});
 
 test("o ensaio BUSCA as fotos — com o cliente de SERVIDOR", () => {
   // `urlsDoProduto` usa o cliente do navegador: chamado daqui, a RLS recusa e

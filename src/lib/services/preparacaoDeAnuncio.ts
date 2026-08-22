@@ -518,3 +518,39 @@ export async function aplicarTitulo(
   if (error) throw new Error(error.message);
   return { antes, depois: titulo };
 }
+
+/**
+ * O registro de UM anúncio, pelo id — com o tenant. É o que a confirmação da
+ * publicação precisa: a Proposal aponta para o anúncio, não para o produto.
+ * Mesma forma de `registroDoProduto`.
+ */
+export async function registroPorId(
+  clienteId: string,
+  anuncioId: string
+): Promise<AnuncioGeradoRegistro | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("anuncios_gerados")
+      .select("*, produtos(nome)")
+      .eq("cliente_id", clienteId)
+      .eq("id", anuncioId)
+      .limit(1);
+    const linha = ((data ?? []) as Record<string, unknown>[])[0];
+    if (!linha) return null;
+    const pai = Array.isArray(linha.produtos) ? linha.produtos[0] : linha.produtos;
+    return {
+      ...(linha as unknown as AnuncioGeradoRegistro),
+      id: String(linha.id),
+      clienteId: String(linha.cliente_id ?? clienteId),
+      produtoId: (linha.produto_id as string) ?? null,
+      produto: ((pai as { nome?: string } | null)?.nome ?? null) as string | null,
+      anuncio: (linha.anuncio ?? {}) as AnuncioGeradoRegistro["anuncio"],
+      status: linha.status as AnuncioGeradoRegistro["status"],
+      mlItemId: (linha.ml_item_id as string) ?? null,
+      mlPermalink: (linha.ml_permalink as string) ?? null,
+    };
+  } catch (e) {
+    console.error("[preparacao] falha ao ler o registro do anúncio:", e);
+    return null;
+  }
+}

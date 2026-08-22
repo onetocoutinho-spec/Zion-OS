@@ -201,9 +201,18 @@ test("o snapshot anterior NÃO é persistido nem enviado ao modelo", () => {
 test("o snapshot NÃO atravessa para a resposta HTTP", () => {
   // O que a tela recebe é `consequencia`, já calculada. O retrato bruto do
   // estado anterior não é dela — e não é de ninguém fora desta requisição.
-  const resposta = ROTA_CODIGO.slice(ROTA_CODIGO.indexOf("ok: true,"));
+  // A ÚLTIMA resposta `ok: true` é a do despacho genérico (peso/custo/preço/
+  // título/texto/cadastro), onde o snapshot vive. A publicação (22/08/2026)
+  // responde antes, por caminho próprio, e nunca toca em `medidasAntes`.
+  const resposta = ROTA_CODIGO.slice(ROTA_CODIGO.lastIndexOf("ok: true,"));
   assert.ok(!resposta.includes("medidasAntes"));
   assert.ok(resposta.includes("consequencia"));
+  const despacho = ROTA_CODIGO.indexOf("const p = proposta as PropostaPersistida;");
+  const publicacao = ROTA_CODIGO.slice(
+    ROTA_CODIGO.indexOf('if (p.tipo === "publicacao")', despacho),
+    ROTA_CODIGO.indexOf("const atomico =")
+  );
+  assert.ok(publicacao.length > 0 && !publicacao.includes("medidasAntes"));
 });
 
 // ---------------------------------------------------------------------------

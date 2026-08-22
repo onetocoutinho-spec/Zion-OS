@@ -75,6 +75,7 @@ import {
   type ConjuntoApresentado,
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
+import type { PedidoCongelado } from "./propostaDePublicacao";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -292,6 +293,11 @@ export interface ContextoDoAnuncio {
     /** Já publicado? Então não há o que publicar. */
     jaPublicado: boolean;
     mlItemId: string | null;
+    /**
+     * O PEDIDO INTEIRO, como foi ensaiado — é o que a Proposal congela e a
+     * confirmação publica. Sem ele não há proposta, só resposta.
+     */
+    congelado?: PedidoCongelado;
   } | null>;
   /**
    * A tabela de medidas do produto, com a PROCEDÊNCIA dela.
@@ -498,6 +504,8 @@ export interface ResultadoDaFerramenta {
     estoque: number | null;
     fotos: number;
     categoria: string;
+    /** O pedido congelado — vai para a Proposal, não para a tela. */
+    congelado?: PedidoCongelado;
   };
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
@@ -1582,6 +1590,7 @@ async function proporPublicacao(
       estoque: ensaio.estoque,
       fotos: ensaio.fotos,
       categoria: ensaio.categoria,
+      ...(ensaio.congelado ? { congelado: ensaio.congelado } : {}),
     },
     saida: {
       montada: true,

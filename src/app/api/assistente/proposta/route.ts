@@ -75,6 +75,9 @@ import {
   impressaoDoTitulo,
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/procedencia";
+import { CAMPO_PUBLICACAO } from "@/modules/assistant/domain/propostaDePublicacao";
+import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
+import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
 
 export const maxDuration = 30;
 
@@ -221,6 +224,18 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   const campos = new Set(p.precondicoes.map((c) => c.campo));
   const estado: Record<string, number | null> = {};
   const produtoId = p.alvos[0];
+
+  // ---- PUBLICAÇÃO: o ensaio, refeito AGORA, contra o que ela leu.
+  //
+  // Título, preço, estoque, fotos e categoria são relidos do registro e das
+  // fotos de hoje e viram a mesma impressão da criação. Mudou qualquer um →
+  // `obsoleta`, e a pessoa recebe um cartão novo. É o TOCTOU que o caminho
+  // antigo (reler no navegador e publicar) não fechava.
+  if (p.tipo === "publicacao") {
+    const campo = `${CAMPO_PUBLICACAO}:${p.alvos[0]}`;
+    if (campos.has(campo)) estado[campo] = await impressaoAtualDaPublicacao(p.clienteId, p.alvos[0]);
+    return estado;
+  }
 
   // ---- CADASTRO: o conjunto de possíveis duplicatas, relido AGORA.
   //
@@ -975,6 +990,47 @@ export async function POST(request: Request) {
   // A proposta existe, é deste cliente, está pendente, no prazo, e o mundo não
   // mudou. AGORA a corrida: quem reservar, executa.
   const p = proposta as PropostaPersistida;
+
+  // ---- PUBLICAÇÃO: efeito EXTERNO, caminho próprio. Ver `publicacaoDaProposta`.
+  //
+  // Reservar → publicar pelo mesmo miolo da rota da equipe → gravar a palavra
+  // do ML → auditar. Não cabe nas RPCs atômicas (o ML não participa da
+  // transação), e não passa pelo despacho abaixo porque nada ali — retrato,
+  // consequência, procedência de campo — descreve um anúncio indo ao ar.
+  if (p.tipo === "publicacao") {
+    const clientId = process.env.ML_CLIENT_ID;
+    const clientSecret = process.env.ML_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return Response.json(
+        { ok: false, mensagem: "Integração com o Mercado Livre não configurada no servidor." },
+        { status: 503 }
+      );
+    }
+    const d = await executarPublicacaoDaProposta(p, usuario, { clientId, clientSecret });
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: 1,
+        produtoId: p.alvos[0],
+        mlItemId: d.mlItemId,
+        permalink: d.permalink,
+        statusNoML: d.statusNoML,
+        // A PALAVRA DO ML, não a nossa: "active" confirmado é diferente de "o
+        // POST voltou 200" — a distinção que custou três falsos sucessos em 03/08.
+        mensagem:
+          d.statusNoML === "active"
+            ? `Publiquei no Mercado Livre${d.permalink ? ` — está no ar: ${d.permalink}` : ` (${d.mlItemId})`}.`
+            : `Enviei ao Mercado Livre (${d.mlItemId})${d.statusNoML ? `, e ele respondeu "${d.statusNoML}"` : ""}. Não afirmo que está no ar até ele confirmar.`,
+      });
+    }
+    if (d.jaFeito) {
+      return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não publiquei de novo." });
+    }
+    return Response.json(
+      { ok: false, mensagem: d.mensagem, ...(d.motivo ? { motivo: d.motivo } : {}) },
+      { status: 409 }
+    );
+  }
 
   // ---- PESO passa pela primitiva ATÔMICA (migração 045). Ver INC-002 camada 5.
   //

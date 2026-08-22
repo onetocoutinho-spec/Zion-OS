@@ -180,7 +180,17 @@ test("todo `propostaDe*Id` do Turno entra na resolução do `confirmar`", () => 
   // Sexta vez nesta sessão que uma fatia minha abrange mais do que devia.
   const fim = CHAT.indexOf("const ehCadastro");
   const resolucao = CHAT.slice(CHAT.lastIndexOf("const id =", fim), fim);
-  const foraDaLista = doTurno.filter((c) => !resolucao.includes(c));
+  // A PUBLICAÇÃO tem handler PRÓPRIO (`publicar`), não o `confirmar` genérico:
+  // pôr o id dela na lista acima confirmaria a publicação num turno que também
+  // tivesse um cartão de peso. O que a guarda exige é o mesmo — o id declarado
+  // no Turno é LIDO por quem clica —, só que do handler dedicado.
+  const publicar = CHAT.slice(
+    CHAT.indexOf("async function publicar(indice: number)"),
+    CHAT.indexOf("async function confirmarFoto(")
+  );
+  const foraDaLista = doTurno.filter(
+    (c) => !resolucao.includes(c) && !publicar.includes(`alvo?.${c}`)
+  );
   assert.deepEqual(
     foraDaLista,
     [],

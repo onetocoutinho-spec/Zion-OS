@@ -102,8 +102,6 @@ import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
-import { publicarNoML } from "@/lib/services/publicacaoML";
-import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
 import {
   analisarProdutosCsv,
@@ -280,6 +278,8 @@ interface Turno {
     fotos: number;
     categoria: string;
   };
+  /** O id que AUTORIZA a publicação. Sem ele, não há botão. */
+  propostaDePublicacaoId?: string;
   /** Já publicou? Impede o segundo clique antes de a rota precisar recusar. */
   publicando?: boolean;
   propostaDeTexto?: TextoNaTela;
@@ -606,8 +606,14 @@ export function ChatDaOperacao({
                     ...(r.pendencias ? { pendencias: r.pendencias } : {}),
                     ...(r.procedencia ? { procedencia: r.procedencia } : {}),
                     ...(r.preparacao ? { preparacao: r.preparacao } : {}),
-                    ...(r.propostaDePublicacao
-                      ? { propostaDePublicacao: r.propostaDePublicacao }
+                    // Publicação SÓ com id: o servidor já não manda o cartão
+                    // sem a Proposal persistida, e a tela não oferece botão
+                    // para o que não pode confirmar.
+                    ...(r.propostaDePublicacao && r.propostaDePublicacaoId
+                      ? {
+                          propostaDePublicacao: r.propostaDePublicacao,
+                          propostaDePublicacaoId: r.propostaDePublicacaoId,
+                        }
                       : {}),
                     ...(r.propostaDeTexto
                       ? {
@@ -1009,27 +1015,47 @@ export function ChatDaOperacao({
    * PUBLICAR — a única ação do chat que o comprador vê.
    *
    * ===================================================================
-   * PASSA PELA ROTA, NÃO AO REDOR DELA
+   * PELA PROPOSAL, PELO MESMO MIOLO DA ROTA
    * ===================================================================
    *
-   * `publicarNoML` faz `fetch("/api/ml/publicar")` — a MESMA rota da tela da
-   * equipe, com as MESMAS guardas (conexão, credencial e a trava de infração
-   * que falha fechada). Um caminho próprio até o ML seria uma segunda cópia
-   * daquelas guardas, e a trava de infração é a última coisa neste repositório
-   * que pode ter duas versões: republicar o que o ML cancelou é reincidência.
+   * Até 22/08/2026 este clique relia o registro no navegador, montava o payload
+   * aqui e chamava `/api/ml/publicar`. Passava pela rota — mas o que era
+   * publicado era uma SEGUNDA leitura, feita depois do cartão, por outro ator;
+   * o cartão não expirava; e o "publicando…" era um boolean de React.
    *
-   * O cartão é a autorização; a rota é o guarda. Nenhum dos dois substitui o
-   * outro.
+   * Agora o clique manda só o id da Proposal. O servidor confere que o ensaio
+   * (título, preço, estoque, fotos, categoria) continua o que ela leu, reserva
+   * a proposta (duplo clique em duas abas perde a corrida) e publica o pedido
+   * CONGELADO pelo mesmo miolo da rota da equipe — as MESMAS guardas: conexão,
+   * credencial e a trava de infração que falha fechada.
+   *
+   * O cartão é a autorização; a Proposal é o registro; o miolo é o guarda.
    */
   async function publicar(indice: number) {
     const alvo = turnos[indice];
     const p = alvo?.propostaDePublicacao;
-    if (!p || !clienteId || alvo?.publicando) return;
+    const propostaId = alvo?.propostaDePublicacaoId;
+    if (!p || !propostaId || !clienteId || alvo?.publicando) return;
     setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, publicando: true } : turno)));
     try {
-      const reg = await registroDeAnuncio(p.anuncioId);
-      if (!reg) throw new Error("Não achei o anúncio preparado. Peça de novo e eu refaço.");
-      const r = await publicarNoML(reg, true);
+      // PELA PROPOSAL, desde 22/08/2026. O navegador NÃO relê o registro nem
+      // monta payload: o servidor publica o que congelou quando mostrou o
+      // cartão, depois de conferir que título, preço, estoque, fotos e
+      // categoria continuam os que ela leu. Mudou → "obsoleta", cartão novo.
+      const r = await confirmarProposta(propostaId);
+      if (!r.ok) {
+        if (r.jaFeito) {
+          setTurnos((t) =>
+            t.map((turno, i) =>
+              i === indice
+                ? { ...turno, propostaDePublicacao: undefined, publicando: false, texto: r.mensagem }
+                : turno
+            )
+          );
+          return;
+        }
+        throw new Error(r.mensagem);
+      }
       setTurnos((t) =>
         t.map((turno, i) =>
           i === indice
@@ -1037,11 +1063,10 @@ export function ChatDaOperacao({
                 ...turno,
                 propostaDePublicacao: undefined,
                 publicando: false,
-                // O QUE ACONTECEU, com o link. Sem link, sem afirmação de que
-                // está no ar — foi o erro que eu cometi três vezes em 03/08.
-                texto: r.permalink
-                  ? `Publiquei "${p.nome}" no Mercado Livre. Está no ar: ${r.permalink}`
-                  : `Publiquei "${p.nome}" no Mercado Livre${r.id ? ` (${r.id})` : ""}.`,
+                // A PALAVRA DO ML vem na mensagem do servidor: "está no ar" só
+                // quando ele confirmou `active`. Sem link, sem afirmação —
+                // foi o erro que eu cometi três vezes em 03/08.
+                texto: r.mensagem,
               }
             : turno
         )
