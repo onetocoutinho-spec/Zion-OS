@@ -42,12 +42,15 @@ do $$
 begin
   if not exists (select 1 from vault.secrets where name = 'ml_refresh_token_key') then
     perform vault.create_secret(
-      encode(gen_random_bytes(32), 'hex'),
+      encode(extensions.gen_random_bytes(32), 'hex'),
       'ml_refresh_token_key',
       'Chave simetrica de canais_marketplace.refresh_token_cifrado (061). Nunca sai do banco.'
     );
   end if;
 end $$;
+
+-- `pgcrypto` no Supabase vive no schema `extensions`: as funções que cifram
+-- levam `extensions` no search_path fixo, e o SQL de topo qualifica.
 
 -- ---------- a coluna ----------
 alter table public.canais_marketplace
@@ -75,7 +78,7 @@ returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select case when refresh_token_cifrado is null then null
               else pgp_sym_decrypt(refresh_token_cifrado, public.ml_chave_da_credencial()) end
@@ -90,7 +93,7 @@ returns void
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_token is null or p_token = '' then
@@ -110,7 +113,7 @@ returns void
 language sql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   update public.canais_marketplace
      set refresh_token_cifrado = pgp_sym_encrypt(p_token, public.ml_chave_da_credencial()),
@@ -123,7 +126,7 @@ returns void
 language sql
 volatile
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   update public.canais_marketplace
      set refresh_token_cifrado = null, ativo = false, atualizado_em = now()
@@ -141,7 +144,7 @@ grant  execute on function public.ml_credencial_limpar(uuid, text)             t
 
 -- ---------- copia o que existe em texto puro ----------
 update public.canais_marketplace
-   set refresh_token_cifrado = pgp_sym_encrypt(refresh_token, public.ml_chave_da_credencial())
+   set refresh_token_cifrado = extensions.pgp_sym_encrypt(refresh_token, public.ml_chave_da_credencial())
  where refresh_token is not null and refresh_token_cifrado is null;
 
 -- ---------- a prova ----------
@@ -159,7 +162,7 @@ begin
   -- ida e volta: o que foi cifrado volta igual
   if exists (select 1 from public.canais_marketplace
               where refresh_token is not null
-                and pgp_sym_decrypt(refresh_token_cifrado, public.ml_chave_da_credencial()) <> refresh_token) then
+                and extensions.pgp_sym_decrypt(refresh_token_cifrado, public.ml_chave_da_credencial()) <> refresh_token) then
     raise exception 'MIGRACAO 061 INCOMPLETA: decifrar nao devolve o original.';
   end if;
 
