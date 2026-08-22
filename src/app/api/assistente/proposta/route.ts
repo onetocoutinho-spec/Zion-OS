@@ -48,7 +48,7 @@ import {
 import { escritaDePeso } from "@/modules/assistant/domain/conjuntoAprovado";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { lerTudoPorIds } from "@/lib/supabase/paginado";
-import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { exigirAcessoAoCliente, exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { buscarDraft, marcarDraftCriado } from "@/lib/services/copilotCadastros";
 import { criarProdutoDoDraft, CadastroInvalido } from "@/lib/services/criacaoDeProduto";
 import { draftVisivelPara } from "@/modules/assistant/domain/draftDeCadastro";
@@ -884,14 +884,6 @@ export async function POST(request: Request) {
     return respostaErroAutorizacao(e);
   }
 
-  // O TENANT VEM DAQUI. Nunca do corpo — é a diferença entre autorização e
-  // uma string que o navegador escolheu.
-  const clienteDaSessao = ctx.perfil.clienteId;
-  if (!clienteDaSessao) {
-    return Response.json({ erro: "Sessão sem cliente associado." }, { status: 403 });
-  }
-  const usuario = ctx.usuario?.id ?? null;
-
   let corpo: { propostaId?: string };
   try {
     corpo = await request.json();
@@ -903,7 +895,36 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Proposta não informada." }, { status: 400 });
   }
 
-  const proposta = await buscarProposta(propostaId);
+  // O TENANT VEM DAQUI. Nunca do corpo — é a diferença entre autorização e
+  // uma string que o navegador escolheu.
+  //
+  // Lojista: a própria loja. Agência e equipe: a loja DA PROPOSTA, e só se o
+  // banco confirmar que alcançam (`exigirAcessoAoCliente`). Antes a rota
+  // exigia `perfil.clienteId` e devolvia 403 para os dois papéis — o cartão
+  // aparecia e o clique falhava.
+  const propostaLida = await buscarProposta(propostaId);
+  let clienteDaSessao: string | null = null;
+  if (ctx.perfil.papel === "cliente") {
+    clienteDaSessao = ctx.perfil.clienteId;
+  } else if (propostaLida) {
+    try {
+      ctx = await exigirAcessoAoCliente(request, propostaLida.clienteId);
+      clienteDaSessao = propostaLida.clienteId;
+    } catch {
+      // Loja fora do alcance: a proposta "não existe" para quem pergunta —
+      // a mesma frase de `outro_tenant`, pelo mesmo motivo.
+      clienteDaSessao = null;
+    }
+  }
+  if (!clienteDaSessao) {
+    return Response.json(
+      { ok: false, motivo: "nao_encontrada", mensagem: explicarImpedimento({ motivo: "nao_encontrada" }) },
+      { status: 409 }
+    );
+  }
+  const usuario = ctx.usuario?.id ?? null;
+
+  const proposta = propostaLida;
   const estadoAtual = proposta ? await lerEstadoAtual(proposta) : {};
   const veredicto = podeExecutar(
     proposta,

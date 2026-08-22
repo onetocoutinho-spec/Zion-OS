@@ -549,13 +549,16 @@ export function ChatDaOperacao({
                 )
               ),
           };
+          // Só PONTEIROS viajam: a loja (conferida no servidor), o id do produto
+          // aberto e o fio. Contagens, catálogo e histórico são medidos lá.
           const r = await conversar(
             pergunta,
-            falas,
-            { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
-            contexto.produto?.nome,
-            aoVivo,
-            conversaId ?? undefined
+            {
+              lojaId: clienteId,
+              produtoAbertoId: contexto.produto?.id ?? null,
+              ...(conversaId ? { conversaId } : {}),
+            },
+            aoVivo
           );
           // O id do SERVIDOR é a autoridade. Se o que mandamos não existia, era
           // malformado ou de outro cliente, `garantirConversa` criou outro — e é

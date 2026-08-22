@@ -46,7 +46,7 @@ function Painel() {
    * novo entre componentes.
    */
   const params = useSearchParams();
-  const chat = useContextoDaPergunta(clienteId, params.get("produto"));
+  const produtoAberto = params.get("produto");
 
   const pathname = usePathname();
 
@@ -122,27 +122,46 @@ function Painel() {
                 vez de esticar a página inteira. Sem o `min-h-0` o flex se
                 recusa a encolher e a barra de digitar sai da tela. */}
             <div className="min-h-0 flex-1">
-              <ChatDaOperacao
-                contexto={chat.contexto}
-                produtos={chat.produtos}
-                clienteId={clienteId}
-                // A tela ATRÁS do painel precisa mostrar o que o cartão acabou de
-                // gravar. `notificarMudanca` é o mesmo sinal das escritas locais
-                // (repositorio.ts): todo `useLiveQuery` aberto re-consulta. O
-                // Realtime também dispara isso — quando o websocket está de pé;
-                // este é o caminho que não depende dele.
-                aoGravar={notificarMudanca}
-                alturaCheia
-                titulo={
-                  chat.contexto?.produto
-                    ? `Sobre ${chat.contexto.produto.nome}`
-                    : "Sobre a sua loja"
-                }
-              />
+              <ConversaDoPainel clienteId={clienteId} produtoAberto={produtoAberto} />
             </div>
           </aside>
         </>
       )}
     </>
+  );
+}
+
+/**
+ * A conversa — e o CONTEXTO dela — só existem com o painel aberto.
+ *
+ * `useContextoDaPergunta` dispara cinco consultas (catálogo com peso, resumo
+ * de anúncios, TODAS as imagens, canal, infrações). Rodava em toda tela do
+ * portal, antes do `if (aberto)`, para um painel que a pessoa podia nunca
+ * abrir — e era a consulta pesada que já derrubou o contexto uma vez. Num
+ * componente próprio, o hook só roda quando há conversa para alimentar.
+ * (Auditoria do Copilot, 2026-08-22, P1.)
+ */
+function ConversaDoPainel({
+  clienteId,
+  produtoAberto,
+}: {
+  clienteId: string;
+  produtoAberto: string | null;
+}) {
+  const chat = useContextoDaPergunta(clienteId, produtoAberto);
+  return (
+    <ChatDaOperacao
+      contexto={chat.contexto}
+      produtos={chat.produtos}
+      clienteId={clienteId}
+      // A tela ATRÁS do painel precisa mostrar o que o cartão acabou de
+      // gravar. `notificarMudanca` é o mesmo sinal das escritas locais
+      // (repositorio.ts): todo `useLiveQuery` aberto re-consulta. O
+      // Realtime também dispara isso — quando o websocket está de pé;
+      // este é o caminho que não depende dele.
+      aoGravar={notificarMudanca}
+      alturaCheia
+      titulo={chat.contexto?.produto ? `Sobre ${chat.contexto.produto.nome}` : "Sobre a sua loja"}
+    />
   );
 }

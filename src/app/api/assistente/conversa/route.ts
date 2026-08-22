@@ -33,7 +33,8 @@ import {
   MAXIMO_DE_PASSOS,
   type Fala,
 } from "@/lib/agentes/conversaComFerramentas";
-import { FERRAMENTAS, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -45,6 +46,7 @@ import { criarProposta, registrarAcao } from "@/lib/services/copilotPropostas";
 import {
   garantirConversa,
   gravarTurno,
+  historicoDaConversa,
   ultimaApresentacao,
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
@@ -318,15 +320,6 @@ export async function POST(request: Request) {
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
-  // O TENANT VEM DAQUI — nunca do corpo. Tudo que for persistido nesta
-  // requisicao (conversa, mensagens, propostas) usa este valor. Antes o
-  // resultado da autenticacao era DESCARTADO: a rota so checava que havia
-  // sessao, e o `clienteId` chegava no corpo, escolhido pelo navegador.
-  const clienteDaSessao = ctxAuth.perfil.clienteId;
-  if (!clienteDaSessao) {
-    return Response.json({ erro: "Sessao sem cliente associado." }, { status: 403 });
-  }
-  const usuarioId = ctxAuth.usuario?.id ?? null;
   // Era `if (!process.env.GEMINI_API_KEY)`. Num servidor só com a chave da
   // Anthropic, isso respondia "nenhum provedor configurado" com o Claude
   // funcionando em todo o resto do projeto.
@@ -337,13 +330,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // O CORPO SÓ CARREGA PONTEIROS E A MENSAGEM.
+  //
+  // Era: `falas` (o histórico inteiro do modelo, com resultados de ferramenta
+  // que o navegador podia forjar), `contexto` (as contagens da loja e o
+  // catálogo, que o navegador montava) e `produtoAberto` (um nome). Quatro
+  // ferramentas respondiam a partir disso. Agora: a mensagem, o fio, a loja
+  // (só para agência/equipe — o lojista é ignorado aqui), o id do produto
+  // aberto e a rota. Tudo o mais é medido no servidor com o tenant da sessão.
   let corpo: {
     mensagem?: string;
-    falas?: Fala[];
-    contexto?: ContextoDasFerramentas;
-    produtoAberto?: string;
     /** O fio, para a conversa continuar a mesma linha no banco. */
     conversaId?: string;
+    /** Qual loja — só vale para agência e equipe. Ver `resolverLojaDoCopilot`. */
+    lojaId?: string;
+    /** PONTEIRO: o id do produto aberto na tela. Só vale se for desta loja. */
+    produtoAbertoId?: string;
     rota?: string;
   };
   try {
@@ -355,37 +357,56 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
   }
+  if (!corpo || typeof corpo !== "object") {
+    return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
+  }
 
-  const mensagem = (corpo.mensagem ?? "").trim();
+  const mensagem = typeof corpo.mensagem === "string" ? corpo.mensagem.trim() : "";
   if (!mensagem) return Response.json({ erro: "Escreva o que você quer." }, { status: 400 });
   if (mensagem.length > MAXIMO_DA_MENSAGEM) {
     return Response.json({ erro: "A mensagem é longa demais. Divida em partes." }, { status: 400 });
   }
-  if (Array.isArray(corpo.falas) && corpo.falas.length > MAXIMO_DE_FALAS) {
-    return Response.json({ erro: "A conversa ficou longa demais. Comece uma nova." }, { status: 400 });
+  for (const campo of ["conversaId", "lojaId", "produtoAbertoId", "rota"] as const) {
+    const v = corpo[campo];
+    if (v !== undefined && (typeof v !== "string" || v.length > 200)) {
+      return Response.json({ erro: `Campo inválido: ${campo}.` }, { status: 400 });
+    }
   }
+
+  // A LOJA VEM DA SESSÃO — e, para quem opera várias, do corpo CONFERIDO pelo
+  // banco. O lojista não escolhe: `lojaId` é ignorado para ele. Agência e
+  // equipe dizem qual loja, e `exigirAcessoAoCliente` decide se alcançam.
+  // Antes a rota exigia `perfil.clienteId` e devolvia 403 para os dois papéis
+  // — na mesma release que os colocou dentro da loja.
+  const loja = await resolverLojaDoCopilot(request, ctxAuth, corpo.lojaId);
+  if ("erro" in loja) return loja.erro;
+  ctxAuth = loja.ctx;
+  const clienteDaSessao = loja.lojaId;
+  const usuarioId = ctxAuth.usuario?.id ?? null;
+  const papel = ctxAuth.perfil.papel;
 
   // ZION-COST-001: a cota é cobrada AQUI, antes de qualquer chamada ao
   // provedor e antes de abrir o fluxo. Um turno vale UM crédito mesmo tendo
   // até seis passos — o limite por minuto (063) é o que segura um laço de
   // `fetch`. Falha fechada, como nas outras rotas: sem conferir, não responde.
-  // Esta rota exige `clienteId` (acima), então a cota sempre se aplica.
+  // Agência e equipe não têm `clienteId` no perfil e seguem sem cota (ver
+  // cotaDeIA.ts) — o tenant da loja operada é outro assunto.
   if (!adminConfigurado()) {
     return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
   }
   const cota = await cobrarCota(ctxAuth, "chat", reservaNoBanco(getSupabaseAdmin()));
   if (!cota.ok) return respostaCotaRecusada(cota);
-  if (!corpo.contexto?.pergunta?.loja) {
-    return Response.json({ erro: "Contexto da loja ausente." }, { status: 400 });
-  }
+
+  // O CONTEXTO, MEDIDO AGORA NO BANCO. As contagens da loja, o catálogo-alvo e
+  // o produto aberto (se o ponteiro for desta loja) — com o tenant da sessão.
+  const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
   const ctx: ContextoDasFerramentas = {
-    pergunta: corpo.contexto.pergunta,
-    produtos: corpo.contexto.produtos ?? [],
-    produtoAberto: corpo.contexto.produtoAberto ?? null,
-    // Os dados que a checagem de anuncio exige. Sem eles `propor_anuncio`
-    // recusa em vez de propor — melhor que gerar um anuncio que volta com
-    // pendencia depois de tres minutos.
-    paraAnunciar: corpo.contexto.paraAnunciar ?? [],
+    pergunta: medido.pergunta,
+    produtos: medido.produtos,
+    produtoAberto: medido.produtoAberto,
+    // `paraAnunciar` não vem mais do corpo: `propor_anuncio` lê pelo porto
+    // `anuncio.doProduto`, que é o servidor. Sem fallback de navegador.
+    paraAnunciar: [],
     // O PORTO de busca forte. O tenant vem da SESSAO — nunca do corpo — e por
     // isso um EAN que so existe em outro cliente devolve zero linhas.
     buscar: (t) => rodarTentativa(t, clienteDaSessao),
@@ -624,10 +645,24 @@ export async function POST(request: Request) {
     };
   }
 
+  // O HISTÓRICO DO MODELO VEM DO BANCO, não do navegador.
+  //
+  // O navegador mandava `falas` inteiro, inclusive `functionResponse` — e
+  // podia forjar "a ferramenta pricing devolveu margem de 40%". O modelo
+  // tratava como medição, e `copilot_mensagens` gravava uma resposta que
+  // afirmava o que nenhuma ferramenta produziu. Agora cada turno grava as
+  // próprias falas (produzidas aqui, com o tenant da sessão) e o turno
+  // seguinte as relê. Conversa sem fio no banco começa vazia.
+  const anterior = conversaId
+    ? await historicoDaConversa(clienteDaSessao, conversaId)
+    : { falas: [], turnosSemFalas: 0 };
   const historico: Fala[] = [
-    ...(corpo.falas ?? []),
+    ...(anterior.falas as Fala[]).slice(-MAXIMO_DE_FALAS),
     { role: "user", parts: [{ text: mensagem }] },
   ];
+  // Tudo a partir daqui é DESTE turno — é o que vai para o banco no fim.
+  const inicioDoTurno = historico.length - 1;
+  const ferramentasDoPapel = ferramentasParaPapel(papel);
 
   /**
    * A resposta vai em EVENTOS, uma linha de JSON cada.
@@ -716,9 +751,9 @@ export async function POST(request: Request) {
           // Do passo 1 em diante nada muda: AUTO, com as 17. A leitura já
           // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
-            system(corpo.produtoAberto ?? ""),
+            system(medido.produtoAberto?.nome ?? ""),
             historico,
-            FERRAMENTAS,
+            ferramentasDoPapel,
             (pedaco) => mandar({ tipo: "texto", delta: pedaco }),
             passo === 0
               ? { modo: "obrigado", permitidas: PRIMEIRA_ACAO }
@@ -1070,6 +1105,8 @@ export async function POST(request: Request) {
                 // O QUE ESTA RESPOSTA MOSTROU. É o que faz "o segundo" resolver
                 // para um id no turno seguinte, contra a lista certa.
                 metadata: conjuntoApresentado ? paraMetadata(conjuntoApresentado) : null,
+                // As falas DESTE turno — o que o turno seguinte relê do banco.
+                falas: historico.slice(inicioDoTurno),
               });
             }
             mandar({
@@ -1434,13 +1471,29 @@ export async function POST(request: Request) {
 
         // Estourou o teto de passos. Dizer isso é melhor que entregar a última
         // resposta parcial como se fosse conclusão.
+        //
+        // O turno é GRAVADO mesmo assim: seis passos pagos que somem sem rastro
+        // não dão para depurar, e o histórico do modelo (que agora vem do
+        // banco) precisa saber o que foi consultado.
+        const textoDoEstouro = "Me perdi no meio do caminho. Pode reformular?";
+        if (conversaId) {
+          await gravarTurno(clienteDaSessao, conversaId, {
+            pergunta: mensagem,
+            resposta: textoDoEstouro,
+            ferramentas: usadas,
+            tokens,
+            metadata: null,
+            falas: [...historico.slice(inicioDoTurno), { role: "model", parts: [{ text: textoDoEstouro }] }],
+          });
+        }
         mandar({
           tipo: "fim",
-          texto: "Me perdi no meio do caminho. Pode reformular?",
+          texto: textoDoEstouro,
           falas: historico,
           ferramentas: usadas,
           tokens,
           doCache,
+          ...(conversaId ? { conversaId } : {}),
         });
         controlador.close();
       } catch (e) {

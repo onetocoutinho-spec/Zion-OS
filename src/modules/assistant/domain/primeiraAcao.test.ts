@@ -159,7 +159,11 @@ test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo c
   // mandar a lista inteira com `any` — que é escrita alcançável no passo 0.
   assert.match(CLIENTE, /function ofertaDoPasso\(/);
   assert.match(CLIENTE, /\{\s*tools,\s*tool_choice\s*\}\s*=\s*ofertaDoPasso\(/);
-  assert.match(ROTA, /FERRAMENTAS,/);
+  // A rota passa o catálogo DO PAPEL (`ferramentasParaPapel`), não a constante
+  // inteira — e continua sendo uma lista só, para `ofertaDoPasso`.
+  assert.match(ROTA, /ferramentasDoPapel,/);
+  assert.match(ROTA, /const ferramentasDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.doesNotMatch(ROTA, /\bFERRAMENTAS,/, "a rota voltou a mandar o catálogo inteiro, sem papel");
 });
 
 // ---------------------------------------------------------------------------

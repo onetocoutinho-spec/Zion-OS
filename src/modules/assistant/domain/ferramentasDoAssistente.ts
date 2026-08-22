@@ -658,3 +658,45 @@ export function todaExecucaoEReversivel(fs: readonly Ferramenta[] = FERRAMENTAS)
 export const PRIMEIRA_ACAO: readonly string[] = FERRAMENTAS.filter(
   (f) => f.efeito === "le"
 ).map((f) => f.nome);
+
+// ---------------------------------------------------------------------------
+// O CATÁLOGO POR PAPEL
+// ---------------------------------------------------------------------------
+//
+// Até 2026-08-22 a rota mandava `FERRAMENTAS` inteiro para todo mundo — e era
+// inócuo porque só o papel `cliente` passava do 403. No dia em que agência e
+// equipe entram no Copilot, "vê tudo" vira o padrão silencioso, e o poder de
+// reativar um anúncio no Mercado Livre (a única ação sem clique) chegaria a
+// quem opera a loja de terceiros sem ninguém ter decidido isso.
+//
+// A decisão, escrita à mão:
+//   - leitura, rascunho e proposta: os três papéis. Propor não grava; quem
+//     grava é o clique, e o clique passa pela Proposal com o tenant conferido.
+//   - `reativar_anuncio` (executa, sem clique): lojista e agência — os dois
+//     operam a loja no dia a dia, e a trava de posse + infração já vale para
+//     ambos. A EQUIPE fica de fora: ela audita e dá suporte; recolocar um
+//     anúncio de terceiro no ar sem o clique dele não é suporte.
+//
+// Uma ferramenta nova que não declare `papeis` vale para os três — é a regra
+// padrão para leitura e proposta, e `executa` é barrado pelo teste de fonte
+// que exige declaração explícita.
+
+export type PapelDoCopilot = "cliente" | "agencia" | "equipe";
+
+const PAPEIS_POR_EXECUCAO: Readonly<Record<string, readonly PapelDoCopilot[]>> = {
+  reativar_anuncio: ["cliente", "agencia"],
+};
+
+/** As ferramentas que ESTE papel enxerga. Pura. */
+export function ferramentasParaPapel(
+  papel: PapelDoCopilot,
+  fs: readonly Ferramenta[] = FERRAMENTAS
+): readonly Ferramenta[] {
+  return fs.filter((f) => {
+    if (f.efeito !== "executa") return true;
+    const permitidos = PAPEIS_POR_EXECUCAO[f.nome];
+    // Execução sem política declarada não chega a ninguém — melhor uma
+    // ferramenta ausente que um poder distribuído por omissão.
+    return Boolean(permitidos?.includes(papel));
+  });
+}

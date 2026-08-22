@@ -116,7 +116,10 @@ test("/api/assistente (intenção) cobra a cota antes do classificador", () => {
 test("o corpo do chat tem teto: mensagem, número de falas e tamanho total", () => {
   const f = rota("assistente/conversa");
   assert.match(f, /mensagem\.length > MAXIMO_DA_MENSAGEM/);
-  assert.match(f, /corpo\.falas\.length > MAXIMO_DE_FALAS/);
+  // `falas` não vem mais do corpo (o histórico é lido do banco); o teto vale
+  // na RELEITURA, para o prompt não crescer sem limite.
+  assert.match(f, /slice\(-MAXIMO_DE_FALAS\)/);
+  assert.doesNotMatch(f, /corpo\.falas/, "a rota voltou a aceitar o histórico do navegador");
   assert.match(f, /bruto\.length > MAXIMO_DO_CORPO/);
 });
 
