@@ -20,6 +20,7 @@ function loja(p: Partial<Cliente> = {}): Cliente {
     proximaAcao: "",
     risco: "Baixo",
     observacoes: "",
+    agenciaId: null,
     ...p,
   };
 }

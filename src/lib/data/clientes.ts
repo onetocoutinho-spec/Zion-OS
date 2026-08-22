@@ -14,6 +14,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Revisar campanha de fones bluetooth no ML",
     risco: "Baixo",
     observacoes: "Cliente engajado, responde rápido. Quer entrar na Amazon em agosto.",
+    agenciaId: null,
   },
   {
     id: "cli-02",
@@ -28,6 +29,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Aprovar novas imagens da linha de luminárias",
     risco: "Baixo",
     observacoes: "Ticket médio alto. Foco em kits para aumentar recorrência.",
+    agenciaId: null,
   },
   {
     id: "cli-03",
@@ -42,6 +44,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Cobrar acessos do TikTok Shop e planilha de custos",
     risco: "Médio",
     observacoes: "Primeiro marketplace do cliente. Precisa de acompanhamento próximo.",
+    agenciaId: null,
   },
   {
     id: "cli-04",
@@ -56,6 +59,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Rodar diagnóstico inicial da conta Shopee",
     risco: "Baixo",
     observacoes: "Estoque grande parado. Potencial de liquidação no 2º semestre.",
+    agenciaId: null,
   },
   {
     id: "cli-05",
@@ -70,6 +74,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Reunião de realinhamento — apresentar plano de recuperação",
     risco: "Alto",
     observacoes: "Reclamou de resultado nos últimos 2 meses. Conta com problema de reputação.",
+    agenciaId: null,
   },
   {
     id: "cli-06",
@@ -84,6 +89,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Enviar proposta ajustada com foco em TikTok Shop",
     risco: "Baixo",
     observacoes: "Veio por indicação da Bella Casa. Já vende bem no Instagram.",
+    agenciaId: null,
   },
   {
     id: "cli-07",
@@ -98,6 +104,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Agendar call de diagnóstico gratuito",
     risco: "Baixo",
     observacoes: "Chegou pelo funil do Instagram. Ainda não vende em marketplace.",
+    agenciaId: null,
   },
   {
     id: "cli-08",
@@ -112,6 +119,7 @@ export const clientes: Cliente[] = [
     proximaAcao: "Apresentar relatório mensal de junho",
     risco: "Médio",
     observacoes: "Margens apertadas na Shopee. Avaliar reprecificação da linha de facas.",
+    agenciaId: null,
   },
   {
     id: "cli-10",
@@ -127,6 +135,7 @@ export const clientes: Cliente[] = [
     risco: "Médio",
     observacoes:
       "Cliente grande: já tem ~1.000 anúncios ativos no ML. Foco em auditoria em massa, score e fila de otimização por prioridade.",
+    agenciaId: null,
   },
   {
     id: "cli-09",
@@ -141,5 +150,6 @@ export const clientes: Cliente[] = [
     proximaAcao: "Retomar contato em agosto conforme combinado",
     risco: "Médio",
     observacoes: "Pausou por fluxo de caixa. Boa relação, quer voltar.",
+    agenciaId: null,
   },
 ];

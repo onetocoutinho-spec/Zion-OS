@@ -10,7 +10,7 @@ import type { ResumoDoAnuncio } from "../services/anunciosGerados.ts";
 function loja(id: string, p: Partial<Cliente> = {}): Cliente {
   return {
     id, empresa: `Loja ${id}`, responsavel: "", segmento: "", marketplaces: ["Mercado Livre"], plano: "",
-    status: "Ativo", dataEntrada: "2026-01-01", proximaReuniao: null, proximaAcao: "", risco: "Baixo", observacoes: "", ...p,
+    status: "Ativo", dataEntrada: "2026-01-01", proximaReuniao: null, proximaAcao: "", risco: "Baixo", observacoes: "", agenciaId: null, ...p,
   };
 }
 function anuncio(clienteId: string, p: Partial<ResumoDoAnuncio> = {}): ResumoDoAnuncio {

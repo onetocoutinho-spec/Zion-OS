@@ -85,6 +85,7 @@ export function clienteParaApp(row: ClienteRow): Cliente {
     proximaAcao: row.proxima_acao ?? "",
     risco: row.risco as Cliente["risco"],
     observacoes: row.observacoes ?? "",
+    agenciaId: row.agencia_id ?? null,
   };
 }
 
@@ -101,6 +102,7 @@ export function clienteParaBanco(d: Partial<Cliente>): Record<string, unknown> {
   if (d.proximaAcao !== undefined) r.proxima_acao = d.proximaAcao;
   if (d.risco !== undefined) r.risco = d.risco;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  if (d.agenciaId !== undefined) r.agencia_id = d.agenciaId;
   return r;
 }
 

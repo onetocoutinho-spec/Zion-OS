@@ -28,6 +28,10 @@ function montarDeps(admin: SupabaseClient, redirectConvite: string): DepsCriacao
       const { data } = await admin.from("clientes").select("id").eq("id", clienteId).maybeSingle();
       return Boolean(data);
     },
+    async agenciaExiste(agenciaId) {
+      const { data } = await admin.from("agencias").select("id").eq("id", agenciaId).maybeSingle();
+      return Boolean(data);
+    },
     async buscarAuthPorEmail(email) {
       // Staging tem poucos usuários; a 1ª página cobre. (Paginação: melhoria futura.)
       const { data } = await admin.auth.admin.listUsers();
@@ -43,10 +47,10 @@ function montarDeps(admin: SupabaseClient, redirectConvite: string): DepsCriacao
       if (error || !data?.user) throw new Error(error?.message ?? "Falha ao convidar usuário.");
       return { id: data.user.id };
     },
-    async criarPerfil(userId, papel, clienteId, nome) {
+    async criarPerfil(userId, papel, clienteId, nome, agenciaId) {
       const { error } = await admin
         .from("perfis")
-        .insert({ id: userId, papel, cliente_id: clienteId, nome });
+        .insert({ id: userId, papel, cliente_id: clienteId, agencia_id: agenciaId ?? null, nome });
       if (error) throw new Error(error.message);
     },
     async removerAuthUser(userId) {
@@ -114,7 +118,9 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     case "empresa_invalida":
-      return Response.json({ erro: "Empresa não encontrada." }, { status: 404 });
+      return Response.json({ erro: "Loja não encontrada." }, { status: 404 });
+    case "agencia_invalida":
+      return Response.json({ erro: "Agência não encontrada." }, { status: 404 });
     case "falha_perfil":
       return Response.json(
         { erro: "Não foi possível concluir o cadastro. Tente novamente." },
