@@ -22,6 +22,7 @@ import { MessagesSquare, X } from "lucide-react";
 import { ChatDaOperacao } from "./ChatDaOperacao";
 import { useContextoDaPergunta } from "./useEstadoDaLoja";
 import { useClientPortal } from "./context";
+import { notificarMudanca } from "@/lib/store";
 
 export function PainelDoAssistente() {
   // useSearchParams exige Suspense no App Router.
@@ -125,6 +126,12 @@ function Painel() {
                 contexto={chat.contexto}
                 produtos={chat.produtos}
                 clienteId={clienteId}
+                // A tela ATRÁS do painel precisa mostrar o que o cartão acabou de
+                // gravar. `notificarMudanca` é o mesmo sinal das escritas locais
+                // (repositorio.ts): todo `useLiveQuery` aberto re-consulta. O
+                // Realtime também dispara isso — quando o websocket está de pé;
+                // este é o caminho que não depende dele.
+                aoGravar={notificarMudanca}
                 alturaCheia
                 titulo={
                   chat.contexto?.produto

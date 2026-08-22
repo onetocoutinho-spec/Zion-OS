@@ -48,7 +48,8 @@ import {
   ultimaApresentacao,
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { adminConfigurado, getSupabaseAdmin } from "@/lib/supabase/admin";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
 import { lerTudoPorIds } from "@/lib/supabase/paginado";
 import { definirEstadoDoItem, mlbsComInfracao, renovarToken } from "@/lib/marketplaces/mercadolivre";
 import {
@@ -104,6 +105,15 @@ import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
+
+/**
+ * Tetos do corpo. Sem eles a cota cobra "um turno" e o turno pode carregar um
+ * romance: a mensagem e cada fala do histórico entram inteiras no prompt, e
+ * `FALAS_MANTIDAS` corta a QUANTIDADE de falas, não o volume delas.
+ */
+const MAXIMO_DA_MENSAGEM = 4000;
+const MAXIMO_DE_FALAS = 40;
+const MAXIMO_DO_CORPO = 200_000;
 
 function system(produtoAberto: string): string {
   return `Você é o assistente operacional do Zion OS. Ajuda um lojista a levar produtos do cadastro ao anúncio pronto para o Mercado Livre.
@@ -337,13 +347,34 @@ export async function POST(request: Request) {
     rota?: string;
   };
   try {
-    corpo = await request.json();
+    const bruto = await request.text();
+    if (bruto.length > MAXIMO_DO_CORPO) {
+      return Response.json({ erro: "A conversa ficou grande demais. Comece uma nova." }, { status: 413 });
+    }
+    corpo = JSON.parse(bruto);
   } catch {
     return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
   }
 
   const mensagem = (corpo.mensagem ?? "").trim();
   if (!mensagem) return Response.json({ erro: "Escreva o que você quer." }, { status: 400 });
+  if (mensagem.length > MAXIMO_DA_MENSAGEM) {
+    return Response.json({ erro: "A mensagem é longa demais. Divida em partes." }, { status: 400 });
+  }
+  if (Array.isArray(corpo.falas) && corpo.falas.length > MAXIMO_DE_FALAS) {
+    return Response.json({ erro: "A conversa ficou longa demais. Comece uma nova." }, { status: 400 });
+  }
+
+  // ZION-COST-001: a cota é cobrada AQUI, antes de qualquer chamada ao
+  // provedor e antes de abrir o fluxo. Um turno vale UM crédito mesmo tendo
+  // até seis passos — o limite por minuto (063) é o que segura um laço de
+  // `fetch`. Falha fechada, como nas outras rotas: sem conferir, não responde.
+  // Esta rota exige `clienteId` (acima), então a cota sempre se aplica.
+  if (!adminConfigurado()) {
+    return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+  }
+  const cota = await cobrarCota(ctxAuth, "chat", reservaNoBanco(getSupabaseAdmin()));
+  if (!cota.ok) return respostaCotaRecusada(cota);
   if (!corpo.contexto?.pergunta?.loja) {
     return Response.json({ erro: "Contexto da loja ausente." }, { status: 400 });
   }

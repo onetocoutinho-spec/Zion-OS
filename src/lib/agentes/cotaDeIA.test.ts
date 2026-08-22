@@ -88,6 +88,38 @@ for (const [nome, tipo] of [["agentes/esteira", "esteira"], ["agentes/executar",
   });
 }
 
+// O chat ficou FORA da cota quando a 060 nasceu — a rota mais cara do produto
+// (até seis passos de modelo por turno) sem teto de mês nem de minuto.
+test("/api/assistente/conversa cobra a cota ANTES de abrir o fluxo e de chamar o modelo", () => {
+  const f = rota("assistente/conversa");
+  const cobra = f.indexOf('cobrarCota(ctxAuth, "chat"');
+  const fluxo = f.indexOf("new ReadableStream(");
+  const chama = f.indexOf("pedirTurnoEmFluxo(");
+  assert.ok(cobra > 0, "o chat não cobra cota (ZION-COST-001)");
+  assert.ok(fluxo > 0 && chama > 0);
+  assert.ok(cobra < fluxo, "a cota é cobrada depois de abrir o fluxo — a resposta já começou");
+  assert.ok(cobra < chama, "a cota é cobrada depois do modelo — o dinheiro já foi");
+  assert.match(f, /if \(!cota\.ok\) return respostaCotaRecusada\(cota\)/);
+  // Falha fechada: sem admin não há como conferir, e sem conferir não responde.
+  assert.match(f, /if \(!adminConfigurado\(\)\)[\s\S]{0,200}status: 503/);
+});
+
+test("/api/assistente (intenção) cobra a cota antes do classificador", () => {
+  const f = rota("assistente");
+  const cobra = f.indexOf('cobrarCota(ctx, "intencao"');
+  const chama = f.indexOf("chamarIAEstruturada(");
+  assert.ok(cobra > 0, "a rota de intenção não cobra cota");
+  assert.ok(cobra < chama);
+  assert.match(f, /if \(!cota\.ok\) return respostaCotaRecusada\(cota\)/);
+});
+
+test("o corpo do chat tem teto: mensagem, número de falas e tamanho total", () => {
+  const f = rota("assistente/conversa");
+  assert.match(f, /mensagem\.length > MAXIMO_DA_MENSAGEM/);
+  assert.match(f, /corpo\.falas\.length > MAXIMO_DE_FALAS/);
+  assert.match(f, /bruto\.length > MAXIMO_DO_CORPO/);
+});
+
 test("a migração 060 existe e a reserva é atômica e fechada ao navegador", () => {
   const sql = readFileSync(
     new URL("../../../database/migrations/060-a-cota-de-ia-e-cobrada-no-servidor.sql", import.meta.url),

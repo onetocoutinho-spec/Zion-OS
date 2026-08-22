@@ -5,9 +5,10 @@
 // ===========================================================================
 //
 // Ele TRANSCREVE. Não pesquisa, não completa, não melhora. A diferença importa
-// porque este projeto tem um agente que faz o contrário de propósito (o A0,
-// "Pesquisador/Enriquecedor", que preenche lacuna pesquisando fonte externa), e
-// misturar os dois aqui destruiria a única coisa que torna o PDF valioso:
+// porque este projeto já teve um agente que fazia o contrário (o A0, quando se
+// chamava "Pesquisador/Enriquecedor" e "preenchia lacuna pesquisando fonte
+// externa" — sem ter fonte nenhuma; hoje ele só lista o que falta), e misturar
+// os dois aqui destruiria a única coisa que torna o PDF valioso:
 //
 //   o que sai daqui é o que o FORNECEDOR escreveu, não o que o modelo achou.
 //

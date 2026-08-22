@@ -102,7 +102,11 @@ function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
     ``,
     `Responda sempre em português do Brasil, com formatação clara em Markdown no campo resultado_markdown.`,
     `Entregue diretamente a saída esperada, pronta para a equipe usar — sem preâmbulos.`,
-    `Se a entrada não tiver informação suficiente, entregue o melhor resultado possível e liste ao final o que faltou.`,
+    // ERA "entregue o melhor resultado possível e liste ao final o que faltou".
+    // Última linha do system prompt, depois das regras do agente — e "melhor
+    // resultado possível" com dado faltando é licença para preencher com
+    // palpite, o oposto da regra-mãe "NUNCA inventar dado de produto".
+    `Se a entrada não tiver informação suficiente, NÃO a preencha: escreva exatamente "⚠️ informação necessária: <campo>" no lugar do dado e siga sem afirmar o que não sabe. Material, medidas, composição, garantia, peso, cor e certificação não se deduzem.`,
   ].join("\n");
 }
 

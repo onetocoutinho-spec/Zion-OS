@@ -14,6 +14,8 @@
 
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { adminConfigurado, getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const maxDuration = 30;
 
@@ -131,9 +133,13 @@ Use "nenhum" em "assunto" e em "capacidade" quando não se aplicarem.
 "interpretacao": uma frase curta, em português, do que você entendeu. É mostrada ao lojista.`;
 }
 
+/** Uma frase a classificar. Acima disso não é pergunta, é carga. */
+const MAXIMO_DA_FRASE = 1000;
+
 export async function POST(request: Request) {
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -155,6 +161,21 @@ export async function POST(request: Request) {
   // sem ganho.
   const produtoAberto = (corpo?.produtoAberto ?? "").trim().slice(0, 120);
   if (!frase) return Response.json({ erro: "Escreva o que você quer saber." }, { status: 400 });
+  if (frase.length > MAXIMO_DA_FRASE) {
+    return Response.json({ erro: "A pergunta é longa demais. Resuma em uma frase." }, { status: 400 });
+  }
+
+  // ZION-COST-001: a cota é cobrada AQUI, antes do provedor. Esta rota ficou
+  // de fora da 060 — a classificação é barata, mas é paga, e sem a cobrança o
+  // limite por minuto (063) não alcançava o chat. Equipe e agência seguem sem
+  // cota (ver cotaDeIA.ts).
+  if (ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "intencao", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
+  }
 
   try {
     const { json } = await chamarIAEstruturada({

@@ -97,25 +97,33 @@ export interface AgenteDef {
 export const AGENTES: Record<string, AgenteDef> = {
   A0: {
     codigo: "A0",
-    nome: "Pesquisador / Enriquecedor",
-    nomeSimples: "Completar dados do produto",
+    nome: "Levantador de lacunas",
+    nomeSimples: "Listar o que falta no produto",
     camada: "A",
     fase: "Entrada",
+    // ERA "Pesquisador/Enriquecedor": o prompt mandava o modelo "pesquisar
+    // fontes reais" (fabricante, Renner, Amazon, "conhecimento geral") e
+    // rotular "(sugerido, fonte: X — validar)". O modelo não tem acesso a
+    // fonte nenhuma — a rota não oferece busca — então "fonte: X" só podia
+    // ser inventada, e material/medida/garantia fabricados entravam no dossiê
+    // A1→A10 com carimbo de procedência. O A10 só barra o que está marcado
+    // "⚠️ informação necessária", e era justamente a marca que o A0 removia.
+    // Agora o A0 faz a única coisa que consegue fazer sem fonte: dizer o que
+    // falta, para quem tem a informação responder. (Auditoria do Copilot, P0.)
     objetivo:
-      "Preencher sozinho os dados que faltam no briefing (material, medidas, garantia, atributos e o que mais a categoria pedir) — sem depender do operador.",
+      "Ler o briefing e listar, campo a campo, o que falta para o anúncio ficar completo — SEM preencher nada. Quem preenche é o operador ou o cadastro.",
     quandoUsar: "Logo no começo, antes do A1 — sempre que houver campo vazio.",
-    entradaNecessaria: "Briefing com lacunas, link do anúncio atual, nome/modelo do produto.",
-    saidaEsperada: "Briefing enriquecido, com a fonte de cada dado; o que não achar segue como pendência.",
-    promptSistema: `Você é o Agente Pesquisador/Enriquecedor da Zion Company. Sua função é PREENCHER os dados que faltam no briefing do produto pesquisando fontes reais — para não depender do operador.
+    entradaNecessaria: "Briefing com lacunas, categoria do produto, nome/modelo.",
+    saidaEsperada: "O briefing como veio + a lista do que falta, cada item como \"⚠️ informação necessária: <campo>\", com uma pergunta objetiva para o operador.",
+    promptSistema: `Você é o Agente Levantador de Lacunas da Zion Company. Sua função é dizer O QUE FALTA no briefing do produto — e só isso.
 
-Para cada campo vazio (material, medidas, garantia, atributos, e os campos próprios da categoria do produto — em calçado, por exemplo: palmilha, solado, fechamento, altura do solado), pesquise NESTA ORDEM e registre a fonte:
-1) Nosso cadastro/site do cliente e o anúncio atual no ML (link).
-2) Fabricante (ex.: Modare / Grupo Beira Rio) — specs oficiais.
-3) Mesmo modelo em outros varejos/ML (Renner, Amazon, concorrentes) + conhecimento geral.
+VOCÊ NÃO TEM ACESSO A NENHUMA FONTE: nem ao site do fabricante, nem a outros varejos, nem à internet. Você também não pode usar "conhecimento geral" para preencher dado de produto. Material, medidas, composição, garantia, peso, cor, certificação e funcionalidade NÃO se deduzem: ou estão no briefing, ou faltam.
 
-REGRA DE OURO: pesquisar não é inventar. Só preencha com FONTE. Dado do fabricante ou do nosso cadastro = confirmado; dado de varejo/terceiro = "(sugerido, fonte: X — validar)", principalmente medidas e material. Se as fontes divergirem (ex.: "fivela" vs "laço"), sinalize a divergência — não escolha sozinho. O que não achar em fonte confiável = "⚠️ informação necessária: <campo>".
+Para cada campo vazio ou duvidoso (material, medidas, garantia, atributos, e os campos próprios da categoria — em calçado, por exemplo: palmilha, solado, fechamento, altura do solado), escreva exatamente "⚠️ informação necessária: <campo>" seguido de UMA pergunta curta e objetiva que o operador consiga responder (ex.: "⚠️ informação necessária: material do cabedal — é sintético, couro ou tecido?").
 
-Entregue o briefing ENRIQUECIDO, com a fonte de cada dado preenchido e a lista do que ainda falta.`,
+Se o briefing trouxer dois valores que se contradizem (ex.: "fivela" no nome e "laço" na descrição), aponte a divergência como pendência — não escolha sozinho.
+
+NUNCA preencha um campo. NUNCA escreva "sugerido" ou "fonte:". Copie o briefing como veio e acrescente a lista de lacunas ao final.`,
   },
   A1: {
     codigo: "A1",
