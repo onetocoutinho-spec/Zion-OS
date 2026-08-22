@@ -26,4 +26,19 @@ Princípio que governa a série: **o Zion OS deve ter experiências diferentes, 
 - VOC-001 C3: esta série propõe a emenda **Loja ≠ Cliente** na interface (Cliente = quem contrata a Zion, só em telas da equipe).
 - `docs/agency-panel-separation/` fez a separação *cirúrgica* de layouts; esta série faz a separação de *experiências*. Três dos oito documentos daquela pasta estão desatualizados (ver 01, pergunta 9 e relatório de auth).
 
+## Estado em 2026-08-22 — as 8 fatias entregues (branch `ux/agency-store-experience`)
+
+| Fatia | Commit | Entregue | Pendente |
+|---|---|---|---|
+| 1 Contexto global de loja | `da3155c` | provider + resolver (URL > ?loja= > cookie > perfil), 11 telas migradas, 15 testes | — |
+| 2 Switcher + indicadores | `b2232ab` | Dialog, SeletorDeLoja (Ctrl+K), trilha no header, esqueleto da sidebar, saúde derivada | foco de volta ao gatilho só quando aberto por teclado/clique real |
+| 3 Navegação + guard | `e9b96ce` | grupos por pergunta, `rotaPermitida` = menu, 403 explicativo, rótulos do glossário | renomes físicos de rota (ver fatia 8) |
+| 4 Agency overview | `0c2ccc3` | `/` com KPIs clicáveis, "Precisa de atenção" com ação exata, tabela de lojas, 3 estados | KPI de vendas com delta (depende de resumo agregado no banco) |
+| 5 Operar a loja | `8397197` | agência/equipe entram em `/cliente/*` com a loja do contexto; barra "Operando"; seletor na sidebar | **migração 064 não aplicada** — sem ela quota/custos/margem vêm vazios para quem opera |
+| 6 Onboarding de agência | `aa3f382` | Zion › Agências (criar, vincular lojas), Zion › Usuários, papel `agencia` criável pela UI | e-mail na lista de usuários (exige rota admin) |
+| 7 Design system | `4b84562` | tokens `surface-*` (46 arquivos), Badge⊃Pill, EmptyState⊃VazioAmigavel | Dialog nos 3 modais antigos; `text-[11px]` → `text-xs`; tabelas cruas |
+| 8 Vocabulário + rotas | `b2afaf6` | área "Loja" no portal, colunas Loja/Situação/Nota, redirects canônicos (`/lojas`, `/anuncios`, `/auditoria`, `/loja/*`) | mover as rotas físicas (bloqueado pelo `redirect_uri` do ML em `/cliente/conectar-ml`) |
+
+Verificado no navegador a cada fatia (seeds locais, sem Supabase): seletor, trilha, 403, home, modo operando, redirects, 375px sem scroll horizontal e sem alvo < 44px na home.
+
 Os documentos são vivos: atualize-os a cada fatia entregue.

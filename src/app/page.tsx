@@ -163,7 +163,7 @@ export default function VisaoGeralPage() {
                 <Link
                   href={`/clientes/${l.loja.id}`}
                   onClick={() => definirLoja(l.loja.id, { soContexto: true })}
-                  className="font-medium text-zinc-200 hover:text-violet-300"
+                  className="inline-flex items-center font-medium text-zinc-200 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
                 >
                   {l.loja.empresa}
                 </Link>
@@ -181,7 +181,7 @@ export default function VisaoGeralPage() {
                 <Link
                   href={`/clientes/${l.loja.id}`}
                   onClick={() => definirLoja(l.loja.id, { soContexto: true })}
-                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-violet-400 hover:text-violet-300"
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
                 >
                   Operar <ArrowRight size={12} />
                 </Link>

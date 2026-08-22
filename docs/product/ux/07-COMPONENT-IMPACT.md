@@ -90,6 +90,8 @@ Adoção incremental: tokens entram **pelas primitivas**; as telas herdam. Nenhu
 
 Ordem sugerida: 1 → 2 → 3 → 4 → 5 → 6; 7 corre em paralelo a partir da fatia 2; 8 por último.
 
+**Executado em 2026-08-22 nessa ordem** (ver [README](README.md) §Estado). Desvios em relação ao plano: a fatia 5 não criou `/lojas/[id]/*` — a mesma casca `/cliente/*` resolve a loja pelo contexto (zero telas duplicadas, links internos intactos); a fatia 7 não importou `src/design/foundation` (o gerador proíbe) e tokenizou as superfícies no próprio `globals.css`; a fatia 8 registrou os endereços canônicos como redirects em vez de mover arquivos.
+
 ## Status
 
 | Fatia | Estado | Data | Notas |

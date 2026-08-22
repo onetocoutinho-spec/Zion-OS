@@ -6,6 +6,9 @@ Severidade: `P0` bloqueia a tarefa · `P1` custa tempo ou causa erro · `P2` atr
 
 ## Scorecard
 
+> **Reavaliação em 2026-08-22, após as 8 fatias.** Separação Agency × Store 1→4 (os três P0 resolvidos; o P0 #3 depende da migração 064 para as RPCs do portal). Discoverability 2→4 (menu por pergunta, `/esteira/lote` e `/importar` visíveis, lista de usuários). Clarity 2→3 (glossário aplicado nas colunas e no portal; descrições de página ainda dizem "cliente" em alguns lugares). Hierarchy 2→4. Feedback/estados 3→4 (home com 3 estados, esqueleto da sidebar). Consistência 2→3 (tokens e duas consolidações; modais antigos e tabelas cruas ficaram). Acessibilidade 3→4 (Dialog com foco preso; alvos ≥44px na home). Estimativa nova: **3.6/5**. O scorecard original abaixo fica como linha de base.
+
+
 ```
 DIMENSÃO                    NOTA  ACHADOS   P0  P1  P2  P3
 Separação Agency × Store    1/5      8       3   4   1   0
@@ -246,6 +249,8 @@ Esforço: S.
 (ver "Telas operacionais": loading duplo, `/` pesada.)
 
 ## Riscos abertos — precisam de decisão do usuário
+
+> Estado em 2026-08-22: (1) continua aberto — a migração `064-a-loja-em-operacao.sql` está escrita e **não aplicada**; (2) decidido na prática: a Lente nasceu no `AppShell` como `SeletorDeLoja`, `/z` intocado; (3) aplicado como emenda na UI (Loja ≠ Cliente) — falta registrar em VOC-001; (4) só os redirects canônicos; mover `/cliente/*` segue bloqueado pelo `redirect_uri` do ML; (5) fora do escopo, inalterado; (6) inalterado.
 
 1. **RPCs `portal_*` com parâmetro de loja.** É mudança de função SQL (não de tabela), mas toca segurança (validação por `lojas_da_agencia()`/`eh_equipe()`). Sem isso, "operar a loja X" não sai do papel. Decisão: aprovar a Fase 3 mínima (doc 03 §Caminho de migração).
 2. **Destino de `/z` (Shell + Mission + design tokens).** É a arquitetura-alvo da constituição (SHELL-001, UX-010 "Lente"). Esta auditoria propõe **o Store switcher como a primeira materialização da Lente no app de produção**, sem adotar o Shell inteiro. Decisão: concordar que a Lente nasce no `AppShell`, não no `/z`.
