@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { Table, Td } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -33,7 +35,8 @@ const HEADERS = [
 export default function ProdutosPage() {
   const [status, setStatus] = useState("Todos");
   const [prioridade, setPrioridade] = useState("Todos");
-  const [cliente, setCliente] = useState("Todos");
+  // A loja vem do contexto global (cookie + ?loja=), não de um estado local.
+  const { lojaId } = useLojaAtual();
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
   const [auditando, setAuditando] = useState<string | null>(null);
   const [msgAuditoria, setMsgAuditoria] = useState<string | null>(null);
@@ -59,13 +62,13 @@ export default function ProdutosPage() {
     }
   }
 
-  const clientesComProduto = [...new Set((produtos ?? []).map((p) => p.cliente))];
+  const lojasComProduto = [...new Set((produtos ?? []).map((p) => p.clienteId))];
 
   const filtrados = (produtos ?? []).filter(
     (p) =>
       (status === "Todos" || p.statusCadastro === status) &&
       (prioridade === "Todos" || p.prioridade === prioridade) &&
-      (cliente === "Todos" || p.cliente === cliente)
+      (!lojaId || p.clienteId === lojaId)
   );
 
   // Agrupa por cliente (ordem alfabética)
@@ -99,7 +102,7 @@ export default function ProdutosPage() {
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4">
-          <FilterSelect label="Cliente" value={cliente} options={clientesComProduto} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasComProduto} />
           <FilterSelect label="Cadastro" value={status} options={CADASTRO_STATUS} onChange={setStatus} />
           <FilterSelect label="Prioridade" value={prioridade} options={PRIORIDADES} onChange={setPrioridade} />
         </div>

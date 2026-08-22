@@ -4,6 +4,8 @@ import { useState } from "react";
 import { CheckCircle2, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { Table, Td, TdMain, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
@@ -38,15 +40,15 @@ const HEADERS = ["Pendência", "Cliente", "Tarefa vinculada", "Situação", "Aç
 
 export default function PendenciasPage() {
   const [situacao, setSituacao] = useState("Aberta");
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const { data: pendencias } = useLiveQuery(listarPendencias);
 
-  const clientesComPendencia = [...new Set((pendencias ?? []).map((p) => p.cliente))];
+  const lojasComPendencia = [...new Set((pendencias ?? []).map((p) => p.clienteId))];
 
   const filtradas = (pendencias ?? []).filter(
     (p) =>
       (situacao === "Todos" || (situacao === "Resolvida") === p.resolvida) &&
-      (cliente === "Todos" || p.cliente === cliente)
+      (!lojaId || p.clienteId === lojaId)
   );
 
   async function excluir(id: string, descricao: string) {
@@ -66,7 +68,7 @@ export default function PendenciasPage() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4">
           <FilterSelect label="Situação" value={situacao} options={SITUACOES} onChange={setSituacao} />
-          <FilterSelect label="Cliente" value={cliente} options={clientesComPendencia} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasComPendencia} />
         </div>
         <LinkButton href="/pendencias/nova">
           <Plus size={14} /> Nova pendência

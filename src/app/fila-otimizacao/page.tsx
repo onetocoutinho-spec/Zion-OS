@@ -5,6 +5,8 @@ import Link from "next/link";
 import { CheckCircle2, Lock, ListFilter, Clock, PlayCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
@@ -47,7 +49,7 @@ const HEADERS = [
 ];
 
 export default function FilaOtimizacaoPage() {
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const [prioridade, setPrioridade] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [busy, setBusy] = useState(false);
@@ -55,7 +57,7 @@ export default function FilaOtimizacaoPage() {
   const { data: filaData } = useLiveQuery(listarFila);
   const fila = filaData ?? [];
 
-  const clientes = useMemo(() => [...new Set(fila.map((f) => f.cliente))], [fila]);
+  const lojasNaFila = useMemo(() => [...new Set(fila.map((f) => f.clienteId))], [fila]);
 
   const pendentes = fila.filter((f) => f.status === "pendente").length;
   const emAndamento = fila.filter((f) => f.status === "em_andamento").length;
@@ -65,7 +67,7 @@ export default function FilaOtimizacaoPage() {
     return fila
       .filter(
         (f) =>
-          (cliente === "Todos" || f.cliente === cliente) &&
+          (!lojaId || f.clienteId === lojaId) &&
           (prioridade === "Todos" || ROTULO_PRIORIDADE[f.prioridade] === prioridade) &&
           (status === "Todos" || ROTULO_STATUS_FILA[f.status] === status)
       )
@@ -74,7 +76,7 @@ export default function FilaOtimizacaoPage() {
           PESO_PRIORIDADE[a.prioridade] - PESO_PRIORIDADE[b.prioridade] ||
           a.prazo.localeCompare(b.prazo)
       );
-  }, [fila, cliente, prioridade, status]);
+  }, [fila, lojaId, prioridade, status]);
 
   async function mudarStatus(id: string, novo: "concluido" | "travado") {
     setBusy(true);
@@ -102,7 +104,7 @@ export default function FilaOtimizacaoPage() {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+        <FiltroDeLoja apenasIds={lojasNaFila} />
         <FilterSelect label="Prioridade" value={prioridade} options={Object.values(ROTULO_PRIORIDADE)} onChange={setPrioridade} />
         <FilterSelect label="Status" value={status} options={Object.values(ROTULO_STATUS_FILA)} onChange={setStatus} />
       </div>

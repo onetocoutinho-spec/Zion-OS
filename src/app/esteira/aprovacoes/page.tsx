@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
@@ -52,14 +54,14 @@ const HEADERS = [
 ];
 
 export default function AprovacoesPage() {
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const [status, setStatus] = useState("Todos");
   const [busy, setBusy] = useState(false);
 
   const { data } = useLiveQuery(listarAnunciosGerados);
   const registros = data ?? [];
 
-  const clientes = useMemo(() => [...new Set(registros.map((r) => r.cliente))], [registros]);
+  const lojasComRegistro = useMemo(() => [...new Set(registros.map((r) => r.clienteId))], [registros]);
 
   const aguardando = registros.filter((r) => r.status === "aguardando_aprovacao").length;
   const rascunhos = registros.filter((r) => r.status === "rascunho").length;
@@ -68,7 +70,7 @@ export default function AprovacoesPage() {
 
   const filtrados = registros.filter(
     (r) =>
-      (cliente === "Todos" || r.cliente === cliente) &&
+      (!lojaId || r.clienteId === lojaId) &&
       (status === "Todos" || ROTULO_STATUS_ANUNCIO_GERADO[r.status] === status)
   );
 
@@ -95,9 +97,7 @@ export default function AprovacoesPage() {
       <ConteudoAprovacoes
         registros={registros}
         filtrados={filtrados}
-        clientes={clientes}
-        cliente={cliente}
-        setCliente={setCliente}
+        lojasComRegistro={lojasComRegistro}
         status={status}
         setStatus={setStatus}
         busy={busy}
@@ -113,9 +113,7 @@ export default function AprovacoesPage() {
 function ConteudoAprovacoes({
   registros,
   filtrados,
-  clientes,
-  cliente,
-  setCliente,
+  lojasComRegistro,
   status,
   setStatus,
   busy,
@@ -126,9 +124,7 @@ function ConteudoAprovacoes({
 }: {
   registros: AnuncioGeradoRegistro[];
   filtrados: AnuncioGeradoRegistro[];
-  clientes: string[];
-  cliente: string;
-  setCliente: (v: string) => void;
+  lojasComRegistro: string[];
   status: string;
   setStatus: (v: string) => void;
   busy: boolean;
@@ -226,7 +222,7 @@ function ConteudoAprovacoes({
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+        <FiltroDeLoja apenasIds={lojasComRegistro} />
         <FilterSelect
           label="Status"
           value={status}

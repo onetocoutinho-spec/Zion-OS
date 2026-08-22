@@ -17,6 +17,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -103,7 +105,7 @@ const ICONE: Record<StatusItem, React.ReactNode> = {
 };
 
 export default function EsteiraLotePage() {
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId } = useLojaAtual();
   const [prioridade, setPrioridade] = useState("Todos");
   const [quantidade, setQuantidade] = useState("5");
   const [rodando, setRodando] = useState(false);
@@ -132,20 +134,20 @@ export default function EsteiraLotePage() {
     return m;
   }, [variantesData]);
 
-  const clientes = useMemo(() => [...new Set(auditorias.map((a) => a.cliente))], [auditorias]);
+  const lojasAuditadas = useMemo(() => [...new Set(auditorias.map((a) => a.clienteId))], [auditorias]);
 
   const fila = useMemo(() => {
     return auditorias
       .filter(
         (a) =>
-          (cliente === "Todos" || a.cliente === cliente) &&
+          (!lojaId || a.clienteId === lojaId) &&
           (prioridade === "Todos" || ROTULO_PRIORIDADE[a.prioridade] === prioridade) &&
           a.statusAuditoria !== "otimizado" &&
           a.statusAuditoria !== "ignorado"
       )
       .sort((a, b) => PESO[a.prioridade] - PESO[b.prioridade] || a.scoreQualidade - b.scoreQualidade)
       .slice(0, Number(quantidade));
-  }, [auditorias, cliente, prioridade, quantidade]);
+  }, [auditorias, lojaId, prioridade, quantidade]);
 
   async function rodarLote() {
     if (fila.length === 0 || rodando) return;
@@ -255,7 +257,7 @@ export default function EsteiraLotePage() {
 
       <Card title="1. Selecionar a fila">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasAuditadas} />
           <FilterSelect label="Prioridade" value={prioridade} options={Object.values(ROTULO_PRIORIDADE)} onChange={setPrioridade} />
           <label className="flex items-center gap-2 text-xs text-zinc-500">
             Quantidade

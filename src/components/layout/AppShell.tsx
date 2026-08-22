@@ -9,6 +9,7 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 import { useTituloDaAba } from "./tituloDaAba";
+import { LojaAtualProvider } from "@/lib/contexto/LojaAtualProvider";
 
 function Sidebar({
   onNavigate,
@@ -139,7 +140,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push(`/busca?q=${encodeURIComponent(busca.trim())}`);
   }
 
+  // A LOJA ATUAL envolve todo o painel: é a única fonte de "em qual loja eu
+  // estou" para as telas da equipe/agência (docs/product/ux/03 §Contexto global).
   return (
+    <LojaAtualProvider perfil={perfil}>
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
@@ -216,5 +220,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
     </div>
+    </LojaAtualProvider>
   );
 }
