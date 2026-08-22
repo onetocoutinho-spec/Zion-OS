@@ -59,8 +59,9 @@ export const GRUPOS: readonly NavGrupo[] = [
   {
     titulo: null,
     pergunta: "Qual loja precisa de mim?",
-    // A home vira Agency overview na fatia 4; até lá é o painel da Zion.
-    papeis: SO_EQUIPE,
+    // A home é a Agency overview (fatia 4): equipe e agência, cada uma com as
+    // lojas que o RLS lhe devolve.
+    papeis: OPERADORES,
     itens: [{ label: "Visão geral", href: "/", icon: LayoutDashboard }],
   },
   {

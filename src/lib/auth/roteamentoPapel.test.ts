@@ -176,14 +176,14 @@ test("a equipe continua sendo mandada para o painel", () => {
 
 test("agência digitando rota da Zion recebe 'proibido' — nunca tela vazia", () => {
   const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
-  for (const rota of ["/", "/agentes", "/ail/padroes", "/ail/inteligencia", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
+  for (const rota of ["/agentes", "/ail/padroes", "/ail/inteligencia", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
     assert.deepEqual(decidirRota(agencia, rota), { tipo: "proibido" }, `${rota} abriu para a agência`);
   }
 });
 
 test("agência alcança o que opera, inclusive detalhe e busca", () => {
   const agencia = { papel: "agencia" as const, clienteId: null, agenciaId: "ag-1" };
-  for (const rota of ["/clientes", "/clientes/abc", "/produtos/xyz/editar", "/esteira/lote", "/fila-otimizacao", "/otimizar-lote", "/vendas", "/busca"]) {
+  for (const rota of ["/", "/clientes", "/clientes/abc", "/produtos/xyz/editar", "/esteira/lote", "/fila-otimizacao", "/otimizar-lote", "/vendas", "/busca"]) {
     assert.deepEqual(decidirRota(agencia, rota), { tipo: "ok" }, `${rota} fechou para a agência`);
   }
 });

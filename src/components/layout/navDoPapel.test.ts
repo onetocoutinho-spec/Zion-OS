@@ -91,7 +91,6 @@ test("as cinco telas apagadas não voltaram ao menu de NINGUÉM", () => {
 test("o que é operação da ZION fica fora", () => {
   const hrefs = hrefsDe(navDoPapel("agencia"));
   for (const proibido of [
-    "/", // o painel da Zion
     "/usuarios/novo",
     "/templates",
     "/agentes",
@@ -142,7 +141,7 @@ test("rotaPermitida usa a MESMA lista do menu — o que não aparece não abre",
     assert.ok(rotaPermitida("agencia", h), `${h} está no menu mas não abre`);
     assert.ok(rotaPermitida("agencia", h === "/" ? "/" : h + "/detalhe"), `${h}/detalhe não abre`);
   }
-  for (const h of ["/", "/agentes", "/ail/padroes", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
+  for (const h of ["/agentes", "/ail/padroes", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
     assert.equal(rotaPermitida("agencia", h), false, `${h} abre para a agência`);
   }
   // prefixo não vaza: /clientes permite /clientes/x, mas /cliente (portal) é outra história

@@ -58,8 +58,12 @@ export interface LojaAtual {
   origem: OrigemDaLoja;
   /** As lojas que este usuário alcança. `null` enquanto carrega. */
   lojas: readonly Loja[] | null;
-  /** Trocar de loja (ou `null` para voltar ao portfólio). */
-  definirLoja: (lojaId: string | null) => void;
+  /**
+   * Trocar de loja (ou `null` para voltar ao portfólio). Por padrão escreve
+   * `?loja=` na URL atual; passe `{ soContexto: true }` quando um link vai
+   * navegar logo em seguida (senão duas navegações disputam).
+   */
+  definirLoja: (lojaId: string | null, opcoes?: { soContexto?: boolean }) => void;
 }
 
 const INERTE: LojaAtual = {
@@ -136,9 +140,10 @@ export function LojaAtualProvider({ perfil, children }: Props) {
   );
 
   const definirLoja = useCallback(
-    (lojaId: string | null) => {
+    (lojaId: string | null, opcoes?: { soContexto?: boolean }) => {
       gravarCookie(lojaId);
       setLojaDaQuery(lojaId);
+      if (opcoes?.soContexto) return;
       const query = queryComLoja(window.location.search, lojaId);
       router.replace(`${pathname}${query}`, { scroll: false });
     },

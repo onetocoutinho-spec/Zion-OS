@@ -1,4 +1,5 @@
 import { type LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { Tone } from "@/lib/status";
 
 const ICON_STYLES: Record<Tone, string> = {
@@ -18,10 +19,18 @@ interface StatCardProps {
   hint?: string;
   icon: LucideIcon;
   tone?: Tone;
+  /**
+   * Para onde o número leva. Um número que não abre nada é relatório; com
+   * `href` o cartão vira a porta da lista que ele conta.
+   */
+  href?: string;
 }
 
-export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: StatCardProps) {
-  return (
+export function StatCard({ label, value, hint, icon: Icon, tone = "violet", href }: StatCardProps) {
+  const classe = `relative block rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10 ${
+    href ? "hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500" : ""
+  }`;
+  const conteudo = (
     // O ÍCONE SAI DO FLUXO DO TEXTO.
     //
     // Ele é decorativo e ocupava 36px + 12px de gap num cartão que no celular
@@ -37,7 +46,7 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: St
     // `scrollWidth > clientWidth`, e texto quebrado não vaza. Disse "0
     // cortados". Só a captura de tela pegou. Fica registrado porque é a lição
     // do dia: métrica de layout não substitui olhar a tela.
-    <div className="relative rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10">
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 pr-9 sm:pr-10">
           {/* O RÓTULO NÃO TRUNCA — ele quebra.
@@ -71,6 +80,13 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: St
           <Icon size={17} />
         </div>
       </div>
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={classe}>
+      {conteudo}
+    </Link>
+  ) : (
+    <div className={classe}>{conteudo}</div>
   );
 }
