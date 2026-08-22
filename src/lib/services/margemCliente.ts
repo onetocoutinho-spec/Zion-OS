@@ -6,6 +6,7 @@
 // exatamente um campo.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { argumentoDaLoja } from "../contexto/lojaEmOperacao";
 import {
   MARGEM_MINIMA_PADRAO,
   margemValida,
@@ -41,7 +42,7 @@ export async function margemMinimaComOrigem(): Promise<{
 }> {
   if (!supabaseConfigurado) return { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
   try {
-    const { data, error } = await getSupabase().rpc("portal_margem_minima");
+    const { data, error } = await getSupabase().rpc("portal_margem_minima", argumentoDaLoja());
     if (error || data == null) return { margem: MARGEM_MINIMA_PADRAO, escolhida: false };
     const n = Number(data);
     return Number.isFinite(n)
@@ -63,6 +64,7 @@ export async function definirMargemMinima(margem: number): Promise<number> {
   }
   if (!supabaseConfigurado) return margem; // demo: aceita sem persistir
   const { data, error } = await getSupabase().rpc("portal_definir_margem_minima", {
+    ...argumentoDaLoja(),
     nova: margem,
   });
   if (error) throw new Error(error.message || "Não foi possível salvar a margem mínima.");

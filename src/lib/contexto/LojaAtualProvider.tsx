@@ -108,7 +108,9 @@ interface Props {
 /** Lê `?loja=` e avisa o pai. Isolado para o <Suspense> exigido pelo Next. */
 function LeitorDaQuery({ aoLer }: { aoLer: (v: string | null) => void }) {
   const params = useSearchParams();
-  const loja = params.get("loja");
+  // `?cliente=` é o nome antigo do mesmo parâmetro (o link do OAuth do ML ainda
+  // o usa); vale como `?loja=` até a renomeação das rotas.
+  const loja = params.get("loja") ?? params.get("cliente");
   useEffect(() => {
     aoLer(loja);
   }, [loja, aoLer]);

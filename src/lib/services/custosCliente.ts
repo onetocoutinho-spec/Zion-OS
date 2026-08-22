@@ -6,6 +6,7 @@
 // exatamente estes sete campos — nunca plano, status, risco ou limite.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
+import { argumentoDaLoja } from "../contexto/lojaEmOperacao";
 import {
   normalizarCustos,
   SEM_CUSTOS_DO_LOJISTA,
@@ -20,10 +21,10 @@ import {
  * aqui: um custo inventado por causa de erro de rede apareceria como margem
  * menor e mandaria o lojista subir preço sem motivo.
  */
-export async function custosDoLojista(): Promise<CustosDoLojista> {
+export async function custosDoLojista(clienteId?: string | null): Promise<CustosDoLojista> {
   if (!supabaseConfigurado) return SEM_CUSTOS_DO_LOJISTA;
   try {
-    const { data, error } = await getSupabase().rpc("portal_custos_do_lojista");
+    const { data, error } = await getSupabase().rpc("portal_custos_do_lojista", argumentoDaLoja(clienteId));
     if (error || data == null) return SEM_CUSTOS_DO_LOJISTA;
     return normalizarCustos(data as Partial<CustosDoLojista>);
   } catch {
@@ -44,6 +45,7 @@ export async function definirCustosDoLojista(
   const c = normalizarCustos(bruto);
   if (!supabaseConfigurado) return c; // demo: aceita sem persistir
   const { error } = await getSupabase().rpc("portal_definir_custos_do_lojista", {
+    ...argumentoDaLoja(),
     p_embalagem: c.embalagem,
     p_etiqueta: c.etiqueta,
     p_informativos: c.informativos,

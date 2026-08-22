@@ -115,19 +115,13 @@ export function decidirRota(perfil: PerfilRota | null, pathname: string): Decisa
   // empresa é: não há sobre o que operar.
   if (perfil.papel === "agencia") {
     if (!perfil.agenciaId) return { tipo: "sem_acesso" };
-    // A CONEXÃO COM O MARKETPLACE É A ÚNICA EXCEÇÃO, e ela é imposta de fora.
-    //
-    // O `redirect_uri` registrado no app do Mercado Livre é UM endereço só, e
-    // ele mora sob `/cliente/`. Todo retorno de OAuth cai ali, seja de quem
-    // for. Expulsar a agência dessa página faria o ML devolver o código para
-    // uma tela que redireciona antes de consumi-lo — e a conexão morre no meio,
-    // sem erro visível.
-    //
-    // A alternativa era registrar um segundo redirect no app do ML. Esta é a
-    // que não exige mexer na configuração de lá.
-    if (noPortal && !ehAConexaoDoMarketplace(pathname)) {
-      return { tipo: "redirect", para: "/clientes" };
-    }
+    // QUEM OPERA ENTRA NA LOJA. O portal (/cliente/*) deixou de ser só do
+    // lojista: para agência e equipe ele mostra a loja do CONTEXTO GLOBAL
+    // (cookie + ?loja=), com a barra "Operando" — ver ClientPortalShell. Se
+    // não há loja no contexto, a própria casca pede para escolher. Por isso
+    // aqui o portal é "ok", sem exceção para a rota do OAuth: ela é só mais
+    // uma tela de dentro da loja.
+    if (noPortal) return { tipo: "ok" };
     // OFERECER É DIFERENTE DE ENTREGAR — e isso vale para a URL também.
     //
     // O menu da agência é uma lista de permissão (nav.ts), mas até aqui a URL
@@ -139,6 +133,6 @@ export function decidirRota(perfil: PerfilRota | null, pathname: string): Decisa
     return { tipo: "ok" };
   }
 
-  // equipe: nunca dentro do Portal do Cliente (evita ver a casca do cliente).
-  return noPortal ? { tipo: "redirect", para: "/" } : { tipo: "ok" };
+  // equipe: o painel inteiro, e o portal de qualquer loja (modo "operando").
+  return { tipo: "ok" };
 }
