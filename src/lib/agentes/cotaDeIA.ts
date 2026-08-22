@@ -59,6 +59,16 @@ export function decidirCota(params: {
     return { ok: false, status: 503, motivo: "Não foi possível conferir sua cota agora. Tente de novo em instantes." };
   }
   if (reserva.ok) return { ok: true, limite: reserva.limite ?? null, usado: reserva.usado ?? null };
+  // 063: o minuto fecha antes do mês. Não gasta crédito; é só esperar.
+  if (reserva.motivo === "ritmo") {
+    return {
+      ok: false,
+      status: 429,
+      motivo: "Muitas chamadas seguidas. Espere um minuto e tente de novo.",
+      limite: reserva.limite,
+      usado: reserva.usado,
+    };
+  }
   if (reserva.motivo === "cota_esgotada") {
     return {
       ok: false,

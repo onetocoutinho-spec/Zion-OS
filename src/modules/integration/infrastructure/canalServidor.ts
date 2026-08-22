@@ -39,7 +39,12 @@ export interface CanalSecreto {
   ativo: boolean;
 }
 
-/** Lê o canal (incl. refresh_token) do cliente, respeitando o RLS. */
+/**
+ * Lê o canal do cliente. Os campos públicos vêm da tabela; a credencial vem
+ * de `ml_credencial_ler` (061), que decifra com a chave do Vault e só
+ * `service_role` executa. O servidor nunca vê a coluna cifrada — só o texto
+ * que a função devolve, no momento em que precisa dele.
+ */
 export async function lerCanalServidor(
   supabase: SupabaseClient,
   clienteId: string,
@@ -47,21 +52,26 @@ export async function lerCanalServidor(
 ): Promise<CanalSecreto | null> {
   const { data, error } = await supabase
     .from("canais_marketplace")
-    .select("refresh_token, seller_id, tipo_anuncio, ativo")
+    .select("seller_id, tipo_anuncio, ativo")
     .eq("cliente_id", clienteId)
     .eq("marketplace", marketplace)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
+  const { data: token, error: erroToken } = await supabase.rpc("ml_credencial_ler", {
+    p_cliente: clienteId,
+    p_marketplace: marketplace,
+  });
+  if (erroToken) throw new Error(erroToken.message);
   return {
-    refreshToken: (data.refresh_token as string | null) ?? null,
+    refreshToken: (token as string | null) ?? null,
     sellerId: (data.seller_id as string | null) ?? null,
     tipoAnuncio: (data.tipo_anuncio as string | null) ?? "Premium",
     ativo: (data.ativo as boolean | null) ?? true,
   };
 }
 
-/** Cria/atualiza o canal com o refresh_token (usado no connect OAuth). */
+/** Cria/atualiza o canal com o refresh_token (usado no connect OAuth). Cifra no banco. */
 export async function salvarRefreshTokenServidor(
   supabase: SupabaseClient,
   clienteId: string,
@@ -69,21 +79,16 @@ export async function salvarRefreshTokenServidor(
   marketplace = PADRAO,
   extra: { sellerId?: string | null } = {}
 ): Promise<void> {
-  const linha: Record<string, unknown> = {
-    cliente_id: clienteId,
-    marketplace,
-    refresh_token: refreshToken,
-    ativo: true,
-    atualizado_em: new Date().toISOString(),
-  };
-  if (extra.sellerId != null) linha.seller_id = extra.sellerId;
-  const { error } = await supabase
-    .from("canais_marketplace")
-    .upsert(linha, { onConflict: "cliente_id,marketplace" });
+  const { error } = await supabase.rpc("ml_credencial_gravar", {
+    p_cliente: clienteId,
+    p_marketplace: marketplace,
+    p_token: refreshToken,
+    p_seller_id: extra.sellerId ?? null,
+  });
   if (error) throw new Error(error.message);
 }
 
-/** Persiste o refresh_token ROTACIONADO pelo ML após uma chamada. */
+/** Persiste o refresh_token ROTACIONADO pelo ML após uma chamada. Cifra no banco. */
 export async function atualizarRefreshTokenServidor(
   supabase: SupabaseClient,
   clienteId: string,
@@ -91,31 +96,29 @@ export async function atualizarRefreshTokenServidor(
   marketplace = PADRAO
 ): Promise<void> {
   if (!refreshToken) return;
-  const { error } = await supabase
-    .from("canais_marketplace")
-    .update({ refresh_token: refreshToken, atualizado_em: new Date().toISOString() })
-    .eq("cliente_id", clienteId)
-    .eq("marketplace", marketplace);
+  const { error } = await supabase.rpc("ml_credencial_rotacionar", {
+    p_cliente: clienteId,
+    p_marketplace: marketplace,
+    p_token: refreshToken,
+  });
   if (error) throw new Error(error.message);
 }
 
 /**
  * Desconecta o canal: apaga a credencial e marca inativo.
  *
- * Vivia no navegador (`salvarCanal({ ativo: false })` gravava `refresh_token:
- * null` direto). Depois da 059 o navegador nao tem GRANT de escrita na coluna,
- * entao o apagamento vem para ca. Apagar e menos que ler — mas e a mesma
- * coluna, e a regra e uma so: o navegador nao toca nela.
+ * Vivia no navegador (`salvarCanal({ ativo: false })`). Depois da 059 o
+ * navegador não toca na credencial; depois da 061 nem o servidor toca na
+ * coluna — é a função que apaga.
  */
 export async function limparCredencialServidor(
   supabase: SupabaseClient,
   clienteId: string,
   marketplace = PADRAO
 ): Promise<void> {
-  const { error } = await supabase
-    .from("canais_marketplace")
-    .update({ refresh_token: null, ativo: false, atualizado_em: new Date().toISOString() })
-    .eq("cliente_id", clienteId)
-    .eq("marketplace", marketplace);
+  const { error } = await supabase.rpc("ml_credencial_limpar", {
+    p_cliente: clienteId,
+    p_marketplace: marketplace,
+  });
   if (error) throw new Error(error.message);
 }

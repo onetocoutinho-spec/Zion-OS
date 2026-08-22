@@ -108,3 +108,11 @@ test("/api/catalogo/extrair cobra a cota antes de subir o arquivo — e só na e
   // medir=1 não custa: a condição precisa excluir o modo de medição.
   assert.match(f, /if \(!apenasMedir && ctx\.perfil\.clienteId\)/);
 });
+
+test("ritmo (063): 429 sem mencionar cota esgotada — o mês ainda tem crédito", () => {
+  const d = decidirCota({ clienteId: "A", reserva: { ok: false, motivo: "ritmo", limite: 30, usado: 3 }, falhou: false });
+  assert.equal(d.ok, false);
+  assert.equal(d.ok === false && d.status, 429);
+  assert.match(d.ok === false ? d.motivo : "", /minuto/);
+  assert.ok(!/esgotada/.test(d.ok === false ? d.motivo : ""));
+});
