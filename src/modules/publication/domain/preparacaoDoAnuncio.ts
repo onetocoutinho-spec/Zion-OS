@@ -60,6 +60,7 @@ import {
   type ModeloTaxas,
 } from "../../pricing/domain/modeloPreco.ts";
 
+import { regrasDoCanal } from "./regrasDoCanal";
 // ---------------------------------------------------------------------------
 // entrada
 // ---------------------------------------------------------------------------
@@ -739,14 +740,17 @@ export function avaliarPalavrasChave(
 
 export function avaliarTituloProposto(
   proposto: string,
-  atual: string
+  atual: string,
+  /** O canal do anúncio. Omitido = Mercado Livre. Ver `regrasDoCanal`. */
+  canal: string | null = null
 ): VeredictoDoTitulo {
   const t = (proposto ?? "").trim();
   if (!t) return { ok: false, motivo: "Não consegui gerar um título agora." };
-  if (t.length > LIMITE_DE_TITULO) {
+  const regras = regrasDoCanal(canal);
+  if (t.length > regras.limiteDoTitulo) {
     return {
       ok: false,
-      motivo: `O título proposto tem ${t.length} caracteres e o Mercado Livre aceita ${LIMITE_DE_TITULO}.`,
+      motivo: `O título proposto tem ${t.length} caracteres e o ${regras.canal} aceita ${regras.limiteDoTitulo}.`,
     };
   }
   if (t === (atual ?? "").trim()) {

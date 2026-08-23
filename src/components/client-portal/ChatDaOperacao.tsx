@@ -16,6 +16,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   Sparkles,
@@ -37,6 +38,12 @@ import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
 import type { Consequencia } from "@/modules/workspace/domain/consequencia";
 import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
 import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTela";
+import { continuacoes, sugestoesDoContexto } from "@/modules/assistant/domain/sugestoesDoContexto";
+import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
+import type { TarefaProposta } from "@/modules/assistant/domain/propostaDeTarefas";
+import type { PedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
+import { rotuloDoSlot } from "@/modules/assistant/domain/briefingDeImagem";
+import { aprovarImagemGerada } from "@/lib/services/imagemGeradaNoChat";
 import {
   desfechoDaConfirmacao,
   estadoDoCartao,
@@ -102,8 +109,6 @@ import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
-import { publicarNoML } from "@/lib/services/publicacaoML";
-import { buscarAnuncioGerado as registroDeAnuncio } from "@/lib/services/anunciosGerados";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
 import {
   analisarProdutosCsv,
@@ -280,6 +285,16 @@ interface Turno {
     fotos: number;
     categoria: string;
   };
+  /** O id que AUTORIZA a publicação. Sem ele, não há botão. */
+  propostaDePublicacaoId?: string;
+  /** A lista de tarefas a criar — e o id que autoriza. */
+  propostaDeTarefas?: TarefaProposta[];
+  propostaDeTarefasId?: string;
+  /** O pedido de imagem — e o id que autoriza. */
+  propostaDeImagem?: PedidoDeImagem;
+  propostaDeImagemId?: string;
+  /** A imagem que a confirmação gerou: rascunho no bucket privado, URL assinada. */
+  imagemGerada?: { versaoId: string; url: string | null; slot: string; produtoId: string; aprovada?: boolean };
   /** Já publicou? Impede o segundo clique antes de a rota precisar recusar. */
   publicando?: boolean;
   propostaDeTexto?: TextoNaTela;
@@ -315,24 +330,10 @@ interface Turno {
   erro?: string;
 }
 
-/**
- * Sugestões de partida.
- *
- * Uma caixa de texto vazia com "pergunte alguma coisa" transfere para quem
- * pergunta o trabalho de adivinhar o vocabulário. Estas três são clicáveis e
- * cobrem os três formatos de resposta — número, passo e lista.
- */
-const SUGESTOES_LOJA = [
-  "O que eu resolvo primeiro?",
-  "Quantos produtos estão sem custo?",
-  "Por que não consigo precificar?",
-];
-
-const SUGESTOES_PRODUTO = [
-  "O que falta neste produto?",
-  "Por que ele não pode ser anunciado?",
-  "Quantos produtos estão sem peso?",
-];
+// As sugestões de partida vêm do DOMÍNIO (`sugestoesDoContexto`): por rota e
+// pelo estado medido da loja, e não só quando a conversa está vazia. Eram duas
+// listas fixas aqui, escolhidas por "tem produto aberto ou não", que sumiam
+// depois do primeiro turno — um usuário recorrente nunca mais as via.
 
 export function ChatDaOperacao({
   contexto,
@@ -371,6 +372,9 @@ export function ChatDaOperacao({
   const [frase, setFrase] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [ocupado, setOcupado] = useState(false);
+  const pathname = usePathname();
+  /** A requisição em voo — para o botão "Parar" ter o que parar. */
+  const emVoo = useRef<AbortController | null>(null);
   /**
    * Relógio SÓ para o vencimento do cartão (INC-006).
    *
@@ -399,7 +403,12 @@ export function ChatDaOperacao({
    * operação sem base de comparação e sem saída se o custo doer.
    */
   const [conversando, setConversando] = useState(false);
-  /** Tokens gastos no fio atual — medidos, não estimados. Zera ao trocar de modo. */
+  /**
+   * Tokens gastos no fio atual — medidos, não estimados. Saíram da TELA do
+   * lojista (métrica interna de custo não é informação dele); ficam aqui para
+   * telemetria e depuração via React DevTools.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ver acima
   const [tokensDoFio, setTokensDoFio] = useState(0);
   /** O fio. Vive aqui, não no servidor: fechar a aba encerra a conversa. */
   const [falas, setFalas] = useState<readonly Fala[]>([]);
@@ -442,7 +451,14 @@ export function ChatDaOperacao({
   }, [clienteId]);
 
   useEffect(() => {
-    fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // SÓ quando já se está no fim. `turnos` muda a cada delta de texto, e o
+    // scroll forçado dezenas de vezes por segundo sobrepunha qualquer rolagem
+    // manual — ninguém conseguia reler o começo enquanto a resposta chegava.
+    const fim = fimDaLista.current;
+    const lista = fim?.parentElement;
+    if (!fim || !lista) return;
+    const distanciaDoFim = lista.scrollHeight - lista.scrollTop - lista.clientHeight;
+    if (distanciaDoFim < 120) fim.scrollIntoView({ behavior: "auto", block: "nearest" });
   }, [turnos]);
 
   // O tique só roda enquanto existe cartão vivo — turno com autorização e sem
@@ -527,6 +543,8 @@ export function ChatDaOperacao({
       setFrase("");
       setOcupado(true);
       setTurnos((t) => [...t, { pergunta }]);
+      const controle = new AbortController();
+      emVoo.current = controle;
       try {
         // O caminho de conversa vira FUNÇÃO porque agora tem dois chamadores: o
         // modo explícito e a escalada automática de uma pergunta que a rota
@@ -549,13 +567,17 @@ export function ChatDaOperacao({
                 )
               ),
           };
+          // Só PONTEIROS viajam: a loja (conferida no servidor), o id do produto
+          // aberto e o fio. Contagens, catálogo e histórico são medidos lá.
           const r = await conversar(
             pergunta,
-            falas,
-            { pergunta: contexto, produtos, produtoAberto: contexto.produto ?? null },
-            contexto.produto?.nome,
+            {
+              lojaId: clienteId,
+              produtoAbertoId: contexto.produto?.id ?? null,
+              ...(conversaId ? { conversaId } : {}),
+            },
             aoVivo,
-            conversaId ?? undefined
+            controle.signal
           );
           // O id do SERVIDOR é a autoridade. Se o que mandamos não existia, era
           // malformado ou de outro cliente, `garantirConversa` criou outro — e é
@@ -583,6 +605,8 @@ export function ChatDaOperacao({
                     // mostra preço e estoque, e publicar um ensaio velho põe no
                     // ar um preço que já não é o dela.
                     r.propostaDePublicacao ||
+                    r.propostaDeTarefasId ||
+                    r.propostaDeImagemId ||
                     r.cadastro?.propostaId
                       ? { chegouEm: Date.now() }
                       : {}),
@@ -603,8 +627,20 @@ export function ChatDaOperacao({
                     ...(r.pendencias ? { pendencias: r.pendencias } : {}),
                     ...(r.procedencia ? { procedencia: r.procedencia } : {}),
                     ...(r.preparacao ? { preparacao: r.preparacao } : {}),
-                    ...(r.propostaDePublicacao
-                      ? { propostaDePublicacao: r.propostaDePublicacao }
+                    // Publicação SÓ com id: o servidor já não manda o cartão
+                    // sem a Proposal persistida, e a tela não oferece botão
+                    // para o que não pode confirmar.
+                    ...(r.propostaDePublicacao && r.propostaDePublicacaoId
+                      ? {
+                          propostaDePublicacao: r.propostaDePublicacao,
+                          propostaDePublicacaoId: r.propostaDePublicacaoId,
+                        }
+                      : {}),
+                    ...(r.propostaDeTarefas && r.propostaDeTarefasId
+                      ? { propostaDeTarefas: r.propostaDeTarefas, propostaDeTarefasId: r.propostaDeTarefasId }
+                      : {}),
+                    ...(r.propostaDeImagem && r.propostaDeImagemId
+                      ? { propostaDeImagem: r.propostaDeImagem, propostaDeImagemId: r.propostaDeImagemId }
                       : {}),
                     ...(r.propostaDeTexto
                       ? {
@@ -743,13 +779,22 @@ export function ChatDaOperacao({
           )
         );
       } catch (e) {
-        const erro = e instanceof Error ? e.message : "Não consegui responder agora.";
+        // PARAR não é erro: a pessoa pediu. O que já chegou fica na tela, e a
+        // linha diz que parou a pedido. A resposta parcial também fica nos
+        // outros erros — quem já leu metade não perde a metade.
+        const parou = controle.signal.aborted;
+        const erro = parou
+          ? "Parei a pedido. O que chegou até aqui está acima."
+          : e instanceof Error
+            ? e.message
+            : "Não consegui responder agora.";
         setTurnos((t) => t.map((turno, i) => (i === t.length - 1 ? { ...turno, erro } : turno)));
       } finally {
+        emVoo.current = null;
         setOcupado(false);
       }
     },
-    [contexto, ocupado, produtos, conversando, falas, conversaId, guardarFio]
+    [contexto, ocupado, produtos, conversando, conversaId, guardarFio, clienteId]
   );
 
   /**
@@ -772,6 +817,8 @@ export function ChatDaOperacao({
         alvo?.propostaDeTituloId ??
         alvo?.propostaDeTextoId ??
         alvo?.propostaDePrecoId ??
+        alvo?.propostaDeTarefasId ??
+        alvo?.propostaDeImagemId ??
         alvo?.propostaId;
       const ehCadastro = Boolean(alvo?.cadastro?.propostaId);
       // Sem ID persistido não há o que confirmar. A checagem repete a do
@@ -799,6 +846,18 @@ export function ChatDaOperacao({
                     // Atravessa como veio do servidor. Nada é derivado aqui.
                     ...(r.consequencia !== undefined ? { consequencia: r.consequencia } : {}),
                   },
+                  // A IMAGEM gerada: vem do servidor com a URL assinada. O cartão
+                  // de imagem some e o de rascunho (aprovar / não gostei) entra.
+                  ...(r.ok && r.versaoId && turno.propostaDeImagem
+                    ? {
+                        imagemGerada: {
+                          versaoId: r.versaoId,
+                          url: r.imagemUrl ?? null,
+                          slot: turno.propostaDeImagem.slot,
+                          produtoId: turno.propostaDeImagem.produtoId,
+                        },
+                      }
+                    : {}),
                 }
               : turno
           )
@@ -817,6 +876,35 @@ export function ChatDaOperacao({
     },
     [turnos, ocupado, aoGravar]
   );
+
+  /**
+   * APROVAR a imagem gerada: ela sai do bucket privado e vira foto do produto
+   * (pública, porque o Mercado Livre precisa baixar). Quem copia é o servidor.
+   */
+  async function aprovarImagem(indice: number, comoCapa: boolean) {
+    const g = turnos[indice]?.imagemGerada;
+    if (!g || ocupado) return;
+    setOcupado(true);
+    try {
+      const r = await aprovarImagemGerada(g.versaoId, comoCapa);
+      setTurnos((t) =>
+        t.map((turno, i) =>
+          i === indice
+            ? r.ok
+              ? {
+                  ...turno,
+                  imagemGerada: { ...g, aprovada: true },
+                  texto: `${turno.texto ?? ""}\n\nAprovada: a imagem agora é ${comoCapa ? "a capa" : "uma foto"} do produto.`.trim(),
+                }
+              : { ...turno, erro: r.mensagem }
+            : turno
+        )
+      );
+      if (r.ok) aoGravar?.();
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   /** Descarta a proposta sem gravar. O turno some da lista de pendentes. */
   const descartar = useCallback((indice: number) => {
@@ -1006,27 +1094,47 @@ export function ChatDaOperacao({
    * PUBLICAR — a única ação do chat que o comprador vê.
    *
    * ===================================================================
-   * PASSA PELA ROTA, NÃO AO REDOR DELA
+   * PELA PROPOSAL, PELO MESMO MIOLO DA ROTA
    * ===================================================================
    *
-   * `publicarNoML` faz `fetch("/api/ml/publicar")` — a MESMA rota da tela da
-   * equipe, com as MESMAS guardas (conexão, credencial e a trava de infração
-   * que falha fechada). Um caminho próprio até o ML seria uma segunda cópia
-   * daquelas guardas, e a trava de infração é a última coisa neste repositório
-   * que pode ter duas versões: republicar o que o ML cancelou é reincidência.
+   * Até 22/08/2026 este clique relia o registro no navegador, montava o payload
+   * aqui e chamava `/api/ml/publicar`. Passava pela rota — mas o que era
+   * publicado era uma SEGUNDA leitura, feita depois do cartão, por outro ator;
+   * o cartão não expirava; e o "publicando…" era um boolean de React.
    *
-   * O cartão é a autorização; a rota é o guarda. Nenhum dos dois substitui o
-   * outro.
+   * Agora o clique manda só o id da Proposal. O servidor confere que o ensaio
+   * (título, preço, estoque, fotos, categoria) continua o que ela leu, reserva
+   * a proposta (duplo clique em duas abas perde a corrida) e publica o pedido
+   * CONGELADO pelo mesmo miolo da rota da equipe — as MESMAS guardas: conexão,
+   * credencial e a trava de infração que falha fechada.
+   *
+   * O cartão é a autorização; a Proposal é o registro; o miolo é o guarda.
    */
   async function publicar(indice: number) {
     const alvo = turnos[indice];
     const p = alvo?.propostaDePublicacao;
-    if (!p || !clienteId || alvo?.publicando) return;
+    const propostaId = alvo?.propostaDePublicacaoId;
+    if (!p || !propostaId || !clienteId || alvo?.publicando) return;
     setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, publicando: true } : turno)));
     try {
-      const reg = await registroDeAnuncio(p.anuncioId);
-      if (!reg) throw new Error("Não achei o anúncio preparado. Peça de novo e eu refaço.");
-      const r = await publicarNoML(reg, true);
+      // PELA PROPOSAL, desde 22/08/2026. O navegador NÃO relê o registro nem
+      // monta payload: o servidor publica o que congelou quando mostrou o
+      // cartão, depois de conferir que título, preço, estoque, fotos e
+      // categoria continuam os que ela leu. Mudou → "obsoleta", cartão novo.
+      const r = await confirmarProposta(propostaId);
+      if (!r.ok) {
+        if (r.jaFeito) {
+          setTurnos((t) =>
+            t.map((turno, i) =>
+              i === indice
+                ? { ...turno, propostaDePublicacao: undefined, publicando: false, texto: r.mensagem }
+                : turno
+            )
+          );
+          return;
+        }
+        throw new Error(r.mensagem);
+      }
       setTurnos((t) =>
         t.map((turno, i) =>
           i === indice
@@ -1034,11 +1142,10 @@ export function ChatDaOperacao({
                 ...turno,
                 propostaDePublicacao: undefined,
                 publicando: false,
-                // O QUE ACONTECEU, com o link. Sem link, sem afirmação de que
-                // está no ar — foi o erro que eu cometi três vezes em 03/08.
-                texto: r.permalink
-                  ? `Publiquei "${p.nome}" no Mercado Livre. Está no ar: ${r.permalink}`
-                  : `Publiquei "${p.nome}" no Mercado Livre${r.id ? ` (${r.id})` : ""}.`,
+                // A PALAVRA DO ML vem na mensagem do servidor: "está no ar" só
+                // quando ele confirmou `active`. Sem link, sem afirmação —
+                // foi o erro que eu cometi três vezes em 03/08.
+                texto: r.mensagem,
               }
             : turno
         )
@@ -1252,7 +1359,23 @@ export function ChatDaOperacao({
     }
   }
 
-  const sugestoes = contexto?.produto ? SUGESTOES_PRODUTO : SUGESTOES_LOJA;
+  // As sugestões: por rota e estado quando a conversa está vazia; continuações
+  // curtas depois de uma resposta com ferramenta. Nunca durante o voo.
+  const ultimoTurno = turnos[turnos.length - 1];
+  const sugestoes = ocupado
+    ? []
+    : turnos.length === 0
+      ? sugestoesDoContexto({ rota: pathname ?? "", loja: contexto?.loja ?? null, produto: contexto?.produto ?? null })
+      : continuacoes(ultimoTurno?.ferramentas ?? []);
+
+  /** Uma conversa nova: limpa a tela, o fio e o histórico guardado. */
+  function novaConversa() {
+    if (ocupado) return;
+    setTurnos([]);
+    setFalas([]);
+    setTokensDoFio(0);
+    esquecerFio();
+  }
 
   return (
     <div
@@ -1296,11 +1419,19 @@ export function ChatDaOperacao({
       >
         <MessagesSquare size={12} />
         {conversando
-          ? `Conversa contínua ligada — guarda o fio entre as perguntas${
-              tokensDoFio > 0 ? ` · ${tokensDoFio.toLocaleString("pt-BR")} tokens` : ""
-            }. Desligar`
+          ? "Conversa contínua ligada — guarda o fio entre as perguntas. Desligar"
           : "Manter o fio entre as perguntas"}
       </button>
+      {turnos.length > 0 && (
+        <button
+          type="button"
+          onClick={novaConversa}
+          disabled={ocupado}
+          className="ml-3 mt-2 inline-flex items-center gap-1.5 text-[11px] text-zinc-500 transition hover:text-violet-300 disabled:opacity-50"
+        >
+          Nova conversa
+        </button>
+      )}
 
       {/* Em altura cheia o container existe SEMPRE, mesmo vazio: e ele que
           come o espaco e empurra a barra de digitar para o pe. Sem isso a
@@ -1308,6 +1439,9 @@ export function ChatDaOperacao({
           que a mao espera num chat. */}
       {(alturaCheia || turnos.length > 0) && (
         <div
+          role="log"
+          aria-live="polite"
+          aria-busy={ocupado}
           className={`mt-4 space-y-4 overflow-y-auto pr-1 ${
             alturaCheia ? "min-h-0 flex-1" : "max-h-96"
           }`}
@@ -1319,10 +1453,15 @@ export function ChatDaOperacao({
                 {t.pergunta}
               </p>
               {t.erro ? (
-                <p className="flex items-start gap-2 text-sm text-amber-300">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                  {t.erro}
-                </p>
+                // O que JÁ chegou fica; o erro vai embaixo. Antes o erro
+                // substituía a resposta parcial — quem leu metade perdia a metade.
+                <div className="space-y-2">
+                  {t.texto && <Markdown texto={t.texto} />}
+                  <p className="flex items-start gap-2 text-sm text-amber-300" role="alert">
+                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                    {t.erro}
+                  </p>
+                </div>
               ) : t.foto ? (
                 /* A CONFERÊNCIA DA FOTO julga ANTES de subir: 127 anúncios
                    desta conta estão travados por capa pequena, e uma foto que
@@ -1421,8 +1560,19 @@ export function ChatDaOperacao({
                 t.pendencias ||
                 t.preparacao ||
                 t.pricing ||
-                t.propostaDePreco ? (
+                t.propostaDePreco ||
+                t.propostaDeTarefas ||
+                t.propostaDeImagem ||
+                (t.ferramentas?.length ?? 0) > 0 ? (
                 <div className="space-y-2">
+                  {/* A ETAPA, não um spinner mudo: enquanto só há chamadas de
+                      ferramenta (o caso comum — o modelo consulta antes de
+                      escrever), a tela diz QUAL fonte está lendo. */}
+                  {ocupado && i === turnos.length - 1 && t.texto === undefined && (t.ferramentas?.length ?? 0) > 0 && (
+                    <p className="flex items-center gap-2 text-sm text-zinc-500" aria-live="polite">
+                      <Loader2 size={14} className="animate-spin" /> Consultando {rotuloDaFerramenta(t.ferramentas![t.ferramentas!.length - 1])}…
+                    </p>
+                  )}
                   {t.texto && <Markdown texto={t.texto} />}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
                   {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
@@ -1503,9 +1653,49 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.ferramentas && t.ferramentas.length > 0 && (
-                    <p className="text-[11px] text-zinc-600">
-                      Consultei: {t.ferramentas.join(" · ")}
+                  {t.propostaDeImagem && !t.imagemGerada && (
+                    <CartaoDeImagem
+                      p={t.propostaDeImagem}
+                      propostaId={t.propostaDeImagemId}
+                      desfecho={desfechoNaTela(t, agora)}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() =>
+                        setTurnos((ts) =>
+                          ts.map((turno, j) =>
+                            j === i ? { ...turno, propostaDeImagem: undefined, texto: "Descartei. Nenhuma imagem foi gerada." } : turno
+                          )
+                        )
+                      }
+                    />
+                  )}
+                  {t.imagemGerada && (
+                    <RascunhoDeImagem
+                      g={t.imagemGerada}
+                      ocupado={ocupado}
+                      aoAprovar={(comoCapa) => void aprovarImagem(i, comoCapa)}
+                      aoRecusar={(feedback) => void perguntar(`Não gostei da imagem (versão ${t.imagemGerada!.versaoId}): ${feedback}`)}
+                    />
+                  )}
+                  {t.propostaDeTarefas && (
+                    <CartaoDeTarefas
+                      tarefas={t.propostaDeTarefas}
+                      propostaId={t.propostaDeTarefasId}
+                      desfecho={desfechoNaTela(t, agora)}
+                      ocupado={ocupado}
+                      aoConfirmar={() => void confirmar(i)}
+                      aoDescartar={() =>
+                        setTurnos((ts) =>
+                          ts.map((turno, j) =>
+                            j === i ? { ...turno, propostaDeTarefas: undefined, texto: "Descartei. Nenhuma tarefa foi criada." } : turno
+                          )
+                        )
+                      }
+                    />
+                  )}
+                  {t.ferramentas && t.ferramentas.length > 0 && !(ocupado && i === turnos.length - 1) && (
+                    <p className="text-[11px] text-zinc-500">
+                      Consultei: {[...new Set(t.ferramentas.map(rotuloDaFerramenta))].join(" · ")}
                     </p>
                   )}
                 </div>
@@ -1513,7 +1703,7 @@ export function ChatDaOperacao({
                 <Resposta r={t.resposta} interpretacao={t.interpretacao} />
               ) : ocupado && i === turnos.length - 1 ? (
                 <p className="flex items-center gap-2 text-sm text-zinc-500">
-                  <Loader2 size={14} className="animate-spin" /> Lendo os seus dados…
+                  <Loader2 size={14} className="animate-spin" /> Entendendo a pergunta…
                 </p>
               ) : (
                 /* SEM RESPOSTA E SEM VOO NÃO É CARREGAMENTO.
@@ -1532,7 +1722,7 @@ export function ChatDaOperacao({
         </div>
       )}
 
-      {turnos.length === 0 && (
+      {sugestoes.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {sugestoes.map((s) => (
             <button
@@ -1565,10 +1755,12 @@ export function ChatDaOperacao({
         >
           <Paperclip size={15} />
           <span className="sr-only">Enviar planilha de custos</span>
+          {/* `sr-only`, não `hidden`: `display:none` tira o campo da ordem de
+              tabulação e a importação virava mouse-only. */}
           <input
             type="file"
             accept=".csv,.xlsx,.xls,text/csv,.pdf,application/pdf,image/*"
-            className="hidden"
+            className="sr-only"
             disabled={ocupado}
             onChange={(e) => {
               const arquivo = e.target.files?.[0];
@@ -1584,14 +1776,27 @@ export function ChatDaOperacao({
           disabled={ocupado}
           className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={ocupado || !frase.trim()}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {ocupado ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          <span className="hidden sm:inline">Perguntar</span>
-        </button>
+        {ocupado && emVoo.current ? (
+          // TODA operação longa precisa de saída. Parar aborta o fetch; o
+          // servidor percebe entre um passo e outro e grava o que já leu.
+          <button
+            type="button"
+            onClick={() => emVoo.current?.abort()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-200 transition hover:bg-amber-400/10 [@media(pointer:coarse)]:min-h-11"
+          >
+            <Loader2 size={14} className="animate-spin" />
+            <span>Parar</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={ocupado || !frase.trim()}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            <Send size={14} />
+            <span className="hidden sm:inline">Perguntar</span>
+          </button>
+        )}
       </form>
     </div>
   );
@@ -2105,6 +2310,193 @@ function CartaoDeTexto({
         <p className="mt-3 text-xs text-white/40">
           Não consegui registrar esta proposta agora, então não há botão. Peça de novo em instantes.
         </p>
+      )}
+    </div>
+  );
+}
+
+/** O cartão de IMAGEM — o que vai ser gerado, antes de gastar cota. */
+function CartaoDeImagem({
+  p,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  p: PedidoDeImagem;
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (desfecho) {
+    return (
+      <p className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}>
+        {desfecho.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Gerar {rotuloDoSlot(p.slot)}{p.paiId ? " (nova versão)" : ""}
+      </p>
+      <p className="text-sm text-zinc-100">{p.produtoNome}</p>
+      {p.instrucao && <p className="text-xs text-zinc-400">Pedido: {p.instrucao}</p>}
+      {p.feedback && <p className="text-xs text-amber-200">Corrigir: {p.feedback}</p>}
+      <p className="text-xs text-zinc-500">
+        Parte da {p.paiId ? "versão anterior" : "foto real do produto"}. A imagem fica como rascunho até você aprovar — nada sobe sozinho. Gasta 1 da sua cota de IA.
+      </p>
+      {propostaId ? (
+        <div className="flex gap-2 pt-0.5">
+          <button type="button" onClick={aoConfirmar} disabled={ocupado} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+            {ocupado ? "Gerando…" : "Gerar"}
+          </button>
+          <button type="button" onClick={aoDescartar} disabled={ocupado} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-300">A proposta não foi registrada. Peça de novo.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O RASCUNHO gerado: a imagem (URL assinada), aprovar como capa ou como foto,
+ * ou dizer o que mudar — o feedback vira a próxima versão, a partir desta.
+ */
+function RascunhoDeImagem({
+  g,
+  ocupado,
+  aoAprovar,
+  aoRecusar,
+}: {
+  g: NonNullable<Turno["imagemGerada"]>;
+  ocupado: boolean;
+  aoAprovar: (comoCapa: boolean) => void;
+  aoRecusar: (feedback: string) => void;
+}) {
+  const [feedback, setFeedback] = useState("");
+  return (
+    <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        {rotuloDoSlot(g.slot as Parameters<typeof rotuloDoSlot>[0])} · versão {g.versaoId.slice(0, 8)}
+        {g.aprovada ? " · aprovada" : " · rascunho"}
+      </p>
+      {g.url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- URL assinada, fora do domínio configurado
+        <img src={g.url} alt={`Imagem gerada (${g.slot})`} className="max-h-72 w-auto rounded-lg border border-white/10" />
+      ) : (
+        <p className="text-xs text-amber-300">Gerei a imagem, mas não consegui montar o link para mostrar. Ela está guardada na versão acima.</p>
+      )}
+      {!g.aprovada && (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => aoAprovar(true)} disabled={ocupado} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Aprovar como capa
+            </button>
+            <button type="button" onClick={() => aoAprovar(false)} disabled={ocupado} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Aprovar como foto
+            </button>
+          </div>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (feedback.trim()) aoRecusar(feedback.trim());
+              setFeedback("");
+            }}
+          >
+            <input
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Não gostei: o que mudar? (ex.: fundo branco, produto maior)"
+              disabled={ocupado}
+              className="min-w-0 flex-1 rounded-lg border border-white/10 bg-zinc-950/60 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-violet-400 focus:outline-none disabled:opacity-50"
+            />
+            <button type="submit" disabled={ocupado || !feedback.trim()} className="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs text-amber-200 transition hover:bg-amber-400/10 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11">
+              Refazer
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O cartão de TAREFAS — a lista que vai ser criada, com o motivo de cada uma.
+ *
+ * Mesmo desenho dos outros cartões: o conteúdo exato antes do botão, botão só
+ * com `propostaId` persistido, desfecho vindo do servidor. Risco baixo, mas a
+ * pessoa confirma uma LISTA — por isso ela inteira está na tela, com o porquê.
+ */
+function CartaoDeTarefas({
+  tarefas,
+  propostaId,
+  desfecho,
+  ocupado,
+  aoConfirmar,
+  aoDescartar,
+}: {
+  tarefas: readonly TarefaProposta[];
+  propostaId?: string;
+  desfecho?: { ok: boolean; mensagem: string };
+  ocupado: boolean;
+  aoConfirmar: () => void;
+  aoDescartar: () => void;
+}) {
+  if (desfecho) {
+    return (
+      <p className={`flex items-start gap-2 text-sm ${desfecho.ok ? "text-emerald-300" : "text-zinc-400"}`}>
+        {desfecho.ok ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+        {desfecho.mensagem}
+      </p>
+    );
+  }
+  const cor = { alta: "text-amber-300", media: "text-zinc-400", baixa: "text-zinc-500" } as const;
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        Criar {tarefas.length} tarefa{tarefas.length === 1 ? "" : "s"}
+      </p>
+      <ol className="space-y-1.5 text-sm">
+        {tarefas.map((t, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className={`mt-0.5 shrink-0 text-[10px] uppercase ${cor[t.prioridade]}`}>{t.prioridade}</span>
+            <div>
+              <p className="text-zinc-100">{t.titulo}</p>
+              {t.motivo && <p className="text-xs text-zinc-500">{t.motivo}</p>}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {propostaId ? (
+        <div className="flex gap-2 pt-0.5">
+          <button
+            type="button"
+            onClick={aoConfirmar}
+            disabled={ocupado}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            {ocupado ? "Criando…" : "Criar as tarefas"}
+          </button>
+          <button
+            type="button"
+            onClick={aoDescartar}
+            disabled={ocupado}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-white/5 disabled:opacity-40 [@media(pointer:coarse)]:min-h-11"
+          >
+            Descartar
+          </button>
+        </div>
+      ) : (
+        <p className="text-xs text-amber-300">A proposta não foi registrada. Peça de novo.</p>
       )}
     </div>
   );

@@ -75,6 +75,14 @@ import {
   type ConjuntoApresentado,
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
+import type { PedidoCongelado } from "./propostaDePublicacao";
+import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
+import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
+import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
+import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
+import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
+import { lerSlot } from "./briefingDeImagem";
+import type { PedidoDeImagem } from "./propostaDeImagem";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -157,6 +165,16 @@ export interface ContextoDasFerramentas {
    * corpo — que é a definição do problema que a Proposal existe para resolver.
    */
   cadastro?: ContextoDoCadastro;
+  /**
+   * AS VENDAS, em porto — a leitura vai ao Mercado Livre com a credencial do
+   * servidor, e só quem pergunta de venda paga por ela. Ausente = a rota não
+   * ofereceu (sem integração configurada), e a ferramenta diz isso.
+   */
+  vendas?: (dias: 7 | 14 | 30 | 60 | 90) => Promise<VendasNoServidor>;
+  /** A comparação entre as lojas do alcance — só agência/equipe recebem o porto. */
+  comparar?: () => Promise<ComparacaoDeLojas>;
+  /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
+  diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -247,12 +265,18 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     tituloAtual: string;
+    /** O ajuste pedido ("deixa mais curto"). Ver `EntradaDoTitulo`. */
+    instrucao?: string;
+    /** O motivo da retentativa única (a recusa do juiz). */
+    retentativaPor?: string;
   }) => Promise<{ titulo: string; justificativa: string } | null>;
   /** O anúncio cujo título se quer melhorar. `null` = não existe anúncio. */
   anuncioParaTitulo?: (produtoId: string) => Promise<{
     anuncioId: string;
     nome: string;
     tituloAtual: string;
+    /** O canal do anúncio — decide o limite do título. Omitido = ML. */
+    marketplace?: string;
   } | null>;
 
   /**
@@ -273,6 +297,8 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     atual: string;
+    /** O ajuste pedido ("deixa mais curta"). Ver `EntradaDoTexto`. */
+    instrucao?: string;
   }) => Promise<{ descricao: string; justificativa: string } | null>;
   /**
    * O que subiria se ela publicasse AGORA — o ensaio, sem tocar no ML.
@@ -281,6 +307,8 @@ export interface ContextoDoAnuncio {
    * publicação real montaria (`montarPreviewML`), porque mostrar um resumo
    * feito à parte seria mostrar uma coisa e publicar outra.
    */
+  /** O perfil de conteúdo da loja — para o juiz recusar palavra proibida. */
+  perfil?: () => Promise<PerfilDeConteudo>;
   ensaioDaPublicacao?: (produtoId: string) => Promise<{
     anuncioId: string;
     nome: string;
@@ -292,6 +320,11 @@ export interface ContextoDoAnuncio {
     /** Já publicado? Então não há o que publicar. */
     jaPublicado: boolean;
     mlItemId: string | null;
+    /**
+     * O PEDIDO INTEIRO, como foi ensaiado — é o que a Proposal congela e a
+     * confirmação publica. Sem ele não há proposta, só resposta.
+     */
+    congelado?: PedidoCongelado;
   } | null>;
   /**
    * A tabela de medidas do produto, com a PROCEDÊNCIA dela.
@@ -498,7 +531,13 @@ export interface ResultadoDaFerramenta {
     estoque: number | null;
     fotos: number;
     categoria: string;
+    /** O pedido congelado — vai para a Proposal, não para a tela. */
+    congelado?: PedidoCongelado;
   };
+  /** A lista de tarefas a criar — a tela mostra; a Proposal congela. */
+  propostaDeTarefas?: { tarefas: TarefaProposta[]; cortadas: number };
+  /** O pedido de imagem — a tela mostra o que vai gerar; a Proposal congela. */
+  propostaDeImagem?: PedidoDeImagem;
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
     anuncioId: string;
@@ -1030,6 +1069,105 @@ export async function executarFerramenta(
 
     case "procedencia":
       return consultarProcedencia(args, ctx);
+
+    case "vendas_da_loja":
+      return consultarVendas(args, ctx);
+
+    case "comparar_lojas":
+      return compararAsLojas(ctx);
+
+    case "diagnostico_do_anuncio": {
+      const produtoId = texto(args, "produtoId");
+      if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+      if (!ctx.diagnostico) return { saida: { erro: "Não consigo ler o Mercado Livre por aqui agora." } };
+      // O preço mínimo do Zion, quando o motor consegue calcular — para a
+      // leitura dizer "vende no prejuízo" com base, não com palpite.
+      let precoMinimo: number | null = null;
+      try {
+        const pr = ctx.preco ? await ctx.preco.doProduto(produtoId) : null;
+        // O menor preço que ainda entrega a margem mínima — a mesma conta de
+        // `pricing`. Sem custo/peso, `null`, e a leitura não fala de prejuízo.
+        precoMinimo = pr ? situacaoDoPreco(pr.entradas).minimoNaMargem : null;
+      } catch {
+        precoMinimo = null;
+      }
+      const r = await ctx.diagnostico(produtoId, precoMinimo);
+      if (!r.ok) return { saida: { erro: r.mensagem, motivo: r.motivo, comoResponder: "Diga o motivo como está. Não estime visitas nem vendas." } };
+      return {
+        saida: {
+          mlb: r.mlb,
+          titulo: r.titulo,
+          permalink: r.permalink,
+          ...r.diagnostico,
+          comoResponder:
+            "Comece pela LEITURA (o eixo), depois os FATOS exatamente como estão, depois as recomendações em ordem — e feche com o que você não sabe. Se o eixo for exposição, ofereça propor_titulo; se for conversão, ofereça pricing e propor_imagem/propor_descricao. Nunca proponha título para um problema de conversão.",
+        },
+      };
+    }
+
+    case "propor_imagem": {
+      const produtoId = texto(args, "produtoId");
+      const slot = lerSlot(args.slot);
+      if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+      if (!slot) return { saida: { montada: false, motivo: "Preciso saber qual imagem: capa, infográfico, detalhe, medidas, humanizada ou benefícios." } };
+      const item = await ctx.anuncio?.doProduto(produtoId);
+      if (!item) return { saida: { montada: false, motivo: "Não achei esse produto." } };
+      if (item.produto.quantidadeImagens === 0) {
+        return { saida: { montada: false, motivo: "Esse produto ainda não tem foto. A IA melhora uma foto real — ela não inventa o produto. Peça para ele enviar a foto primeiro." } };
+      }
+      const paiVersaoId = texto(args, "paiVersaoId");
+      const feedback = texto(args, "feedback").slice(0, 400);
+      const pedido: PedidoDeImagem = {
+        versao: 1,
+        produtoId,
+        produtoNome: item.produto.nome,
+        slot,
+        instrucao: texto(args, "instrucao").slice(0, 400),
+        ...(paiVersaoId ? { paiId: paiVersaoId } : {}),
+        ...(feedback ? { feedback } : {}),
+        ...(texto(args, "beneficios") ? { beneficios: texto(args, "beneficios").slice(0, 600) } : {}),
+      };
+      return {
+        propostaDeImagem: pedido,
+        saida: {
+          montada: true,
+          slot,
+          ...(paiVersaoId ? { ajusteDaVersao: paiVersaoId } : {}),
+          comoResponder: "NADA foi gerado. Diga que o pedido está no cartão para ele confirmar, e que a imagem gerada fica como rascunho até ele aprovar. Não descreva a imagem que ainda não existe.",
+        },
+      };
+    }
+
+    case "propor_tarefas": {
+      const { tarefas, cortadas } = normalizarTarefas(args.tarefas);
+      if (tarefas.length === 0) {
+        return { saida: { montada: false, motivo: "Preciso de pelo menos uma tarefa com título." } };
+      }
+      return {
+        propostaDeTarefas: { tarefas, cortadas },
+        saida: {
+          montada: true,
+          quantas: tarefas.length,
+          ...(cortadas > 0 ? { aviso: `Só as 10 primeiras entraram; ${cortadas} ficaram de fora.` } : {}),
+          comoResponder: "NADA foi criado. Diga que a lista está no cartão para ele confirmar. Não repita a lista no texto — o cartão já mostra.",
+        },
+      };
+    }
+
+    case "meu_perfil_de_conteudo": {
+      const perfil = (await ctx.anuncio?.perfil?.()) ?? null;
+      const observado = perfil?.observado ?? [];
+      if (!perfil || (perfilEstaVazio(perfil) && observado.length === 0)) {
+        return { saida: { vazio: true, comoResponder: "Diga que a loja ainda não preencheu como gosta de vender, e que isso se faz em Configurações › Como a sua loja vende. Não sugira um tom." } };
+      }
+      return {
+        saida: {
+          ...(perfilEstaVazio(perfil) ? { perfilEscrito: "vazio" } : perfil),
+          observadoNasAprovacoes: observado,
+          comoResponder: "Mostre o que está ESCRITO como escrito. O que está em observadoNasAprovacoes é tendência vista nas aprovações — diga isso com essa palavra, e não como regra da loja. Não complete nem reinterprete.",
+        },
+      };
+    }
 
     case "preparar_resolucao":
       return prepararResolucao(args, ctx);
@@ -1582,6 +1720,7 @@ async function proporPublicacao(
       estoque: ensaio.estoque,
       fotos: ensaio.fotos,
       categoria: ensaio.categoria,
+      ...(ensaio.congelado ? { congelado: ensaio.congelado } : {}),
     },
     saida: {
       montada: true,
@@ -1624,9 +1763,19 @@ async function proporTexto(
   };
 
   if (campo === "descricao") {
-    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual });
+    const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual, ...(instrucao ? { instrucao } : {}) });
     const veredicto = avaliarDescricaoProposta(gerado?.descricao ?? "", alvo.descricaoAtual);
     if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
+    const proibidas = proibidasPresentes(veredicto.descricao, (await a.perfil?.()) ?? null);
+    if (proibidas.length > 0) {
+      return {
+        saida: {
+          montada: false,
+          motivo: `A descrição proposta usa palavra que a loja proibiu no perfil de conteúdo: ${proibidas.join(", ")}. Peça de novo dizendo para evitar.`,
+        },
+      };
+    }
     return {
       propostaDeTexto: {
         campo,
@@ -1703,17 +1852,39 @@ async function proporTitulo(
   }
 
   const item = await a.doProduto(produtoId);
-  const gerado = await a.gerarTitulo({
+  // O AJUSTE: "deixa mais curto" vai para o agente com a ordem de preservar o
+  // resto. Sem isto, pedir de novo regerava do zero e a lojista perdia o que
+  // já tinha aprovado a cada iteração.
+  const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+  const entrada = {
     nome: item?.produto.nome ?? alvo.nome,
     marca: item?.produto.marca ?? "",
     modelo: item?.produto.modelo ?? "",
     tituloAtual: alvo.tituloAtual,
-  });
+    ...(instrucao ? { instrucao } : {}),
+  };
+  let gerado = await a.gerarTitulo(entrada);
   // O DOMÍNIO decide se o título proposto pode virar proposta — vazio, igual ao
   // atual ou acima dos 60 caracteres do ML são recusas, não opinião do modelo.
-  const veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  let veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual, alvo.marketplace ?? null);
+  // UMA retentativa, só quando o juiz recusou por TAMANHO. A cota já foi
+  // gasta; devolver "68 caracteres" para a lojista em vez de encurtar era
+  // entregar o trabalho pela metade. Teto de uma: a segunda recusa é resposta.
+  if (!veredicto.ok && /caracteres/i.test(veredicto.motivo) && gerado?.titulo) {
+    gerado = await a.gerarTitulo({ ...entrada, retentativaPor: veredicto.motivo });
+    veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual, alvo.marketplace ?? null);
+  }
   if (!veredicto.ok) {
     return { saida: { montada: false, motivo: veredicto.motivo } };
+  }
+  const proibidasNoTitulo = proibidasPresentes(veredicto.titulo, (await a.perfil?.()) ?? null);
+  if (proibidasNoTitulo.length > 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: `O título proposto usa palavra que a loja proibiu no perfil de conteúdo: ${proibidasNoTitulo.join(", ")}. Peça de novo dizendo para evitar.`,
+      },
+    };
   }
 
   return {
@@ -2363,4 +2534,91 @@ function mensagemDaRecusa(p: Proposta): string {
   if (p.tipo === "pronta") return "";
   if (p.tipo === "ambigua") return p.mensagem;
   return p.mensagem;
+}
+
+/**
+ * "Como estão minhas vendas?", "por que caíram?", "o que vende mais?".
+ *
+ * A leitura é DIFERENCIAL (esta janela contra a anterior) e vem com a lista do
+ * que os dados não cobrem. O `comoResponder` existe porque "por quê" é a
+ * pergunta em que o modelo mais inventa: ele recebe a variação por produto e a
+ * instrução de separar o que os números mostram do que seria hipótese.
+ */
+async function consultarVendas(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.vendas) {
+    return { saida: { erro: "Não consigo ler as vendas por aqui agora — a integração com o Mercado Livre não está disponível neste servidor." } };
+  }
+  const bruto = Number(args.dias);
+  const dias = ([7, 14, 30, 60, 90] as const).find((d) => d === bruto) ?? 30;
+  const r = await ctx.vendas(dias);
+  if (!r.ok) {
+    return {
+      saida: {
+        erro: r.mensagem,
+        motivo: r.motivo,
+        comoResponder:
+          r.motivo === "nao_conectado"
+            ? "Diga que a loja não está conectada ao Mercado Livre e que, conectando em Conexão com o Mercado Livre, você passa a ler as vendas. Não estime venda nenhuma."
+            : r.motivo === "reconectar"
+              ? "Diga que o Mercado Livre recusou a credencial e que é preciso reconectar. Não estime venda nenhuma."
+              : "Diga que não conseguiu ler as vendas agora e por quê. Não estime.",
+      },
+    };
+  }
+  const l = r.leitura;
+  return {
+    saida: {
+      periodoDias: l.periodoDias,
+      atual: l.atual,
+      anterior: l.anterior,
+      variacaoFaturamentoPct: l.variacaoFaturamento,
+      variacaoPedidosPct: l.variacaoPedidos,
+      quedas: l.quedas,
+      altas: l.altas,
+      sumiram: l.sumiram,
+      pedidosLidos: r.pedidosLidos,
+      ...(r.truncado ? { aviso: "A leitura parou no teto de pedidos; os números cobrem os mais recentes, não o período inteiro." } : {}),
+      oQueNaoSei: l.oQueNaoSei,
+      comoResponder: [
+        "Separe em três blocos, nesta ordem: O QUE OS NÚMEROS MOSTRAM (só o que está acima, com os valores exatos e a comparação com o período anterior), O QUE ISSO SUGERE (hipóteses, ditas como hipóteses, ligadas a um produto ou número específico), O QUE EU NÃO SEI (repita a lista oQueNaoSei quando a pergunta for 'por quê').",
+        "Se a pergunta for 'por que caíram', comece pelos produtos em 'quedas' e 'sumiram' — é neles que a queda está. Não atribua a queda a título, foto ou preço sem dado: isso é hipótese e precisa ser dita como hipótese.",
+        "Quando 'anterior' for zero, não há comparação: diga isso em vez de calcular porcentagem.",
+        "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
+        "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
+      ].join(" "),
+    },
+  };
+}
+
+/** "Compara minhas lojas" — uma linha por loja, a mesma régua. Só agência/equipe. */
+async function compararAsLojas(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.comparar) {
+    return { saida: { erro: "Esta conta opera uma loja só — não há o que comparar." } };
+  }
+  const r = await ctx.comparar();
+  if (!r.ok) return { saida: { erro: r.mensagem, motivo: r.motivo } };
+  return {
+    saida: {
+      lojas: r.lojas.map((l) => ({
+        nome: l.nome,
+        produtos: l.estado.produtos,
+        semCusto: l.estado.produtos - l.estado.comCusto,
+        semPeso: l.estado.produtos - l.estado.comPeso,
+        semFoto: l.estado.produtos - l.estado.comFoto,
+        semAnuncio: l.estado.produtos - l.estado.comAnuncio,
+        aguardandoAprovacao: l.estado.aguardandoAprovacao,
+        prontosParaPrecificar: l.estado.prontosParaPrecificar,
+        conectadaAoMercadoLivre: l.estado.conectadoAoMarketplace,
+        // `undefined` = não lido. Não vira zero.
+        ...(l.estado.infracoes !== undefined ? { infracoes: l.estado.infracoes } : {}),
+      })),
+      totalNoAlcance: r.totalNoAlcance,
+      ...(r.truncado ? { aviso: `Mostrei ${r.lojas.length} de ${r.totalNoAlcance} lojas (em ordem de nome).` } : {}),
+      comoResponder:
+        "Use uma TABELA, uma loja por linha, com as colunas que a pergunta pede. Os números são exatos — não some, não tire média. Aponte a loja mais atrasada pelo que está nas colunas (mais 'sem') e diga o que fazer primeiro nela. Loja sem 'infracoes' é loja cuja infração ainda não foi lida — não diga que não tem.",
+    },
+  };
 }

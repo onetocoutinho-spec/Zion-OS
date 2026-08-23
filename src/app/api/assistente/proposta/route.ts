@@ -48,7 +48,7 @@ import {
 import { escritaDePeso } from "@/modules/assistant/domain/conjuntoAprovado";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { lerTudoPorIds } from "@/lib/supabase/paginado";
-import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { exigirAcessoAoCliente, exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { buscarDraft, marcarDraftCriado } from "@/lib/services/copilotCadastros";
 import { criarProdutoDoDraft, CadastroInvalido } from "@/lib/services/criacaoDeProduto";
 import { draftVisivelPara } from "@/modules/assistant/domain/draftDeCadastro";
@@ -75,8 +75,16 @@ import {
   impressaoDoTitulo,
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/procedencia";
+import { CAMPO_PUBLICACAO } from "@/modules/assistant/domain/propostaDePublicacao";
+import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
+import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
+import { executarTarefasDaProposta } from "@/lib/services/tarefasDaProposta";
+import { executarImagemDaProposta } from "@/lib/services/imagemDaProposta";
+import { registrarDecisaoDoCopilot } from "@/lib/services/decisoesDoCopilot";
 
-export const maxDuration = 30;
+// 60 desde a proposta de IMAGEM (070): gerar leva dezenas de segundos. É o
+// teto do plano da Vercel; o resto das propostas continua terminando em 2 s.
+export const maxDuration = 60;
 
 /**
  * O rastro de PROCEDÊNCIA de uma escrita que acabou de acontecer.
@@ -222,6 +230,18 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
   const estado: Record<string, number | null> = {};
   const produtoId = p.alvos[0];
 
+  // ---- PUBLICAÇÃO: o ensaio, refeito AGORA, contra o que ela leu.
+  //
+  // Título, preço, estoque, fotos e categoria são relidos do registro e das
+  // fotos de hoje e viram a mesma impressão da criação. Mudou qualquer um →
+  // `obsoleta`, e a pessoa recebe um cartão novo. É o TOCTOU que o caminho
+  // antigo (reler no navegador e publicar) não fechava.
+  if (p.tipo === "publicacao") {
+    const campo = `${CAMPO_PUBLICACAO}:${p.alvos[0]}`;
+    if (campos.has(campo)) estado[campo] = await impressaoAtualDaPublicacao(p.clienteId, p.alvos[0]);
+    return estado;
+  }
+
   // ---- CADASTRO: o conjunto de possíveis duplicatas, relido AGORA.
   //
   // Entre T0 (a proposta nasceu) e T1 (o clique) o catálogo muda: a importação
@@ -348,7 +368,7 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
 
     const vars = await lerTudoPorIds<{ produto_id: string; peso: number | null }>(
       "variantes da proposta", idsDaProposta, (lote, de, ate) =>
-        admin.from("produto_variantes").select("produto_id, peso").in("produto_id", lote)
+        admin.from("produto_variantes").select("produto_id, peso").in("produto_id", lote).eq("cliente_id", p.clienteId)
           .order("id", { ascending: true }).range(de, ate)
     );
     const semPeso = new Map<string, number>();
@@ -390,6 +410,7 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
       .from("produtos")
       .select("custo")
       .eq("id", produtoId)
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     // Produto sumiu ou custo nulo: `null`, que o domínio trata como mudança se
     // havia valor. Supor "continua o mesmo" gravaria sobre o desconhecido.
@@ -401,7 +422,8 @@ async function lerEstadoAtual(p: PropostaPersistida): Promise<EstadoAtual> {
     const { data } = await admin
       .from("produto_variantes")
       .select("id, peso")
-      .eq("produto_id", produtoId);
+      .eq("produto_id", produtoId)
+      .eq("cliente_id", p.clienteId);
     const linhas = (data ?? []) as { peso: number | null }[];
     estado.variacoesSemPeso = linhas.filter((v) => !v.peso || v.peso <= 0).length;
   }
@@ -514,6 +536,7 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
       .from("produtos")
       .select("custo")
       .eq("id", p.alvos[0])
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     return { antes: data };
   }
@@ -530,7 +553,7 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
     }>("variantes do retrato", p.alvos, (lote, de, ate) =>
         admin.from("produto_variantes")
           .select("id, produto_id, peso, altura, largura, comprimento")
-          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+          .in("produto_id", lote).eq("cliente_id", p.clienteId).order("id", { ascending: true }).range(de, ate)
     );
     return {
       antes: {
@@ -543,7 +566,8 @@ async function retratoAntesDaEscrita(p: PropostaPersistida): Promise<{
   const { data } = await admin
     .from("produto_variantes")
     .select("id, peso")
-    .eq("produto_id", p.alvos[0]);
+    .eq("produto_id", p.alvos[0])
+    .eq("cliente_id", p.clienteId);
   return { antes: data ?? null };
 }
 
@@ -671,6 +695,7 @@ async function gravar(p: PropostaPersistida): Promise<{
       .from("produtos")
       .select("custo")
       .eq("id", produtoId)
+      .eq("cliente_id", p.clienteId)
       .maybeSingle();
     const { data, error } = await admin
       .from("produtos")
@@ -706,7 +731,7 @@ async function gravar(p: PropostaPersistida): Promise<{
       "snapshot anterior do lote", p.alvos, (lote, de, ate) =>
         admin.from("produto_variantes")
           .select("id, produto_id, peso, altura, largura, comprimento")
-          .in("produto_id", lote).order("id", { ascending: true }).range(de, ate)
+          .in("produto_id", lote).eq("cliente_id", p.clienteId).order("id", { ascending: true }).range(de, ate)
     );
     // ELEGIVEIS conta dentro do conjunto APROVADO. Contar fora dele faria a
     // ressalva do desfecho comparar a escrita com um universo que o lojista
@@ -777,7 +802,8 @@ async function gravar(p: PropostaPersistida): Promise<{
   const { data: antes } = await admin
     .from("produto_variantes")
     .select("id, peso")
-    .eq("produto_id", produtoId);
+    .eq("produto_id", produtoId)
+    .eq("cliente_id", p.clienteId);
   const elegiveis = ((antes ?? []) as { id: string; peso: number | null }[]).filter(
     (v) => (!congelados || congelados.has(v.id)) && (!v.peso || v.peso <= 0)
   ).length;
@@ -878,14 +904,6 @@ export async function POST(request: Request) {
     return respostaErroAutorizacao(e);
   }
 
-  // O TENANT VEM DAQUI. Nunca do corpo — é a diferença entre autorização e
-  // uma string que o navegador escolheu.
-  const clienteDaSessao = ctx.perfil.clienteId;
-  if (!clienteDaSessao) {
-    return Response.json({ erro: "Sessão sem cliente associado." }, { status: 403 });
-  }
-  const usuario = ctx.usuario?.id ?? null;
-
   let corpo: { propostaId?: string };
   try {
     corpo = await request.json();
@@ -897,13 +915,45 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Proposta não informada." }, { status: 400 });
   }
 
-  const proposta = await buscarProposta(propostaId);
+  // O TENANT VEM DAQUI. Nunca do corpo — é a diferença entre autorização e
+  // uma string que o navegador escolheu.
+  //
+  // Lojista: a própria loja. Agência e equipe: a loja DA PROPOSTA, e só se o
+  // banco confirmar que alcançam (`exigirAcessoAoCliente`). Antes a rota
+  // exigia `perfil.clienteId` e devolvia 403 para os dois papéis — o cartão
+  // aparecia e o clique falhava.
+  const propostaLida = await buscarProposta(propostaId);
+  let clienteDaSessao: string | null = null;
+  if (ctx.perfil.papel === "cliente") {
+    clienteDaSessao = ctx.perfil.clienteId;
+  } else if (propostaLida) {
+    try {
+      ctx = await exigirAcessoAoCliente(request, propostaLida.clienteId);
+      clienteDaSessao = propostaLida.clienteId;
+    } catch {
+      // Loja fora do alcance: a proposta "não existe" para quem pergunta —
+      // a mesma frase de `outro_tenant`, pelo mesmo motivo.
+      clienteDaSessao = null;
+    }
+  }
+  if (!clienteDaSessao) {
+    return Response.json(
+      { ok: false, motivo: "nao_encontrada", mensagem: explicarImpedimento({ motivo: "nao_encontrada" }) },
+      { status: 409 }
+    );
+  }
+  const usuario = ctx.usuario?.id ?? null;
+
+  const proposta = propostaLida;
   const estadoAtual = proposta ? await lerEstadoAtual(proposta) : {};
   const veredicto = podeExecutar(
     proposta,
     clienteDaSessao,
     new Date().toISOString(),
-    estadoAtual
+    estadoAtual,
+    // Quem está clicando: proposta de risco alto/crítico só executa por quem
+    // a viu nascer na própria conversa.
+    usuario
   );
 
   if (!veredicto.pode) {
@@ -945,6 +995,80 @@ export async function POST(request: Request) {
   // A proposta existe, é deste cliente, está pendente, no prazo, e o mundo não
   // mudou. AGORA a corrida: quem reservar, executa.
   const p = proposta as PropostaPersistida;
+
+  // ---- IMAGEM: gera a versão (cota antes do provedor), bucket privado. Ver `imagemDaProposta`.
+  if (p.tipo === "imagem") {
+    const d = await executarImagemDaProposta(p, ctx);
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: 1,
+        produtoId: p.alvos[0],
+        versaoId: d.versaoId,
+        imagemUrl: d.url,
+        mensagem: d.url
+          ? `Gerei a imagem. Veja no cartão: aprove para ela virar foto do produto, ou diga o que mudar.`
+          : `Gerei a imagem e guardei a versão ${d.versaoId}, mas não consegui montar o link para mostrar agora.`,
+      });
+    }
+    if (d.jaFeito) return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não gerei de novo." });
+    return Response.json({ ok: false, mensagem: d.mensagem }, { status: 409 });
+  }
+
+  // ---- TAREFAS: a lista congelada vira linhas em `tarefas_da_loja` (069).
+  if (p.tipo === "tarefas") {
+    const d = await executarTarefasDaProposta(p, usuario);
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: d.criadas,
+        mensagem: `Criei ${d.criadas} tarefa${d.criadas === 1 ? "" : "s"}. Elas estão na sua tela inicial, em "Suas tarefas".`,
+      });
+    }
+    if (d.jaFeito) return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não criei de novo." });
+    return Response.json({ ok: false, mensagem: d.mensagem }, { status: 409 });
+  }
+
+  // ---- PUBLICAÇÃO: efeito EXTERNO, caminho próprio. Ver `publicacaoDaProposta`.
+  //
+  // Reservar → publicar pelo mesmo miolo da rota da equipe → gravar a palavra
+  // do ML → auditar. Não cabe nas RPCs atômicas (o ML não participa da
+  // transação), e não passa pelo despacho abaixo porque nada ali — retrato,
+  // consequência, procedência de campo — descreve um anúncio indo ao ar.
+  if (p.tipo === "publicacao") {
+    const clientId = process.env.ML_CLIENT_ID;
+    const clientSecret = process.env.ML_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return Response.json(
+        { ok: false, mensagem: "Integração com o Mercado Livre não configurada no servidor." },
+        { status: 503 }
+      );
+    }
+    const d = await executarPublicacaoDaProposta(p, usuario, { clientId, clientSecret });
+    if (d.ok) {
+      return Response.json({
+        ok: true,
+        afetados: 1,
+        produtoId: p.alvos[0],
+        mlItemId: d.mlItemId,
+        permalink: d.permalink,
+        statusNoML: d.statusNoML,
+        // A PALAVRA DO ML, não a nossa: "active" confirmado é diferente de "o
+        // POST voltou 200" — a distinção que custou três falsos sucessos em 03/08.
+        mensagem:
+          d.statusNoML === "active"
+            ? `Publiquei no Mercado Livre${d.permalink ? ` — está no ar: ${d.permalink}` : ` (${d.mlItemId})`}.`
+            : `Enviei ao Mercado Livre (${d.mlItemId})${d.statusNoML ? `, e ele respondeu "${d.statusNoML}"` : ""}. Não afirmo que está no ar até ele confirmar.`,
+      });
+    }
+    if (d.jaFeito) {
+      return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não publiquei de novo." });
+    }
+    return Response.json(
+      { ok: false, mensagem: d.mensagem, ...(d.motivo ? { motivo: d.motivo } : {}) },
+      { status: 409 }
+    );
+  }
 
   // ---- PESO passa pela primitiva ATÔMICA (migração 045). Ver INC-002 camada 5.
   //
@@ -1089,6 +1213,26 @@ export async function POST(request: Request) {
     // a origem de um valor que não chegou a existir criaria uma trilha que
     // aponta para nada.
     await registrarVarias(rastroDaEscrita(p, usuario, depois, antes));
+
+    // A DECISÃO, para o aprendizado: o que a loja APROVOU de conteúdo vira
+    // sinal em `decisoes` (contexto copilot). Tendência, não regra — ver
+    // `tendenciasObservadas`. Best-effort: nunca derruba a confirmação.
+    if (p.tipo === "titulo" || p.tipo === "descricao" || p.tipo === "palavras_chave") {
+      const d = depois as { titulo?: string; texto?: string } | null;
+      const valorNovo = p.tipo === "titulo" ? d?.titulo : d?.texto;
+      if (valorNovo) {
+        await registrarDecisaoDoCopilot({
+          clienteId: p.clienteId,
+          usuarioId: usuario,
+          entidade: { tipo: "produto", id: p.alvos[0] },
+          campo: p.tipo === "titulo" ? "tituloAnuncio" : p.tipo === "descricao" ? "descricaoAnuncio" : "palavrasChaveAnuncio",
+          valorAnterior: null,
+          valorNovo,
+          origem: "copilot:confirmar",
+          correlacao: p.conversaId,
+        });
+      }
+    }
 
     // ---- A CONSEQUÊNCIA. Por último, e best-effort.
     //

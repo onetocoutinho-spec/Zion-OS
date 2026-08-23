@@ -16,7 +16,7 @@
  * zero, e ninguém entende por quê.
  */
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MessagesSquare, X } from "lucide-react";
 import { ChatDaOperacao } from "./ChatDaOperacao";
@@ -37,6 +37,28 @@ function Painel() {
   const { clienteId } = useClientPortal();
   const [aberto, setAberto] = useState(false);
   /**
+   * O FOCO tem ida e volta. O gatilho era DESMONTADO no mesmo render em que o
+   * painel abria: o elemento focado deixava de existir, o foco caía no <body>,
+   * e quem usa teclado tabulava pela sidebar inteira até achar o campo. Ao
+   * fechar, idem. Agora o gatilho fica montado (escondido), o painel foca o
+   * primeiro campo ao abrir, e devolve o foco ao gatilho ao fechar.
+   */
+  const gatilho = useRef<HTMLButtonElement | null>(null);
+  const painel = useRef<HTMLElement | null>(null);
+  // Só devolve o foco se o painel ESTEVE aberto: na montagem da página o
+  // efeito roda com `aberto = false`, e focar o gatilho ali roubaria o foco
+  // de onde a pessoa estava.
+  const jaAbriu = useRef(false);
+  useEffect(() => {
+    if (aberto) {
+      jaAbriu.current = true;
+      const campo = painel.current?.querySelector<HTMLElement>("input:not([type=file]), textarea");
+      campo?.focus();
+    } else if (jaAbriu.current) {
+      gatilho.current?.focus({ preventScroll: true });
+    }
+  }, [aberto]);
+  /**
    * Qual produto está aberto — lido da URL.
    *
    * O painel vive no shell e não podia saber isso de outra forma. Mas a
@@ -46,7 +68,7 @@ function Painel() {
    * novo entre componentes.
    */
   const params = useSearchParams();
-  const chat = useContextoDaPergunta(clienteId, params.get("produto"));
+  const produtoAberto = params.get("produto");
 
   const pathname = usePathname();
 
@@ -77,17 +99,21 @@ function Painel() {
 
   return (
     <>
-      {!aberto && (
-        <button
-          type="button"
-          onClick={() => setAberto(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 [@media(pointer:coarse)]:min-h-12"
-          aria-label="Abrir o assistente"
-        >
-          <MessagesSquare size={16} />
-          <span className="hidden sm:inline">Assistente</span>
-        </button>
-      )}
+      <button
+        ref={gatilho}
+        type="button"
+        onClick={() => setAberto(true)}
+        aria-expanded={aberto}
+        aria-controls="painel-do-assistente"
+        className={`fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 [@media(pointer:coarse)]:min-h-12 ${
+          aberto ? "pointer-events-none opacity-0" : ""
+        }`}
+        aria-label="Abrir o assistente"
+        tabIndex={aberto ? -1 : 0}
+      >
+        <MessagesSquare size={16} />
+        <span className="hidden sm:inline">Assistente</span>
+      </button>
 
       {aberto && (
         <>
@@ -99,7 +125,10 @@ function Painel() {
             aria-hidden
           />
           <aside
+            ref={painel}
+            id="painel-do-assistente"
             role="dialog"
+            aria-modal="true"
             aria-label="Assistente"
             className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-white/10 bg-zinc-950 shadow-2xl"
           >
@@ -122,27 +151,46 @@ function Painel() {
                 vez de esticar a página inteira. Sem o `min-h-0` o flex se
                 recusa a encolher e a barra de digitar sai da tela. */}
             <div className="min-h-0 flex-1">
-              <ChatDaOperacao
-                contexto={chat.contexto}
-                produtos={chat.produtos}
-                clienteId={clienteId}
-                // A tela ATRÁS do painel precisa mostrar o que o cartão acabou de
-                // gravar. `notificarMudanca` é o mesmo sinal das escritas locais
-                // (repositorio.ts): todo `useLiveQuery` aberto re-consulta. O
-                // Realtime também dispara isso — quando o websocket está de pé;
-                // este é o caminho que não depende dele.
-                aoGravar={notificarMudanca}
-                alturaCheia
-                titulo={
-                  chat.contexto?.produto
-                    ? `Sobre ${chat.contexto.produto.nome}`
-                    : "Sobre a sua loja"
-                }
-              />
+              <ConversaDoPainel clienteId={clienteId} produtoAberto={produtoAberto} />
             </div>
           </aside>
         </>
       )}
     </>
+  );
+}
+
+/**
+ * A conversa — e o CONTEXTO dela — só existem com o painel aberto.
+ *
+ * `useContextoDaPergunta` dispara cinco consultas (catálogo com peso, resumo
+ * de anúncios, TODAS as imagens, canal, infrações). Rodava em toda tela do
+ * portal, antes do `if (aberto)`, para um painel que a pessoa podia nunca
+ * abrir — e era a consulta pesada que já derrubou o contexto uma vez. Num
+ * componente próprio, o hook só roda quando há conversa para alimentar.
+ * (Auditoria do Copilot, 2026-08-22, P1.)
+ */
+function ConversaDoPainel({
+  clienteId,
+  produtoAberto,
+}: {
+  clienteId: string;
+  produtoAberto: string | null;
+}) {
+  const chat = useContextoDaPergunta(clienteId, produtoAberto);
+  return (
+    <ChatDaOperacao
+      contexto={chat.contexto}
+      produtos={chat.produtos}
+      clienteId={clienteId}
+      // A tela ATRÁS do painel precisa mostrar o que o cartão acabou de
+      // gravar. `notificarMudanca` é o mesmo sinal das escritas locais
+      // (repositorio.ts): todo `useLiveQuery` aberto re-consulta. O
+      // Realtime também dispara isso — quando o websocket está de pé;
+      // este é o caminho que não depende dele.
+      aoGravar={notificarMudanca}
+      alturaCheia
+      titulo={chat.contexto?.produto ? `Sobre ${chat.contexto.produto.nome}` : "Sobre a sua loja"}
+    />
   );
 }

@@ -14,6 +14,7 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 import { Field, Input } from "@/components/ui/form";
 import { CustosDoLojista } from "@/components/client-portal/CustosDoLojista";
+import { PerfilDeConteudo } from "@/components/client-portal/PerfilDeConteudo";
 
 export default function ClienteConfiguracoes() {
   const { nome, marketplace, clienteId } = useClientPortal();
@@ -147,6 +148,7 @@ export default function ClienteConfiguracoes() {
         </Card>
 
         <CustosDoLojista />
+        <PerfilDeConteudo />
 
         <Card title="Seu plano">
           <div className="flex items-center justify-between">

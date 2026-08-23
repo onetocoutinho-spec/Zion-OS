@@ -16,70 +16,19 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso, type ProdutoComPeso } from "@/lib/services/pesoDeProduto";
-import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
-import type { AnuncioGeradoRegistro } from "@/lib/types";
-import type { EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 
 /**
- * A CONTA, separada do carregamento.
- *
- * Existe separada porque a home já carrega estes quatro conjuntos para outras
- * coisas — usar o hook lá faria a mesma consulta duas vezes. Quem já tem os
- * dados chama esta função; quem não tem usa o hook abaixo. A conta é uma só,
- * e é isso que impede as duas telas de discordarem sobre a mesma loja.
+ * A CONTA vive no domínio (`modules/assistant/domain/estadoDaLoja`), porque o
+ * servidor agora faz a mesma conta com o tenant da sessão. Reexportada daqui
+ * para a home e as telas que já a importavam continuarem funcionando.
  */
-export function montarEstadoDaLoja(
-  produtos: readonly ProdutoComPeso[],
-  /**
-   * Só o que esta conta LÊ: o produto de cada anúncio e o status dele.
-   *
-   * O tipo era `AnuncioGeradoRegistro` — a linha inteira, com o JSONB da
-   * esteira. Estreitar aqui não é gosto: é o que permite ao chamador buscar a
-   * consulta leve, e o tipo passa a impedir que alguém volte a exigir o peso.
-   */
-  anuncios: readonly { produtoId?: string | null; status: string }[],
-  imagens: readonly { produtoId?: string | null }[],
-  conectado: boolean,
-  /**
-   * As infrações já lidas do Mercado Livre (migração 052).
-   *
-   * `null` = ainda não lemos, e é o padrão. Não vira `0`: dizer "nenhuma
-   * infração" sem ter olhado é a afirmação que a AUD-001 passou o dia
-   * arrancando das telas.
-   */
-  infracoes: { infracoes: number; anuncios: number } | null = null
-): EstadoDaLoja {
-  const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
-  const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
-
-  return {
-      produtos: produtos.length,
-      // COMPLETUDE, não "tem algum peso" (INC-001). O máximo entre as variantes
-      // dizia que um produto com 1 de 39 preenchidas estava pronto.
-      comPeso: produtos.filter((p) => !pesoPendente(p)).length,
-      // Terceira condição, não meio-completo: para estes o frete SAI, e a frase
-      // de "sem peso" seria factualmente falsa.
-      comPesoIncompleto: produtos.filter((p) => situacaoDePeso(p) === "ausencia_parcial").length,
-      comCusto: produtos.filter((p) => p.custo > 0).length,
-      // CALCULABILIDADE, não completude: com uma variante pesada o frete já sai
-      // e o preço mínimo existe. Um produto pode estar com o cadastro de peso
-      // incompleto E pronto para precificar — perguntas diferentes.
-      prontosParaPrecificar: produtos.filter((p) => p.custo > 0 && p.pesoGramas > 0).length,
-      comFoto: produtos.filter((p) => comFoto.has(p.id)).length,
-      comAnuncio: produtos.filter((p) => produtosComAnuncio.has(p.id)).length,
-    aguardandoAprovacao: anuncios.filter((a) => a.status === "aguardando_aprovacao").length,
-    aprovadosNaoPublicados: anuncios.filter((a) => a.status === "aprovado").length,
-    conectadoAoMarketplace: conectado,
-    ...(infracoes
-      ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
-      : {}),
-  } satisfies EstadoDaLoja;
-}
+import { montarEstadoDaLoja } from "@/modules/assistant/domain/estadoDaLoja";
+export { montarEstadoDaLoja };
 
 /**
  * O CARREGAMENTO, para as telas que ainda não têm os dados.

@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 12 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 16 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 12);
+  assert.equal(PRIMEIRA_ACAO.length, 16);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas dezesseis — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -77,10 +77,41 @@ test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () 
   // investigar o produto é o caminho curto — e obrigá-la a uma pergunta
   // preliminar para chegar neles seria esconder a causa mais provável atrás de
   // um passo.
+  //
+  // A DÉCIMA TERCEIRA entrou em 22/08/2026: `vendas_da_loja`.
+  //
+  // Ela lê os pedidos pagos no Mercado Livre com a credencial do SERVIDOR
+  // (o mesmo caminho de /api/ml/vendas, sem o navegador no meio) e compara a
+  // janela pedida com a anterior. O pior caso de um "obrigado" dispará-la é a
+  // lojista ver as próprias vendas sem ter pedido — e uma chamada ao ML paga
+  // em latência, não em dinheiro. Sem escrita, sem proposta.
+  //
+  // A decisão (auditoria do Copilot, NEXT item 6): "como estão minhas vendas?"
+  // e "por que caíram?" eram duas das seis frases do "pronto" sem caminho
+  // nenhum — o eixo de RESULTADO COMERCIAL inteiro estava fora do chat. E a
+  // ferramenta nasce com a lista do que NÃO sabe (visitas, conversão), para
+  // "por que caíram" não virar "refaça o título".
+  //
+  // A DÉCIMA QUARTA e a DÉCIMA QUINTA, também em 22/08/2026:
+  //
+  // `comparar_lojas` — só para agência e equipe (`ferramentasParaPapel` nem a
+  // declara para o lojista). Mede cada loja do alcance com a mesma conta do
+  // contexto. Pior caso de um "obrigado": a agência vê as lojas dela.
+  //
+  // `meu_perfil_de_conteudo` — lê o que a loja escreveu em Configurações
+  // (tom, público, palavras). Pior caso: a loja vê o próprio perfil.
+  //
+  // A DÉCIMA SEXTA, ainda em 22/08/2026: `diagnostico_do_anuncio` — lê no ML
+  // visitas, vendas, saúde e estado do anúncio publicado e separa exposição
+  // de conversão. Leitura pura com a credencial do servidor; pior caso de um
+  // "obrigado" é a loja ver o diagnóstico do próprio anúncio.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
+    "comparar_lojas",
     "contar",
+    "diagnostico_do_anuncio",
     "estado_da_loja",
+    "meu_perfil_de_conteudo",
     "meus_custos",
     "o_que_falta_no_produto",
     "o_que_impede",
@@ -90,6 +121,7 @@ test("T2: são exatamente estas doze — a matriz que autorizou a decisão", () 
     "procedencia",
     "proximo_passo",
     "tabela_de_medidas",
+    "vendas_da_loja",
   ]);
 });
 
@@ -101,7 +133,8 @@ test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
   // o pior caso de um "obrigado" era um cartão indevido na tela de alguém. Agora
   // seria um ANÚNCIO NO AR sem ninguém ter pedido — reversível, sim, mas visível
   // para quem compra antes de ser visível para quem vende.
-  assert.equal(COM_EFEITO.length, 10);
+  // 12 desde 22/08/2026: `propor_tarefas` e `propor_imagem`, PROPOSTAS.
+  assert.equal(COM_EFEITO.length, 12);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
@@ -159,7 +192,12 @@ test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo c
   // mandar a lista inteira com `any` — que é escrita alcançável no passo 0.
   assert.match(CLIENTE, /function ofertaDoPasso\(/);
   assert.match(CLIENTE, /\{\s*tools,\s*tool_choice\s*\}\s*=\s*ofertaDoPasso\(/);
-  assert.match(ROTA, /FERRAMENTAS,/);
+  // A rota passa o catálogo DO PAPEL (`ferramentasParaPapel`), não a constante
+  // inteira — e continua sendo uma lista só, para `ofertaDoPasso`.
+  assert.match(ROTA, /ferramentasDoPapel,/);
+  assert.match(ROTA, /const catalogoDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.match(ROTA, /const ferramentasDoPapel = ferramentasDoEspecialista\(especialista, catalogoDoPapel\)/);
+  assert.doesNotMatch(ROTA, /\bFERRAMENTAS,/, "a rota voltou a mandar o catálogo inteiro, sem papel");
 });
 
 // ---------------------------------------------------------------------------
@@ -254,15 +292,30 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
-  assert.equal(FERRAMENTAS.length, 22);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 12);
+  //
+  // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA. Só a leitura
+  // subiu — continuam 1 rascunho, 8 propostas e 1 ação. Ver a matriz do T2.
+  //
+  // De 23 para 26, no mesmo dia: `comparar_lojas` e `meu_perfil_de_conteudo`
+  // (LEITURA) e `propor_tarefas` (PROPOSTA — a lista que a loja decide fazer,
+  // na tabela própria `tarefas_da_loja`, 069; gravada só no clique). O poder
+  // de agir não mudou: continua 1 ação.
+  // E `propor_imagem` (PROPOSTA, risco médio): a imagem gerada fica no bucket
+  // privado como rascunho até a aprovação; nada sobe sozinho (070). 27 / 10.
+  // E `diagnostico_do_anuncio` (LEITURA): 28 / 16.
+  assert.equal(FERRAMENTAS.length, 28);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 16);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
 test("T12: o chat fala com o Claude", () => {
-  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
+  // O modelo vem da TABELA (`roteamentoDeModelo.ts`) desde 22/08/2026 — o
+  // padrão `claude-sonnet-5` e a env ANTHROPIC_MODELO_CONVERSA vivem lá.
+  assert.match(CLIENTE, /MODELO_DA_CONVERSA = rotaDoModelo\("conversa"\)\.principal/);
+  const TABELA = semComentarios(ler("lib/agentes/roteamentoDeModelo.ts"));
+  assert.match(TABELA, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
   assert.doesNotMatch(CLIENTE, /GEMINI_API_KEY|generativelanguage/);
 });
 

@@ -222,8 +222,11 @@ test("a guarda de canal inativo aponta para uma tela que EXISTE", async () => {
 // A ROTA — estrutura
 // ---------------------------------------------------------------------------
 
+// O MIOLO MUDOU DE CASA EM 22/08/2026: a rota virou tradutor HTTP e a
+// publicação vive em `publicarNoMercadoLivre`, chamável pela confirmação de
+// uma proposta do Copilot. Reancorar, não afrouxar — a garantia é a mesma.
 const ROTA = readFileSync(
-  new URL("../../app/api/ml/publicar/route.ts", import.meta.url),
+  new URL("../../modules/integration/application/publicarNoMercadoLivre.ts", import.meta.url),
   "utf8"
 );
 

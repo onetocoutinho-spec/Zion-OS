@@ -31,9 +31,30 @@
 import {
   pedirTurnoEmFluxo,
   MAXIMO_DE_PASSOS,
+  MODELO_DA_CONVERSA,
   type Fala,
 } from "@/lib/agentes/conversaComFerramentas";
-import { FERRAMENTAS, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
+import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
+import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerramentas";
+import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
+import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
+import { compararLojas } from "@/lib/services/comparacaoDeLojas";
+import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
+import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
+import { tendenciasDaLoja } from "@/lib/services/decisoesDoCopilot";
+import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
+import { congelarPedidoDeImagem, resumoDoPedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
+import {
+  descricaoParaClassificar,
+  ESPECIALISTAS,
+  ferramentasDoEspecialista,
+  instrucaoDoEspecialista,
+  lerEspecialista,
+  type Especialista,
+} from "@/modules/assistant/domain/especialistas";
+import { chamarIAEstruturada } from "@/lib/agentes/provedorIA";
+import { rotuloDoSlot } from "@/modules/assistant/domain/briefingDeImagem";
 import {
   executarFerramenta,
   type ContextoDasFerramentas,
@@ -41,10 +62,11 @@ import {
 import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
-import { criarProposta } from "@/lib/services/copilotPropostas";
+import { criarProposta, registrarAcao } from "@/lib/services/copilotPropostas";
 import {
   garantirConversa,
   gravarTurno,
+  historicoDaConversa,
   ultimaApresentacao,
 } from "@/lib/services/copilotConversas";
 import { precondicoesDaProposta } from "@/modules/assistant/domain/precondicoesDaProposta";
@@ -85,7 +107,6 @@ import type { Capacidade as CapacidadeDeFonte } from "@/infrastructure/connector
 import {
   anuncioParaTitulo,
   textoDoAnuncio,
-  registroDoProduto,
   catalogoParaPreparar,
   margemDoCliente,
   produtoParaPreparar,
@@ -97,7 +118,12 @@ import {
 } from "@/modules/publication/domain/preparacaoDoAnuncio";
 import { MARGEM_MINIMA_PADRAO } from "@/modules/pricing/domain/modeloPreco";
 import { gerarTituloOtimizado } from "@/lib/services/agenteDeTitulo";
-import { montarPreviewML } from "@/lib/services/publicacaoML";
+import { ensaioDoProduto } from "@/lib/services/ensaioDaPublicacao";
+import {
+  CAMPO_PUBLICACAO,
+  congelarPedido,
+  impressaoDaPublicacao,
+} from "@/modules/assistant/domain/propostaDePublicacao";
 import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { gerarDescricaoOtimizada, gerarPalavrasChave } from "@/lib/services/agenteDeDescricao";
 import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/lib/services/precificacaoDoCopilot";
@@ -114,6 +140,46 @@ export const maxDuration = 60;
 const MAXIMO_DA_MENSAGEM = 4000;
 const MAXIMO_DE_FALAS = 40;
 const MAXIMO_DO_CORPO = 200_000;
+
+/**
+ * O orçamento de TEMPO do laço. `maxDuration` é 60 s e a Vercel mata a função
+ * no meio — o stream já entregou texto, então o corte aparece como resposta
+ * truncada com cara de completa, e NADA é gravado. Com este teto, o laço para
+ * antes, diz que parou, e grava o turno. Folga de 15 s para o último passo
+ * terminar de escrever e para a gravação.
+ */
+const ORCAMENTO_DO_LACO_MS = 45_000;
+
+/** O cartão sem o pedido congelado — ele fica no servidor, na Proposal. */
+function semOCongelado<T extends { congelado?: unknown }>(p: T): Omit<T, "congelado"> {
+  const copia = { ...p };
+  delete (copia as { congelado?: unknown }).congelado;
+  return copia;
+}
+
+/**
+ * A MESMA leitura pesada, uma vez por turno.
+ *
+ * `pendencias` e `preparacao_de_anuncio` varrem o catálogo inteiro, e o modelo
+ * chama as duas (às vezes a mesma duas vezes) dentro de UM turno de até seis
+ * passos — cada chamada pagava a varredura de novo. O dado não muda dentro do
+ * turno: quem grava é o clique, e o clique é outra requisição. Memoizar por
+ * requisição é seguro por construção e zera as repetições.
+ *
+ * Falha NÃO é memoizada: a próxima chamada tenta de novo.
+ */
+function umaVezPorTurno<T>(ler: () => Promise<T>): () => Promise<T> {
+  let promessa: Promise<T> | null = null;
+  return () => {
+    if (!promessa) {
+      promessa = ler().catch((e) => {
+        promessa = null;
+        throw e;
+      });
+    }
+    return promessa;
+  };
+}
 
 function system(produtoAberto: string): string {
   return `Você é o assistente operacional do Zion OS. Ajuda um lojista a levar produtos do cadastro ao anúncio pronto para o Mercado Livre.
@@ -146,6 +212,10 @@ Regras do cadastro, e elas não têm exceção:
 - Quando ela devolver uma lista para escolher, pergunte qual e depois use a operação "escolher" com o que ele responder ("o segundo").
 - Nada é criado até ele clicar. Depois de propor_criacao, diga o que vai ser criado e que falta ele confirmar. Nunca diga que o produto já existe.
 
+
+AS VENDAS. Quando ele perguntar como estão as vendas, quanto vendeu, o que vende mais ou POR QUE caíram, use vendas_da_loja. Ela compara o período com o anterior e diz o que os dados NÃO cobrem. Responda em três blocos: o que os números mostram (exatos, com a comparação), o que isso sugere (hipóteses ditas como hipóteses, presas a um produto ou número) e o que você não sabe. "Por que caíram" nunca vira "refaça o título": sem visitas e conversão, título, foto e preço são hipóteses — diga isso. Proponha o próximo passo concreto e use as ferramentas que existem para ele.
+
+"OTIMIZA ESSE ANÚNCIO" começa por diagnostico_do_anuncio — visitas, vendas e saúde no Mercado Livre separam EXPOSIÇÃO (ninguém vê: título, categoria, saúde) de CONVERSÃO (veem e não compram: preço, fotos, descrição). Só então proponha: título para exposição, preço/foto/descrição para conversão. Reescrever o título para um problema de conversão é trabalho jogado fora, e você diz isso.
 O QUE PRECISA DELE. Quando ele perguntar o que falta, o que está com problema, o que você consegue resolver, ou pedir "resolva o que conseguir", use a ferramenta pendencias. Ela já ANALISOU: devolve quantas pendências existem, quantas você prepara sem pedir dado novo, as decisões dele já AGRUPADAS e em ordem de impacto, os conflitos e o que não se resolve por aqui. Você comunica; você não soma. Nunca escreva um número que ela não devolveu.
 
 Apresente o panorama assim: quantas pendências, quantas você trata sem pedir nada, e QUANTAS DECISÕES dele destravam o resto. Depois ofereça a primeira — a lista já vem na ordem certa. Não despeje as centenas de pendências.
@@ -202,7 +272,7 @@ async function estadoDoProdutoNoBanco(
   const admin = getSupabaseAdmin();
   const [pai, variantes] = await Promise.all([
     admin.from("produtos").select("custo").eq("id", produtoId).eq("cliente_id", clienteId).maybeSingle(),
-    admin.from("produto_variantes").select("peso").eq("produto_id", produtoId),
+    admin.from("produto_variantes").select("peso").eq("produto_id", produtoId).eq("cliente_id", clienteId),
   ]);
   const custoBruto = (pai.data as { custo?: number | null } | null)?.custo;
   const linhas = (variantes.data ?? []) as { peso: number | null }[];
@@ -318,15 +388,6 @@ export async function POST(request: Request) {
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
-  // O TENANT VEM DAQUI — nunca do corpo. Tudo que for persistido nesta
-  // requisicao (conversa, mensagens, propostas) usa este valor. Antes o
-  // resultado da autenticacao era DESCARTADO: a rota so checava que havia
-  // sessao, e o `clienteId` chegava no corpo, escolhido pelo navegador.
-  const clienteDaSessao = ctxAuth.perfil.clienteId;
-  if (!clienteDaSessao) {
-    return Response.json({ erro: "Sessao sem cliente associado." }, { status: 403 });
-  }
-  const usuarioId = ctxAuth.usuario?.id ?? null;
   // Era `if (!process.env.GEMINI_API_KEY)`. Num servidor só com a chave da
   // Anthropic, isso respondia "nenhum provedor configurado" com o Claude
   // funcionando em todo o resto do projeto.
@@ -337,13 +398,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // O CORPO SÓ CARREGA PONTEIROS E A MENSAGEM.
+  //
+  // Era: `falas` (o histórico inteiro do modelo, com resultados de ferramenta
+  // que o navegador podia forjar), `contexto` (as contagens da loja e o
+  // catálogo, que o navegador montava) e `produtoAberto` (um nome). Quatro
+  // ferramentas respondiam a partir disso. Agora: a mensagem, o fio, a loja
+  // (só para agência/equipe — o lojista é ignorado aqui), o id do produto
+  // aberto e a rota. Tudo o mais é medido no servidor com o tenant da sessão.
   let corpo: {
     mensagem?: string;
-    falas?: Fala[];
-    contexto?: ContextoDasFerramentas;
-    produtoAberto?: string;
     /** O fio, para a conversa continuar a mesma linha no banco. */
     conversaId?: string;
+    /** Qual loja — só vale para agência e equipe. Ver `resolverLojaDoCopilot`. */
+    lojaId?: string;
+    /** PONTEIRO: o id do produto aberto na tela. Só vale se for desta loja. */
+    produtoAbertoId?: string;
     rota?: string;
   };
   try {
@@ -355,37 +425,66 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
   }
+  if (!corpo || typeof corpo !== "object") {
+    return Response.json({ erro: "Corpo da requisição inválido." }, { status: 400 });
+  }
 
-  const mensagem = (corpo.mensagem ?? "").trim();
+  const mensagem = typeof corpo.mensagem === "string" ? corpo.mensagem.trim() : "";
   if (!mensagem) return Response.json({ erro: "Escreva o que você quer." }, { status: 400 });
   if (mensagem.length > MAXIMO_DA_MENSAGEM) {
     return Response.json({ erro: "A mensagem é longa demais. Divida em partes." }, { status: 400 });
   }
-  if (Array.isArray(corpo.falas) && corpo.falas.length > MAXIMO_DE_FALAS) {
-    return Response.json({ erro: "A conversa ficou longa demais. Comece uma nova." }, { status: 400 });
+  for (const campo of ["conversaId", "lojaId", "produtoAbertoId", "rota"] as const) {
+    const v = corpo[campo];
+    if (v !== undefined && (typeof v !== "string" || v.length > 200)) {
+      return Response.json({ erro: `Campo inválido: ${campo}.` }, { status: 400 });
+    }
   }
+
+  // A LOJA VEM DA SESSÃO — e, para quem opera várias, do corpo CONFERIDO pelo
+  // banco. O lojista não escolhe: `lojaId` é ignorado para ele. Agência e
+  // equipe dizem qual loja, e `exigirAcessoAoCliente` decide se alcançam.
+  // Antes a rota exigia `perfil.clienteId` e devolvia 403 para os dois papéis
+  // — na mesma release que os colocou dentro da loja.
+  const loja = await resolverLojaDoCopilot(request, ctxAuth, corpo.lojaId);
+  if ("erro" in loja) return loja.erro;
+  ctxAuth = loja.ctx;
+  const clienteDaSessao = loja.lojaId;
+  const usuarioId = ctxAuth.usuario?.id ?? null;
+  const papel = ctxAuth.perfil.papel;
 
   // ZION-COST-001: a cota é cobrada AQUI, antes de qualquer chamada ao
   // provedor e antes de abrir o fluxo. Um turno vale UM crédito mesmo tendo
   // até seis passos — o limite por minuto (063) é o que segura um laço de
   // `fetch`. Falha fechada, como nas outras rotas: sem conferir, não responde.
-  // Esta rota exige `clienteId` (acima), então a cota sempre se aplica.
+  // Agência e equipe não têm `clienteId` no perfil e seguem sem cota (ver
+  // cotaDeIA.ts) — o tenant da loja operada é outro assunto.
   if (!adminConfigurado()) {
     return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
   }
   const cota = await cobrarCota(ctxAuth, "chat", reservaNoBanco(getSupabaseAdmin()));
   if (!cota.ok) return respostaCotaRecusada(cota);
-  if (!corpo.contexto?.pergunta?.loja) {
-    return Response.json({ erro: "Contexto da loja ausente." }, { status: 400 });
-  }
+
+  // O CONTEXTO, MEDIDO AGORA NO BANCO. As contagens da loja, o catálogo-alvo e
+  // o produto aberto (se o ponteiro for desta loja) — com o tenant da sessão.
+  // QUEM paga as chamadas aninhadas (título, descrição, palavras-chave): o
+  // mesmo tenant e usuário do turno. A `origem` cada gerador carimba a sua.
+  const rastroDoTurno = { origem: "chat" as const, clienteId: clienteDaSessao, usuarioId };
+  // COMO ESTA LOJA VENDE — lido uma vez por turno e entregue aos geradores.
+  // Sem perfil (ou sem a 068 aplicada) volta vazio, e vazio não vira tom.
+  // E o que se OBSERVOU nas aprovações dela — tendência, não regra — vai junto.
+  const perfilDaLoja = umaVezPorTurno(async () => {
+    const [perfil, observado] = await Promise.all([perfilDeConteudoNoServidor(clienteDaSessao), tendenciasDaLoja(clienteDaSessao)]);
+    return { ...perfil, observado };
+  });
+  const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
   const ctx: ContextoDasFerramentas = {
-    pergunta: corpo.contexto.pergunta,
-    produtos: corpo.contexto.produtos ?? [],
-    produtoAberto: corpo.contexto.produtoAberto ?? null,
-    // Os dados que a checagem de anuncio exige. Sem eles `propor_anuncio`
-    // recusa em vez de propor — melhor que gerar um anuncio que volta com
-    // pendencia depois de tres minutos.
-    paraAnunciar: corpo.contexto.paraAnunciar ?? [],
+    pergunta: medido.pergunta,
+    produtos: medido.produtos,
+    produtoAberto: medido.produtoAberto,
+    // `paraAnunciar` não vem mais do corpo: `propor_anuncio` lê pelo porto
+    // `anuncio.doProduto`, que é o servidor. Sem fallback de navegador.
+    paraAnunciar: [],
     // O PORTO de busca forte. O tenant vem da SESSAO — nunca do corpo — e por
     // isso um EAN que so existe em outro cliente devolve zero linhas.
     buscar: (t) => rodarTentativa(t, clienteDaSessao),
@@ -395,10 +494,10 @@ export async function POST(request: Request) {
     // análise em toda pergunta, inclusive nas que não a usam. Assim quem paga é
     // quem chama — e o tenant fica preso aqui, na sessão, em todos eles.
     analise: {
-      catalogo: async () => {
+      catalogo: umaVezPorTurno(async () => {
         const c = await catalogoParaAnalise(clienteDaSessao);
         return { produtos: c.produtos, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
-      },
+      }),
       produto: (id) => produtoParaAnalise(clienteDaSessao, id),
       fontes: async () => {
         // As capacidades vêm DECLARADAS pelo conector, não de um `if` de ERP.
@@ -425,18 +524,18 @@ export async function POST(request: Request) {
     // vinha em `paraAnunciar`, montado pela tela, agora vem do banco.
     anuncio: {
       doProduto: (id) => produtoParaPreparar(clienteDaSessao, id),
-      catalogo: async () => {
+      catalogo: umaVezPorTurno(async () => {
         const c = await catalogoParaPreparar(clienteDaSessao);
         return { itens: c.itens, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
-      },
-      margem: () => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO),
+      }),
+      margem: umaVezPorTurno(() => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO)),
       anuncioParaTitulo: async (produtoId) => {
         const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
-        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual } : null;
+        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual, marketplace: a.marketplace } : null;
       },
       // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
-      gerarTitulo: (entrada) => gerarTituloOtimizado(entrada),
+      gerarTitulo: async (entrada) => gerarTituloOtimizado({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
       textoDoAnuncio: (produtoId) => textoDoAnuncio(clienteDaSessao, produtoId),
       // A TABELA VEM DO DOMÍNIO, não de agente.
       //
@@ -491,89 +590,39 @@ export async function POST(request: Request) {
       },
       // O ENSAIO usa o MESMO montador da publicação real. Um resumo feito à
       // parte mostraria uma coisa e publicaria outra.
-      ensaioDaPublicacao: async (produtoId) => {
-        const reg = await registroDoProduto(clienteDaSessao, produtoId);
-        if (!reg) return null;
-        // AS FOTOS PRECISAM ENTRAR AQUI.
-        //
-        // `montarPreviewML(reg)` sem opções passa `pictures: undefined` — só
-        // `executarPublicacao` busca as URLs. O ensaio mostrava FOTOS 0 num
-        // produto com dez, e um ensaio que mente sobre a foto é pior que
-        // nenhum: ela confirmaria achando que o anúncio sobe com imagem.
-        //
-        // Medido em produção em 11/08/2026, no cartão da Sapatilha Modare — e
-        // só apareceu porque o cartão mostra o zero em âmbar.
-        // AS FOTOS, COM O CLIENTE DE SERVIDOR.
-        //
-        // `urlsDoProduto` usa `getSupabase()` — o cliente do NAVEGADOR. Chamado
-        // daqui ele não tem sessão, a RLS recusa, e o resultado é uma lista
-        // vazia indistinguível de "produto sem foto". Foi o segundo motivo de
-        // o cartão mostrar FOTOS 0 num produto com dez.
-        //
-        // A REGRA continua sendo a de lá: "Pendente" fora (a lojista tirou do
-        // envio) e a capa primeiro. Repeti-la aqui seria a segunda fonte que
-        // este repositório passou o dia removendo — mas o serviço não é
-        // chamável do servidor, então a regra vem em comentário e a sentinela
-        // guarda as duas.
-        let fotos: string[] = [];
-        if (reg.produtoId) {
-          try {
-            const { data } = await getSupabaseAdmin()
-              .from("imagens_produto")
-              .select("url, tipo_imagem, status")
-              .eq("produto_id", reg.produtoId);
-            fotos = ((data ?? []) as { url: string; tipo_imagem?: string; status?: string }[])
-              .filter((i) => i.status !== "Pendente")
-              .sort((a, b) =>
-                a.tipo_imagem === "Principal" ? -1 : b.tipo_imagem === "Principal" ? 1 : 0
-              )
-              .map((i) => i.url);
-          } catch (e) {
-            // Falhar aqui NÃO é "produto sem foto": é não saber. O cartão
-            // mostraria 0 e ela publicaria achando que sobe sem imagem.
-            console.error("[conversa] falha ao ler as fotos do ensaio:", e);
-            throw e;
-          }
-        }
-        const payload = montarPreviewML(reg, { pictures: fotos }) as Record<string, unknown>;
-        const pics = payload.pictures;
-        return {
-          anuncioId: reg.id,
-          nome: reg.produto ?? "",
-          titulo: String(payload.title ?? ""),
-          preco: typeof payload.price === "number" ? payload.price : null,
-          // O ESTOQUE MORA EM DOIS LUGARES, e ler só um mostrava "—" para
-          // todo produto com grade — que é a maioria de um catálogo de calçado.
-          //
-          // `montarItemML` põe `available_quantity` no TOPO só quando NÃO há
-          // variações; com grade, cada variação carrega o seu. Somar é o que
-          // responde "quantas peças vão para o ar".
-          estoque: (() => {
-            const vars = payload.variations;
-            if (Array.isArray(vars) && vars.length > 0) {
-              return vars.reduce(
-                (t: number, v) =>
-                  t + (typeof (v as { available_quantity?: number }).available_quantity === "number"
-                    ? ((v as { available_quantity?: number }).available_quantity as number)
-                    : 0),
-                0
-              );
-            }
-            return typeof payload.available_quantity === "number"
-              ? payload.available_quantity
-              : null;
-          })(),
-          fotos: Array.isArray(pics) ? pics.length : 0,
-          categoria: String(payload.category_id ?? ""),
-          jaPublicado: reg.status === "publicado" || !!reg.mlItemId,
-          mlItemId: reg.mlItemId ?? null,
-        };
-      },
+      ensaioDaPublicacao: (produtoId) => ensaioDoProduto(clienteDaSessao, produtoId),
       // MESMO padrão do título: os agentes do catálogo (descrição e SEO), não
       // um segundo motor. Existe um segundo CHAMADOR do mesmo prompt.
-      gerarDescricao: (entrada) => gerarDescricaoOtimizada(entrada),
-      gerarPalavras: (entrada) => gerarPalavrasChave(entrada),
+      gerarDescricao: async (entrada) => gerarDescricaoOtimizada({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
+      gerarPalavras: async (entrada) => gerarPalavrasChave({ ...entrada, perfil: await perfilDaLoja() }, rastroDoTurno),
+      // As palavras PROIBIDAS pela loja: o juiz recusa um texto que as traga,
+      // antes de ele virar cartão. O prompt pede; o juiz garante.
+      perfil: perfilDaLoja,
     },
+    // ---- A COMPARAÇÃO ENTRE LOJAS — só para quem opera várias. O lojista não
+    // recebe o porto, e a ferramenta nem é declarada para ele.
+    ...(papel === "cliente" ? {} : { comparar: umaVezPorTurno(() => compararLojas(ctxAuth)) }),
+    // ---- O DIAGNÓSTICO DE UM ANÚNCIO (visitas, vendas, saúde no ML) ----
+    diagnostico: (produtoId, precoMinimo) => diagnosticoNoServidor(clienteDaSessao, produtoId, precoMinimo),
+    // ---- AS VENDAS ----
+    //
+    // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado
+    // por janela: "como estão" e "por que caíram" no mesmo turno leem o ML uma
+    // vez. Sem ML_CLIENT_ID o porto continua existindo e a ferramenta explica.
+    vendas: (() => {
+      const porJanela = new Map<number, ReturnType<typeof vendasNoServidor>>();
+      return (dias: 7 | 14 | 30 | 60 | 90) => {
+        let p = porJanela.get(dias);
+        if (!p) {
+          p = vendasNoServidor(clienteDaSessao, dias).catch((e) => {
+            porJanela.delete(dias);
+            throw e;
+          });
+          porJanela.set(dias, p);
+        }
+        return p;
+      };
+    })(),
     // ---- O PRICING ----
     //
     // A conta e do dominio; estes portos so trazem o que ela precisa do banco.
@@ -624,10 +673,52 @@ export async function POST(request: Request) {
     };
   }
 
+  // O HISTÓRICO DO MODELO VEM DO BANCO, não do navegador.
+  //
+  // O navegador mandava `falas` inteiro, inclusive `functionResponse` — e
+  // podia forjar "a ferramenta pricing devolveu margem de 40%". O modelo
+  // tratava como medição, e `copilot_mensagens` gravava uma resposta que
+  // afirmava o que nenhuma ferramenta produziu. Agora cada turno grava as
+  // próprias falas (produzidas aqui, com o tenant da sessão) e o turno
+  // seguinte as relê. Conversa sem fio no banco começa vazia.
+  const anterior = conversaId
+    ? await historicoDaConversa(clienteDaSessao, conversaId)
+    : { falas: [], turnosSemFalas: 0 };
   const historico: Fala[] = [
-    ...(corpo.falas ?? []),
+    ...(anterior.falas as Fala[]).slice(-MAXIMO_DE_FALAS),
     { role: "user", parts: [{ text: mensagem }] },
   ];
+  // Tudo a partir daqui é DESTE turno — é o que vai para o banco no fim.
+  const inicioDoTurno = historico.length - 1;
+  const catalogoDoPapel = ferramentasParaPapel(papel);
+  // ---- O ROTEAMENTO POR INTENÇÃO (atrás de flag) ----
+  //
+  // Com COPILOT_ROTEAMENTO=1, uma classificação barata (esforço baixo, enum
+  // fechado) escolhe o ESPECIALISTA, e a tabela `especialistas.ts` decide o
+  // subconjunto de ferramentas e a instrução extra. Desligada, tudo segue
+  // como antes: o catálogo inteiro do papel e o prompt base. A restrição por
+  // papel vem ANTES e nunca é afrouxada pelo especialista.
+  let especialista: Especialista = "geral";
+  if (process.env.COPILOT_ROTEAMENTO === "1") {
+    try {
+      const { json } = await chamarIAEstruturada({
+        system: `Classifique o pedido de um lojista num destes especialistas:
+${descricaoParaClassificar()}
+Responda só o nome.`,
+        mensagem: mensagem.slice(0, 600),
+        schema: { type: "object", properties: { especialista: { type: "string", enum: [...ESPECIALISTAS] } }, required: ["especialista"], additionalProperties: false },
+        maxTokens: 60,
+        esforco: "low",
+        rastro: { origem: "intencao", clienteId: clienteDaSessao, usuarioId },
+      });
+      especialista = lerEspecialista((JSON.parse(json) as { especialista?: unknown }).especialista);
+    } catch (e) {
+      // Sem classificação não se perde o turno: cai no geral, que é o de antes.
+      console.error("[assistente/conversa] roteamento falhou, seguindo como geral:", e);
+    }
+  }
+  const ferramentasDoPapel = ferramentasDoEspecialista(especialista, catalogoDoPapel);
+  const instrucaoExtra = instrucaoDoEspecialista(especialista);
 
   /**
    * A resposta vai em EVENTOS, uma linha de JSON cada.
@@ -687,6 +778,12 @@ export async function POST(request: Request) {
       let propostaDePublicacao:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePublicacao"]>
         | undefined;
+      let propostaDeTarefas:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTarefas"]>
+        | undefined;
+      let propostaDeImagem:
+        | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeImagem"]>
+        | undefined;
       let propostaDeTexto:
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDeTexto"]>
         | undefined;
@@ -702,9 +799,46 @@ export async function POST(request: Request) {
         | NonNullable<Awaited<ReturnType<typeof executarFerramenta>>["propostaDePreco"]>
         | undefined;
       const usadas: string[] = [];
+      /** Quanto do total foi ESCRITO no cache — a 1,25×. Vai para `ia_execucoes`. */
+      let noCacheEscrito = 0;
+      let passos = 0;
+      const relogio = cronometro();
+      /** O registro do turno em `ia_execucoes` — em TODO desfecho, inclusive erro. */
+      const registrar = (status: "ok" | "erro" | "timeout" | "parcial", erro?: string) =>
+        registrarExecucaoIA({
+          clienteId: clienteDaSessao,
+          usuarioId,
+          conversaId: conversaId ?? null,
+          origem: "chat",
+          provedor: "anthropic",
+          modelo: MODELO_DA_CONVERSA,
+          ferramentas: usadas,
+          passos,
+          tokens: { total: tokens, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
+          ms: relogio.ms(),
+          status,
+          erro,
+        });
+      /** Estourou o TEMPO (não os passos). Decidido antes de cada passo. */
+      let semTempo = false;
+      /** O navegador abortou ("Parar"). Decidido antes de cada passo. */
+      let cancelado = false;
 
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
+          // ---- O ORÇAMENTO DE TEMPO. Ver `ORCAMENTO_DO_LACO_MS`.
+          if (passo > 0 && relogio.ms() > ORCAMENTO_DO_LACO_MS) {
+            semTempo = true;
+            break;
+          }
+          // ---- "PARAR". O navegador abortou o fetch: ninguém vai ler o que o
+          // próximo passo produziria, e cada passo é pago. O que já foi lido
+          // fica no banco (as falas do turno), então "continua" retoma.
+          if (passo > 0 && request.signal?.aborted) {
+            cancelado = true;
+            break;
+          }
+          passos = passo + 1;
           // ---- A FRONTEIRA DO INC-003.
           //
           // No PRIMEIRO passo o modelo não pode responder: ele é obrigado a
@@ -716,9 +850,11 @@ export async function POST(request: Request) {
           // Do passo 1 em diante nada muda: AUTO, com as 17. A leitura já
           // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
-            system(corpo.produtoAberto ?? ""),
+            system(medido.produtoAberto?.nome ?? "") + (instrucaoExtra ? `
+
+ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             historico,
-            FERRAMENTAS,
+            ferramentasDoPapel,
             (pedaco) => mandar({ tipo: "texto", delta: pedaco }),
             passo === 0
               ? { modo: "obrigado", permitidas: PRIMEIRA_ACAO }
@@ -731,6 +867,7 @@ export async function POST(request: Request) {
           // mesma resposta, mesma latência aparente, só a conta é outra. Este
           // número é a única prova, e é ele que a sentinela de produção lê.
           doCache += turno.tokensLidosDoCache;
+          noCacheEscrito += turno.tokensEscritosNoCache;
 
           // ---- DEFESA DE PROTOCOLO, não classificação semântica.
           //
@@ -1007,6 +1144,90 @@ export async function POST(request: Request) {
               }
             }
 
+            // ---- A PUBLICAÇÃO vira registro ----
+            //
+            // Era "SEM PROPOSAL PERSISTIDA, de propósito" — e a única ação que
+            // o comprador vê ficava sem expiração, sem idempotência de
+            // servidor e com TOCTOU entre o ensaio e o clique. Agora o pedido
+            // inteiro é congelado em `texto`, a precondição é a impressão do
+            // que ela leu, e o clique publica o que foi salvo. Sem id, sem
+            // botão — igual a todas as outras. (Auditoria do Copilot, P1.)
+            let propostaDePublicacaoId: string | null = null;
+            if (propostaDePublicacao?.congelado && conversaId) {
+              try {
+                const pub = propostaDePublicacao;
+                const c = pub.congelado!;
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "publicacao",
+                  alvos: [c.anuncioId],
+                  // O número que importa: as fotos que sobem. Zero em âmbar no
+                  // cartão foi o que denunciou o ensaio cego em 11/08.
+                  valor: c.ensaio.fotos,
+                  texto: congelarPedido(c),
+                  resumo: `Publicar "${pub.nome}" no Mercado Livre: "${c.ensaio.titulo}"${
+                    c.ensaio.preco != null ? `, R$ ${c.ensaio.preco}` : ""
+                  }, ${c.ensaio.fotos} foto(s).`,
+                  precondicoes: [
+                    { campo: `${CAMPO_PUBLICACAO}:${c.anuncioId}`, valorNaCriacao: impressaoDaPublicacao(c.ensaio) },
+                  ],
+                });
+                propostaDePublicacaoId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de publicação:", e);
+              }
+            }
+
+            // ---- A IMAGEM vira registro ----
+            //
+            // O pedido inteiro (slot, instrução, versão recusada, feedback) em
+            // `texto`; o produto em `alvos`. A geração acontece só no clique.
+            let propostaDeImagemId: string | null = null;
+            if (propostaDeImagem && conversaId) {
+              try {
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "imagem",
+                  alvos: [propostaDeImagem.produtoId],
+                  valor: 1,
+                  texto: congelarPedidoDeImagem(propostaDeImagem),
+                  resumo: resumoDoPedidoDeImagem(propostaDeImagem, rotuloDoSlot(propostaDeImagem.slot)),
+                  precondicoes: [],
+                });
+                propostaDeImagemId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de imagem:", e);
+              }
+            }
+
+            // ---- AS TAREFAS viram registro ----
+            //
+            // Lista congelada em `texto`; os produtos citados em `alvos`. Risco
+            // baixo: criar uma lista se desfaz com um clique. Sem id, sem botão.
+            let propostaDeTarefasId: string | null = null;
+            if (propostaDeTarefas && conversaId) {
+              try {
+                const gravada = await criarProposta({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  criadaPor: usuarioId,
+                  tipo: "tarefas",
+                  alvos: propostaDeTarefas.tarefas.map((t) => t.produtoId).filter((x): x is string => Boolean(x)),
+                  valor: propostaDeTarefas.tarefas.length,
+                  texto: congelarTarefas(propostaDeTarefas.tarefas),
+                  resumo: resumoDasTarefas(propostaDeTarefas.tarefas),
+                  precondicoes: [],
+                });
+                propostaDeTarefasId = gravada.id;
+              } catch (e) {
+                console.error("[copilot] falha ao persistir proposta de tarefas:", e);
+              }
+            }
+
             // ---- A PROPOSTA DE PRECO vira registro ----
             //
             // `valor` carrega o preco em REAIS — a unidade canonica da coluna
@@ -1061,6 +1282,7 @@ export async function POST(request: Request) {
             //
             // Seguro por construção: `gravarTurno` captura o `error`, loga e
             // NUNCA lança — esperar por ela não pode derrubar a resposta.
+            await registrar("ok");
             if (conversaId) {
               await gravarTurno(clienteDaSessao, conversaId, {
                 pergunta: mensagem,
@@ -1070,6 +1292,8 @@ export async function POST(request: Request) {
                 // O QUE ESTA RESPOSTA MOSTROU. É o que faz "o segundo" resolver
                 // para um id no turno seguinte, contra a lista certa.
                 metadata: conjuntoApresentado ? paraMetadata(conjuntoApresentado) : null,
+                // As falas DESTE turno — o que o turno seguinte relê do banco.
+                falas: historico.slice(inicioDoTurno),
               });
             }
             mandar({
@@ -1115,7 +1339,20 @@ export async function POST(request: Request) {
               // `/api/ml/publicar`, que tem log próprio, trava de infração e a
               // recusa de republicar. Uma Proposal aqui seria um segundo
               // registro de autorização para uma ação que já tem o seu.
-              ...(propostaDePublicacao ? { propostaDePublicacao } : {}),
+              // Só com ID — e SEM o pedido congelado: ele é do servidor. O que a
+              // tela recebe é o que ela lê; o que o ML recebe é o que foi salvo.
+              ...(propostaDePublicacao && propostaDePublicacaoId
+                ? {
+                    propostaDePublicacao: semOCongelado(propostaDePublicacao),
+                    propostaDePublicacaoId,
+                  }
+                : {}),
+              ...(propostaDeTarefas && propostaDeTarefasId
+                ? { propostaDeTarefas: propostaDeTarefas.tarefas, propostaDeTarefasId }
+                : {}),
+              ...(propostaDeImagem && propostaDeImagemId
+                ? { propostaDeImagem, propostaDeImagemId }
+                : {}),
               ...(propostaDeTexto && propostaDeTextoId
                 ? { propostaDeTexto, propostaDeTextoId }
                 : {}),
@@ -1146,7 +1383,26 @@ export async function POST(request: Request) {
             // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
             // ferramenta roda, no lugar do silêncio.
             mandar({ tipo: "ferramenta", nome: c.nome });
-            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx);
+            // UMA FERRAMENTA QUE EXPLODE NÃO DERRUBA O TURNO.
+            //
+            // O padrão das ferramentas é devolver `{ erro }` — o modelo lê a
+            // recusa e narra. Mas uma exceção de repositório dentro de qualquer
+            // uma delas (banco fora, coluna ausente) subia até o catch genérico
+            // e virava "Não consegui responder agora" — sem dizer QUAL fonte
+            // falhou, e jogando fora o que as outras ferramentas já tinham
+            // lido. Agora a exceção vira saída da ferramenta, com a fonte, e o
+            // modelo diz "não consegui ler X" em vez de nada.
+            const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx).catch((e: unknown) => {
+              console.error(`[assistente/conversa] ferramenta ${c.nome} falhou:`, e);
+              return {
+                saida: {
+                  erro: `Não consegui consultar "${rotuloDaFerramenta(c.nome)}" agora.`,
+                  fonte: c.nome,
+                  comoResponder:
+                    "Diga que NÃO conseguiu consultar essa fonte e o que isso impede. Não preencha o que faltou com estimativa. Se outras ferramentas responderam, use o que elas devolveram.",
+                },
+              } as Awaited<ReturnType<typeof executarFerramenta>>;
+            });
 
             // A AÇÃO ACONTECE AQUI, não no domínio.
             //
@@ -1189,6 +1445,32 @@ export async function POST(request: Request) {
                   })
                 );
               };
+              // O RASTRO DURÁVEL. `logAcao` vai para os Runtime Logs, que
+              // rotacionam; esta é a única ação que o chat executa sem
+              // clique, e "quem mandou reativar aquele anúncio em 12/08?"
+              // precisa de resposta depois da retenção. `copilot_acoes` já
+              // aceita `proposta_id` nulo e já guarda as RECUSAS — e todo o
+              // resto que escreve passa por ela. Esta ação não podia ser a
+              // exceção. (Auditoria do Copilot, 2026-08-22.)
+              let statusAntes: string | null = null;
+              const auditar = (
+                resultado: "sucesso" | "parcial" | "falhou" | "recusada",
+                depois: unknown,
+                erro?: string
+              ) =>
+                registrarAcao({
+                  clienteId: clienteDaSessao,
+                  conversaId,
+                  propostaId: null,
+                  executadaPor: usuarioId,
+                  ferramenta: "reativar_anuncio",
+                  alvos: [mlb],
+                  antes: { status_marketplace: statusAntes },
+                  depois,
+                  resultado,
+                  afetados: resultado === "sucesso" ? 1 : 0,
+                  erro,
+                });
               try {
                 logAcao("info", "pedido");
                 const admin = getSupabaseAdmin();
@@ -1225,6 +1507,7 @@ export async function POST(request: Request) {
                   );
                 }
                 const dono = (posse ?? [])[0] as { status_marketplace: string | null } | undefined;
+                statusAntes = dono?.status_marketplace ?? null;
                 if (!dono) {
                   logAcao("warn", "recusado_nao_e_da_loja");
                   throw new Error(
@@ -1278,6 +1561,7 @@ export async function POST(request: Request) {
 
                 if (bloqueados.length > 0) {
                   logAcao("warn", "infracao_bloqueado");
+                  await auditar("recusada", null, "infracao: o ML cancelou este anúncio por infração");
                   (r as { saida: unknown }).saida = {
                     recusado: true,
                     motivo: `O Mercado Livre cancelou ${mlb} por infração. Reativar conta como reincidência e pode custar a conta.`,
@@ -1291,6 +1575,13 @@ export async function POST(request: Request) {
                     "active"
                   );
                   logAcao("info", "confirmado", { estado });
+                  // `active` confirmado pelo ML é sucesso; qualquer outro
+                  // estado é "o PUT voltou, o ML disse outra coisa" — parcial.
+                  await auditar(
+                    estado === "active" ? "sucesso" : "parcial",
+                    { estadoConfirmadoPeloML: estado },
+                    estado === "active" ? undefined : `ML respondeu "${estado}"`
+                  );
                   mandar({
                     tipo: "ferramenta",
                     nome: `reativou ${mlb}`,
@@ -1354,9 +1645,11 @@ export async function POST(request: Request) {
                   };
                 }
               } catch (e) {
-                logAcao("error", "falhou", {
-                  motivo: e instanceof Error ? e.message : "desconhecido",
-                });
+                const motivo = e instanceof Error ? e.message : "desconhecido";
+                logAcao("error", "falhou", { motivo });
+                // As recusas de posse/estado também caem aqui (elas lançam).
+                // São "recusada", não "falhou": o sistema decidiu não fazer.
+                await auditar(/NÃO reativei|não há o que reativar/.test(motivo) ? "recusada" : "falhou", null, motivo);
                 (r as { saida: unknown }).saida = {
                   erro: mensagemParaONavegador(e, "Falha ao reativar no Mercado Livre."),
                   comoResponder:
@@ -1375,6 +1668,8 @@ export async function POST(request: Request) {
             if (r.propostaDeTitulo) propostaDeTitulo = r.propostaDeTitulo;
             if (r.propostaDeTexto) propostaDeTexto = r.propostaDeTexto;
             if (r.propostaDePublicacao) propostaDePublicacao = r.propostaDePublicacao;
+            if (r.propostaDeTarefas) propostaDeTarefas = r.propostaDeTarefas;
+            if (r.propostaDeImagem) propostaDeImagem = r.propostaDeImagem;
             if (r.pricing) pricing = r.pricing;
             if (r.propostaDePreco) propostaDePreco = r.propostaDePreco;
             if (r.cadastro) {
@@ -1397,13 +1692,41 @@ export async function POST(request: Request) {
 
         // Estourou o teto de passos. Dizer isso é melhor que entregar a última
         // resposta parcial como se fosse conclusão.
+        //
+        // O turno é GRAVADO mesmo assim: seis passos pagos que somem sem rastro
+        // não dão para depurar, e o histórico do modelo (que agora vem do
+        // banco) precisa saber o que foi consultado.
+        //
+        // Duas portas de saída, duas frases: passos esgotados é "me perdi";
+        // tempo esgotado é "demorei demais" — e o que já foi lido continua no
+        // histórico do banco, então "continua" retoma de onde parou.
+        const textoDoEstouro = cancelado
+          ? "Parei a pedido. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+          : semTempo
+            ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+            : "Me perdi no meio do caminho. Pode reformular?";
+        await registrar(
+          semTempo ? "timeout" : "parcial",
+          cancelado ? "cancelado_pelo_navegador" : semTempo ? "orcamento_de_tempo" : "teto_de_passos"
+        );
+        if (conversaId) {
+          await gravarTurno(clienteDaSessao, conversaId, {
+            pergunta: mensagem,
+            resposta: textoDoEstouro,
+            ferramentas: usadas,
+            tokens,
+            metadata: null,
+            falas: [...historico.slice(inicioDoTurno), { role: "model", parts: [{ text: textoDoEstouro }] }],
+          });
+        }
         mandar({
           tipo: "fim",
-          texto: "Me perdi no meio do caminho. Pode reformular?",
+          texto: textoDoEstouro,
           falas: historico,
           ferramentas: usadas,
           tokens,
           doCache,
+          ...(conversaId ? { conversaId } : {}),
         });
         controlador.close();
       } catch (e) {
@@ -1411,6 +1734,8 @@ export async function POST(request: Request) {
         // por horas um erro de schema que era trivial de corrigir.
         console.error("[assistente/conversa] falha:", e);
         const msg = e instanceof Error ? e.message : "";
+        // O turno que falhou também conta — é justamente o que se investiga.
+        await registrar("erro", msg || "desconhecido");
         // "sobrecarregado, tente de novo" é acionável para quem digitou; um
         // erro de schema não é, e ainda pode carregar configuração do servidor.
         mandar({

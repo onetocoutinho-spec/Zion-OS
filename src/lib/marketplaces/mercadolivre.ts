@@ -1630,3 +1630,66 @@ export async function criarGuiaTamanhos(
 
   return { gridId, rowIdPorTamanho };
 }
+
+// ---------------------------------------------------------------------------
+// O DIAGNÓSTICO de um anúncio — o que o ML sabe e nós não tínhamos
+// ---------------------------------------------------------------------------
+
+export interface RetratoDoItemML {
+  id: string;
+  status: string;
+  subStatus: string[];
+  preco: number | null;
+  /** Unidades vendidas ao longo da vida do anúncio, na palavra do ML. */
+  vendidos: number | null;
+  estoque: number | null;
+  /** A nota de saúde do ML (0..1). `null` quando ele não a informou. */
+  saude: number | null;
+  fotos: number;
+  titulo: string;
+  categoria: string | null;
+  tipoAnuncio: string | null;
+  permalink: string | null;
+}
+
+/**
+ * `GET /items/{id}` com os campos que o diagnóstico lê. `health` é a nota que
+ * decide exposição; `sold_quantity` é o que vendeu.
+ */
+export async function retratoDoItem(accessToken: string, itemId: string): Promise<RetratoDoItemML> {
+  const campos = "id,status,sub_status,price,sold_quantity,available_quantity,health,pictures,title,category_id,listing_type_id,permalink";
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}?attributes=${campos}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`ML recusou ler o anúncio ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    id: String(j.id ?? itemId),
+    status: String(j.status ?? ""),
+    subStatus: Array.isArray(j.sub_status) ? j.sub_status.map(String) : [],
+    preco: num(j.price),
+    vendidos: num(j.sold_quantity),
+    estoque: num(j.available_quantity),
+    saude: num(j.health),
+    fotos: Array.isArray(j.pictures) ? j.pictures.length : 0,
+    titulo: String(j.title ?? ""),
+    categoria: typeof j.category_id === "string" ? j.category_id : null,
+    tipoAnuncio: typeof j.listing_type_id === "string" ? j.listing_type_id : null,
+    permalink: typeof j.permalink === "string" ? j.permalink : null,
+  };
+}
+
+/**
+ * As VISITAS de um item nos últimos N dias — `GET /items/{id}/visits/time_window`.
+ * `null` quando o ML não responde: visita desconhecida não é zero visita.
+ */
+export async function visitasDoItem(accessToken: string, itemId: string, dias: number): Promise<number | null> {
+  const r = await fetch(
+    `${API}/items/${encodeURIComponent(itemId)}/visits/time_window?last=${dias}&unit=day`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!r.ok) return null;
+  const j = (await r.json()) as { total_visits?: unknown };
+  return typeof j.total_visits === "number" ? j.total_visits : null;
+}

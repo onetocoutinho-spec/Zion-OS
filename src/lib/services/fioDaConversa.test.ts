@@ -68,7 +68,8 @@ afterEach(() => {
   globalThis.fetch = fetchOriginal;
 });
 
-const CONTEXTO = { pergunta: { loja: {} }, produtos: [] } as never;
+// Só PONTEIROS viajam desde 2026-08-22: a loja, o produto aberto e o fio.
+const LOJA = "loja-A";
 
 // ---------------------------------------------------------------------------
 // T14 · T15 — o request
@@ -77,35 +78,33 @@ const CONTEXTO = { pergunta: { loja: {} }, produtos: [] } as never;
 test("T14: o primeiro turno vai SEM conversaId — e a chave nem aparece", async () => {
   // `undefined` num JSON some, mas quero que a ausência seja intencional e não
   // um `conversaId: null` que o servidor teria de interpretar.
-  await conversar("obrigado", [], CONTEXTO);
+  await conversar("obrigado", { lojaId: LOJA });
   assert.ok(corpo);
   assert.ok(!("conversaId" in corpo!), "mandou a chave sem ter id");
 });
 
 test("T15: com id em mãos, o request o envia", async () => {
-  await conversar("obrigado", [], CONTEXTO, undefined, undefined, FIO);
+  await conversar("obrigado", { lojaId: LOJA, conversaId: FIO });
   assert.equal(corpo!.conversaId, FIO);
 });
 
 test("T2: o segundo turno reenvia o MESMO id — é isto que junta o fio", async () => {
-  const primeiro = await conversar("obrigado", [], CONTEXTO);
+  const primeiro = await conversar("obrigado", { lojaId: LOJA });
   assert.equal(primeiro.conversaId, FIO);
   // O componente guarda o que veio e devolve no turno seguinte.
-  await conversar("e agora?", primeiro.falas, CONTEXTO, undefined, undefined, primeiro.conversaId);
+  await conversar("e agora?", { lojaId: LOJA, conversaId: primeiro.conversaId });
   assert.equal(corpo!.conversaId, FIO);
 });
 
-test("o resto do corpo continua igual — nada foi deslocado", async () => {
-  await conversar("obrigado", [], CONTEXTO, "Rasteira", undefined, FIO);
-  assert.deepEqual(Object.keys(corpo!).sort(), [
-    "contexto",
-    "conversaId",
-    "falas",
-    "mensagem",
-    "produtoAberto",
-  ]);
+test("o corpo carrega só ponteiros — nem histórico, nem contagens, nem nome de produto", async () => {
+  await conversar("obrigado", { lojaId: LOJA, produtoAbertoId: "prod-1", conversaId: FIO });
+  assert.deepEqual(Object.keys(corpo!).sort(), ["conversaId", "lojaId", "mensagem", "produtoAbertoId"]);
   assert.equal(corpo!.mensagem, "obrigado");
-  assert.equal(corpo!.produtoAberto, "Rasteira");
+  assert.equal(corpo!.produtoAbertoId, "prod-1");
+  assert.equal(corpo!.lojaId, LOJA);
+  // O que o navegador NÃO manda mais: era por aqui que o histórico do modelo
+  // (com resultados de ferramenta forjáveis) e as contagens da loja chegavam.
+  assert.ok(!("falas" in corpo!) && !("contexto" in corpo!) && !("produtoAberto" in corpo!));
 });
 
 // ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ test("o resto do corpo continua igual — nada foi deslocado", async () => {
 // ---------------------------------------------------------------------------
 
 test("T1: a resposta entrega o conversaId para o cliente guardar", async () => {
-  const r = await conversar("obrigado", [], CONTEXTO);
+  const r = await conversar("obrigado", { lojaId: LOJA });
   assert.equal(r.conversaId, FIO);
 });
 
@@ -121,7 +120,7 @@ test("T11: id recusado pelo servidor é SUBSTITUÍDO pelo que ele devolveu", asy
   // É o caso do id inexistente, malformado ou de outro cliente:
   // `garantirConversa` ignora e cria — e o cliente tem que adotar o novo.
   idDoServidor = OUTRO_FIO;
-  const r = await conversar("obrigado", [], CONTEXTO, undefined, undefined, FIO);
+  const r = await conversar("obrigado", { lojaId: LOJA, conversaId: FIO });
   assert.equal(corpo!.conversaId, FIO, "não foi o id antigo que viajou");
   assert.equal(r.conversaId, OUTRO_FIO, "o cliente não recebeu o id efetivo");
   assert.notEqual(r.conversaId, FIO);
@@ -129,7 +128,7 @@ test("T11: id recusado pelo servidor é SUBSTITUÍDO pelo que ele devolveu", asy
 
 test("servidor sem conversaId não inventa um", async () => {
   idDoServidor = null;
-  const r = await conversar("obrigado", [], CONTEXTO);
+  const r = await conversar("obrigado", { lojaId: LOJA });
   assert.equal(r.conversaId, undefined);
 });
 

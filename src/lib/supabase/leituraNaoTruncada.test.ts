@@ -51,8 +51,17 @@ const DISPENSADAS: Record<string, string> = {
   //
   // O ensaio da publicação lê as imagens de um produto só. O ML aceita 12 por
   // anúncio, então o teto é do marketplace, não da base.
-  "src/app/api/assistente/conversa/route.ts::imagens_produto":
+  // Mudou de casa em 22/08/2026: o ensaio saiu da rota para o serviço.
+  "src/lib/services/ensaioDaPublicacao.ts::imagens_produto":
     "eq(produto_id) — um produto. Máximo medido: 10 fotos (11/08/2026); o ML aceita 12.",
+  // Os MLBs já conhecidos de UM produto, para a trava de infração: os anúncios
+  // daquele produto que têm ml_item_id. 880 anúncios para 80 produtos dão 11
+  // por produto na média — bem abaixo do corte de 1.000.
+  // A fonte de uma geração de imagem: as fotos de UM produto (070).
+  "src/lib/services/imagensVersoes.ts::imagens_produto":
+    "eq(cliente_id).eq(produto_id) — um produto. Máximo medido: 10 fotos (11/08/2026); o ML aceita 12.",
+  "src/lib/services/ensaioDaPublicacao.ts::anuncios_gerados":
+    "eq(cliente_id).eq(produto_id).not(ml_item_id is null) — um produto. Média medida: 11 anúncios por produto (03/08/2026).",
 
   // ---- Atributos de UM produto: no máximo 14 medidos (média 7,6) ----
   //

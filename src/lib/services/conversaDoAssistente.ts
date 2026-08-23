@@ -1,17 +1,15 @@
 // A ponte entre a tela e o laço de conversa.
 //
 // Só transporta — como `assistenteDaOperacao`, e pelo mesmo motivo: quem
-// decide é a rota (o modelo) e o domínio (as ferramentas). A diferença é que
-// aqui vai e volta o HISTÓRICO, porque a conversa tem fio.
+// decide é a rota (o modelo) e o domínio (as ferramentas).
 //
-// O histórico vive na TELA, não no servidor. Um servidor com sessão de conversa
-// precisaria de armazenamento, expiração e limpeza — e a primeira coisa que
-// quebraria é o lojista abrir duas abas. Aqui cada tela tem o seu fio, e fechar
-// a aba encerra a conversa, que é o que uma pessoa espera.
+// O histórico do MODELO vive no BANCO (`copilot_mensagens`), desde 2026-08-22:
+// o navegador manda o `conversaId` e o servidor relê as falas que ele mesmo
+// gravou. O que volta em `falas` é para a TELA desenhar — não é mais o que o
+// modelo vai ler no turno seguinte, e por isso não viaja de volta.
 
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import type { Fala } from "../agentes/conversaComFerramentas";
-import type { ContextoDasFerramentas } from "../../modules/assistant/domain/executarFerramenta";
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "../../modules/assistant/domain/propostaDeAnuncio";
 import type { CadastroNaTela } from "../../modules/assistant/domain/cartaoDoCadastro";
@@ -23,6 +21,8 @@ import type {
   selecionarParaPreparar,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import type { PrecoNaTela, PropostaDePrecoNaTela } from "../../modules/assistant/domain/cartaoDePreco";
+import type { TarefaProposta } from "../../modules/assistant/domain/propostaDeTarefas";
+import type { PedidoDeImagem } from "../../modules/assistant/domain/propostaDeImagem";
 
 export interface RespostaDaConversa {
   texto: string;
@@ -102,6 +102,14 @@ export interface RespostaDaConversa {
     fotos: number;
     categoria: string;
   };
+  /** O id que AUTORIZA a publicação. Sem ele, sem botão: a proposta não foi persistida. */
+  propostaDePublicacaoId?: string;
+  /** A lista de tarefas a criar. Sem `propostaDeTarefasId`, sem botão. */
+  propostaDeTarefas?: TarefaProposta[];
+  propostaDeTarefasId?: string;
+  /** O pedido de imagem a gerar. Sem `propostaDeImagemId`, sem botão. */
+  propostaDeImagem?: PedidoDeImagem;
+  propostaDeImagemId?: string;
   /**
    * Descrição ou palavras-chave, atual e proposta lado a lado.
    *
@@ -153,12 +161,25 @@ export interface AoVivo {
  * texto aparecendo usa `aoVivo`. As duas coisas ao mesmo tempo evitam que a
  * tela tenha que remontar o estado final a partir dos pedaços.
  */
-export async function conversar(
-  mensagem: string,
-  falas: readonly Fala[],
-  contexto: ContextoDasFerramentas,
-  produtoAberto?: string,
-  aoVivo?: AoVivo,
+/**
+ * O que o navegador manda: PONTEIROS, não fatos.
+ *
+ * Era `falas` (o histórico do modelo inteiro, com resultados de ferramenta),
+ * `contexto` (as contagens e o catálogo) e o NOME do produto aberto. O servidor
+ * respondia a partir disso. Agora o histórico vem do banco, as contagens são
+ * medidas lá com o tenant da sessão, e o produto aberto é um id que só vale se
+ * for desta loja. (Auditoria do Copilot, 2026-08-22.)
+ */
+export interface PonteirosDaConversa {
+  /**
+   * Qual loja está sendo operada. Para o LOJISTA o servidor ignora (a loja é a
+   * do perfil); para agência e equipe é obrigatório e conferido no banco.
+   */
+  lojaId: string;
+  /** O id do produto aberto na tela, se houver. */
+  produtoAbertoId?: string | null;
+  /** A rota da tela, para a conversa nascer com contexto no banco. */
+  rota?: string;
   /**
    * A conversa ATIVA desta aba, quando já existe (INC-005).
    *
@@ -169,17 +190,26 @@ export async function conversar(
    * cliente, `garantirConversa` ignora e cria — e o `conversaId` da resposta é o
    * que vale.
    */
-  conversaId?: string
+  conversaId?: string;
+}
+
+export async function conversar(
+  mensagem: string,
+  ponteiros: PonteirosDaConversa,
+  aoVivo?: AoVivo,
+  /** Para o botão "Parar": aborta o fetch, e o servidor percebe e para o laço. */
+  signal?: AbortSignal
 ): Promise<RespostaDaConversa> {
   const resposta = await fetch("/api/assistente/conversa", {
     method: "POST",
+    ...(signal ? { signal } : {}),
     headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
     body: JSON.stringify({
       mensagem,
-      falas,
-      contexto,
-      produtoAberto: produtoAberto ?? "",
-      ...(conversaId ? { conversaId } : {}),
+      lojaId: ponteiros.lojaId,
+      ...(ponteiros.produtoAbertoId ? { produtoAbertoId: ponteiros.produtoAbertoId } : {}),
+      ...(ponteiros.rota ? { rota: ponteiros.rota } : {}),
+      ...(ponteiros.conversaId ? { conversaId: ponteiros.conversaId } : {}),
     }),
   });
   if (!resposta.ok || !resposta.body) {
@@ -254,6 +284,15 @@ export async function conversar(
           ...(typeof e.propostaDeTituloId === "string"
             ? { propostaDeTituloId: e.propostaDeTituloId }
             : {}),
+          ...(typeof e.propostaDePublicacaoId === "string"
+            ? { propostaDePublicacaoId: e.propostaDePublicacaoId }
+            : {}),
+          ...(Array.isArray(e.propostaDeTarefas) && typeof e.propostaDeTarefasId === "string"
+            ? { propostaDeTarefas: e.propostaDeTarefas as TarefaProposta[], propostaDeTarefasId: e.propostaDeTarefasId }
+            : {}),
+          ...(e.propostaDeImagem && typeof e.propostaDeImagemId === "string"
+            ? { propostaDeImagem: e.propostaDeImagem as PedidoDeImagem, propostaDeImagemId: e.propostaDeImagemId }
+            : {}),
           ...(e.pricing ? { pricing: e.pricing as PrecoNaTela } : {}),
           ...(e.propostaDePreco
             ? { propostaDePreco: e.propostaDePreco as RespostaDaConversa["propostaDePreco"] }
@@ -299,6 +338,13 @@ export interface ResultadoDaConfirmacao {
    * recalcula, não estima e não transforma `null` em zero: ela só apresenta.
    */
   consequencia?: Consequencia | null;
+  /** Só na publicação: a palavra do Mercado Livre sobre o anúncio criado. */
+  mlItemId?: string;
+  permalink?: string | null;
+  statusNoML?: string | null;
+  /** Só na imagem: a versão gerada e a URL assinada (1 h) para mostrar. */
+  versaoId?: string;
+  imagemUrl?: string | null;
 }
 
 export async function confirmarProposta(propostaId: string): Promise<ResultadoDaConfirmacao> {
@@ -320,5 +366,10 @@ export async function confirmarProposta(propostaId: string): Promise<ResultadoDa
     // Atravessa como veio. Este arquivo só transporta — não deriva contagem,
     // não completa campo faltante e não troca `null` por zero.
     ...(dados.consequencia !== undefined ? { consequencia: dados.consequencia } : {}),
+    ...(typeof dados.mlItemId === "string" ? { mlItemId: dados.mlItemId } : {}),
+    ...(dados.permalink !== undefined ? { permalink: dados.permalink } : {}),
+    ...(dados.statusNoML !== undefined ? { statusNoML: dados.statusNoML } : {}),
+    ...(typeof dados.versaoId === "string" ? { versaoId: dados.versaoId } : {}),
+    ...(dados.imagemUrl !== undefined ? { imagemUrl: dados.imagemUrl } : {}),
   };
 }
