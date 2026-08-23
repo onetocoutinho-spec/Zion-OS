@@ -27,7 +27,7 @@
 // diagnóstico que vaza credencial é um defeito pior que o que ele diagnostica.
 
 /** Um provedor de texto, como o resto do sistema o nomeia. */
-export type ProvedorDeTexto = "anthropic" | "gemini";
+export type ProvedorDeTexto = "openai" | "anthropic" | "gemini";
 export type ProvedorDeImagem = "openai" | "gemini";
 
 export interface RetratoDoProvedor {
@@ -84,6 +84,8 @@ export interface AmbienteDaIA {
   IA_PROVEDOR?: string;
   IA_IMAGEM_PROVEDOR?: string;
   ANTHROPIC_MODELO_CONVERSA?: string;
+  OPENAI_MODEL?: string;
+  OPENAI_MODELO_CONVERSA?: string;
   GEMINI_IMAGE_MODEL?: string;
 }
 
@@ -109,10 +111,14 @@ const IMAGEM_IMPLEMENTADA: ReadonlySet<ProvedorDeImagem> = new Set<ProvedorDeIma
  */
 export function textoAtivo(env: AmbienteDaIA): ProvedorDeTexto | null {
   const forcado = env.IA_PROVEDOR?.toLowerCase();
+  const temOpenai = Boolean(env.OPENAI_API_KEY);
   const temGemini = Boolean(env.GEMINI_API_KEY);
   const temAnthropic = Boolean(env.ANTHROPIC_API_KEY);
+  if (forcado === "openai" && temOpenai) return "openai";
   if (forcado === "gemini" && temGemini) return "gemini";
   if (forcado === "anthropic" && temAnthropic) return "anthropic";
+  // Decisão do dono em 23/08/2026: só o ChatGPT. A OpenAI vem na frente.
+  if (temOpenai) return "openai";
   if (temAnthropic) return "anthropic";
   if (temGemini) return "gemini";
   return null;
@@ -125,8 +131,9 @@ export function imagemAtiva(env: AmbienteDaIA): ProvedorDeImagem | null {
   const temGemini = Boolean(env.GEMINI_API_KEY);
   if (forcado === "openai" && temOpenai) return "openai";
   if (forcado === "gemini" && temGemini) return "gemini";
-  if (temGemini) return "gemini";
+  // Desde 23/08/2026 a OpenAI vem na frente também na imagem.
   if (temOpenai) return "openai";
+  if (temGemini) return "gemini";
   return null;
 }
 
@@ -135,6 +142,13 @@ export function retratoDaIA(env: AmbienteDaIA): SaudeDaIA {
   const ativoImagem = imagemAtiva(env);
 
   const texto: RetratoDoProvedor[] = [
+    {
+      nome: "OpenAI (ChatGPT)",
+      temChave: Boolean(env.OPENAI_API_KEY),
+      ativo: ativoTexto === "openai",
+      implementado: true,
+      modelo: env.OPENAI_MODELO_CONVERSA ?? env.OPENAI_MODEL ?? "gpt-5",
+    },
     {
       nome: "Anthropic (Claude)",
       temChave: Boolean(env.ANTHROPIC_API_KEY),
@@ -173,7 +187,7 @@ export function retratoDaIA(env: AmbienteDaIA): SaudeDaIA {
       ativo: ativoTexto,
       motivo:
         ativoTexto === null
-          ? "Nenhuma chave de IA de texto no servidor (ANTHROPIC_API_KEY ou GEMINI_API_KEY). A otimização vai devolver [SIMULAÇÃO]."
+          ? "Nenhuma chave de IA de texto no servidor (OPENAI_API_KEY, ANTHROPIC_API_KEY ou GEMINI_API_KEY). A otimização vai devolver [SIMULAÇÃO]."
           : null,
       provedores: texto,
     },

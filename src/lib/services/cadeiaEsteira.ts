@@ -184,7 +184,7 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
         tipo: "Simulada",
         passos,
         aviso:
-          "Nenhum provedor de IA configurado no servidor — a esteira rodou em modo simulado. Configure GEMINI_API_KEY (ou ANTHROPIC_API_KEY) no .env.local do servidor.",
+          "Nenhum provedor de IA configurado no servidor — a esteira rodou em modo simulado. Configure OPENAI_API_KEY no .env.local do servidor.",
       };
     }
     passo.resultado = res.markdown;

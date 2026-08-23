@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         configurado: false,
-        erro: "Nenhum provedor de IA configurado (GEMINI_API_KEY ou ANTHROPIC_API_KEY). A esteira será simulada.",
+        erro: "Nenhum provedor de IA configurado (OPENAI_API_KEY). A esteira será simulada.",
       },
       { status: 503 }
     );

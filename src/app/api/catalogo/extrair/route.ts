@@ -54,12 +54,13 @@ export async function POST(request: Request) {
     return respostaErroAutorizacao(e);
   }
 
-  if (provedorConfigurado() !== "anthropic") {
+  const provedor = provedorConfigurado();
+  if (provedor !== "openai" && provedor !== "anthropic") {
     // Específico de propósito: "nenhum provedor" e "o provedor configurado não
     // lê documento" são problemas diferentes, e mandam a pessoa a lugares
     // diferentes. Ver a recusa de anexo em `provedorIA`.
     return Response.json(
-      { erro: "Ler catálogo em PDF exige o Claude. Configure ANTHROPIC_API_KEY no servidor." },
+      { erro: "Ler catálogo em PDF exige a OpenAI (ou o Claude). Configure OPENAI_API_KEY no servidor." },
       { status: 503 }
     );
   }
@@ -122,6 +123,8 @@ export async function POST(request: Request) {
     // a ~3 MB cada são muita imagem. O `fileId` volta junto: o arquivo já está
     // no ar, então a extração de verdade não precisa subi-lo de novo.
     if (apenasMedir) {
+      // `null` quando o provedor não mede antes de cobrar (OpenAI). A tela
+      // diz isso em vez de mostrar um número que ninguém mediu.
       const tokensEntrada = await contarTokensDaChamada(chamada);
       return Response.json({ medicao: { tokensEntrada }, fileId });
     }

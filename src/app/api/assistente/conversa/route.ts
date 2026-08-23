@@ -32,6 +32,7 @@ import {
   pedirTurnoEmFluxo,
   MAXIMO_DE_PASSOS,
   MODELO_DA_CONVERSA,
+  PROVEDOR_DA_CONVERSA,
   type Fala,
 } from "@/lib/agentes/conversaComFerramentas";
 import { ferramentasParaPapel, PRIMEIRA_ACAO } from "@/modules/assistant/domain/ferramentasDoAssistente";
@@ -391,9 +392,12 @@ export async function POST(request: Request) {
   // Era `if (!process.env.GEMINI_API_KEY)`. Num servidor só com a chave da
   // Anthropic, isso respondia "nenhum provedor configurado" com o Claude
   // funcionando em todo o resto do projeto.
-  if (!process.env.ANTHROPIC_API_KEY) {
+  //
+  // Desde 23/08/2026 a barreira é a do provedor roteado (OpenAI por padrão),
+  // não uma chave fixa — o erro que isto corrigiu não pode voltar com outro nome.
+  if (PROVEDOR_DA_CONVERSA === "openai" ? !process.env.OPENAI_API_KEY : !process.env.ANTHROPIC_API_KEY) {
     return Response.json(
-      { erro: "Nenhum provedor de IA configurado. Configure ANTHROPIC_API_KEY no servidor." },
+      { erro: "Nenhum provedor de IA configurado. Configure OPENAI_API_KEY no servidor." },
       { status: 503 }
     );
   }
@@ -801,6 +805,8 @@ Responda só o nome.`,
       const usadas: string[] = [];
       /** Quanto do total foi ESCRITO no cache — a 1,25×. Vai para `ia_execucoes`. */
       let noCacheEscrito = 0;
+      /** Algum passo rodou no modelo de reserva. */
+      let degradado = false;
       let passos = 0;
       const relogio = cronometro();
       /** O registro do turno em `ia_execucoes` — em TODO desfecho, inclusive erro. */
@@ -810,8 +816,9 @@ Responda só o nome.`,
           usuarioId,
           conversaId: conversaId ?? null,
           origem: "chat",
-          provedor: "anthropic",
+          provedor: PROVEDOR_DA_CONVERSA,
           modelo: MODELO_DA_CONVERSA,
+          degradado,
           ferramentas: usadas,
           passos,
           tokens: { total: tokens, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
@@ -861,6 +868,7 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
               : { modo: "livre" }
           );
           tokens += turno.tokens;
+          if (turno.degradado) degradado = true;
           // O CACHE PRECISA SER VISÍVEL, senão não dá para saber se pegou.
           //
           // Um cache que nunca acerta é indistinguível de um que funciona:

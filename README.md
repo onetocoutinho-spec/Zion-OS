@@ -67,7 +67,8 @@ Copie `.env.example` → `.env.local`. **Nunca** use a chave `service_role`/`sb_
 | `GEMINI_API_KEY` | servidor | chave do Gemini (esteira, agentes, imagens) |
 | `GEMINI_MODEL` | servidor | padrão `gemini-2.5-flash` |
 | `GEMINI_IMAGE_MODEL` | servidor | padrão `gemini-2.5-flash-image` (Estúdio IA) |
-| `ANTHROPIC_API_KEY` | servidor | opcional — usa Claude no lugar do Gemini |
+| `OPENAI_API_KEY` | servidor | a IA do projeto (ChatGPT): texto, chat, PDF e imagem. Padrão desde 23/08/2026 |
+| `ANTHROPIC_API_KEY` | servidor | opcional — Claude, só com `IA_PROVEDOR=anthropic` |
 | `ML_CLIENT_ID` / `ML_CLIENT_SECRET` | servidor | app do Mercado Livre (DevCenter) |
 | `ML_REDIRECT_URI` | servidor | `https://SEU-DOMINIO/cliente/conectar-ml` — idêntico ao Redirect URI do app ML |
 
@@ -150,5 +151,5 @@ O **SKU único** (código do ERP) atravessa ERP ↔ ML ↔ TikTok — é a chave
 ## Limitações conhecidas
 
 - Proteção de rota é client-side (adequada para ferramenta interna; os dados são protegidos pelo RLS no servidor).
-- No modo demo (sem Supabase) não há login nem realtime; a IA só roda com `GEMINI_API_KEY`/`ANTHROPIC_API_KEY` no servidor.
+- No modo demo (sem Supabase) não há login nem realtime; a IA só roda com `OPENAI_API_KEY` (ou `ANTHROPIC_API_KEY`/`GEMINI_API_KEY`) no servidor.
 - A publicação no modelo **User Products** está estruturada; a ativação no fluxo de publicar + teste de item real é o próximo passo.

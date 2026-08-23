@@ -52,7 +52,8 @@ import {
 type Etapa = "arquivo" | "medido" | "conferir";
 
 interface Medicao {
-  tokensEntrada: number;
+  /** `null`: o provedor não mede antes de cobrar (OpenAI). */
+  tokensEntrada: number | null;
   fileId: string;
 }
 
@@ -142,9 +143,9 @@ export function ImportarCatalogoPdf({
       fd.append("arquivo", f);
       fd.append("medir", "1");
       const r = await chamarExtracao(fd);
-      const m = r.medicao as { tokensEntrada?: number } | undefined;
+      const m = r.medicao as { tokensEntrada?: number | null } | undefined;
       setMedicao({
-        tokensEntrada: Number(m?.tokensEntrada ?? 0),
+        tokensEntrada: typeof m?.tokensEntrada === "number" ? m.tokensEntrada : null,
         fileId: String(r.fileId ?? ""),
       });
       setEtapa("medido");
@@ -258,17 +259,22 @@ export function ImportarCatalogoPdf({
             <div className="mt-3 space-y-3">
               <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                 <p className="text-sm text-zinc-300">
-                  <span className="font-semibold text-white">
-                    {tokensLegiveis(medicao.tokensEntrada)}
-                  </span>{" "}
-                  tokens de entrada
+                  {medicao.tokensEntrada === null ? (
+                    <span className="font-semibold text-white">Sem medição prévia</span>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-white">{tokensLegiveis(medicao.tokensEntrada)}</span>{" "}
+                      tokens de entrada
+                    </>
+                  )}
                   {arquivo ? ` · ${tamanhoLegivel(arquivo.size)}` : ""}
                 </p>
                 {/* Tokens e não reais: ver `tokensLegiveis`. Dizer um valor em
                     R$ congelado no código seria afirmar um preço que muda. */}
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  É o que a leitura consome de entrada. O arquivo já está no servidor — ler agora
-                  não sobe nada de novo.
+                  {medicao.tokensEntrada === null
+                    ? "O provedor atual não mede o custo antes de cobrar. O arquivo já está no servidor — ler agora não sobe nada de novo."
+                    : "É o que a leitura consome de entrada. O arquivo já está no servidor — ler agora não sobe nada de novo."}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
