@@ -20,7 +20,16 @@ import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { StatCard } from "@/components/ui/StatCard";
-import { Table, Td, EmptyRow } from "@/components/ui/Table";
+import { Table, Td, TdSelecao, EmptyRow } from "@/components/ui/Table";
+import { estadoDaMarcaMestre, alternarTodos, alternarUm } from "@/modules/portal/domain/selecaoEmLote";
+import {
+  executarLote,
+  fraseDoResultado,
+  planejarLote,
+  podeAprovar as podeAprovarRegistro,
+  podeRejeitar as podeRejeitarRegistro,
+  type AcaoEmLote,
+} from "./loteDeAprovacao";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
@@ -64,6 +73,9 @@ export default function AprovacoesPage() {
   // Rejeitar de TODAS as linhas sem dizer qual estava em andamento.
   const [busy, setBusy] = useState<string | null>(null);
   const [msgAcao, setMsgAcao] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  // A seleção para agir em massa. Regra em ./loteDeAprovacao.ts.
+  const [marcados, setMarcados] = useState<ReadonlySet<string>>(new Set());
+  const [loteRodando, setLoteRodando] = useState<AcaoEmLote | null>(null);
 
   const { data, carregando } = useLiveQuery(listarAnunciosGerados);
   const registros = data ?? [];
@@ -109,6 +121,28 @@ export default function AprovacoesPage() {
     );
   }
 
+  async function agirEmLote(acao: AcaoEmLote) {
+    if (loteRodando || busy) return;
+    const plano = planejarLote(acao, marcados, registros);
+    if (plano.entram.length === 0 && plano.pulados === 0) return;
+    setLoteRodando(acao);
+    setMsgAcao(null);
+    const r = await executarLote(plano, (id) =>
+      acao === "aprovar"
+        ? aprovarAnuncioGerado(id)
+        : rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.")
+    );
+    setMsgAcao({ tipo: r.falhas > 0 ? "erro" : "ok", texto: fraseDoResultado(acao, r) });
+    // Quem foi feito sai da seleção; quem falhou ou foi pulado fica marcado
+    // para a pessoa ver o que sobrou e decidir.
+    setMarcados((m) => {
+      const novo = new Set(m);
+      for (const id of r.feitosIds) novo.delete(id);
+      return novo;
+    });
+    setLoteRodando(null);
+  }
+
   return (
     <>
       <ConteudoAprovacoes
@@ -119,6 +153,7 @@ export default function AprovacoesPage() {
         setStatus={setStatus}
         busy={busy}
         msgAcao={msgAcao}
+        selecao={{ marcados, setMarcados, loteRodando, agirEmLote }}
         aprovar={aprovar}
         rejeitar={rejeitar}
         stats={{ aguardando, rascunhos, aprovadosN, publicados }}
@@ -137,6 +172,7 @@ function ConteudoAprovacoes({
   setStatus,
   busy,
   msgAcao,
+  selecao,
   aprovar,
   rejeitar,
   stats,
@@ -151,6 +187,12 @@ function ConteudoAprovacoes({
   /** ID do registro cuja ação está em andamento; null quando nenhuma. */
   busy: string | null;
   msgAcao: { tipo: "ok" | "erro"; texto: string } | null;
+  selecao: {
+    marcados: ReadonlySet<string>;
+    setMarcados: (f: (m: ReadonlySet<string>) => ReadonlySet<string>) => void;
+    loteRodando: AcaoEmLote | null;
+    agirEmLote: (acao: AcaoEmLote) => void;
+  };
   aprovar: (id: string) => void;
   rejeitar: (id: string) => void;
   stats: { aguardando: number; rascunhos: number; aprovadosN: number; publicados: number };
@@ -158,6 +200,11 @@ function ConteudoAprovacoes({
   carregando: boolean;
 }) {
   const { aguardando, rascunhos, aprovadosN, publicados } = stats;
+  const { marcados, setMarcados, loteRodando, agirEmLote } = selecao;
+  const idsVisiveis = filtrados.map((r) => r.id);
+  const estadoDaMestre = estadoDaMarcaMestre(idsVisiveis, marcados);
+  const planoAprovar = planejarLote("aprovar", marcados, registros);
+  const planoRejeitar = planejarLote("rejeitar", marcados, registros);
   const [preview, setPreview] = useState<AnuncioGeradoRegistro | null>(null);
   const [publicando, setPublicando] = useState(false);
   const [msgPub, setMsgPub] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -279,22 +326,77 @@ function ConteudoAprovacoes({
         </div>
       )}
 
-      <Table headers={HEADERS}>
+      {/* A barra de ações em massa só existe com seleção: barra vazia permanente
+          é mais um elemento competindo com a fila. A trava é a MESMA da linha:
+          o botão já diz quantos entram e quantos a trava vai pular. */}
+      {marcados.size > 0 && (
+        <div
+          role="region"
+          aria-label="Ações para os anúncios selecionados"
+          className="sticky top-16 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-violet-500/25 bg-[#15121f]/95 px-4 py-3 backdrop-blur"
+        >
+          <p className="text-sm font-medium text-zinc-100">
+            {marcados.size} {marcados.size === 1 ? "anúncio selecionado" : "anúncios selecionados"}
+            {planoAprovar.pulados > 0 && (
+              <span className="ml-2 text-xs font-normal text-amber-400">
+                {planoAprovar.pulados} não {planoAprovar.pulados === 1 ? "passa" : "passam"} na trava A10
+              </span>
+            )}
+          </p>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              variant="success"
+              onClick={() => agirEmLote("aprovar")}
+              disabled={loteRodando !== null || busy !== null || planoAprovar.entram.length === 0}
+            >
+              {loteRodando === "aprovar" ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+              Aprovar {planoAprovar.entram.length}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => agirEmLote("rejeitar")}
+              disabled={loteRodando !== null || busy !== null || planoRejeitar.entram.length === 0}
+            >
+              {loteRodando === "rejeitar" ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+              Rejeitar {planoRejeitar.entram.length}
+            </Button>
+            <Button variant="ghost" onClick={() => setMarcados(() => new Set())}>
+              Limpar seleção
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Table
+        headers={HEADERS}
+        marcaMestre={{
+          estado: estadoDaMestre,
+          aoAlternar: () => setMarcados((m) => alternarTodos(idsVisiveis, m)),
+          rotulo:
+            estadoDaMestre === "todos"
+              ? `Desmarcar os ${idsVisiveis.length} anúncios desta lista`
+              : `Marcar os ${idsVisiveis.length} anúncios desta lista`,
+        }}
+      >
         {data && filtrados.length === 0 && (
           <EmptyRow
-            colSpan={HEADERS.length}
+            colSpan={HEADERS.length + 1}
             mensagem="Nada por aqui ainda. Rode a esteira (com um cliente selecionado) para popular a fila."
             acaoLabel="Ir para a Esteira"
             acaoHref="/esteira"
           />
         )}
         {filtrados.map((r) => {
-          const passouA10 = r.vereditoA10 === "aprovado" && r.qtdPendencias === 0;
-          const podeAprovar =
-            passouA10 && (r.status === "aguardando_aprovacao" || r.status === "rascunho");
-          const podeRejeitar = r.status !== "rejeitado" && r.status !== "publicado";
+          // A trava mora em ./loteDeAprovacao.ts — a mesma da ação em massa.
+          const podeAprovar = podeAprovarRegistro(r);
+          const podeRejeitar = podeRejeitarRegistro(r);
           return (
-            <tr key={r.id} className="hover:bg-white/[0.02]">
+            <tr key={r.id} className={marcados.has(r.id) ? "bg-violet-500/[0.06]" : "hover:bg-white/[0.02]"}>
+              <TdSelecao
+                marcado={marcados.has(r.id)}
+                aoAlternar={() => setMarcados((m) => alternarUm(r.id, m))}
+                rotulo={`Selecionar ${r.anuncio?.tituloOtimizado || "anúncio sem título"}`}
+              />
               <td className="px-4 py-3 align-top">
                 <p className="max-w-72 truncate font-medium text-zinc-200">
                   {r.anuncio?.tituloOtimizado || "(sem título)"}

@@ -21,5 +21,5 @@ Auditoria `ui-ux-pro-max` em 2026-08-23.
 
 ## Pendente (Medium/Low)
 - ~~Filtros fora da URL~~ → `useFiltroNaUrl` (`?status=`; `?prioridade=&quantidade=`) em 2026-08-23.
-- Aprovações: sem multi-select para aprovar/rejeitar em fila (primitivas existem em `Table.tsx`).
+- ~~Aprovações sem multi-select~~ → caixa mestre + `TdSelecao` + barra "Aprovar N / Rejeitar N" com a mesma trava da linha (`loteDeAprovacao.ts`, testado) em 2026-08-23.
 - Aprovações: 9 colunas; coluna de ação é a última — em desktop estreito pode ficar atrás da rolagem do contêiner (não medido).
