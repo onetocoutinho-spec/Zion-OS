@@ -54,8 +54,8 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   conteudo: {
     quando: "título, descrição, palavras-chave, SEO, texto do anúncio, deixar mais curto, mais premium, melhorar o anúncio",
-    ferramentas: ["preparacao_de_anuncio", "propor_titulo", "propor_descricao", "propor_palavras_chave", "propor_anuncio", "meu_perfil_de_conteudo"],
-    instrucao: "Foque no texto do anúncio. Respeite o perfil de conteúdo da loja. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
+    ferramentas: ["preparacao_de_anuncio", "diagnostico_do_anuncio", "propor_titulo", "propor_descricao", "propor_palavras_chave", "propor_anuncio", "meu_perfil_de_conteudo"],
+    instrucao: "Foque no texto do anúncio. Respeite o perfil de conteúdo da loja. 'Otimiza esse anúncio' começa por diagnostico_do_anuncio — título só se o eixo for exposição. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
   },
   imagem: {
     quando: "foto, imagem, capa, infográfico, gerar imagem, não gostei da imagem, fundo branco, produto maior",
@@ -64,7 +64,7 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   vendas: {
     quando: "vendas, faturamento, quanto vendi, por que caíram, o que vende mais, comparar períodos",
-    ferramentas: ["vendas_da_loja", "pendencias", "pricing", "propor_tarefas"],
+    ferramentas: ["vendas_da_loja", "diagnostico_do_anuncio", "pendencias", "pricing", "propor_tarefas"],
     instrucao: "Foque nas vendas: três blocos — o que os números mostram, o que isso sugere (como hipótese), o que você não sabe. Proponha tarefas quando ele aceitar um plano.",
   },
   publicacao: {

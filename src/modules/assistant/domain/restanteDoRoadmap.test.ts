@@ -50,7 +50,8 @@ test("os geradores recebem o perfil, e o juiz recusa palavra proibida antes do c
   assert.match(exec, /proibidasPresentes\(veredicto\.titulo/);
   assert.match(exec, /proibidasPresentes\(veredicto\.descricao/);
   const rota = ler("app/api/assistente/conversa/route.ts");
-  assert.match(rota, /perfilDaLoja = umaVezPorTurno\(\(\) => perfilDeConteudoNoServidor\(clienteDaSessao\)\)/);
+  // Desde as tendências (LATER): perfil escrito + o que se observou, juntos.
+  assert.match(rota, /perfilDeConteudoNoServidor\(clienteDaSessao\), tendenciasDaLoja\(clienteDaSessao\)/);
   // O serviço do servidor não importa o cliente do navegador.
   const srv = readFileSync(new URL("lib/services/perfilDeConteudoNoServidor.ts", raiz), "utf8");
   assert.doesNotMatch(srv, /supabase\/client/);

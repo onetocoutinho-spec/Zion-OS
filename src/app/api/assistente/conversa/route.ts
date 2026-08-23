@@ -40,7 +40,9 @@ import { rotuloDaFerramenta } from "@/modules/assistant/domain/rotulosDasFerrame
 import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/services/contextoDoCopilot";
 import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
 import { compararLojas } from "@/lib/services/comparacaoDeLojas";
+import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
+import { tendenciasDaLoja } from "@/lib/services/decisoesDoCopilot";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
 import { congelarPedidoDeImagem, resumoDoPedidoDeImagem } from "@/modules/assistant/domain/propostaDeImagem";
 import {
@@ -212,6 +214,8 @@ Regras do cadastro, e elas não têm exceção:
 
 
 AS VENDAS. Quando ele perguntar como estão as vendas, quanto vendeu, o que vende mais ou POR QUE caíram, use vendas_da_loja. Ela compara o período com o anterior e diz o que os dados NÃO cobrem. Responda em três blocos: o que os números mostram (exatos, com a comparação), o que isso sugere (hipóteses ditas como hipóteses, presas a um produto ou número) e o que você não sabe. "Por que caíram" nunca vira "refaça o título": sem visitas e conversão, título, foto e preço são hipóteses — diga isso. Proponha o próximo passo concreto e use as ferramentas que existem para ele.
+
+"OTIMIZA ESSE ANÚNCIO" começa por diagnostico_do_anuncio — visitas, vendas e saúde no Mercado Livre separam EXPOSIÇÃO (ninguém vê: título, categoria, saúde) de CONVERSÃO (veem e não compram: preço, fotos, descrição). Só então proponha: título para exposição, preço/foto/descrição para conversão. Reescrever o título para um problema de conversão é trabalho jogado fora, e você diz isso.
 O QUE PRECISA DELE. Quando ele perguntar o que falta, o que está com problema, o que você consegue resolver, ou pedir "resolva o que conseguir", use a ferramenta pendencias. Ela já ANALISOU: devolve quantas pendências existem, quantas você prepara sem pedir dado novo, as decisões dele já AGRUPADAS e em ordem de impacto, os conflitos e o que não se resolve por aqui. Você comunica; você não soma. Nunca escreva um número que ela não devolveu.
 
 Apresente o panorama assim: quantas pendências, quantas você trata sem pedir nada, e QUANTAS DECISÕES dele destravam o resto. Depois ofereça a primeira — a lista já vem na ordem certa. Não despeje as centenas de pendências.
@@ -468,7 +472,11 @@ export async function POST(request: Request) {
   const rastroDoTurno = { origem: "chat" as const, clienteId: clienteDaSessao, usuarioId };
   // COMO ESTA LOJA VENDE — lido uma vez por turno e entregue aos geradores.
   // Sem perfil (ou sem a 068 aplicada) volta vazio, e vazio não vira tom.
-  const perfilDaLoja = umaVezPorTurno(() => perfilDeConteudoNoServidor(clienteDaSessao));
+  // E o que se OBSERVOU nas aprovações dela — tendência, não regra — vai junto.
+  const perfilDaLoja = umaVezPorTurno(async () => {
+    const [perfil, observado] = await Promise.all([perfilDeConteudoNoServidor(clienteDaSessao), tendenciasDaLoja(clienteDaSessao)]);
+    return { ...perfil, observado };
+  });
   const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
   const ctx: ContextoDasFerramentas = {
     pergunta: medido.pergunta,
@@ -523,7 +531,7 @@ export async function POST(request: Request) {
       margem: umaVezPorTurno(() => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO)),
       anuncioParaTitulo: async (produtoId) => {
         const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
-        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual } : null;
+        return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual, marketplace: a.marketplace } : null;
       },
       // O AGENTE A3 do catálogo, o mesmo da tela de agentes. Não existe um
       // segundo motor de título — existe um segundo chamador do mesmo prompt.
@@ -594,6 +602,8 @@ export async function POST(request: Request) {
     // ---- A COMPARAÇÃO ENTRE LOJAS — só para quem opera várias. O lojista não
     // recebe o porto, e a ferramenta nem é declarada para ele.
     ...(papel === "cliente" ? {} : { comparar: umaVezPorTurno(() => compararLojas(ctxAuth)) }),
+    // ---- O DIAGNÓSTICO DE UM ANÚNCIO (visitas, vendas, saúde no ML) ----
+    diagnostico: (produtoId, precoMinimo) => diagnosticoNoServidor(clienteDaSessao, produtoId, precoMinimo),
     // ---- AS VENDAS ----
     //
     // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado

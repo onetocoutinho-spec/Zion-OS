@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { gerarImagem, provedorDeImagemConfigurado } from "@/lib/agentes/provedorImagem";
 import { cronometro, registrarExecucaoIA } from "@/lib/services/execucoesDeIA";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
+import { registrarDecisaoDoCopilot } from "@/lib/services/decisoesDoCopilot";
 import {
   lerBriefing,
   montarBriefing,
@@ -101,6 +102,13 @@ export async function rejeitarVersao(clienteId: string, id: string, feedback: st
     .eq("cliente_id", clienteId)
     .eq("id", id);
   if (error) throw new Error(error.message);
+  // O feedback é o sinal mais rico que a loja dá sobre imagem: vira decisão.
+  if (feedback.trim()) {
+    await registrarDecisaoDoCopilot({
+      clienteId, usuarioId: null, entidade: { tipo: "imagem_versao", id },
+      campo: "imagem:feedback", valorAnterior: null, valorNovo: feedback.trim(), origem: "copilot:imagem:rejeitar",
+    });
+  }
 }
 
 async function baixar(url: string): Promise<{ base64: string; mime: string }> {
@@ -276,5 +284,10 @@ export async function aprovarVersao(clienteId: string, id: string, comoCapa: boo
     .single();
   if (erroFoto || !foto) return { ok: false, mensagem: `Publiquei o arquivo, mas não consegui registrar a foto: ${erroFoto?.message ?? ""}` };
   await admin.from("imagens_versoes").update({ status: "aprovada", imagem_produto_id: foto.id }).eq("id", v.id).eq("cliente_id", clienteId);
+  await registrarDecisaoDoCopilot({
+    clienteId, usuarioId: null, entidade: { tipo: "produto", id: v.produtoId },
+    campo: `imagem:aprovada:${v.slot}`, valorAnterior: null, valorNovo: v.id, origem: "copilot:imagem:aprovar",
+    metadados: { feedbackDaLinhagem: v.briefing.feedback, comoCapa },
+  });
   return { ok: true, imagemId: foto.id as string, url };
 }

@@ -46,6 +46,7 @@
 // (nenhuma escrita alcançável no passo 0) em vez do MECANISMO.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { rotaDoModelo } from "./roteamentoDeModelo";
 import type { Ferramenta } from "../../modules/assistant/domain/ferramentasDoAssistente";
 import { ferramentasDaAnthropic, mensagensDaConversa } from "./dialetoDaConversa";
 
@@ -135,7 +136,7 @@ export type EscolhaDeFerramenta =
  * O resto do projeto (esteira, extração do catálogo) continua no Opus, onde a
  * chamada é rara e o erro entra no cadastro em escala.
  */
-export const MODELO_DA_CONVERSA = process.env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5";
+export const MODELO_DA_CONVERSA = rotaDoModelo("conversa").principal;
 
 /**
  * Teto de saída do turno. Cobre PENSAMENTO + texto, não só o texto.

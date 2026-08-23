@@ -309,6 +309,17 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "diagnostico_do_anuncio",
+    efeito: "le",
+    descricao:
+      "POR QUE um anúncio não vende — lê no Mercado Livre as visitas dos últimos 30 dias, as unidades vendidas, a saúde, o estoque e o estado do anúncio publicado deste produto, e separa EXPOSIÇÃO (ninguém vê: título, categoria, saúde) de CONVERSÃO (veem e não compram: preço, fotos, descrição). Use para \"otimiza esse anúncio\", \"por que esse não vende?\", \"o que está errado com esse anúncio?\" — ANTES de propor título ou preço. Produto sem anúncio publicado não tem diagnóstico, e a ferramenta diz isso.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
     nome: "meu_perfil_de_conteudo",
     efeito: "le",
     descricao:

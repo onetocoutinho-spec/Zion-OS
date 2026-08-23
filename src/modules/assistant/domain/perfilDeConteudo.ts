@@ -5,12 +5,19 @@
 // inferido — o que a loja não escreveu não existe, e o bloco diz isso ao
 // modelo em vez de deixá-lo supor um tom. (Auditoria do Copilot, trilha 6.)
 
+import { blocoDasTendencias } from "./tendenciasObservadas";
+
 export interface PerfilDeConteudo {
   tom: string;
   publico: string;
   palavrasPreferidas: readonly string[];
   palavrasProibidas: readonly string[];
   observacoes: string;
+  /**
+   * O que se OBSERVOU nas aprovações da loja (ver `tendenciasObservadas`).
+   * Não é escrito pela loja e não conta como perfil preenchido: é tendência.
+   */
+  observado?: readonly string[];
 }
 
 export const PERFIL_VAZIO: PerfilDeConteudo = {
@@ -49,14 +56,16 @@ export function perfilEstaVazio(p: PerfilDeConteudo): boolean {
  * e aí o gerador segue como antes, sem inventar um tom.
  */
 export function blocoDoPerfil(p: PerfilDeConteudo | null): string[] {
-  if (!p || perfilEstaVazio(p)) return [];
+  if (!p) return [];
+  const tendencias = blocoDasTendencias(p.observado ?? []);
+  if (perfilEstaVazio(p)) return tendencias;
   const linhas = ["COMO ESTA LOJA VENDE (escrito pela própria loja; siga à risca):"];
   if (p.tom) linhas.push(`- Tom: ${p.tom}`);
   if (p.publico) linhas.push(`- Público: ${p.publico}`);
   if (p.palavrasPreferidas.length) linhas.push(`- Palavras que ela gosta de usar: ${p.palavrasPreferidas.join(", ")}`);
   if (p.palavrasProibidas.length) linhas.push(`- Palavras PROIBIDAS (nunca escreva): ${p.palavrasProibidas.join(", ")}`);
   if (p.observacoes) linhas.push(`- Observações: ${p.observacoes}`);
-  return linhas;
+  return [...linhas, ...(tendencias.length ? ["", ...tendencias] : [])];
 }
 
 /** As palavras proibidas que um texto gerado contém — para o juiz recusar antes do cartão. */

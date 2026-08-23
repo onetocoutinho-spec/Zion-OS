@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 15 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 16 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 15);
+  assert.equal(PRIMEIRA_ACAO.length, 16);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas dezesseis — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -100,10 +100,16 @@ test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", (
   //
   // `meu_perfil_de_conteudo` — lê o que a loja escreveu em Configurações
   // (tom, público, palavras). Pior caso: a loja vê o próprio perfil.
+  //
+  // A DÉCIMA SEXTA, ainda em 22/08/2026: `diagnostico_do_anuncio` — lê no ML
+  // visitas, vendas, saúde e estado do anúncio publicado e separa exposição
+  // de conversão. Leitura pura com a credencial do servidor; pior caso de um
+  // "obrigado" é a loja ver o diagnóstico do próprio anúncio.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "comparar_lojas",
     "contar",
+    "diagnostico_do_anuncio",
     "estado_da_loja",
     "meu_perfil_de_conteudo",
     "meus_custos",
@@ -296,15 +302,20 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // de agir não mudou: continua 1 ação.
   // E `propor_imagem` (PROPOSTA, risco médio): a imagem gerada fica no bucket
   // privado como rascunho até a aprovação; nada sobe sozinho (070). 27 / 10.
-  assert.equal(FERRAMENTAS.length, 27);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
+  // E `diagnostico_do_anuncio` (LEITURA): 28 / 16.
+  assert.equal(FERRAMENTAS.length, 28);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 16);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
 test("T12: o chat fala com o Claude", () => {
-  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
+  // O modelo vem da TABELA (`roteamentoDeModelo.ts`) desde 22/08/2026 — o
+  // padrão `claude-sonnet-5` e a env ANTHROPIC_MODELO_CONVERSA vivem lá.
+  assert.match(CLIENTE, /MODELO_DA_CONVERSA = rotaDoModelo\("conversa"\)\.principal/);
+  const TABELA = semComentarios(ler("lib/agentes/roteamentoDeModelo.ts"));
+  assert.match(TABELA, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
   assert.doesNotMatch(CLIENTE, /GEMINI_API_KEY|generativelanguage/);
 });
 

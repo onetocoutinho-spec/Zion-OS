@@ -11,6 +11,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { cronometro, registrarExecucaoIA, type OrigemDaExecucao } from "@/lib/services/execucoesDeIA";
+import { cabeReserva, rotaDoModelo } from "./roteamentoDeModelo";
 
 export type Provedor = "gemini" | "anthropic";
 
@@ -120,6 +121,8 @@ export interface RespostaIA {
    * a mesma classe de suposição-vestida-de-fato que a AUD-001 caçou.
    */
   uso: UsoDeTokens | null;
+  /** Rodou no modelo de RESERVA por sobrecarga do principal. Ausente = não. */
+  degradado?: boolean;
 }
 
 export interface UsoDeTokens {
@@ -376,11 +379,25 @@ export async function contarTokensDaChamada(c: ChamadaIA): Promise<number> {
 }
 
 async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
-  // claude-opus-5 é o Opus atual. O padrão daqui estava em `claude-opus-4-8`,
-  // que é a geração anterior — padrão de modelo envelhece em silêncio, porque
-  // nada quebra: o modelo antigo responde normalmente e ninguém percebe que
-  // parou de ser o melhor disponível.
-  const modelo = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
+  // O modelo vem da TABELA (`roteamentoDeModelo.ts`), não de um `??` aqui —
+  // padrão de modelo envelhece em silêncio, porque nada quebra: o antigo
+  // responde normalmente e ninguém percebe que parou de ser o melhor.
+  //
+  // A RESERVA: se o principal estiver sobrecarregado, UMA tentativa no modelo
+  // de reserva, e a resposta sai marcada `degradado` — quem registra em
+  // ia_execucoes vê que aquela chamada não rodou onde devia.
+  const rota = rotaDoModelo("estruturada");
+  try {
+    return await chamarAnthropicCom(c, rota.principal);
+  } catch (e) {
+    if (!rota.reserva || rota.reserva === rota.principal || !cabeReserva(e)) throw e;
+    console.warn(`[provedorIA] ${rota.principal} sobrecarregado; tentando a reserva ${rota.reserva}`);
+    const r = await chamarAnthropicCom(c, rota.reserva);
+    return { ...r, degradado: true };
+  }
+}
+
+async function chamarAnthropicCom(c: ChamadaIA, modelo: string): Promise<RespostaIA> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY as string });
 
   // O header beta da Files API vai na chamada de mensagem também, não só no
@@ -448,6 +465,7 @@ export async function chamarIAEstruturada(c: ChamadaIA): Promise<RespostaIA> {
         tokens: r.uso ? { entrada: r.uso.entrada, saida: r.uso.saida, total: r.uso.total } : null,
         ms: relogio.ms(),
         status: "ok",
+        degradado: r.degradado === true,
       });
     }
     return r;

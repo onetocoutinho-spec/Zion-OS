@@ -346,6 +346,8 @@ export interface AnuncioParaTitulo {
   nome: string;
   tituloAtual: string;
   status: string;
+  /** O canal do anúncio — decide o limite do título (`regrasDoCanal`). */
+  marketplace: string;
 }
 
 /**
@@ -423,7 +425,7 @@ export async function textoDoAnuncio(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at, marketplace")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
       .order("created_at", { ascending: false })
@@ -458,7 +460,7 @@ export async function anuncioParaTitulo(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at, marketplace")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
       .order("created_at", { ascending: false })
@@ -472,6 +474,7 @@ export async function anuncioParaTitulo(
       nome: pai?.nome ?? "",
       tituloAtual: String(linha.anuncio?.tituloOtimizado ?? ""),
       status: linha.status,
+      marketplace: (linha as { marketplace?: string | null }).marketplace ?? "Mercado Livre",
     };
   } catch (e) {
     console.error("[preparacao] falha ao ler o anúncio para título:", e);

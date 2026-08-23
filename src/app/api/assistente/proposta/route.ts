@@ -80,6 +80,7 @@ import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
 import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
 import { executarTarefasDaProposta } from "@/lib/services/tarefasDaProposta";
 import { executarImagemDaProposta } from "@/lib/services/imagemDaProposta";
+import { registrarDecisaoDoCopilot } from "@/lib/services/decisoesDoCopilot";
 
 // 60 desde a proposta de IMAGEM (070): gerar leva dezenas de segundos. É o
 // teto do plano da Vercel; o resto das propostas continua terminando em 2 s.
@@ -1212,6 +1213,26 @@ export async function POST(request: Request) {
     // a origem de um valor que não chegou a existir criaria uma trilha que
     // aponta para nada.
     await registrarVarias(rastroDaEscrita(p, usuario, depois, antes));
+
+    // A DECISÃO, para o aprendizado: o que a loja APROVOU de conteúdo vira
+    // sinal em `decisoes` (contexto copilot). Tendência, não regra — ver
+    // `tendenciasObservadas`. Best-effort: nunca derruba a confirmação.
+    if (p.tipo === "titulo" || p.tipo === "descricao" || p.tipo === "palavras_chave") {
+      const d = depois as { titulo?: string; texto?: string } | null;
+      const valorNovo = p.tipo === "titulo" ? d?.titulo : d?.texto;
+      if (valorNovo) {
+        await registrarDecisaoDoCopilot({
+          clienteId: p.clienteId,
+          usuarioId: usuario,
+          entidade: { tipo: "produto", id: p.alvos[0] },
+          campo: p.tipo === "titulo" ? "tituloAnuncio" : p.tipo === "descricao" ? "descricaoAnuncio" : "palavrasChaveAnuncio",
+          valorAnterior: null,
+          valorNovo,
+          origem: "copilot:confirmar",
+          correlacao: p.conversaId,
+        });
+      }
+    }
 
     // ---- A CONSEQUÊNCIA. Por último, e best-effort.
     //
