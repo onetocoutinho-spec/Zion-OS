@@ -20,6 +20,6 @@ Auditoria `ui-ux-pro-max` em 2026-08-23.
 - `select` de quantidade com `focus-visible:ring` e alvo ≥44px.
 
 ## Pendente (Medium/Low)
-- Filtros (`status` em aprovações; `prioridade`/`quantidade` no lote) fora da URL.
+- ~~Filtros fora da URL~~ → `useFiltroNaUrl` (`?status=`; `?prioridade=&quantidade=`) em 2026-08-23.
 - Aprovações: sem multi-select para aprovar/rejeitar em fila (primitivas existem em `Table.tsx`).
 - Aprovações: 9 colunas; coluna de ação é a última — em desktop estreito pode ficar atrás da rolagem do contêiner (não medido).

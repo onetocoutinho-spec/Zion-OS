@@ -10,6 +10,6 @@ Auditoria `ui-ux-pro-max` em 2026-08-23 (régua: tabelas, feedback, vazio/carga,
 - Toggle do grupo: `aria-expanded`, `type="button"`, alvo ≥44px em toque.
 
 ## Pendente (Medium/Low)
-- Filtros `status`/`prioridade` em `useState`; só a loja vai para a URL. Regra "Update URL on state/view changes".
+- ~~Filtros fora da URL~~ → `useFiltroNaUrl` (`?cadastro=&prioridade=`) em 2026-08-23.
 - 11 colunas e **sem coluna de ação** (a ação é só o link no nome). Avaliar reduzir colunas ou coluna "Abrir".
 - Sem multi-select/ação em massa por produto (a ação em lote é por grupo inteiro). Primitivas `marcaMestre`/`TdSelecao` já existem em `Table.tsx`.

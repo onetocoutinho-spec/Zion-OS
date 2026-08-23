@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { StatCard } from "@/components/ui/StatCard";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
@@ -57,7 +58,8 @@ const HEADERS = [
 
 export default function AprovacoesPage() {
   const { lojaId } = useLojaAtual();
-  const [status, setStatus] = useState("Todos");
+  // Filtro na URL (?status=): sobrevive ao F5 e vai no link.
+  const [status, setStatus] = useFiltroNaUrl("status", "Todos", Object.values(ROTULO_STATUS_ANUNCIO_GERADO));
   // `busy` por ID, não global: um clique em "Aprovar" desabilitava Aprovar e
   // Rejeitar de TODAS as linhas sem dizer qual estava em andamento.
   const [busy, setBusy] = useState<string | null>(null);

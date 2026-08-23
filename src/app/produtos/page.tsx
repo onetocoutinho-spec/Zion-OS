@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { Table, Td, TdMain } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -34,8 +35,9 @@ const HEADERS = [
 ];
 
 export default function ProdutosPage() {
-  const [status, setStatus] = useState("Todos");
-  const [prioridade, setPrioridade] = useState("Todos");
+  // Filtros na URL (?cadastro=&prioridade=): sobrevivem ao F5 e vão no link.
+  const [status, setStatus] = useFiltroNaUrl("cadastro", "Todos", CADASTRO_STATUS);
+  const [prioridade, setPrioridade] = useFiltroNaUrl("prioridade", "Todos", PRIORIDADES);
   // A loja vem do contexto global (cookie + ?loja=), não de um estado local.
   const { lojaId } = useLojaAtual();
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());

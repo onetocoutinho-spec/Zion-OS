@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -106,8 +107,9 @@ const ICONE: Record<StatusItem, React.ReactNode> = {
 
 export default function EsteiraLotePage() {
   const { lojaId } = useLojaAtual();
-  const [prioridade, setPrioridade] = useState("Todos");
-  const [quantidade, setQuantidade] = useState("5");
+  // Filtros na URL (?prioridade=&quantidade=): sobrevivem ao F5 e vão no link.
+  const [prioridade, setPrioridade] = useFiltroNaUrl("prioridade", "Todos", Object.values(ROTULO_PRIORIDADE));
+  const [quantidade, setQuantidade] = useFiltroNaUrl("quantidade", "5", QUANTIDADES);
   const [rodando, setRodando] = useState(false);
   const [itens, setItens] = useState<ItemLote[]>([]);
   const [resumo, setResumo] = useState<string | null>(null);
