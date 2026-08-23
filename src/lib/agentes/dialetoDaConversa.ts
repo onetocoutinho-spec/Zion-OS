@@ -172,3 +172,91 @@ export function ferramentasDaAnthropic(
     input_schema: f.parametros as Anthropic.Tool.InputSchema,
   }));
 }
+
+// ===========================================================================
+// O MESMO HISTÓRICO, NO DIALETO DA OPENAI (Responses API)
+// ===========================================================================
+//
+// Desde 23/08/2026 o chat fala com o ChatGPT. O dialeto neutro do projeto
+// continua `Fala`/`Parte` — pelo mesmo motivo de sempre: ele está gravado nas
+// conversas. A tradução para a OpenAI vive aqui, ao lado da da Anthropic, e
+// obedece às MESMAS três regras (id por chamada, órfã some, começo no turno
+// do usuário), porque a Responses API recusa exatamente os mesmos pares
+// partidos: um `function_call_output` sem o `function_call` dele é 400.
+
+import type { FerramentaDaOpenAI, ItemDeEntrada } from "./openai";
+
+function idDaChamadaOpenAI(indiceDaFala: number, indiceDaParte: number): string {
+  return `call_${indiceDaFala}_${indiceDaParte}`;
+}
+
+/** O histórico como a Responses API quer receber. */
+export function entradaDaConversaOpenAI(falas: readonly Fala[]): ItemDeEntrada[] {
+  const pendentes = new Map<string, string[]>();
+  const itens: ItemDeEntrada[] = [];
+
+  falas.forEach((fala, i) => {
+    const papel = fala.role === "model" ? "assistant" : "user";
+    (fala.parts ?? []).forEach((parte, j) => {
+      if (typeof parte.text === "string" && parte.text.trim()) {
+        itens.push(
+          papel === "assistant"
+            ? { role: "assistant", content: [{ type: "output_text", text: parte.text }] }
+            : { role: "user", content: [{ type: "input_text", text: parte.text }] }
+        );
+        return;
+      }
+      if (parte.functionCall?.name) {
+        const id = idDaChamadaOpenAI(i, j);
+        const fila = pendentes.get(parte.functionCall.name);
+        if (fila) fila.push(id);
+        else pendentes.set(parte.functionCall.name, [id]);
+        itens.push({
+          type: "function_call",
+          call_id: id,
+          name: parte.functionCall.name,
+          arguments: JSON.stringify(parte.functionCall.args ?? {}),
+        });
+        return;
+      }
+      if (parte.functionResponse?.name) {
+        const id = pendentes.get(parte.functionResponse.name)?.shift();
+        if (!id) return; // órfã — ver o cabeçalho
+        itens.push({ type: "function_call_output", call_id: id, output: texto(parte.functionResponse.response) });
+      }
+    });
+  });
+
+  return semParesPartidosOpenAI(itens);
+}
+
+function semParesPartidosOpenAI(itens: readonly ItemDeEntrada[]): ItemDeEntrada[] {
+  // O começo é um turno de verdade do usuário — nem resultado de ferramenta,
+  // nem fala do assistente que a janela deslizante deixou na cabeça.
+  const inicio = itens.findIndex((it) => "role" in it && it.role === "user");
+  if (inicio < 0) return [];
+  let fim = itens.length;
+  // No rabo: chamadas sem resposta (o turno anterior morreu no meio).
+  while (fim > inicio) {
+    const ultimo = itens[fim - 1];
+    if (!("type" in ultimo) || ultimo.type !== "function_call") break;
+    fim -= 1;
+  }
+  // Uma fala do assistente pendurada no fim é válida; só a chamada sem
+  // resposta não é. Mas se, depois do corte, o último item for uma fala do
+  // assistente seguida de nada, tudo bem — a API aceita.
+  return itens.slice(inicio, fim);
+}
+
+/** As ferramentas no formato da OpenAI. `parametros` já é JSON Schema. */
+export function ferramentasDaOpenAI(
+  fs: readonly { nome: string; descricao: string; parametros: Record<string, unknown> }[]
+): FerramentaDaOpenAI[] {
+  return fs.map((f) => ({
+    type: "function",
+    name: f.nome,
+    description: f.descricao,
+    parameters: f.parametros,
+    strict: false,
+  }));
+}

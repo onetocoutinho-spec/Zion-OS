@@ -1,4 +1,4 @@
-// Um turno de conversa com ferramentas, contra o Claude.
+// Um turno de conversa com ferramentas, contra o modelo configurado.
 //
 // Fica separado de `provedorIA` de propósito: aquele arquivo faz saída
 // estruturada — uma pergunta, uma resposta em JSON. Aqui o modelo pede
@@ -11,44 +11,41 @@
 // longe da invariante que `ferramentasDoAssistente` protege.
 //
 // ===========================================================================
-// ERA GEMINI. POR QUE MUDOU, E O QUE MUDOU DE VERDADE
+// ERA GEMINI, DEPOIS CLAUDE. DESDE 23/08/2026, CHATGPT.
 // ===========================================================================
 //
-// O EXP-006 mediu este caminho no `gemini-2.5-flash` (8 conversas, 8/8, zero
-// escrita indevida) e ele funcionava. O que não funcionava era o sistema em
-// volta: desde a inversão do provedor, TODO o resto do projeto fala com o
-// Claude, e só o chat — a IA com quem a lojista de fato conversa — continuava
-// preso a outro provedor, com chave e modelo próprios. Pior: a rota barrava em
-// `GEMINI_API_KEY`, então num servidor só com a chave da Anthropic o chat
-// respondia "nenhum provedor configurado" com o Claude funcionando ao lado.
+// O EXP-006 mediu este caminho no `gemini-2.5-flash` e ele funcionava; a
+// migração para o Claude veio quando o resto do projeto já falava com ele. Em
+// 23/08/2026 o dono decidiu: "quero utilizar somente o ChatGPT". O chat passa
+// a ir pela Responses API da OpenAI (`openai.ts`), e o caminho da Anthropic
+// fica para quem pedir por nome (`IA_PROVEDOR=anthropic`).
 //
-// O DIALETO NÃO MUDOU. `Fala`/`Parte` atravessa a rede, volta no SSE e fica
-// GRAVADO nas conversas do copiloto — trocá-lo quebraria toda conversa salva.
-// Ele virou o dialeto neutro do projeto, e a tradução mora em
-// `dialetoDaConversa`, pura e testada.
+// O DIALETO NÃO MUDOU — pela terceira vez. `Fala`/`Parte` atravessa a rede,
+// volta no SSE e fica GRAVADO nas conversas do copiloto. A tradução mora em
+// `dialetoDaConversa`, pura e testada, agora com as duas saídas.
 //
 // ===========================================================================
-// A ÚNICA COISA QUE A MIGRAÇÃO NÃO CONSEGUIU PRESERVAR
+// A FRONTEIRA DO PASSO 0 (INC-003), NOS DOIS PROVEDORES
 // ===========================================================================
 //
-// O Gemini aceitava `ANY` + `allowedFunctionNames`: "chame uma ferramenta, e
-// só pode ser uma DESTAS". A Anthropic não tem esse meio-termo — `tool_choice`
-// é `auto`, `any` (QUALQUER ferramenta) ou `tool` (UMA nomeada).
-//
-// Então a restrição do passo 0 mudou de lugar: em vez de declarar as 17 e
-// restringir a escolha, o passo 0 DECLARA só as leituras e usa `any`. O
-// efeito é o mesmo — o modelo é obrigado a chamar, e só alcança leitura — e a
-// garantia fica mais forte, não mais fraca: uma ferramenta de escrita não está
-// nem declarada no primeiro passo, então não há configuração para "cair" e
-// deixá-la alcançável.
-//
-// A sentinela do INC-003 foi reescrita junto, e passou a guardar o RESULTADO
-// (nenhuma escrita alcançável no passo 0) em vez do MECANISMO.
+// A OpenAI tem `tool_choice: "required"` (chame ALGUMA ferramenta), a
+// Anthropic tem `any`. Nenhuma das duas tem "qualquer uma DESTAS", então a
+// restrição do passo 0 é a MESMA nos dois: o passo 0 DECLARA só as leituras e
+// obriga a chamar. Uma ferramenta de escrita não está nem declarada no
+// primeiro passo, então não há configuração para "cair" e deixá-la
+// alcançável. A sentinela do INC-003 guarda o RESULTADO (nenhuma escrita
+// alcançável no passo 0), não o mecanismo.
 
 import Anthropic from "@anthropic-ai/sdk";
-import { rotaDoModelo } from "./roteamentoDeModelo";
+import { cabeReserva, provedorRoteado, rotaDoModelo } from "./roteamentoDeModelo";
 import type { Ferramenta } from "../../modules/assistant/domain/ferramentasDoAssistente";
-import { ferramentasDaAnthropic, mensagensDaConversa } from "./dialetoDaConversa";
+import {
+  entradaDaConversaOpenAI,
+  ferramentasDaAnthropic,
+  ferramentasDaOpenAI,
+  mensagensDaConversa,
+} from "./dialetoDaConversa";
+import { criarResposta, criarRespostaEmFluxo, esforcoDaOpenAI, type CorpoDaResposta, type RespostaDaOpenAI } from "./openai";
 
 /** Uma fala no histórico, no dialeto do projeto. */
 export interface Parte {
@@ -70,24 +67,22 @@ export interface TurnoDoModelo {
   /**
    * Tokens gastos neste turno — a conta que decide se isto escala.
    *
-   * SOMA OS QUATRO CAMPOS, e isso deixou de ser detalhe em 10/08/2026, quando o
-   * cache entrou. Com cache, `input_tokens` passa a ser só o RESTO não
-   * cacheado: o prefixo lido vai para `cache_read_input_tokens` e o escrito
-   * para `cache_creation_input_tokens`.
+   * SOMA TUDO, e isso deixou de ser detalhe em 10/08/2026, quando o cache
+   * entrou. Na Anthropic, `input_tokens` passa a ser só o RESTO não cacheado:
+   * o prefixo lido vai para `cache_read_input_tokens` e o escrito para
+   * `cache_creation_input_tokens`. Na OpenAI, `input_tokens` JÁ inclui os
+   * cacheados (`cached_tokens` é um detalhe dele, não uma parcela à parte).
    *
-   * Somar só entrada + saída faria o medidor despencar de ~37 mil para ~2 mil
-   * e parecer uma economia de 95%. Não seria economia: seria o medidor tendo
-   * parado de ver a maior parte do que ele mede.
-   *
-   * Este número existe porque a AUD-001 achou o custo documentado em dois
-   * lugares com valores diferentes e nenhum conferível. Quebrá-lo ao ligar o
-   * cache seria desfazer exatamente aquele conserto.
+   * Somar errado faria o medidor despencar e parecer uma economia de 95%. Não
+   * seria economia: seria o medidor tendo parado de ver o que ele mede.
    */
   tokens: number;
-  /** Do total acima, quanto veio do cache — a 0,1× do preço de entrada. */
+  /** Do total acima, quanto veio do cache — mais barato que entrada nova. */
   tokensLidosDoCache: number;
-  /** Quanto foi ESCRITO no cache neste turno, a 1,25×. Zero é o caso comum. */
+  /** Quanto foi ESCRITO no cache neste turno (só a Anthropic cobra à parte). */
   tokensEscritosNoCache: number;
+  /** Rodou no modelo de RESERVA por sobrecarga do principal. Ausente = não. */
+  degradado?: boolean;
 }
 
 /**
@@ -108,7 +103,7 @@ export const MAXIMO_DE_PASSOS = 6;
  * esquecer o início de uma conversa muito longa, que é o troco certo.
  *
  * O corte é por FALA, então ele pode cair ENTRE uma chamada e a resposta dela.
- * Isso o Gemini engolia e a Anthropic recusa; quem limpa é `dialetoDaConversa`.
+ * As duas APIs recusam isso; quem limpa é `dialetoDaConversa`.
  */
 export const FALAS_MANTIDAS = 24;
 
@@ -125,41 +120,35 @@ export type EscolhaDeFerramenta =
   | { modo: "livre" }
   | { modo: "obrigado"; permitidas: readonly string[] };
 
+/** O provedor do chat — a mesma ordem de `provedorConfigurado`. */
+export const PROVEDOR_DA_CONVERSA = provedorRoteado();
+
 /**
- * O modelo do chat.
+ * O modelo do chat — da TABELA (`roteamentoDeModelo.ts`), por provedor.
  *
- * Sonnet 5, e não Opus: aqui o que domina não é raciocínio difícil, é CUSTO POR
- * INTERAÇÃO e latência. O laço reenvia o histórico a cada passo, até seis por
- * fala do lojista, e cada fala é uma pessoa esperando na tela. O Sonnet 5 fica
- * perto do Opus em trabalho com ferramenta por ~40% menos por token.
- *
- * O resto do projeto (esteira, extração do catálogo) continua no Opus, onde a
- * chamada é rara e o erro entra no cadastro em escala.
+ * OpenAI: `gpt-5` (sobrescrevível por OPENAI_MODELO_CONVERSA). Anthropic:
+ * Sonnet 5, e não Opus — aqui o que domina não é raciocínio difícil, é CUSTO
+ * POR INTERAÇÃO e latência; o laço reenvia o histórico a cada passo.
  */
 export const MODELO_DA_CONVERSA = rotaDoModelo("conversa").principal;
 
 /**
  * Teto de saída do turno. Cobre PENSAMENTO + texto, não só o texto.
  *
- * O caminho Gemini não tinha teto nenhum. Este é folgado de propósito: apertá-lo
- * trunca a resposta no meio, e uma resposta truncada PARECE completa para quem
- * está lendo.
+ * Folgado de propósito: apertá-lo trunca a resposta no meio, e uma resposta
+ * truncada PARECE completa para quem está lendo.
  */
 const MAX_TOKENS = 32000;
 
 /**
  * Esforço do raciocínio.
  *
- * Havia `temperature: 0` aqui, com o motivo certo: "a mesma frase deve levar à
- * mesma ferramenta". Parâmetro de amostragem é recusado com 400 no Opus 5, e a
- * substituição para determinismo é esforço BAIXO com prompt apertado — o prompt
- * deste chat já é longo e específico.
- *
  * `medium`, e não `low`: a trajetória que mais importa aqui (achar → conferir
  * que o alvo é único → propor) é de vários passos, e é exatamente onde esforço
- * baixo arrisca raciocinar de menos.
+ * baixo arrisca raciocinar de menos. Parâmetro de amostragem (`temperature`)
+ * é recusado pelos dois provedores nos modelos com raciocínio.
  */
-const ESFORCO = (process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
+const ESFORCO = (process.env.IA_ESFORCO_CONVERSA ?? process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
   | "low"
   | "medium"
   | "high";
@@ -167,84 +156,131 @@ const ESFORCO = (process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
 /**
  * O PREFIXO CACHEADO: ferramentas + prompt do sistema.
  *
- * ===========================================================================
- * O QUE FOI MEDIDO EM 10/08/2026
- * ===========================================================================
+ * Medido em 10/08/2026: ~6.200 tokens IDÊNTICOS em toda chamada (catálogo de
+ * ferramentas + prompt do sistema), reenviados a cada passo. Na Anthropic a
+ * marca vai no ÚLTIMO bloco do system, que cobre ferramentas e prompt com um
+ * só ponto de corte. Na OpenAI o cache de prefixo é AUTOMÁTICO (sem marca):
+ * o que se repete no começo do corpo — `instructions` + `tools` — é o que ele
+ * pega, e `cached_tokens` no uso é a prova de que pegou.
  *
- *   catálogo de ferramentas   ~4.240 tokens
- *   prompt do sistema         ~1.977 tokens
- *                             ─────────────
- *                             ~6.200 tokens, IDÊNTICOS em toda chamada
+ * As mensagens ficam de fora do prefixo nos dois: `historico.slice(-FALAS_MANTIDAS)`
+ * é uma janela DESLIZANTE, e o começo dela é justamente o que o cache casa.
  *
- * O laço reenvia isso a cada passo, até seis por fala. Eram ~37.200 tokens de
- * entrada por pergunta, todos a preço cheio, e nada disso mudava entre um passo
- * e o seguinte.
- *
- * ===========================================================================
- * POR QUE A MARCA VAI NO SYSTEM E NÃO NAS FERRAMENTAS
- * ===========================================================================
- *
- * A ordem de renderização é `tools` → `system` → `messages`. Uma marca no
- * ÚLTIMO bloco do system cobre os dois — ferramentas e prompt — com um só
- * ponto de corte. Marcar as ferramentas separadamente gastaria um dos quatro
- * pontos disponíveis para cachear um pedaço que este já cobre.
- *
- * ===========================================================================
- * POR QUE AS MENSAGENS FICAM DE FORA
- * ===========================================================================
- *
- * `historico.slice(-FALAS_MANTIDAS)` é uma janela DESLIZANTE: quando ela anda,
- * as falas mais antigas somem do começo, e o começo é justamente o que o cache
- * casa. Uma marca ali escreveria entrada nova toda vez que a janela andasse —
- * pagando 1,25× repetidamente para ler 0,1× quase nunca.
- *
- * ===========================================================================
- * DOIS PREFIXOS, NÃO UM
- * ===========================================================================
- *
- * `ofertaDoPasso` manda 11 ferramentas no passo 0 (o `obrigado`) e 18 nos
- * demais. Definição de ferramenta diferente = prefixo diferente, então são
- * duas entradas de cache. As duas são estáveis e se repetem em toda fala, então
- * as duas valem — mas quem mexer em `ofertaDoPasso` precisa saber que está
- * mexendo na chave do cache.
- *
- * `tool_choice` mudar de `any` para `auto` NÃO invalida nada: só a definição
- * das ferramentas e o modelo forçam reconstrução.
+ * `ofertaDoPasso` manda só as leituras no passo 0 e todas nos demais —
+ * definição de ferramenta diferente = prefixo diferente, então são duas
+ * entradas de cache. Quem mexer em `ofertaDoPasso` mexe na chave do cache.
  */
 function sistemaCacheado(system: string): Anthropic.TextBlockParam[] {
   return [{ type: "text", text: system, cache_control: { type: "ephemeral" } }];
 }
 
-function cliente(): Anthropic {
+function clienteAnthropic(): Anthropic {
   const chave = process.env.ANTHROPIC_API_KEY;
   if (!chave) throw new Error("ANTHROPIC_API_KEY ausente.");
   return new Anthropic({ apiKey: chave });
 }
 
 /**
- * As ferramentas E a escolha deste passo.
+ * As ferramentas deste passo.
  *
- * Os dois saem juntos porque no `obrigado` eles são a MESMA decisão: a
- * restrição vive na lista declarada, e `any` só obriga a chamar. Devolvê-los
- * separados deixaria possível mandar a lista inteira com `any` — que é
- * justamente a escrita alcançável no passo 0.
+ * A restrição do `obrigado` vive na LISTA declarada; a escolha só obriga a
+ * chamar. Devolvê-las separadas deixaria possível mandar a lista inteira com
+ * "obrigado" — que é justamente a escrita alcançável no passo 0.
  */
+function ferramentasDoPasso(ferramentas: readonly Ferramenta[], escolha: EscolhaDeFerramenta): Ferramenta[] {
+  if (escolha.modo === "obrigado") {
+    const permitidas = new Set(escolha.permitidas);
+    return ferramentas.filter((f) => permitidas.has(f.nome));
+  }
+  return [...ferramentas];
+}
+
 function ofertaDoPasso(
   ferramentas: readonly Ferramenta[],
   escolha: EscolhaDeFerramenta
 ): { tools: Anthropic.Tool[]; tool_choice: Anthropic.ToolChoice } {
-  if (escolha.modo === "obrigado") {
-    const permitidas = new Set(escolha.permitidas);
-    return {
-      tools: ferramentasDaAnthropic(ferramentas.filter((f) => permitidas.has(f.nome))),
-      tool_choice: { type: "any" },
-    };
-  }
   return {
-    tools: ferramentasDaAnthropic(ferramentas),
-    tool_choice: { type: "auto" },
+    tools: ferramentasDaAnthropic(ferramentasDoPasso(ferramentas, escolha)),
+    tool_choice: { type: escolha.modo === "obrigado" ? "any" : "auto" },
   };
 }
+
+// ---- OpenAI ----
+
+function corpoDaOpenAI(
+  modelo: string,
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  escolha: EscolhaDeFerramenta
+): CorpoDaResposta {
+  const esforco = esforcoDaOpenAI(ESFORCO);
+  return {
+    model: modelo,
+    instructions: system,
+    input: entradaDaConversaOpenAI(historico.slice(-FALAS_MANTIDAS)),
+    tools: ferramentasDaOpenAI(ferramentasDoPasso(ferramentas, escolha)),
+    tool_choice: escolha.modo === "obrigado" ? "required" : "auto",
+    ...(esforco ? { reasoning: { effort: esforco } } : {}),
+    max_output_tokens: MAX_TOKENS,
+    store: false,
+  };
+}
+
+function turnoDaOpenAI(r: RespostaDaOpenAI): TurnoDoModelo {
+  if (r.recusa) throw new Error("O modelo não pôde responder a isto. Reformule a pergunta.");
+  return {
+    texto: r.texto,
+    chamadas: r.chamadas.map((c) => ({ nome: c.nome, args: c.args })),
+    // Na OpenAI `input_tokens` já inclui os cacheados — não se soma de novo.
+    tokens: (r.uso?.entrada ?? 0) + (r.uso?.saida ?? 0),
+    tokensLidosDoCache: r.uso?.lidosDoCache ?? 0,
+    tokensEscritosNoCache: 0,
+  };
+}
+
+async function turnoOpenAIEmFluxo(
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  aoTexto: (pedaco: string) => void,
+  escolha: EscolhaDeFerramenta
+): Promise<TurnoDoModelo> {
+  const rota = rotaDoModelo("conversa", process.env, "openai");
+  // A RESERVA só entra se NADA foi escrito na tela ainda: um pedaço já
+  // entregue não pode ser repetido por outro modelo.
+  let escreveu = false;
+  const aoTextoMarcando = (p: string) => {
+    escreveu = true;
+    aoTexto(p);
+  };
+  try {
+    return turnoDaOpenAI(await criarRespostaEmFluxo(corpoDaOpenAI(rota.principal, system, historico, ferramentas, escolha), aoTextoMarcando));
+  } catch (e) {
+    if (escreveu || !rota.reserva || rota.reserva === rota.principal || !cabeReserva(e)) throw e;
+    console.warn(`[conversa] ${rota.principal} sobrecarregado; tentando a reserva ${rota.reserva}`);
+    const r = await criarRespostaEmFluxo(corpoDaOpenAI(rota.reserva, system, historico, ferramentas, escolha), aoTextoMarcando);
+    return { ...turnoDaOpenAI(r), degradado: true };
+  }
+}
+
+async function turnoOpenAI(
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  escolha: EscolhaDeFerramenta
+): Promise<TurnoDoModelo> {
+  const rota = rotaDoModelo("conversa", process.env, "openai");
+  try {
+    return turnoDaOpenAI(await criarResposta(corpoDaOpenAI(rota.principal, system, historico, ferramentas, escolha)));
+  } catch (e) {
+    if (!rota.reserva || rota.reserva === rota.principal || !cabeReserva(e)) throw e;
+    console.warn(`[conversa] ${rota.principal} sobrecarregado; tentando a reserva ${rota.reserva}`);
+    return { ...turnoDaOpenAI(await criarResposta(corpoDaOpenAI(rota.reserva, system, historico, ferramentas, escolha))), degradado: true };
+  }
+}
+
+// ---- Anthropic ----
 
 /** O que sai de uma resposta pronta, seja ela transmitida ou não. */
 function turnoDaResposta(m: Anthropic.Message): TurnoDoModelo {
@@ -283,20 +319,82 @@ function erroLegivel(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
+async function turnoAnthropicEmFluxo(
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  aoTexto: (pedaco: string) => void,
+  escolha: EscolhaDeFerramenta
+): Promise<TurnoDoModelo> {
+  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
+  try {
+    const fluxo = clienteAnthropic().messages.stream({
+      model: MODELO_DA_CONVERSA,
+      max_tokens: MAX_TOKENS,
+      system: sistemaCacheado(system),
+      messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
+      tools,
+      tool_choice,
+      // Pensamento LIGADO, e sem `display`: a lojista lê a resposta, não o
+      // caminho até ela. Desligar seria pior que inútil — com pensamento
+      // desligado o modelo às vezes ESCREVE a chamada de ferramenta como texto.
+      thinking: { type: "adaptive" },
+      output_config: { effort: ESFORCO },
+    });
+    // Só o texto vaza para a tela.
+    fluxo.on("text", (pedaco) => aoTexto(pedaco));
+    return turnoDaResposta(await fluxo.finalMessage());
+  } catch (e) {
+    throw erroLegivel(e);
+  }
+}
+
+async function turnoAnthropic(
+  system: string,
+  historico: readonly Fala[],
+  ferramentas: readonly Ferramenta[],
+  escolha: EscolhaDeFerramenta
+): Promise<TurnoDoModelo> {
+  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
+  const corpo = {
+    model: MODELO_DA_CONVERSA,
+    max_tokens: MAX_TOKENS,
+    system: sistemaCacheado(system),
+    messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
+    tools,
+    tool_choice,
+    thinking: { type: "adaptive" as const },
+    output_config: { effort: ESFORCO },
+  };
+  const MAX = 3;
+  let ultimo: unknown;
+  for (let tentativa = 1; tentativa <= MAX; tentativa++) {
+    try {
+      return turnoDaResposta(await clienteAnthropic().messages.create(corpo));
+    } catch (e) {
+      ultimo = e;
+      const recuperavel =
+        e instanceof Anthropic.RateLimitError ||
+        (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503));
+      if (!recuperavel || tentativa === MAX) break;
+      await new Promise((r) => setTimeout(r, 1200 * tentativa));
+    }
+  }
+  throw erroLegivel(ultimo);
+}
+
+// ---- A porta ----
+
 /**
  * O turno, em pedaços.
  *
  * O texto chega enquanto o modelo escreve, em vez de aparecer inteiro depois de
- * cinco segundos parados. É a diferença mais sentida entre "uma caixa que
- * responde" e "uma conversa" — e é só isso: a resposta é a mesma.
- *
- * `aoTexto` é chamado a cada pedaço. O retorno é o turno completo, igual ao de
- * `pedirTurno`, porque o laço lá em cima precisa do total para decidir se
+ * cinco segundos parados. `aoTexto` é chamado a cada pedaço; o retorno é o
+ * turno completo, porque o laço lá em cima precisa do total para decidir se
  * continua.
  *
- * Sem retentativa: um 503 no meio de um fluxo já entregou pedaço de texto ao
- * leitor, e recomeçar duplicaria o que ele já leu. Quem retenta é a chamada não
- * transmitida, que ainda não escreveu nada na tela.
+ * Sem retentativa depois do primeiro pedaço: recomeçar duplicaria o que o
+ * leitor já leu. Quem retenta é a chamada não transmitida.
  */
 export async function pedirTurnoEmFluxo(
   system: string,
@@ -305,32 +403,9 @@ export async function pedirTurnoEmFluxo(
   aoTexto: (pedaco: string) => void,
   escolha: EscolhaDeFerramenta = { modo: "livre" }
 ): Promise<TurnoDoModelo> {
-  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
-  try {
-    const fluxo = cliente().messages.stream({
-      model: MODELO_DA_CONVERSA,
-      max_tokens: MAX_TOKENS,
-      system: sistemaCacheado(system),
-      messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
-      tools,
-      tool_choice,
-      // Pensamento LIGADO, e sem `display`. O padrão do Opus 5 não devolve o
-      // texto do raciocínio, que é o que se quer aqui: a lojista lê a resposta,
-      // não o caminho até ela. Desligar seria pior que inútil — com pensamento
-      // desligado o modelo às vezes ESCREVE a chamada de ferramenta como texto,
-      // e aí a ferramenta simplesmente não roda, sem erro nenhum.
-      thinking: { type: "adaptive" },
-      output_config: { effort: ESFORCO },
-    });
-
-    // Só o texto vaza para a tela. Bloco de pensamento e argumento de
-    // ferramenta chegando pela metade não são coisas para alguém ler.
-    fluxo.on("text", (pedaco) => aoTexto(pedaco));
-
-    return turnoDaResposta(await fluxo.finalMessage());
-  } catch (e) {
-    throw erroLegivel(e);
-  }
+  return PROVEDOR_DA_CONVERSA === "openai"
+    ? turnoOpenAIEmFluxo(system, historico, ferramentas, aoTexto, escolha)
+    : turnoAnthropicEmFluxo(system, historico, ferramentas, aoTexto, escolha);
 }
 
 /**
@@ -345,31 +420,7 @@ export async function pedirTurno(
   ferramentas: readonly Ferramenta[],
   escolha: EscolhaDeFerramenta = { modo: "livre" }
 ): Promise<TurnoDoModelo> {
-  const { tools, tool_choice } = ofertaDoPasso(ferramentas, escolha);
-  const corpo = {
-    model: MODELO_DA_CONVERSA,
-    max_tokens: MAX_TOKENS,
-    system: sistemaCacheado(system),
-    messages: mensagensDaConversa(historico.slice(-FALAS_MANTIDAS)),
-    tools,
-    tool_choice,
-    thinking: { type: "adaptive" as const },
-    output_config: { effort: ESFORCO },
-  };
-
-  const MAX = 3;
-  let ultimo: unknown;
-  for (let tentativa = 1; tentativa <= MAX; tentativa++) {
-    try {
-      return turnoDaResposta(await cliente().messages.create(corpo));
-    } catch (e) {
-      ultimo = e;
-      const recuperavel =
-        e instanceof Anthropic.RateLimitError ||
-        (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503));
-      if (!recuperavel || tentativa === MAX) break;
-      await new Promise((r) => setTimeout(r, 1200 * tentativa));
-    }
-  }
-  throw erroLegivel(ultimo);
+  return PROVEDOR_DA_CONVERSA === "openai"
+    ? turnoOpenAI(system, historico, ferramentas, escolha)
+    : turnoAnthropic(system, historico, ferramentas, escolha);
 }

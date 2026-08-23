@@ -39,12 +39,15 @@ test("a preferência de TEXTO bate com `provedorConfigurado`", () => {
   const fonte = semComentarios(ler("lib/agentes/provedorIA.ts"));
   const bloco = /export function provedorConfigurado[\s\S]*?\n\}/.exec(fonte);
   assert.ok(bloco, "não achei `provedorConfigurado`");
-  const ordem = [...bloco[0].matchAll(/return "(anthropic|gemini)"/g)].map((m) => m[1]);
-  // forçado gemini, forçado anthropic, então anthropic, então gemini
-  assert.deepEqual(ordem, ["gemini", "anthropic", "anthropic", "gemini"]);
+  const ordem = [...bloco[0].matchAll(/return "(openai|anthropic|gemini)"/g)].map((m) => m[1]);
+  // forçado openai, forçado gemini, forçado anthropic, então openai, então
+  // anthropic, então gemini. (23/08/2026: só o ChatGPT — a OpenAI na frente.)
+  assert.deepEqual(ordem, ["openai", "gemini", "anthropic", "openai", "anthropic", "gemini"]);
 
   // E o comportamento tem que seguir essa ordem:
   assert.equal(textoAtivo({ ANTHROPIC_API_KEY: "a", GEMINI_API_KEY: "g" }), "anthropic");
+  assert.equal(textoAtivo({ OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", GEMINI_API_KEY: "g" }), "openai");
+  assert.equal(textoAtivo({ OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", IA_PROVEDOR: "anthropic" }), "anthropic");
   assert.equal(
     textoAtivo({ ANTHROPIC_API_KEY: "a", GEMINI_API_KEY: "g", IA_PROVEDOR: "gemini" }),
     "gemini"
@@ -58,11 +61,11 @@ test("a preferência de IMAGEM bate com `provedorDeImagemConfigurado`", () => {
   const bloco = /export function provedorDeImagemConfigurado[\s\S]*?\n\}/.exec(fonte);
   assert.ok(bloco, "não achei `provedorDeImagemConfigurado`");
   const ordem = [...bloco[0].matchAll(/return "(openai|gemini)"/g)].map((m) => m[1]);
-  assert.deepEqual(ordem, ["openai", "gemini", "gemini", "openai"]);
+  assert.deepEqual(ordem, ["openai", "gemini", "openai", "gemini"]);
 
-  // Com as DUAS chaves o Gemini continua sendo o de imagem — é o teste que
-  // impede pôr a chave da OpenAI e quebrar a geração que está no ar.
-  assert.equal(imagemAtiva({ OPENAI_API_KEY: "o", GEMINI_API_KEY: "g" }), "gemini");
+  // Com as DUAS chaves a OpenAI é a de imagem (23/08/2026: só o ChatGPT).
+  assert.equal(imagemAtiva({ OPENAI_API_KEY: "o", GEMINI_API_KEY: "g" }), "openai");
+  assert.equal(imagemAtiva({ OPENAI_API_KEY: "o", GEMINI_API_KEY: "g", IA_IMAGEM_PROVEDOR: "gemini" }), "gemini");
   assert.equal(
     imagemAtiva({ OPENAI_API_KEY: "o", GEMINI_API_KEY: "g", IA_IMAGEM_PROVEDOR: "openai" }),
     "openai"

@@ -178,12 +178,22 @@ test("T1: `obrigado` FILTRA as ferramentas declaradas e obriga a chamar", () => 
   // A garantia fica mais forte: uma ferramenta de escrita não está sequer
   // declarada no primeiro passo, então não há configuração para "cair" e
   // deixá-la alcançável.
+  //
+  // 23/08/2026, ChatGPT: a OpenAI tem `required` (chame ALGUMA) e também não
+  // tem "uma DESTAS". A lista continua sendo a restrição, nos dois caminhos:
+  // `ferramentasDoPasso` filtra pelas permitidas, e a escolha só obriga.
   assert.match(CLIENTE, /permitidas\.has\(f\.nome\)/);
-  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"any"\s*\}/);
+  assert.match(CLIENTE, /tool_choice:\s*escolha\.modo === "obrigado" \? "required" : "auto"/, "OpenAI: obrigado = required");
+  assert.match(CLIENTE, /type:\s*escolha\.modo === "obrigado" \? "any" : "auto"/, "Anthropic: obrigado = any");
+  // E os dois caminhos montam a lista pela MESMA função filtrada.
+  assert.match(CLIENTE, /ferramentasDaOpenAI\(ferramentasDoPasso\(ferramentas, escolha\)\)/);
+  assert.match(CLIENTE, /ferramentasDaAnthropic\(ferramentasDoPasso\(ferramentas, escolha\)\)/);
 });
 
 test("T4: `livre` oferece todas e deixa o modelo decidir", () => {
-  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"auto"\s*\}/);
+  const fn = /function ferramentasDoPasso[\s\S]*?\n\}/.exec(CLIENTE);
+  assert.ok(fn, "não achei `ferramentasDoPasso`");
+  assert.match(fn[0], /return \[\.\.\.ferramentas\];/, "no livre, a lista é a inteira");
 });
 
 test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo com `any`", () => {

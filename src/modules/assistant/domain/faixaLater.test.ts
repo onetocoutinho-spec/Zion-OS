@@ -9,7 +9,7 @@ import { blocoDasTendencias, tendenciasObservadas } from "./tendenciasObservadas
 import { blocoDoPerfil, normalizarPerfil } from "./perfilDeConteudo";
 import { canaisNaoConferidos, limiteDoTituloNoCanal, regrasDoCanal } from "@/modules/publication/domain/regrasDoCanal";
 import { avaliarTituloProposto } from "@/modules/publication/domain/preparacaoDoAnuncio";
-import { cabeReserva, rotaDoModelo } from "@/lib/agentes/roteamentoDeModelo";
+import { cabeReserva, provedorRoteado, rotaDoModelo } from "@/lib/agentes/roteamentoDeModelo";
 
 const raiz = new URL("../../../", import.meta.url);
 const ler = (rel: string) =>
@@ -120,4 +120,18 @@ test("roteamento de modelo: tabela por tarefa, reserva só em sobrecarga, degrad
   assert.match(prov, /degradado: r\.degradado === true/);
   const conv = ler("lib/agentes/conversaComFerramentas.ts");
   assert.match(conv, /MODELO_DA_CONVERSA = rotaDoModelo\("conversa"\)\.principal/);
+});
+
+test("23/08/2026 — só o ChatGPT: a tabela roteia por provedor, e a OpenAI vem na frente quando a chave existe", () => {
+  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  assert.equal(provedorRoteado(so), "openai");
+  assert.deepEqual(rotaDoModelo("estruturada", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
+  assert.deepEqual(rotaDoModelo("conversa", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
+  const ambos = { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", OPENAI_MODELO_CONVERSA: "gpt-5-mini", OPENAI_MODEL_RESERVA: "gpt-4.1" } as NodeJS.ProcessEnv;
+  assert.equal(provedorRoteado(ambos), "openai");
+  assert.deepEqual(rotaDoModelo("conversa", ambos), { principal: "gpt-5-mini", reserva: "gpt-4.1" });
+  assert.deepEqual(rotaDoModelo("estruturada", ambos), { principal: "gpt-5", reserva: "gpt-4.1" });
+  // Pedir o Claude por nome ainda vale.
+  assert.equal(provedorRoteado({ ...ambos, IA_PROVEDOR: "anthropic" }), "anthropic");
+  assert.equal(rotaDoModelo("conversa", { ...ambos, IA_PROVEDOR: "anthropic" }).principal, "claude-sonnet-5");
 });

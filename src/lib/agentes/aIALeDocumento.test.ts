@@ -35,7 +35,7 @@ import {
   type ChamadaIA,
 } from "./provedorIA.ts";
 
-const CHAVES = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "IA_PROVEDOR"] as const;
+const CHAVES = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "IA_PROVEDOR"] as const;
 
 /** Roda `f` com um ambiente montado, e devolve o ambiente como estava. */
 function comAmbiente<T>(env: Partial<Record<(typeof CHAVES)[number], string>>, f: () => T): T {
@@ -58,6 +58,20 @@ const base: ChamadaIA = { system: "s", mensagem: "m", schema: SCHEMA };
 test("com as duas chaves, quem atende é o Claude — não o free tier", () => {
   comAmbiente({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: "a" }, () => {
     assert.equal(provedorConfigurado(), "anthropic");
+  });
+});
+
+test("com as TRÊS chaves, quem atende é a OpenAI — decisão do dono em 23/08/2026", () => {
+  // "quero utilizar somente o ChatGPT". A chave da OpenAI no servidor basta
+  // para tudo ir para ela; o Claude continua alcançável por nome.
+  comAmbiente({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o" }, () => {
+    assert.equal(provedorConfigurado(), "openai");
+  });
+  comAmbiente({ ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o", IA_PROVEDOR: "anthropic" }, () => {
+    assert.equal(provedorConfigurado(), "anthropic");
+  });
+  comAmbiente({ OPENAI_API_KEY: "o" }, () => {
+    assert.equal(provedorConfigurado(), "openai");
   });
 });
 
@@ -87,7 +101,7 @@ test("o Gemini RECUSA anexo — não responde sobre um documento que não viu", 
   await comAmbiente({ GEMINI_API_KEY: "g", IA_PROVEDOR: "gemini" }, async () => {
     await assert.rejects(
       () => chamarIAEstruturada({ ...base, anexos: [{ tipo: "pdf", base64: "JVBERi0=" }] }),
-      /Anexos.*só funcionam com o Claude/,
+      /Anexos.*só funcionam com a OpenAI ou o Claude/,
       "o caminho Gemini aceitou um anexo — ele seria descartado em silêncio"
     );
   });

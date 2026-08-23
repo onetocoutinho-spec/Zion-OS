@@ -17,9 +17,11 @@ Modelo pronto: **`.env.staging.example`** (na raiz do repo). Copie para `.env.st
 | `GEMINI_API_KEY` | server-only | `src/lib/agentes/provedorIA.ts`, `provedorImagem.ts` | Só p/ IA/imagens |
 | `GEMINI_MODEL` | server-only | `provedorIA.ts` | Opcional (default no código) |
 | `GEMINI_IMAGE_MODEL` | server-only | `provedorImagem.ts` | Opcional |
-| `ANTHROPIC_API_KEY` | server-only | `provedorIA.ts` | Opcional (alternativa ao Gemini) |
+| `OPENAI_API_KEY` | server-only | `provedorIA.ts`, `openai.ts`, `provedorImagem.ts` | A IA padrão (ChatGPT) desde 23/08/2026 |
+| `OPENAI_MODEL` / `OPENAI_MODELO_CONVERSA` | server-only | `roteamentoDeModelo.ts` | Opcional (padrão gpt-5) |
+| `ANTHROPIC_API_KEY` | server-only | `provedorIA.ts` | Opcional (só com IA_PROVEDOR=anthropic) |
 | `ANTHROPIC_MODEL` | server-only | `provedorIA.ts` | Opcional |
-| `IA_PROVEDOR` | server-only | `provedorIA.ts` | Opcional (força gemini/anthropic) |
+| `IA_PROVEDOR` | server-only | `provedorIA.ts` | Opcional (força openai/anthropic/gemini) |
 | `CRON_SECRET` | server-only | `src/app/api/otimizar/worker/route.ts` | Só p/ worker |
 
 > Para os **testes de autenticação/isolamento e do token** (o núcleo da Etapa 1), bastam as 2 do Supabase + as 3 do ML. IA/worker são opcionais.

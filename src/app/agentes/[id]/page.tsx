@@ -239,7 +239,7 @@ export default function AgenteDetalhePage() {
               )}
             </Button>
             <span className="text-[11px] text-zinc-600">
-              Usa a API Claude quando a ANTHROPIC_API_KEY está configurada no servidor.
+              Usa a API da OpenAI (ChatGPT) quando a OPENAI_API_KEY está configurada no servidor.
             </span>
           </div>
         </form>

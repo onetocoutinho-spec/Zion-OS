@@ -33,7 +33,7 @@ export interface OpcoesEsteira {
 
 /**
  * Roda a esteira de anúncio (A1→A2→A9→A4→A10) via /api/agentes/esteira.
- * Sem ANTHROPIC_API_KEY no servidor, devolve um anúncio simulado com aviso.
+ * Sem OPENAI_API_KEY no servidor, devolve um anúncio simulado com aviso.
  */
 export async function rodarEsteira(
   briefing: string,
@@ -62,7 +62,7 @@ export async function rodarEsteira(
       anuncio: anuncioSimulado(opcoes.produto ?? ""),
       tipo: "Simulada",
       aviso:
-        "ANTHROPIC_API_KEY não configurada — a esteira rodou em modo simulado. Configure a chave no .env.local do servidor para a geração real.",
+        "OPENAI_API_KEY não configurada — a esteira rodou em modo simulado. Configure a chave no .env.local do servidor para a geração real.",
     };
   }
 

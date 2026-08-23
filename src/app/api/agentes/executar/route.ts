@@ -1,6 +1,6 @@
 // Execução real de Agentes IA via provedor de IA (Gemini ou Claude).
 //
-// Roda somente no servidor: as chaves (GEMINI_API_KEY / ANTHROPIC_API_KEY) vêm
+// Roda somente no servidor: as chaves (OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY) vêm
 // do .env.local e nunca chegam ao navegador. Sem nenhuma chave, retorna 503 e o
 // frontend cai para a execução simulada (comportamento das versões anteriores).
 
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         configurado: false,
-        erro: "Nenhum provedor de IA configurado (GEMINI_API_KEY ou ANTHROPIC_API_KEY). A execução será simulada.",
+        erro: "Nenhum provedor de IA configurado (OPENAI_API_KEY). A execução será simulada.",
       },
       { status: 503 }
     );

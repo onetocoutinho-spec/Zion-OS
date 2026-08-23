@@ -11,8 +11,14 @@
 // nunca erro de entrada). Quem chama registra `degradado: true` quando a
 // reserva foi usada. Env continua mandando: a tabela lê as variáveis e dá o
 // padrão. Puro.
+//
+// Desde 23/08/2026 a tabela é POR PROVEDOR: o dono decidiu que o projeto fala
+// só com o ChatGPT, então a linha da OpenAI é a que vale quando a chave dela
+// existe. As linhas da Anthropic ficam para quem pedir por nome
+// (`IA_PROVEDOR=anthropic`) — ver `provedorConfigurado`.
 
 export type TarefaDeIA = "estruturada" | "conversa";
+export type ProvedorRoteado = "openai" | "anthropic";
 
 export interface RotaDeModelo {
   principal: string;
@@ -20,7 +26,40 @@ export interface RotaDeModelo {
   reserva: string | null;
 }
 
-export function rotaDoModelo(tarefa: TarefaDeIA, env: NodeJS.ProcessEnv = process.env): RotaDeModelo {
+/**
+ * Os padrões da OpenAI. `gpt-5` para tudo — o chat com ferramentas de vários
+ * passos é onde o raciocínio importa, e a reserva é o `gpt-5-mini`, mais
+ * barato e raramente sobrecarregado ao mesmo tempo. Sobrescrevíveis por env.
+ */
+export const MODELO_OPENAI_PADRAO = "gpt-5";
+export const MODELO_OPENAI_RESERVA_PADRAO = "gpt-5-mini";
+
+/** Qual provedor a tabela deve ler — a MESMA ordem de `provedorConfigurado`. */
+export function provedorRoteado(env: NodeJS.ProcessEnv = process.env): ProvedorRoteado {
+  const forcado = env.IA_PROVEDOR?.toLowerCase();
+  if (forcado === "anthropic" && env.ANTHROPIC_API_KEY) return "anthropic";
+  if (forcado === "openai" && env.OPENAI_API_KEY) return "openai";
+  if (env.OPENAI_API_KEY) return "openai";
+  return "anthropic";
+}
+
+export function rotaDoModelo(
+  tarefa: TarefaDeIA,
+  env: NodeJS.ProcessEnv = process.env,
+  provedor: ProvedorRoteado = provedorRoteado(env)
+): RotaDeModelo {
+  if (provedor === "openai") {
+    if (tarefa === "conversa") {
+      return {
+        principal: env.OPENAI_MODELO_CONVERSA ?? env.OPENAI_MODEL ?? MODELO_OPENAI_PADRAO,
+        reserva: env.OPENAI_MODELO_CONVERSA_RESERVA ?? env.OPENAI_MODEL_RESERVA ?? MODELO_OPENAI_RESERVA_PADRAO,
+      };
+    }
+    return {
+      principal: env.OPENAI_MODEL ?? MODELO_OPENAI_PADRAO,
+      reserva: env.OPENAI_MODEL_RESERVA ?? MODELO_OPENAI_RESERVA_PADRAO,
+    };
+  }
   if (tarefa === "conversa") {
     return {
       principal: env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5",

@@ -286,7 +286,7 @@ export function comAGradeDoCadastro(
   };
 }
 
-/** Resultado simulado (fallback sem ANTHROPIC_API_KEY) — demonstra a tela. */
+/** Resultado simulado (fallback sem OPENAI_API_KEY) — demonstra a tela. */
 export function anuncioSimulado(nomeProduto: string): AnuncioGerado {
   const nome = nomeProduto || "Produto";
   return {
@@ -295,7 +295,7 @@ export function anuncioSimulado(nomeProduto: string): AnuncioGerado {
     palavrasChavePrincipais: ["[simulação] palavra-chave principal"],
     palavrasChaveSecundarias: ["conforto", "qualidade", "envio rápido"],
     descricaoCompleta:
-      "[SIMULAÇÃO] Descrição completa gerada pela esteira. Configure a ANTHROPIC_API_KEY no servidor para a geração real com os prompts A1–A12.",
+      "[SIMULAÇÃO] Descrição completa gerada pela esteira. Configure a OPENAI_API_KEY no servidor para a geração real com os prompts A1–A12.",
     descricaoCurta: "[SIMULAÇÃO] Descrição curta de exemplo.",
     fichaTecnica: [
       { atributo: "Marca", valor: "⚠️ informação necessária" },
@@ -315,7 +315,7 @@ export function anuncioSimulado(nomeProduto: string): AnuncioGerado {
     pendencias: [
       "⚠️ informação necessária: grade de variações do produto (cor, tamanho, SKU, EAN e estoque de cada uma).",
     ],
-    sugestoes: ["Configure a ANTHROPIC_API_KEY para rodar a esteira de verdade."],
+    sugestoes: ["Configure a OPENAI_API_KEY para rodar a esteira de verdade."],
     vereditoA10: "reprovado",
     motivoVeredito: "Execução simulada — faltam dados reais e a chave da API. Nada foi publicado.",
   };

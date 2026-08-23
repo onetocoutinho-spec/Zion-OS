@@ -66,13 +66,13 @@ const SEM_NADA = {
 
 // ── A preferência, que ainda não virou ──────────────────────────────────────
 
-test("com as DUAS chaves, o provedor continua sendo o Gemini", () => {
-  // O teste que mais importa. Pôr a chave da OpenAI no servidor não pode
-  // quebrar a geração de imagem de quem está no ar — e não vai, até o caminho
-  // da OpenAI existir. Quando existir, ESTE teste é o que muda, à mão, junto
-  // com a linha de preferência.
+test("com as DUAS chaves, o provedor é a OpenAI — decisão do dono em 23/08/2026", () => {
+  // Era "continua sendo o Gemini", enquanto o caminho da OpenAI não existia.
+  // Ele existe e está medido desde 06/08/2026, e em 23/08/2026 o dono decidiu
+  // usar só o ChatGPT. Este teste mudou à mão, junto com a linha de
+  // preferência — como o comentário original previa.
   comAmbiente({ ...SEM_NADA, GEMINI_API_KEY: "g", OPENAI_API_KEY: "o" }, () => {
-    assert.equal(provedorDeImagemConfigurado(), "gemini");
+    assert.equal(provedorDeImagemConfigurado(), "openai");
     assert.equal(imagemIAConfigurada(), true);
     assert.equal(motivoImagemIndisponivel(), null);
   });
