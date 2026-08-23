@@ -20,7 +20,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ContextoAutorizado } from "@/lib/auth/serverAuthorization";
 
-export type TipoDeConsumo = "esteira" | "agente" | "catalogo";
+// `chat` é um turno do fio de conversa (/api/assistente/conversa) — até seis
+// passos de modelo por turno, a chamada mais cara do produto. `intencao` é a
+// classificação de uma frase (/api/assistente), barata mas também paga.
+// As duas ficaram FORA da cota quando a 060 nasceu: o ZION-COST-001 seguia
+// aberto na porta principal.
+export type TipoDeConsumo = "esteira" | "agente" | "catalogo" | "chat" | "intencao";
 
 export type ResultadoCota =
   | { ok: true; limite: number | null; usado: number | null }
