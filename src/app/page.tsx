@@ -159,7 +159,11 @@ export default function VisaoGeralPage() {
         <Table headers={HEADERS}>
           {r.linhas.map((l) => (
             <tr key={l.loja.id} className="hover:bg-white/[0.02]">
-              <TdMain>
+              {/* O status vai em `sub`, não num <p> próprio: TdMain já envolve
+                  os filhos num <p>, e <p> dentro de <p> é HTML inválido — o
+                  navegador fecha o primeiro sozinho e o React avisa que a
+                  hidratação vai divergir. */}
+              <TdMain sub={l.loja.status}>
                 <Link
                   href={`/clientes/${l.loja.id}`}
                   onClick={() => definirLoja(l.loja.id, { soContexto: true })}
@@ -167,7 +171,6 @@ export default function VisaoGeralPage() {
                 >
                   {l.loja.empresa}
                 </Link>
-                <p className="mt-0.5 text-xs text-zinc-500">{l.loja.status}</p>
               </TdMain>
               <Td>
                 <EstadoDaLoja saude={l.saude} comRotulo />
