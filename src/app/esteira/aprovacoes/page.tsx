@@ -12,6 +12,7 @@ import {
   Rocket,
   ExternalLink,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
@@ -23,6 +24,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { useLiveQuery } from "@/lib/hooks";
+import { EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { formatDateTime } from "@/lib/format";
 import {
   listarAnunciosGerados,
@@ -56,9 +58,12 @@ const HEADERS = [
 export default function AprovacoesPage() {
   const { lojaId } = useLojaAtual();
   const [status, setStatus] = useState("Todos");
-  const [busy, setBusy] = useState(false);
+  // `busy` por ID, não global: um clique em "Aprovar" desabilitava Aprovar e
+  // Rejeitar de TODAS as linhas sem dizer qual estava em andamento.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msgAcao, setMsgAcao] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
-  const { data } = useLiveQuery(listarAnunciosGerados);
+  const { data, carregando } = useLiveQuery(listarAnunciosGerados);
   const registros = data ?? [];
 
   const lojasComRegistro = useMemo(() => [...new Set(registros.map((r) => r.clienteId))], [registros]);
@@ -74,22 +79,32 @@ export default function AprovacoesPage() {
       (status === "Todos" || ROTULO_STATUS_ANUNCIO_GERADO[r.status] === status)
   );
 
-  async function aprovar(id: string) {
-    setBusy(true);
+  // Antes: try/finally sem catch. Falha → `busy` voltava a false e NADA
+  // aparecia; sucesso também não confirmava (dependia da lista revalidar).
+  async function executar(id: string, rotulo: string, acao: () => Promise<unknown>) {
+    setBusy(id);
+    setMsgAcao(null);
     try {
-      await aprovarAnuncioGerado(id);
+      await acao();
+      setMsgAcao({ tipo: "ok", texto: `${rotulo} — feito.` });
+    } catch (e) {
+      setMsgAcao({
+        tipo: "erro",
+        texto: `${rotulo} falhou: ${e instanceof Error ? e.message : "erro desconhecido"}. Tente de novo.`,
+      });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  async function rejeitar(id: string) {
-    setBusy(true);
-    try {
-      await rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.");
-    } finally {
-      setBusy(false);
-    }
+  function aprovar(id: string) {
+    return executar(id, "Aprovar", () => aprovarAnuncioGerado(id));
+  }
+
+  function rejeitar(id: string) {
+    return executar(id, "Rejeitar", () =>
+      rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.")
+    );
   }
 
   return (
@@ -101,10 +116,12 @@ export default function AprovacoesPage() {
         status={status}
         setStatus={setStatus}
         busy={busy}
+        msgAcao={msgAcao}
         aprovar={aprovar}
         rejeitar={rejeitar}
         stats={{ aguardando, rascunhos, aprovadosN, publicados }}
         data={data}
+        carregando={carregando}
       />
     </>
   );
@@ -117,21 +134,26 @@ function ConteudoAprovacoes({
   status,
   setStatus,
   busy,
+  msgAcao,
   aprovar,
   rejeitar,
   stats,
   data,
+  carregando,
 }: {
   registros: AnuncioGeradoRegistro[];
   filtrados: AnuncioGeradoRegistro[];
   lojasComRegistro: string[];
   status: string;
   setStatus: (v: string) => void;
-  busy: boolean;
+  /** ID do registro cuja ação está em andamento; null quando nenhuma. */
+  busy: string | null;
+  msgAcao: { tipo: "ok" | "erro"; texto: string } | null;
   aprovar: (id: string) => void;
   rejeitar: (id: string) => void;
   stats: { aguardando: number; rascunhos: number; aprovadosN: number; publicados: number };
   data: AnuncioGeradoRegistro[] | null | undefined;
+  carregando: boolean;
 }) {
   const { aguardando, rascunhos, aprovadosN, publicados } = stats;
   const [preview, setPreview] = useState<AnuncioGeradoRegistro | null>(null);
@@ -214,7 +236,7 @@ function ConteudoAprovacoes({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-busy={carregando && !data ? "true" : undefined}>
         <StatCard label="Aguardando aprovação" value={aguardando} icon={Clock} tone="yellow" hint="Passaram no A10 — revisar e aprovar" />
         <StatCard label="Rascunhos" value={rascunhos} icon={ShieldCheck} tone="gray" hint="Com pendências ou A10 reprovado" />
         <StatCard label="Aprovados" value={aprovadosN} icon={CheckCircle2} tone="green" hint="Prontos para publicar (Fase 2)" />
@@ -231,17 +253,28 @@ function ConteudoAprovacoes({
         />
       </div>
 
-      {msgPub && (
+      {/* As mensagens nascem longe da linha que as gerou (a ação sai de um botão
+          da tabela ou do modal, que fecha antes). role="alert"/"status" faz o
+          leitor de tela anunciar em vez de esperar que a pessoa ache. */}
+      {[msgPub, msgAcao].filter(Boolean).map((m, i) => (
         <p
+          key={i}
+          role={m!.tipo === "ok" ? "status" : "alert"}
           className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
-            msgPub.tipo === "ok"
+            m!.tipo === "ok"
               ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
               : "border-red-500/20 bg-red-500/10 text-red-400"
           }`}
         >
-          {msgPub.tipo === "ok" ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
-          {msgPub.texto}
+          {m!.tipo === "ok" ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+          {m!.texto}
         </p>
+      ))}
+
+      {carregando && !data && (
+        <div aria-busy="true" className="rounded-lg border border-white/5 p-4">
+          <EsqueletoDeTabela colunas={6} linhas={5} />
+        </div>
       )}
 
       <Table headers={HEADERS}>
@@ -269,7 +302,7 @@ function ConteudoAprovacoes({
                   {r.produto ? ` · ${r.produto}` : ""} · {r.marketplace}
                 </p>
                 <details className="mt-1">
-                  <summary className="cursor-pointer text-[11px] text-violet-400 hover:text-violet-300">
+                  <summary className="inline-flex items-center text-[11px] text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11">
                     ver detalhes
                   </summary>
                   <div className="mt-1.5 max-w-xl space-y-1 rounded-lg bg-black/20 p-2.5 text-xs text-zinc-400">
@@ -291,8 +324,13 @@ function ConteudoAprovacoes({
                 </details>
               </td>
               <Td>
+                {/* A faixa vai em TEXTO, não só na cor do badge: verde/âmbar/
+                    vermelho sozinhos não dizem nada a quem não distingue cor. */}
                 <Badge tone={r.notaDiagnostico >= 75 ? "green" : r.notaDiagnostico >= 55 ? "yellow" : "red"}>
-                  {`${r.notaDiagnostico}`}
+                  {r.notaDiagnostico}
+                  <span className="ml-1 opacity-70">
+                    {r.notaDiagnostico >= 75 ? "boa" : r.notaDiagnostico >= 55 ? "atenção" : "ruim"}
+                  </span>
                 </Badge>
               </Td>
               <Td>
@@ -323,7 +361,7 @@ function ConteudoAprovacoes({
                       href={r.mlPermalink}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20 [@media(pointer:coarse)]:min-h-11"
                     >
                       <ExternalLink size={12} /> Ver no ML
                     </a>
@@ -332,18 +370,18 @@ function ConteudoAprovacoes({
                     variant="success"
                     className="px-2 py-1 text-xs"
                     onClick={() => aprovar(r.id)}
-                    disabled={busy || !podeAprovar}
+                    disabled={busy !== null || !podeAprovar}
                     title={podeAprovar ? "Aprovar para publicação" : "Trava: A10 + zero pendências"}
                   >
-                    <ShieldCheck size={13} /> Aprovar
+                    {busy === r.id ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Aprovar
                   </Button>
                   <Button
                     variant="danger"
                     className="px-2 py-1 text-xs"
                     onClick={() => rejeitar(r.id)}
-                    disabled={busy || !podeRejeitar}
+                    disabled={busy !== null || !podeRejeitar}
                   >
-                    <XCircle size={13} /> Rejeitar
+                    {busy === r.id ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Rejeitar
                   </Button>
                 </div>
               </Td>

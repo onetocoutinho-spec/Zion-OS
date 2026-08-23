@@ -170,7 +170,13 @@ function TrilhaDeContexto({ tela }: { tela: string }) {
         <span className="hidden text-zinc-500 sm:block">Todas as lojas</span>
       )}
       <span className="hidden text-zinc-700 sm:block" aria-hidden="true">›</span>
-      <h1 className="truncate font-medium text-zinc-200">{tela}</h1>
+      {/* `<span>`, não `<h1>`: o título da tela é da página (PageHeader). Com a
+          trilha também em h1, toda tela tinha DOIS h1 e o leitor de tela
+          anunciava a página duas vezes com nomes diferentes. A trilha é
+          navegação ("onde estou"), e `aria-current` diz isso sem roubar o nível. */}
+      <span aria-current="page" className="truncate font-medium text-zinc-200">
+        {tela}
+      </span>
     </nav>
   );
 }

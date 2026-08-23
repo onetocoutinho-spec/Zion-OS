@@ -105,6 +105,35 @@ body {
 }
 
 /* ===========================================================================
+   O QUE É CLICÁVEL MOSTRA A MÃO
+   ===========================================================================
+
+   O preflight do Tailwind 4 tirou o `cursor: pointer` de `button` (a v3 tinha).
+   Medido em 23/08/2026 com a régua `ui-ux-pro-max` ("cursor-pointer on all
+   clickable elements"): nenhum botão do produto mostrava a mão — "Aprovar",
+   "Rodar esteira", "Publicar" apareciam com a seta de texto parado.
+
+   UM lugar, como a regra do movimento reduzido acima: `Button.tsx` ganhar a
+   classe resolveria 1 de 3 formas de botão (há `<button>` cru e `<summary>`
+   em dezenas de telas) e exigiria que cada tela nova lembrasse.
+
+   Desabilitado mostra o "não": `disabled:pointer-events-none` do Button deixa
+   a seta passar, e quem vê a mão sobre um botão cinza clica e espera. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+label[for] {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* ===========================================================================
    NO CELULAR, A LINHA DA TABELA É UM CARTÃO
    ===========================================================================
 
