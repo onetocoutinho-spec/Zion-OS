@@ -561,6 +561,20 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
  */
 export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
   {
+    nome: "investigar",
+    efeito: "rascunha",
+    descricao:
+      "ABRE UMA INVESTIGAÇÃO que atravessa turnos. Use quando o pedido for AMPLO ou PROFUNDO demais para caber numa resposta — \"descobre o que está errado na loja\", \"arruma os anúncios da Modare\", \"dá uma geral\", \"resolve o que der\" — e você perceber que vai precisar de muitas consultas. Chame no COMEÇO do turno, com a pergunta e o que pretende apurar; depois continue consultando normalmente. O que você descobrir fica guardado e volta no próximo turno, então não precisa terminar tudo agora. Chame de novo com concluida=true quando tiver a resposta. NÃO use para pergunta simples: uma consulta e uma resposta não são investigação.",
+    parametros: {
+      type: "object",
+      properties: {
+        pergunta: { type: "string", description: "O que se quer descobrir, em uma frase." },
+        proximoPasso: { type: "string", description: "O que ainda falta apurar depois desta rodada." },
+        concluida: { type: "boolean", description: "true quando a investigação chegou à resposta." },
+      },
+    },
+  },
+  {
     nome: "gerenciar_cadastro",
     efeito: "rascunha",
     descricao:

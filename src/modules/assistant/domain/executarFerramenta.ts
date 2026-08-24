@@ -83,6 +83,11 @@ import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
 import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
 import { habilidades, lacunaPorAssunto, lacunas } from "@/modules/assistant/domain/habilidades";
 import {
+  motivoDeParar,
+  podeContinuar,
+  type Investigacao,
+} from "@/modules/assistant/domain/investigacao";
+import {
   gradesDosProdutos,
   LACUNA_DA_FAMILIA,
   referenciasRepetidas,
@@ -183,6 +188,18 @@ export interface ContextoDasFerramentas {
   comparar?: () => Promise<ComparacaoDeLojas>;
   /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
   diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
+  /**
+   * A INVESTIGAÇÃO em andamento nesta conversa — o trabalho que não coube num
+   * turno. Quem fecha a rodada é a ROTA, no fim do turno: o achado é a própria
+   * resposta que a lojista leu, e o modelo não deveria pagar um passo para
+   * repeti-la.
+   */
+  investigacao?: {
+    atual: Investigacao | null;
+    abrir: (pergunta: string, proximoPasso: string) => Promise<Investigacao | null>;
+    anotar: (proximoPasso: string) => void;
+    concluir: () => void;
+  };
   /**
    * O SINAL de pedido sem capacidade — gravado quando a conferência encontra
    * uma lacuna. Opcional: sem ele a resposta honesta continua saindo, só não
@@ -1110,6 +1127,9 @@ export async function executarFerramenta(
 
     case "o_que_eu_consigo":
       return conferirHabilidade(args, ctx);
+
+    case "investigar":
+      return conduzirInvestigacao(args, ctx);
 
     case "diagnostico_do_anuncio": {
       const produtoId = texto(args, "produtoId");
@@ -2624,6 +2644,87 @@ async function consultarVendas(
         "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
         "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
       ].join(" "),
+    },
+  };
+}
+
+/**
+ * "Descobre o que está errado" — o trabalho que atravessa turnos.
+ *
+ * Esta ferramenta não consulta nada: ela ABRE (ou fecha) o rascunho onde os
+ * achados ficam. Quem descobre são as outras, no mesmo turno e nos seguintes.
+ */
+async function conduzirInvestigacao(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.investigacao) {
+    return {
+      saida: {
+        erro: "Não consigo abrir uma investigação por aqui agora.",
+        comoResponder: "Responda com o que der no turno de hoje, e diga o que ficou de fora. Não prometa continuar.",
+      },
+    };
+  }
+  const { atual } = ctx.investigacao;
+  const concluida = args.concluida === true;
+  const proximoPasso = texto(args, "proximoPasso");
+
+  if (concluida) {
+    if (!atual) {
+      return { saida: { montada: false, motivo: "Não há investigação aberta para concluir." } };
+    }
+    ctx.investigacao.concluir();
+    return {
+      saida: {
+        concluida: true,
+        pergunta: atual.pergunta,
+        rodadasGastas: atual.rodadas + 1,
+        comoResponder:
+          "Entregue a CONCLUSÃO da investigação: o que você descobriu, o que isso significa, e o que fazer. Diga também o que NÃO deu para apurar. Se houver ação possível, ofereça — mas nada é feito sem o clique.",
+      },
+    };
+  }
+
+  if (atual) {
+    // Já existe: não abre outra. Duas investigações no mesmo fio seriam duas
+    // memórias competindo, e o modelo não teria como escolher.
+    if (proximoPasso) ctx.investigacao.anotar(proximoPasso);
+    const parar = podeContinuar(atual) ? null : motivoDeParar(atual);
+    return {
+      saida: {
+        jaAberta: true,
+        pergunta: atual.pergunta,
+        rodada: atual.rodadas + 1,
+        achadosAteAqui: atual.achados.length,
+        ...(parar ? { naoPodeContinuar: parar } : {}),
+        comoResponder: parar
+          ? "Diga que esta investigação chegou ao limite e entregue a conclusão com o que já apurou, dizendo o que ficou sem resposta."
+          : "Continue de onde parou usando as ferramentas de leitura. Não repita as consultas que já constam dos achados.",
+      },
+    };
+  }
+
+  const pergunta = texto(args, "pergunta");
+  if (!pergunta) {
+    return { saida: { montada: false, motivo: "Preciso saber o que investigar." } };
+  }
+  const nova = await ctx.investigacao.abrir(pergunta, proximoPasso);
+  if (!nova) {
+    return {
+      saida: {
+        erro: "Não consegui abrir a investigação.",
+        comoResponder: "Siga respondendo com o que couber neste turno e diga o que ficou de fora. Não prometa continuar depois.",
+      },
+    };
+  }
+  return {
+    saida: {
+      aberta: true,
+      pergunta: nova.pergunta,
+      rodada: 1,
+      comoResponder:
+        "NÃO anuncie que abriu uma investigação — isso é detalhe interno. Continue trabalhando: use as ferramentas de leitura para apurar, e responda com o que descobriu. O que ficar faltando volta no próximo turno.",
     },
   };
 }

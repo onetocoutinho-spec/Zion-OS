@@ -49,6 +49,7 @@ with classificacao(tabela, e_operacao, motivo) as (values
   ('copilot_acoes',           true,  'o que o copiloto fez na loja'),
   ('copilot_cadastros',       true,  'cadastro por conversa'),
   ('copilot_conversas',       true,  'a conversa sobre a loja'),
+  ('copilot_investigacoes',   true,  'o que o Copilot investigou na loja (071)'),
   ('copilot_mensagens',       true,  'idem'),
   ('copilot_propostas',       true,  'proposta de preço/título a confirmar'),
   ('execucoes_lote',          true,  'o lote que ela rodou'),

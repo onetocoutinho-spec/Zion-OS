@@ -205,7 +205,8 @@ test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
   // seria um ANÚNCIO NO AR sem ninguém ter pedido — reversível, sim, mas visível
   // para quem compra antes de ser visível para quem vende.
   // 12 desde 22/08/2026: `propor_tarefas` e `propor_imagem`, PROPOSTAS.
-  assert.equal(COM_EFEITO.length, 12);
+  // 13 desde 24/08/2026: `investigar`, RASCUNHO — ver a decisão no T12.
+  assert.equal(COM_EFEITO.length, 13);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
@@ -398,9 +399,22 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
   // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
   // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
-  assert.equal(FERRAMENTAS.length, 32);
+  //
+  // De 32 para 33 em 24/08/2026: `investigar`, RASCUNHO — 33 / 20 / 2 / 10 / 1.
+  //
+  // É a etapa 5 do Operador Universal, e a única peça do catálogo que muda o
+  // TEMPO de um pedido: um turno tem seis passos e 45 s, e "descobre o que
+  // está errado nessa loja" tem dez a vinte operações. Em vez de um turno
+  // maior (a plataforma mata a função, e um turno que morre perde o que
+  // descobriu), a investigação vira rascunho que atravessa turnos — o mesmo
+  // movimento de `copilot_cadastros`, com teto de 4 rodadas.
+  //
+  // RASCUNHO e não proposta: ela não autoriza nada, não tem alvo e não tem
+  // valor. Só LÊ e ANOTA — toda escrita continua passando por
+  // `copilot_propostas` e pelo clique. O poder de agir não mudou: segue 1.
+  assert.equal(FERRAMENTAS.length, 33);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
-  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
+  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });

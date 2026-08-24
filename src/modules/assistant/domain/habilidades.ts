@@ -139,6 +139,7 @@ const DETALHE: Readonly<Record<string, { oQueFaz: string; precisaDe: readonly st
   diagnostico_do_anuncio: { oQueFaz: "Diz por que um anúncio não vende, separando quem não é visto de quem é visto e não converte.", precisaDe: ["loja conectada ao Mercado Livre", "o produto com anúncio publicado"] },
   o_que_eu_consigo: { oQueFaz: "Confere o que eu sei e o que eu não sei fazer, e explica o motivo real quando algo não é possível.", precisaDe: [] },
   meu_perfil_de_conteudo: { oQueFaz: "Mostra o tom, o público e as palavras que a loja definiu em Configurações.", precisaDe: [] },
+  investigar: { oQueFaz: "Abre uma investigação que atravessa turnos, guardando o que já descobriu para continuar depois.", precisaDe: [] },
   gerenciar_cadastro: { oQueFaz: "Cadastra um produto novo conversando, guardando o rascunho entre as falas.", precisaDe: [] },
   propor_gravacao: { oQueFaz: "Propõe preencher peso ou custo, num produto ou em lote.", precisaDe: ["o valor dito pela lojista"] },
   preparar_resolucao: { oQueFaz: "Propõe a pendência que o sistema consegue resolver sozinho, como o peso das variantes irmãs.", precisaDe: ["variantes irmãs já pesadas"] },

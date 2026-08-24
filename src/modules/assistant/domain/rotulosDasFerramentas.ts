@@ -41,6 +41,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   propor_anuncio: "a proposta de anúncio",
   propor_tarefas: "a lista de tarefas",
   propor_imagem: "a proposta de imagem",
+  investigar: "a investigação em andamento",
   gerenciar_cadastro: "o cadastro em andamento",
   reativar_anuncio: "a reativação no Mercado Livre",
 };

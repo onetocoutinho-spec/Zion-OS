@@ -223,12 +223,31 @@ test("as quatro listas não se sobrepõem e formam o catálogo", () => {
   assert.deepEqual(foraDeLugar, [], "uma ferramenta que AGE está numa lista que promete não agir");
 });
 
-test("o cadastro é UMA ferramenta com operações, não vinte microferramentas", () => {
+test("cada rascunho é UMA ferramenta grossa, não vinte microferramentas", () => {
   // Vinte nomes parecidos fariam o modelo escolher entre vinte caminhos a cada
   // frase. A interpretação é dele; a transição válida é do domínio.
-  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
-  const cadastro = FERRAMENTAS_DE_RASCUNHO[0];
-  assert.equal(cadastro.nome, "gerenciar_cadastro");
+  //
+  // DE 1 PARA 2 em 24/08/2026: `investigar` (Operador Universal, etapa 5).
+  // Ela NÃO é o cadastro fatiado — é outro rascunho, de outra natureza: o
+  // cadastro guarda um PRODUTO em construção, a investigação guarda o que já
+  // se DESCOBRIU sobre uma pergunta grande demais para um turno. Os dois
+  // atravessam falas e nenhum dos dois escreve no catálogo, que é o que
+  // `rascunha` significa.
+  //
+  // A regra que este teste guarda continua valendo para as duas: uma ferramenta
+  // por assunto, grossa. Por isso a asserção seguinte — a investigação não pode
+  // virar "abrir_investigacao", "anotar_achado", "concluir_investigacao".
+  assert.deepEqual(
+    FERRAMENTAS_DE_RASCUNHO.map((f) => f.nome).sort(),
+    ["gerenciar_cadastro", "investigar"]
+  );
+  const investigar = FERRAMENTAS_DE_RASCUNHO.find((f) => f.nome === "investigar")!;
+  const propsInv = investigar.parametros.properties as Record<string, unknown>;
+  assert.deepEqual(Object.keys(propsInv).sort(), ["concluida", "pergunta", "proximoPasso"]);
+  // Ela abre e fecha; quem descobre são as leituras. A descrição precisa dizer
+  // isso, senão o modelo a chama esperando que ela consulte algo.
+  assert.match(investigar.descricao, /NÃO use para pergunta simples/);
+  const cadastro = FERRAMENTAS_DE_RASCUNHO.find((f) => f.nome === "gerenciar_cadastro")!;
   const props = cadastro.parametros.properties as Record<string, { enum?: string[] }>;
   assert.ok(props.operacao.enum?.includes("propor_criacao"));
   assert.ok(props.operacao.enum?.includes("cancelar"));

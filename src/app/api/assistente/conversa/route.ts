@@ -44,6 +44,16 @@ import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { varrerAnunciosDaLoja } from "@/lib/services/anunciosNoArNoServidor";
 import { registrarLacuna } from "@/lib/services/lacunasDoCopilot";
+import {
+  abrirInvestigacao,
+  fecharRodada,
+  investigacaoAberta,
+} from "@/lib/services/investigacoesDoCopilot";
+import {
+  frasePendente,
+  resumoDaInvestigacao,
+  type Investigacao,
+} from "@/modules/assistant/domain/investigacao";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
 import { tendenciasDaLoja } from "@/lib/services/decisoesDoCopilot";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
@@ -484,6 +494,17 @@ export async function POST(request: Request) {
     return { ...perfil, observado };
   });
   const medido = await contextoDoCopilotNoServidor(clienteDaSessao, corpo.produtoAbertoId ?? null);
+  /**
+   * A investigação em andamento, e o que este turno decidiu sobre ela.
+   *
+   * Mutáveis de propósito: a ferramenta `investigar` roda DENTRO do laço e
+   * precisa poder abrir uma; quem fecha a rodada é o fim do turno, que é o
+   * único ponto que conhece o texto final e as fontes consultadas.
+   */
+  let investigacaoDoTurno: Investigacao | null = null;
+  let concluirInvestigacao = false;
+  let proximoPassoDaInvestigacao: string | null = null;
+
   const ctx: ContextoDasFerramentas = {
     pergunta: medido.pergunta,
     produtos: medido.produtos,
@@ -621,6 +642,29 @@ export async function POST(request: Request) {
     // Registrado quando o Copilot confere se sabe fazer algo e descobre que
     // não sabe. É o dado que responde "o que construir a seguir" sem depender
     // de opinião — e ele nasce do pedido real, na palavra de quem operou.
+    // ---- A INVESTIGAÇÃO ----
+    investigacao: {
+      get atual() {
+        return investigacaoDoTurno;
+      },
+      abrir: async (pergunta, proximoPasso) => {
+        const nova = await abrirInvestigacao({
+          clienteId: clienteDaSessao,
+          usuarioId,
+          conversaId: conversaId ?? null,
+          pergunta,
+          proximoPasso,
+        });
+        if (nova) investigacaoDoTurno = nova;
+        return nova;
+      },
+      anotar: (proximoPasso) => {
+        proximoPassoDaInvestigacao = proximoPasso;
+      },
+      concluir: () => {
+        concluirInvestigacao = true;
+      },
+    },
     registrarLacuna: (assunto, pedido) =>
       registrarLacuna({
         clienteId: clienteDaSessao,
@@ -680,6 +724,9 @@ export async function POST(request: Request) {
       draftsAbertos(clienteDaSessao),
       ultimaApresentacao(clienteDaSessao, conversaId),
     ]);
+    // A INVESTIGAÇÃO em andamento neste fio — o trabalho que não coube num
+    // turno. Lida do servidor, como tudo aqui.
+    investigacaoDoTurno = await investigacaoAberta(clienteDaSessao, conversaId);
     ctx.cadastro = {
       agoraISO,
       draft: draftDaConversa,
@@ -847,6 +894,24 @@ Responda só o nome.`,
           status,
           erro,
         });
+      /**
+       * O que já se descobriu nesta investigação — no prompt, uma vez.
+       *
+       * Vazio quando não há investigação aberta, e vazio NÃO é instrução: o
+       * turno segue exatamente como sempre foi.
+       */
+      const linhasDaInvestigacao = resumoDaInvestigacao(investigacaoDoTurno);
+      const blocoDaInvestigacao =
+        linhasDaInvestigacao.length > 0 ? "\n\n" + linhasDaInvestigacao.join("\n") : "";
+      /**
+       * O texto que o modelo JÁ escreveu neste turno, acumulado.
+       *
+       * Existe para o estouro: fora do laço, `turno` não está mais em escopo, e
+       * o que foi escrito antes de o tempo acabar é justamente o achado da
+       * rodada. Sem isto, uma investigação que estoura grava a frase "não
+       * terminei" no lugar do que descobriu.
+       */
+      let textoParcial = "";
       /** Estourou o TEMPO (não os passos). Decidido antes de cada passo. */
       let semTempo = false;
       /** O navegador abortou ("Parar"). Decidido antes de cada passo. */
@@ -878,12 +943,15 @@ Responda só o nome.`,
           // Do passo 1 em diante nada muda: AUTO, com as 17. A leitura já
           // aconteceu, e é dela que a resposta parte.
           const turno = await pedirTurnoEmFluxo(
-            system(medido.produtoAberto?.nome ?? "") + (instrucaoExtra ? `
+            system(medido.produtoAberto?.nome ?? "") + blocoDaInvestigacao + (instrucaoExtra ? `
 
 ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             historico,
             ferramentasDoPapel,
-            (pedaco) => mandar({ tipo: "texto", delta: pedaco }),
+            (pedaco) => {
+              textoParcial += pedaco;
+              mandar({ tipo: "texto", delta: pedaco });
+            },
             passo === 0
               ? { modo: "obrigado", permitidas: PRIMEIRA_ACAO }
               : { modo: "livre" }
@@ -1311,6 +1379,16 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             //
             // Seguro por construção: `gravarTurno` captura o `error`, loga e
             // NUNCA lança — esperar por ela não pode derrubar a resposta.
+            // A RODADA DA INVESTIGAÇÃO fecha aqui, e o achado é a PRÓPRIA
+            // resposta que a lojista leu — não um resumo que o modelo teria de
+            // escrever num passo a mais. Nunca lança: um achado perdido não
+            // pode derrubar a resposta.
+            if (investigacaoDoTurno) {
+              await fecharRodada(investigacaoDoTurno, turno.texto, usadas, {
+                concluir: concluirInvestigacao,
+                ...(proximoPassoDaInvestigacao !== null ? { proximoPasso: proximoPassoDaInvestigacao } : {}),
+              });
+            }
             await registrar("ok");
             if (conversaId) {
               await gravarTurno(clienteDaSessao, conversaId, {
@@ -1753,11 +1831,27 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
         // Duas portas de saída, duas frases: passos esgotados é "me perdi";
         // tempo esgotado é "demorei demais" — e o que já foi lido continua no
         // histórico do banco, então "continua" retoma de onde parou.
+        // COM INVESTIGAÇÃO ABERTA, o estouro deixa de ser um beco.
+        //
+        // Sem ela, "me perdi" era a verdade: o turno acabava e o que foi lido
+        // só sobrevivia no histórico. Com ela, o que foi apurado está gravado,
+        // e a frase que promete continuidade vem do DOMÍNIO — porque promessa
+        // de retomar precisa ser verdade sobre o estado, não sobre a intenção
+        // de quem escreveu a frase.
         const textoDoEstouro = cancelado
           ? "Parei a pedido. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
-          : semTempo
-            ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
-            : "Me perdi no meio do caminho. Pode reformular?";
+          : investigacaoDoTurno
+            ? frasePendente(investigacaoDoTurno)
+            : semTempo
+              ? "Demorei demais nessa e parei antes de terminar. O que já consultei ficou guardado — diga \"continua\" que eu retomo daqui."
+              : "Me perdi no meio do caminho. Pode reformular?";
+        // A rodada gasta conta mesmo no estouro: ela custou os mesmos seis
+        // passos. Não contá-la deixaria a investigação girar para sempre.
+        if (investigacaoDoTurno) {
+          await fecharRodada(investigacaoDoTurno, textoParcial, usadas, {
+            ...(proximoPassoDaInvestigacao !== null ? { proximoPasso: proximoPassoDaInvestigacao } : {}),
+          });
+        }
         await registrar(
           semTempo ? "timeout" : "parcial",
           cancelado ? "cancelado_pelo_navegador" : semTempo ? "orcamento_de_tempo" : "teto_de_passos"
