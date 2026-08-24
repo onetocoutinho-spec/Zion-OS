@@ -69,6 +69,18 @@ export interface GradeDoProduto {
   semLeitura: number;
   /** `ativos / (anuncios - semLeitura)`. `null` quando nada foi medido. */
   cobertura: number | null;
+  /**
+   * A MESMA cobertura, em porcentagem inteira — 6, não 0,0625.
+   *
+   * Existe porque a fração vazou crua para a tela em 24/08/2026: o Copilot
+   * escreveu "Cobertura (percentual de anúncios no ar): 0.0625". Quem lê aquilo
+   * como porcentagem entende 0,06% — cem vezes menor que os 6% reais.
+   *
+   * A conversão poderia ficar por conta do modelo, e é exatamente por isso que
+   * ela não fica: número que a lojista lê sai do domínio na forma em que deve
+   * ser lido. O mesmo motivo de nenhum número deste projeto passar pelo modelo.
+   */
+  coberturaPercentual: number | null;
   situacao: SituacaoDaGrade;
   /** O que mais bloqueia, na palavra do ML, do maior para o menor. */
   motivos: { motivo: string; quantos: number }[];
@@ -133,6 +145,11 @@ export function gradesDosProdutos(linhas: readonly LinhaDaFila[]): GradeDoProdut
       // Sobre os MEDIDOS: incluir os não medidos faria a cobertura mentir
       // para baixo, e "não sei" viraria "está ruim".
       cobertura: medidos > 0 ? ativos / medidos : null,
+      // Arredonda, e nunca para zero quando há ALGUM anúncio no ar: "0%" com um
+      // anúncio vivo é falso, e é o tipo de falso que faz a pessoa desistir do
+      // produto. 1 de 16 vira 6%; 1 de 300 vira 1%, não 0%.
+      coberturaPercentual:
+        medidos > 0 ? (ativos > 0 ? Math.max(1, Math.round((ativos / medidos) * 100)) : 0) : null,
       situacao: situacaoDaGrade(doProduto.length, ativos, medidos),
       motivos: [...motivos.entries()]
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

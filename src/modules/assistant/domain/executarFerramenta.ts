@@ -2949,13 +2949,17 @@ async function diagnosticarGrade(ctx: ContextoDasFerramentas): Promise<Resultado
       produtosComAnuncio: grades.length,
       produtosComGradeQuebrada: quebradas.length,
       anunciosForaDoAr: grades.reduce((t, g) => t + g.fora, 0),
-      piores: quebradas.slice(0, 10),
+      // A FRAÇÃO NÃO SAI DAQUI. `cobertura` é 0,0625; quem lê aquilo rotulado
+      // como percentual entende 0,06%, cem vezes menos que os 6% reais — e foi
+      // o que a tela mostrou em 24/08/2026. Só a porcentagem inteira atravessa.
+      piores: quebradas.slice(0, 10).map(({ cobertura: _fracao, ...g }) => g),
       referenciasParaConferir: referencias.slice(0, 10),
       conferenciaDeReferenciaDisponivel: Boolean(ctx.analise),
       oQueNaoSei: LACUNA_DA_FAMILIA,
       comoResponder: [
         "EXPLIQUE O FORMATO ANTES DE APONTAR O DEFEITO: em categoria de calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo. Muitos anúncios para um produto NÃO é o problema.",
         "O problema é a GRADE PARTIDA. Para cada produto em 'piores' diga: X anúncios, Y no ar, e o que está bloqueando o resto (campo motivos). 'so_um_no_ar' é o caso mais caro: quem procura outro número não encontra a loja.",
+        "'coberturaPercentual' JÁ ESTÁ EM PORCENTAGEM INTEIRA: escreva \"6%\", nunca \"0,06\" nem \"0.0625\". Não converta nada — o número sai pronto.",
         "Repita o campo oQueNaoSei quando a pergunta for sobre AGRUPAMENTO: não dá para afirmar que estão ou não agrupados numa família no ML, porque esse vínculo não é guardado aqui.",
         "Sobre 'referenciasParaConferir': diga 'confira se são o mesmo produto' e mostre os modelos lado a lado. NUNCA diga que são duplicados — dois materiais do mesmo modelo é cadastro legítimo, e quem decide é a lojista.",
         "Se 'conferenciaDeReferenciaDisponivel' for falso, não diga que não há referência repetida: diga que não conferiu.",

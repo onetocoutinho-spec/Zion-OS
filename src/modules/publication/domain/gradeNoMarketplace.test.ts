@@ -146,3 +146,36 @@ test("a saída da ferramenta manda dizer a lacuna e não acusar duplicidade", ()
   assert.match(fn[0], /confira|conferir/i);
   assert.match(fn[0], /nunca (diga|afirme).*duplicad/i);
 });
+
+test("a cobertura sai em PORCENTAGEM INTEIRA — a fração crua enganava em 100×", () => {
+  // Medido na tela em 24/08/2026: "Cobertura (percentual de anúncios no ar):
+  // 0.0625". São 6%, e quem lê aquilo como percentual entende 0,06%.
+  const g = gradesDosProdutos([
+    ...monta(1, { statusMarketplace: "active" }),
+    ...monta(15, { statusMarketplace: "paused" }),
+  ]);
+  assert.equal(g[0].cobertura, 1 / 16);
+  assert.equal(g[0].coberturaPercentual, 6);
+});
+
+test("um anúncio no ar NUNCA vira 0% — 0% com anúncio vivo faz desistir do produto", () => {
+  const g = gradesDosProdutos([
+    ...monta(1, { statusMarketplace: "active" }),
+    ...monta(299, { statusMarketplace: "paused" }),
+  ]);
+  assert.equal(g[0].coberturaPercentual, 1, "arredondar 0,33% para baixo diria 0%");
+  // Zero de verdade continua zero.
+  const nada = gradesDosProdutos(monta(5, { statusMarketplace: "paused" }));
+  assert.equal(nada[0].coberturaPercentual, 0);
+  // E sem medição não vira número nenhum.
+  const semLeitura = gradesDosProdutos(monta(3, { statusMarketplace: null }));
+  assert.equal(semLeitura[0].coberturaPercentual, null);
+});
+
+test("a ferramenta NÃO entrega a fração ao modelo — só a porcentagem", () => {
+  const exec = readFileSync(new URL("../../assistant/domain/executarFerramenta.ts", import.meta.url), "utf8");
+  const fn = /async function diagnosticarGrade[\s\S]*?\n\}/.exec(exec);
+  assert.ok(fn, "não achei `diagnosticarGrade`");
+  assert.match(fn[0], /piores: quebradas\.slice\(0, 10\)\.map\(\(\{ cobertura: _fracao, \.\.\.g \}\) => g\)/);
+  assert.match(fn[0], /JÁ ESTÁ EM PORCENTAGEM INTEIRA/);
+});
