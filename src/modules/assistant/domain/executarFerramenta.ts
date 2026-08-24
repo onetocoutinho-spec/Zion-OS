@@ -79,7 +79,8 @@ import type { PedidoCongelado } from "./propostaDePublicacao";
 import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
 import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
-import type { RetratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
+import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
+import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
 import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
 import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
 import { lerSlot } from "./briefingDeImagem";
@@ -177,12 +178,14 @@ export interface ContextoDasFerramentas {
   /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
   diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
   /**
-   * O retrato dos anúncios da loja no marketplace — quantos no ar, por estado.
+   * As linhas de anúncio da loja — o INSUMO das duas leituras de marketplace.
    *
-   * Lê o que JÁ foi medido (050/051) com a data da medição, e não o ML ao
-   * vivo: ~800 anúncios não cabem no orçamento de um turno. Ver o serviço.
+   * Um porto só, e não dois, porque "quantos estão no ar" e "o que fazer com os
+   * que não estão" leem exatamente as mesmas linhas. As contas são do domínio
+   * (`retratoDosAnuncios`, `filaDeCorrecao`); o porto só traz o dado, medido
+   * (050/051) e com a data — não o ML ao vivo, que não cabe no turno.
    */
-  noAr?: () => Promise<RetratoDosAnuncios>;
+  noAr?: () => Promise<LinhaDaFila[]>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -1086,6 +1089,9 @@ export async function executarFerramenta(
 
     case "anuncios_ativos":
       return listarAnunciosNoAr(ctx);
+
+    case "anuncios_a_corrigir":
+      return listarFilaDeCorrecao(ctx);
 
     case "diagnostico_do_anuncio": {
       const produtoId = texto(args, "produtoId");
@@ -2605,6 +2611,49 @@ async function consultarVendas(
 }
 
 /**
+ * "O que está parado?" — os anúncios fora do ar, por motivo do ML.
+ *
+ * O que esta saída carrega e nenhuma outra carregava: para cada motivo, o que o
+ * Zion CONSEGUE fazer hoje. `capacidade_ausente` é uma resposta — prometer
+ * conserto sobre um motivo que ninguém sabe ler seria a invenção que o A0
+ * cometia.
+ */
+async function listarFilaDeCorrecao(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const f = filaDeCorrecao(await ctx.noAr());
+  if (f.foraDoAr === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Nenhum anúncio desta loja está fora do ar — ou o estado deles ainda não foi medido.",
+        comoResponder:
+          "Diga isso como está. Se quiser conferir o total, use anuncios_ativos, que separa os medidos dos não medidos.",
+      },
+    };
+  }
+  return {
+    saida: {
+      foraDoAr: f.foraDoAr,
+      comMotivo: f.comMotivo,
+      semMotivoDeclarado: f.semMotivo,
+      lidoHaDias: f.lidoHaDias,
+      grupos: f.grupos,
+      comoResponder: [
+        "Comece pelo MAIOR grupo — é onde está o trabalho. Para cada motivo diga: quantos, o que significa (o campo 'significa'), e o que fazer (o campo 'oQueFazer'), nesta ordem.",
+        "O campo 'acao' diz o que EU consigo fazer. 'capacidade_ausente' significa que eu NÃO resolvo isso hoje: diga isso com as palavras de 'oQueFazer', sem prometer conserto e sem sugerir que a lojista espere por mim.",
+        "'nunca_reativar' é infração: avise explicitamente para NÃO reativar, porque reincidência pune a conta.",
+        "'reativar' é a única que eu executo: ofereça reativar os anúncios pausados pela própria loja, um a um, e diga que confiro posse e infração antes.",
+        "SEMPRE diga há quantos dias esta leitura foi feita (campo lidoHaDias) — a fila é do que foi MEDIDO, não do Mercado Livre agora. Para atualizar, a lojista usa Importar do Mercado Livre na tela de Produtos.",
+        "Cite os produtos onde o motivo se concentra (campo 'produtos'): a loja resolve por produto, não por anúncio solto.",
+        "'semMotivoDeclarado' são anúncios fora do ar cujo motivo o ML não informou — não invente causa para eles.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
  * "Quais anúncios estão ativos?" — a loja inteira, por estado.
  *
  * A saída separa os TRÊS eixos que a 050 pagou caro para distinguir: no ar,
@@ -2615,7 +2664,7 @@ async function listarAnunciosNoAr(ctx: ContextoDasFerramentas): Promise<Resultad
   if (!ctx.noAr) {
     return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
   }
-  const r = await ctx.noAr();
+  const r = retratoDosAnuncios(await ctx.noAr());
   if (r.comMlb === 0) {
     return {
       saida: {

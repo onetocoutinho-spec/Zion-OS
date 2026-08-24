@@ -316,6 +316,13 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "anuncios_a_corrigir",
+    efeito: "le",
+    descricao:
+      "A FILA DE CORREÇÃO: os anúncios que NÃO estão no ar, agrupados pelo MOTIVO que o Mercado Livre deu (waiting_for_patch = o ML pediu uma alteração; paused_by_seller = a loja pausou; out_of_stock = estoque zerou; forbidden = infração; picture_download_pending = fotos ainda baixando). Para cada motivo diz o que significa, em quais produtos se concentra, e O QUE O ZION CONSEGUE FAZER com ele hoje — inclusive quando a resposta é 'não consigo, e é por isto'. Use para \"o que está parado?\", \"por que meus anúncios não estão no ar?\", \"o que preciso corrigir?\", \"resolve o que der\".",
+    parametros: { type: "object", properties: {} },
+  },
+  {
     nome: "diagnostico_do_anuncio",
     efeito: "le",
     descricao:

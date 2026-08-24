@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 17 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 18 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 17);
+  assert.equal(PRIMEIRA_ACAO.length, 18);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas dezessete — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas dezoito — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -123,8 +123,24 @@ test("T2: são exatamente estas dezessete — a matriz que autorizou a decisão"
   // junto. Em 24/08/2026 a loja real tinha 489 ativos medidos havia 10 dias —
   // uma resposta que omitisse a data afirmaria sobre hoje o que se sabe sobre
   // a semana passada.
+  // A DÉCIMA OITAVA entrou em 24/08/2026: `anuncios_a_corrigir`.
+  //
+  // Ela é a pergunta SEGUINTE à da décima sétima. `anuncios_ativos` responde
+  // "quantos estão no ar"; esta responde "e o que fazer com os 303 que não
+  // estão" — agrupados pelo motivo que o próprio ML deu.
+  //
+  // Por que pode ser a PRIMEIRA ação: mesma leitura, mesma tabela, mesmo
+  // tenant, mesmo porto memoizado — nenhuma linha nova é lida. O pior caso de
+  // um "obrigado" dispará-la é a loja ver a própria fila de correção.
+  //
+  // E ela nasce com uma coisa que nenhuma outra leitura tinha: o campo `acao`,
+  // que diz o que o Zion CONSEGUE fazer com cada motivo — inclusive
+  // `capacidade_ausente`. Dos 148 `waiting_for_patch` medidos em produção, o
+  // Zion sabe QUE o ML pediu alteração e não sabe QUAL campo; prometer conserto
+  // ali seria a invenção que o A0 cometia. A lacuna declarada é a resposta.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
+    "anuncios_a_corrigir",
     "anuncios_ativos",
     "comparar_lojas",
     "contar",
@@ -336,13 +352,17 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // De 28 para 29 em 24/08/2026: `anuncios_ativos`, LEITURA — 29 / 17. Só a
   // leitura subiu; continuam 1 rascunho, 10 propostas e 1 ação.
   //
+  // E de 29 para 30 no mesmo dia: `anuncios_a_corrigir`, LEITURA — 30 / 18.
+  // Mesma varredura, pergunta seguinte: o que fazer com os que não estão no ar.
+  // Ver a matriz do T2.
+  //
   // A decisão veio de uma pergunta feita em produção — "quais são os anúncios
   // ativos hoje?" — que o Copilot respondeu não saber, com razão: as 16
   // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
   // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
   // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
-  assert.equal(FERRAMENTAS.length, 29);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 17);
+  assert.equal(FERRAMENTAS.length, 30);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 18);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

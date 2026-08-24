@@ -365,6 +365,13 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   //
   // De 28 para 29 em 24/08/2026: `anuncios_ativos`, LEITURA — 29 / 17.
   //
+  // De 29 para 30, no mesmo dia: `anuncios_a_corrigir`, LEITURA — 30 / 18. Ela
+  // lê as MESMAS linhas de `anuncios_ativos` (um porto memoizado por turno) e
+  // responde a pergunta seguinte: dos que não estão no ar, o que fazer com
+  // cada motivo. Traz o campo `acao`, que inclui `capacidade_ausente` — a
+  // primeira leitura do catálogo que declara o que o Zion NÃO sabe fazer, em
+  // vez de calar. Nenhuma das outras vinte e nove mudou de efeito.
+  //
   // A decisão nasceu de uma pergunta feita em produção: "quais são os anúncios
   // ativos hoje?". O Copilot respondeu que não sabia, e estava certo — as 16
   // leituras olhavam PRODUTO, nunca a loja inteira no marketplace. O dado
@@ -378,8 +385,8 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // vai na resposta: em 24/08/2026 os 489 ativos tinham sido medidos havia 10
   // dias, e a ferramenta manda dizer isso. Nenhuma das outras vinte e oito
   // mudou de efeito.
-  assert.equal(FERRAMENTAS.length, 29);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 17);
+  assert.equal(FERRAMENTAS.length, 30);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 18);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -390,11 +397,12 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 
 test("T17: o C1R continua intacto", () => {
   // 11 desde 10/08/2026; 12 com `tabela_de_medidas`; 13 desde 22/08/2026 com
-  // `vendas_da_loja`; 17 desde 24/08/2026 com `anuncios_ativos` (ver a matriz
-  // em primeiraAcao.test). O que o C1R garante NÃO mudou e é o que a linha
-  // seguinte prova: toda ferramenta da primeira ação tem efeito `le`. O número
-  // trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 17);
+  // `vendas_da_loja`; 18 desde 24/08/2026 com `anuncios_ativos` e
+  // `anuncios_a_corrigir` (ver a matriz em primeiraAcao.test). O que o C1R
+  // garante NÃO mudou e é o que a linha seguinte prova: toda ferramenta da
+  // primeira ação tem efeito `le`. O número trava o tamanho; o laço trava a
+  // natureza.
+  assert.equal(PRIMEIRA_ACAO.length, 18);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

@@ -42,7 +42,7 @@ import { contextoDoCopilotNoServidor, resolverLojaDoCopilot } from "@/lib/servic
 import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
 import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
-import { anunciosNoArNoServidor } from "@/lib/services/anunciosNoArNoServidor";
+import { varrerAnunciosDaLoja } from "@/lib/services/anunciosNoArNoServidor";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
 import { tendenciasDaLoja } from "@/lib/services/decisoesDoCopilot";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
@@ -614,7 +614,7 @@ export async function POST(request: Request) {
     // Uma vez por turno: "quantos ativos?" seguido de "e os pausados?" na
     // mesma fala lê o banco uma vez só. A leitura é do estado JÁ MEDIDO, com
     // a data — ver `anunciosNoArNoServidor`.
-    noAr: umaVezPorTurno(() => anunciosNoArNoServidor(clienteDaSessao)),
+    noAr: umaVezPorTurno(() => varrerAnunciosDaLoja(clienteDaSessao)),
     // ---- AS VENDAS ----
     //
     // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado

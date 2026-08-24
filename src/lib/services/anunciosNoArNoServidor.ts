@@ -15,8 +15,10 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { lerTudoPaginado } from "@/lib/supabase/paginado";
 import { retratoDosAnuncios, type AnuncioLido, type RetratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
+import { filaDeCorrecao, type FilaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
 
 interface LinhaDoBanco {
+  produto_id: string | null;
   ml_item_id: string | null;
   ml_permalink: string | null;
   status_marketplace: string | null;
@@ -35,27 +37,45 @@ function tituloDaLinha(l: LinhaDoBanco): string {
   return doAnuncio || (l.produto ?? "").trim() || (l.ml_item_id ?? "sem título");
 }
 
-/** O retrato dos anúncios de UMA loja. O tenant é da sessão, nunca do corpo. */
-export async function anunciosNoArNoServidor(clienteId: string): Promise<RetratoDosAnuncios> {
+/**
+ * A varredura dos anúncios de UMA loja — UM select para as duas perguntas.
+ *
+ * "Quantos estão no ar" e "o que fazer com os que não estão" leem exatamente as
+ * mesmas linhas. Duas varreduras seriam dois pagamentos pela mesma leitura, e o
+ * laço do chat memoiza esta função por turno.
+ *
+ * O tenant é da sessão, nunca do corpo.
+ */
+export async function varrerAnunciosDaLoja(clienteId: string): Promise<LinhaDaFila[]> {
   const admin = getSupabaseAdmin();
   const linhas = await lerTudoPaginado<LinhaDoBanco>("anúncios no marketplace", (de, ate) =>
     admin
       .from("anuncios_gerados")
-      .select("ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, sub_status_marketplace, produto, anuncio")
+      .select("produto_id, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, sub_status_marketplace, produto, anuncio")
       .eq("cliente_id", clienteId)
       .not("ml_item_id", "is", null)
       .order("id", { ascending: true })
       .range(de, ate)
   );
 
-  const lidos: AnuncioLido[] = linhas.map((l) => ({
+  return linhas.map((l) => ({
     mlItemId: l.ml_item_id,
     titulo: tituloDaLinha(l),
     permalink: l.ml_permalink,
     statusMarketplace: l.status_marketplace,
     statusMarketplaceEm: l.status_marketplace_em,
     subStatusMarketplace: l.sub_status_marketplace,
+    produto: l.produto,
+    produtoId: l.produto_id,
   }));
+}
 
-  return retratoDosAnuncios(lidos);
+/** O retrato: quantos no ar, quantos em cada outro estado, e a idade da medição. */
+export async function anunciosNoArNoServidor(clienteId: string): Promise<RetratoDosAnuncios> {
+  return retratoDosAnuncios((await varrerAnunciosDaLoja(clienteId)) as AnuncioLido[]);
+}
+
+/** A fila de correção: os que NÃO estão no ar, agrupados pelo motivo do ML. */
+export async function filaDeCorrecaoNoServidor(clienteId: string): Promise<FilaDeCorrecao> {
+  return filaDeCorrecao(await varrerAnunciosDaLoja(clienteId));
 }
