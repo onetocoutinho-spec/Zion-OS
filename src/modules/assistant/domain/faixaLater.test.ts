@@ -9,7 +9,7 @@ import { blocoDasTendencias, tendenciasObservadas } from "./tendenciasObservadas
 import { blocoDoPerfil, normalizarPerfil } from "./perfilDeConteudo";
 import { canaisNaoConferidos, limiteDoTituloNoCanal, regrasDoCanal } from "@/modules/publication/domain/regrasDoCanal";
 import { avaliarTituloProposto } from "@/modules/publication/domain/preparacaoDoAnuncio";
-import { cabeReserva, provedorRoteado, rotaDoModelo } from "@/lib/agentes/roteamentoDeModelo";
+import { cabeReserva, provedorRoteado, rotaDoModelo, type AmbienteDoModelo } from "@/lib/agentes/roteamentoDeModelo";
 
 const raiz = new URL("../../../", import.meta.url);
 const ler = (rel: string) =>
@@ -107,7 +107,8 @@ test("só o Mercado Livre tem regra conferida; os outros valem a mais estrita, e
 // ---- modelo ----
 
 test("roteamento de modelo: tabela por tarefa, reserva só em sobrecarga, degradado registrado", () => {
-  const env = { ANTHROPIC_MODEL: "claude-opus-5", ANTHROPIC_MODEL_RESERVA: "claude-sonnet-5", ANTHROPIC_MODELO_CONVERSA: "claude-sonnet-5" } as NodeJS.ProcessEnv;
+  // Sem cast: `rotaDoModelo` pede `AmbienteDoModelo` — só as variáveis que lê.
+  const env: AmbienteDoModelo = { ANTHROPIC_MODEL: "claude-opus-5", ANTHROPIC_MODEL_RESERVA: "claude-sonnet-5", ANTHROPIC_MODELO_CONVERSA: "claude-sonnet-5" };
   assert.deepEqual(rotaDoModelo("estruturada", env), { principal: "claude-opus-5", reserva: "claude-sonnet-5" });
   assert.equal(rotaDoModelo("conversa", env).reserva, null, "o fio em streaming não tem reserva por desenho");
   assert.equal(cabeReserva({ status: 529 }), true);
@@ -123,11 +124,11 @@ test("roteamento de modelo: tabela por tarefa, reserva só em sobrecarga, degrad
 });
 
 test("23/08/2026 — só o ChatGPT: a tabela roteia por provedor, e a OpenAI vem na frente quando a chave existe", () => {
-  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  const so: AmbienteDoModelo = { OPENAI_API_KEY: "o" };
   assert.equal(provedorRoteado(so), "openai");
   assert.deepEqual(rotaDoModelo("estruturada", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
   assert.deepEqual(rotaDoModelo("conversa", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
-  const ambos = { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", OPENAI_MODELO_CONVERSA: "gpt-5-mini", OPENAI_MODEL_RESERVA: "gpt-4.1" } as NodeJS.ProcessEnv;
+  const ambos: AmbienteDoModelo = { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", OPENAI_MODELO_CONVERSA: "gpt-5-mini", OPENAI_MODEL_RESERVA: "gpt-4.1" };
   assert.equal(provedorRoteado(ambos), "openai");
   assert.deepEqual(rotaDoModelo("conversa", ambos), { principal: "gpt-5-mini", reserva: "gpt-4.1" });
   assert.deepEqual(rotaDoModelo("estruturada", ambos), { principal: "gpt-5", reserva: "gpt-4.1" });

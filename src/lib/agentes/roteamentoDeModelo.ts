@@ -34,8 +34,51 @@ export interface RotaDeModelo {
 export const MODELO_OPENAI_PADRAO = "gpt-5";
 export const MODELO_OPENAI_RESERVA_PADRAO = "gpt-5-mini";
 
+/**
+ * O QUE O ROTEAMENTO LÊ DO AMBIENTE — e só isto.
+ *
+ * A assinatura pedia `NodeJS.ProcessEnv`, o ambiente INTEIRO, para ler onze
+ * variáveis. Duas consequências, e a segunda é a que doeu:
+ *
+ * 1. A assinatura não dizia o que a função consulta. Quem fosse trocar o nome
+ *    de uma variável tinha de ler o corpo para saber se este módulo a usava.
+ * 2. O `ProcessEnv` do Next declara `NODE_ENV` como OBRIGATÓRIO
+ *    (`node_modules/next/types/global.d.ts`), então montar um ambiente de
+ *    teste com três variáveis exigia `as NodeJS.ProcessEnv` — um cast que o
+ *    compilador recusa desde então, e que era o que fazia `typecheck:test`
+ *    falhar em `faixaLater.test.ts`. O cast não era um detalhe do teste: era
+ *    o teste dizendo que a assinatura pedia demais.
+ *
+ * `process.env` continua servindo (o índice `[key: string]` dele satisfaz
+ * estes campos opcionais), então nenhum chamador muda.
+ */
+export interface AmbienteDoModelo {
+  IA_PROVEDOR?: string;
+  ANTHROPIC_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+  OPENAI_MODEL_RESERVA?: string;
+  OPENAI_MODELO_CONVERSA?: string;
+  OPENAI_MODELO_CONVERSA_RESERVA?: string;
+  ANTHROPIC_MODEL?: string;
+  ANTHROPIC_MODEL_RESERVA?: string;
+  ANTHROPIC_MODELO_CONVERSA?: string;
+  ANTHROPIC_MODELO_CONVERSA_RESERVA?: string;
+  /**
+   * O resto do ambiente, ignorado aqui.
+   *
+   * O índice NÃO é decoração: sem ele o tipo teria só campos opcionais e o
+   * TypeScript o trataria como "weak type" — a regra que exige ao menos uma
+   * propriedade DECLARADA em comum entre origem e destino. O `ProcessEnv` do
+   * Node é `interface ProcessEnv extends Dict<string>`, ou seja, índice e mais
+   * nada; nenhuma das onze acima está declarada nele, e passar `process.env`
+   * seria recusado com "has no properties in common".
+   */
+  [outra: string]: string | undefined;
+}
+
 /** Qual provedor a tabela deve ler — a MESMA ordem de `provedorConfigurado`. */
-export function provedorRoteado(env: NodeJS.ProcessEnv = process.env): ProvedorRoteado {
+export function provedorRoteado(env: AmbienteDoModelo = process.env): ProvedorRoteado {
   const forcado = env.IA_PROVEDOR?.toLowerCase();
   if (forcado === "anthropic" && env.ANTHROPIC_API_KEY) return "anthropic";
   if (forcado === "openai" && env.OPENAI_API_KEY) return "openai";
@@ -45,7 +88,7 @@ export function provedorRoteado(env: NodeJS.ProcessEnv = process.env): ProvedorR
 
 export function rotaDoModelo(
   tarefa: TarefaDeIA,
-  env: NodeJS.ProcessEnv = process.env,
+  env: AmbienteDoModelo = process.env,
   provedor: ProvedorRoteado = provedorRoteado(env)
 ): RotaDeModelo {
   if (provedor === "openai") {
