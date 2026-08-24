@@ -180,7 +180,11 @@ test("a frase pronta atravessa — o modelo não recalcula o veredito", () => {
   );
   const fn = /async function diagnosticarGrade\([\s\S]*?\n\}/.exec(exec);
   assert.match(fn![0], /frase: fraseDaFamilia\(r\)/);
-  assert.match(fn![0], /a resposta É o campo 'frase'/);
+  assert.match(fn![0], /diga o campo 'frase' dele UMA VEZ/);
+  // UMA VEZ, e não duas: medido em 24/08/2026, o modelo listou as famílias em
+  // tópicos e DEPOIS citou a frase inteira — a mesma informação repetida, em
+  // 909 tokens de saída, que é justamente a parcela que gasta relógio.
+  assert.match(fn![0], /não recalcule o veredito/);
 });
 
 test("a leitura só acontece com produtoId E com o porto — nunca para os dez piores", () => {
