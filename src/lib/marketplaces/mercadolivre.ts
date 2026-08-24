@@ -1189,7 +1189,23 @@ function mapearItem(it: ItemRaw): AnuncioML {
     // recusou a lista de 31 campos, a leitura caiu para a lista mínima (que não
     // pede `descriptions`), e a tela afirmou "781 sem descrição" sobre um campo
     // que ninguém tinha lido. Ausência virando afirmação, no meu próprio código.
-    temDescricao: it.descriptions == null ? undefined : it.descriptions.length > 0,
+    //
+    // O MESMO DEFEITO VOLTOU EM 24/08/2026, um nível abaixo. A lição de 02/08
+    // tratou `null`, e a lista vazia passou: medido na conta real, o multiget
+    // devolveu `descriptions: []` para 649 de 649 anúncios — cem por cento —
+    // numa loja que vende desde abril. O mapeador transformava isso em
+    // `false`, e a coluna gravou "não tem descrição" para o catálogo inteiro.
+    //
+    // Lista VAZIA não prova ausência: ela é indistinguível de "este endpoint
+    // não popula o campo". O texto da descrição mora em `/items/{id}/description`,
+    // uma rota que este arquivo não chama. Então só o caso NÃO VAZIO afirma
+    // alguma coisa — e o que ele afirma é presença, nunca ausência.
+    //
+    // A assimetria de custo decide o empate: dizer "sem descrição" de um
+    // anúncio que tem manda a lojista reescrever 649 descrições que já
+    // existem. Dizer "não sei" só deixa de responder.
+    temDescricao:
+      it.descriptions != null && it.descriptions.length > 0 ? true : undefined,
     garantia: texto(it.warranty),
     condicao: texto(it.condition),
     videoId: texto(it.video_id),

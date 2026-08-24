@@ -126,3 +126,60 @@ test("a resposta diz sobre QUANTOS ela fala quando a leitura é parcial", () => 
   assert.match(fn![0], /anunciosComLeitura/);
   assert.match(fn![0], /MENOR que 'anunciosConhecidos'/);
 });
+
+// ===========================================================================
+// A PRIMEIRA LEITURA REAL — 24/08/2026
+// ===========================================================================
+//
+// Os sete campos NÃO chegam juntos. Medido na conta:
+//   tipo, datas, vendidos → 649 de 649
+//   saúde, descrição      → 0 de 649
+// Um contador global de "medidos" dizia 649 e o retrato saía inteiro, com
+// "saúde média 0" e "649 sem descrição" com a mesma cara dos verdadeiros.
+
+test("cada eixo tem o PRÓPRIO contador — eles não chegam juntos", () => {
+  const { porEixo } = entradaDaSaude([
+    linha({ mlItemId: "A", tipoAnuncioMl: "gold_pro", vendidosMl: 3, saudeMl: null }),
+    linha({ mlItemId: "B", tipoAnuncioMl: "gold_special", vendidosMl: 0, saudeMl: null }),
+  ]);
+  assert.equal(porEixo.tipo, 2);
+  assert.equal(porEixo.vendidos, 2);
+  assert.equal(porEixo.saude, 0, "saúde não lida contada como lida");
+  assert.equal(porEixo.descricao, 0);
+});
+
+test("a ferramenta OMITE o eixo não lido e DIZ que não leu", () => {
+  const exec = readFileSync(
+    new URL("../../assistant/domain/executarFerramenta.ts", import.meta.url),
+    "utf8"
+  );
+  const fn = /async function saudeDoCatalogo\([\s\S]*?\n\}/.exec(exec);
+  assert.ok(fn, "não achei `saudeDoCatalogo`");
+  // O helper que suprime.
+  assert.match(fn[0], /if \(quantos > 0\) return valor;/);
+  assert.match(fn[0], /naoLidos\.push\(nome\)/);
+  // Os cinco eixos passam por ele.
+  for (const e of ["porEixo.saude", "porEixo.vendidos", "porEixo.descricao", "porEixo.catalogo", "porEixo.tipo"]) {
+    assert.ok(fn[0].includes(e), `${e} não passa pelo filtro de eixo lido`);
+  }
+  assert.match(fn[0], /oQueNaoConsegiLer/);
+  assert.match(fn[0], /NUNCA responda sobre eles/);
+});
+
+test("SÓ LISTA NÃO VAZIA PROVA DESCRIÇÃO — vazia é desconhecido", () => {
+  // O defeito de 02/08 voltou um nível abaixo em 24/08: a lição tratou `null`
+  // e a lista VAZIA passou. O multiget devolveu `descriptions: []` para 649 de
+  // 649, o mapeador virou `false`, e a coluna gravou "não tem descrição" para
+  // o catálogo inteiro de uma loja que vende desde abril.
+  const ml = readFileSync(new URL("../../../lib/marketplaces/mercadolivre.ts", import.meta.url), "utf8");
+  assert.match(
+    ml,
+    /temDescricao:\s*\n?\s*it\.descriptions != null && it\.descriptions\.length > 0 \? true : undefined/,
+    "lista vazia voltou a virar `false` — ausência afirmando"
+  );
+  assert.doesNotMatch(
+    ml,
+    /temDescricao: it\.descriptions == null \? undefined : it\.descriptions\.length > 0/,
+    "o mapeamento antigo voltou"
+  );
+});

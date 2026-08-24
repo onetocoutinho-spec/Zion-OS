@@ -3150,7 +3150,7 @@ async function saudeDoCatalogo(ctx: ContextoDasFerramentas): Promise<ResultadoDa
   if (!ctx.noAr) {
     return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
   }
-  const { anuncios, medidos } = entradaDaSaude(await ctx.noAr());
+  const { anuncios, medidos, porEixo } = entradaDaSaude(await ctx.noAr());
   if (anuncios.length === 0) {
     return {
       saida: {
@@ -3180,22 +3180,46 @@ async function saudeDoCatalogo(ctx: ContextoDasFerramentas): Promise<ResultadoDa
   }
 
   const r = retratarCatalogo(anuncios);
+
+  // EIXO NÃO LIDO NÃO APARECE.
+  //
+  // Medido em 24/08/2026, na primeira leitura real: os sete campos NÃO chegam
+  // juntos. Tipo de anúncio, datas e vendas vieram em 649 de 649; saúde e
+  // descrição, em ZERO de 649. Mandar `saudeMedia: 0` e `semDescricao: 649` ao
+  // lado dos números verdadeiros os apresentaria com a mesma cara — e "649 sem
+  // descrição" mandaria a lojista reescrever 649 textos que provavelmente
+  // existem. Eixo que ninguém leu some da saída, e o que faltou é DITO.
+  const naoLidos: string[] = [];
+  const eixo = <T>(quantos: number, nome: string, valor: T): T | undefined => {
+    if (quantos > 0) return valor;
+    naoLidos.push(nome);
+    return undefined;
+  };
+
   return {
     saida: {
       anunciosConhecidos: anuncios.length,
       anunciosComLeitura: medidos,
-      saudeMedia: r.comSaude > 0 ? Math.round(r.saudeMedia * 100) : null,
-      anunciosComSaudeLida: r.comSaude,
-      piores: r.piores.map((p) => ({ mlb: p.mlb, saudePercentual: Math.round(p.saude * 100) })),
-      noArSemNenhumaVenda: r.noArSemVenda,
-      vendidosTotal: r.vendidosTotal,
-      semDescricao: r.semDescricao,
-      disputamCatalogoDoMl: r.doCatalogo,
-      porTipoDeAnuncio: r.porTipo.map((t) => ({
-        tipo: nomeDoTipoDeAnuncio(t.tipo) ?? t.tipo,
-        anuncios: t.anuncios,
-      })),
-      alteradosPorDia: r.alteradosPorDia,
+      saudeMedia: eixo(porEixo.saude, "saúde", r.comSaude > 0 ? Math.round(r.saudeMedia * 100) : null),
+      piores: eixo(
+        porEixo.saude,
+        "saúde",
+        r.piores.map((p) => ({ mlb: p.mlb, saudePercentual: Math.round(p.saude * 100) }))
+      ),
+      noArSemNenhumaVenda: eixo(porEixo.vendidos, "vendas por anúncio", r.noArSemVenda),
+      vendidosTotal: eixo(porEixo.vendidos, "vendas por anúncio", r.vendidosTotal),
+      semDescricao: eixo(porEixo.descricao, "descrição", r.semDescricao),
+      disputamCatalogoDoMl: eixo(porEixo.catalogo, "catálogo do ML", r.doCatalogo),
+      porTipoDeAnuncio: eixo(
+        porEixo.tipo,
+        "tipo de anúncio",
+        r.porTipo.map((t) => ({
+          tipo: nomeDoTipoDeAnuncio(t.tipo) ?? t.tipo,
+          anuncios: t.anuncios,
+        }))
+      ),
+      alteradosPorDia: eixo(porEixo.alteracao, "data de alteração", r.alteradosPorDia),
+      oQueNaoConsegiLer: naoLidos.length > 0 ? [...new Set(naoLidos)] : undefined,
       comoResponder: [
         "SAÚDE VEM EM PORCENTAGEM INTEIRA — escreva \"84%\", nunca \"0,84\". O número sai pronto; não converta nada.",
         "A saúde é a nota do PRÓPRIO Mercado Livre e é ela que decide exposição: anúncio com nota baixa aparece menos na busca. Não é opinião do Zion.",
@@ -3204,6 +3228,7 @@ async function saudeDoCatalogo(ctx: ContextoDasFerramentas): Promise<ResultadoDa
         "'porTipoDeAnuncio' muda a COMISSÃO — Clássico e Premium pagam percentuais diferentes. Se houver os dois, diga: o preço de um não serve de régua para o outro.",
         "'alteradosPorDia' com um pico num único dia sugere edição em massa. É PISTA, não conclusão: diga como pista e pergunte se houve alguma alteração naquele dia.",
         "NÃO diga que o catálogo está bem só porque um número veio zero. Zero em 'semDescricao' é boa notícia; zero em 'vendidosTotal' não é.",
+        "'oQueNaoConsegiLer' LISTA OS EIXOS QUE O MERCADO LIVRE NÃO INFORMOU nesta leitura. Diga quais são, e NUNCA responda sobre eles — nem para dizer que estão bem. Campo AUSENTE da saída é campo não lido; ausência nunca é zero.",
       ].join(" "),
     },
   };
