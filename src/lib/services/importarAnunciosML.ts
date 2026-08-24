@@ -715,6 +715,20 @@ export async function importarAnunciosDoCliente(
         estoque: a.estoque,
         // 056: o `category_id` ja vinha em toda leitura e era descartado.
         categoriaMl: a.categoria,
+        // 074 — OS SETE ENTRAM NO CAMINHO SEGURO.
+        //
+        // `medir` é o "Conferir agora": não apaga nada, sai antes das cinco
+        // operações destrutivas. `substituir` apaga a importação anterior
+        // inteira. Deixar os sete só no destrutivo significaria que ter o tipo
+        // do anúncio — o que decide se a comissão é 14% ou 19% — custaria
+        // recriar o catálogo. E não há leitura nova: vêm do MESMO multiget.
+        tipoAnuncioMl: (a.tipoDeAnuncio || "").trim() || null,
+        criadoEmMl: (a.criadoEmML || "").trim() || null,
+        atualizadoEmMl: (a.atualizadoEmML || "").trim() || null,
+        vendidosMl: typeof a.vendidos === "number" ? a.vendidos : null,
+        saudeMl: typeof a.saude === "number" ? a.saude : null,
+        doCatalogoMl: typeof a.doCatalogo === "boolean" ? a.doCatalogo : null,
+        temDescricaoMl: typeof a.temDescricao === "boolean" ? a.temDescricao : null,
       })),
       new Date().toISOString()
     );

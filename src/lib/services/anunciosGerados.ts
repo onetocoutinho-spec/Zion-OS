@@ -269,6 +269,15 @@ export async function atualizarEstadoNoMarketplaceBulk(
     fotoCapaMaxSize?: string | null;
     estoqueMarketplace?: number | null;
     categoriaMl?: string | null;
+    // 074 — os sete atravessam pelo MESMO mapeador (`anuncioGeradoParaBanco`),
+    // que só escreve o que foi passado. Nenhuma coluna é tocada por omissão.
+    tipoAnuncioMl?: string | null;
+    criadoEmMl?: string | null;
+    atualizadoEmMl?: string | null;
+    vendidosMl?: number | null;
+    saudeMl?: number | null;
+    doCatalogoMl?: boolean | null;
+    temDescricaoMl?: boolean | null;
   }[]
 ): Promise<{ atualizados: number; falharam: number }> {
   if (atualizacoes.length === 0) return { atualizados: 0, falharam: 0 };
