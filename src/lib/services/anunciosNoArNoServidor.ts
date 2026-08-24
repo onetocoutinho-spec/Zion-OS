@@ -24,8 +24,15 @@ interface LinhaDoBanco {
   status_marketplace: string | null;
   status_marketplace_em: string | null;
   sub_status_marketplace: string[] | null;
-  produto: string | null;
   anuncio: { titulo?: string | null } | null;
+  // O nome do produto vem EMBUTIDO, não de uma coluna `produto`.
+  //
+  // `anuncios_gerados` não tem essa coluna — quem tem é o TIPO de aplicação
+  // (`AnuncioGeradoRegistro.produto`), que a recebe deste embed. Pedi a coluna
+  // e o PostgREST recusou a consulta inteira; as três ferramentas de anúncio
+  // nasceram quebradas e só falharam em produção. É o mesmo defeito de
+  // 10/08/2026 (`criado_em` por `created_at`), no mesmo lugar.
+  produtos: { nome: string } | null;
 }
 
 /**
@@ -34,7 +41,7 @@ interface LinhaDoBanco {
  */
 function tituloDaLinha(l: LinhaDoBanco): string {
   const doAnuncio = typeof l.anuncio?.titulo === "string" ? l.anuncio.titulo.trim() : "";
-  return doAnuncio || (l.produto ?? "").trim() || (l.ml_item_id ?? "sem título");
+  return doAnuncio || (l.produtos?.nome ?? "").trim() || (l.ml_item_id ?? "sem título");
 }
 
 /**
@@ -51,7 +58,7 @@ export async function varrerAnunciosDaLoja(clienteId: string): Promise<LinhaDaFi
   const linhas = await lerTudoPaginado<LinhaDoBanco>("anúncios no marketplace", (de, ate) =>
     admin
       .from("anuncios_gerados")
-      .select("produto_id, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, sub_status_marketplace, produto, anuncio")
+      .select("produto_id, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, sub_status_marketplace, anuncio, produtos(nome)")
       .eq("cliente_id", clienteId)
       .not("ml_item_id", "is", null)
       .order("id", { ascending: true })
@@ -65,7 +72,7 @@ export async function varrerAnunciosDaLoja(clienteId: string): Promise<LinhaDaFi
     statusMarketplace: l.status_marketplace,
     statusMarketplaceEm: l.status_marketplace_em,
     subStatusMarketplace: l.sub_status_marketplace,
-    produto: l.produto,
+    produto: l.produtos?.nome ?? null,
     produtoId: l.produto_id,
   }));
 }

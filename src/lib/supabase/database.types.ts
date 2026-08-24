@@ -71,6 +71,15 @@ export interface ProdutoRow {
   confianca_custo?: string | null;
   tabela_medidas?: string | null;
   componentes?: { produtoId?: string; nome: string; sku?: string; quantidade: number; brinde?: boolean }[] | null;
+  /**
+   * Migração 034. O frete é por conta da loja?
+   *
+   * Estava no banco e faltava aqui — o código já a lia em `avaliacaoDeAlvos` e
+   * em `contextoDoCopilot`, e o tipo não a declarava. Descoberta em 24/08/2026
+   * pela trava que compara `.select` com este arquivo. Divergência entre tipo e
+   * banco não quebra a consulta, mas apaga a garantia que o tipo deveria dar.
+   */
+  vendedor_paga_frete?: boolean | null;
   clientes?: { empresa: string } | null;
 }
 
