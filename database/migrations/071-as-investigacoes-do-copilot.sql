@@ -1,7 +1,8 @@
 -- 071 — as INVESTIGAÇÕES do Copilot
 --
--- NÃO APLICADA. Nasce como arquivo, para o dono aplicar (Operador Universal,
--- 2026-08-24, etapa 5 do plano).
+-- APLICADA em 2026-08-24 no projeto principal, a pedido do dono. Nasceu como
+-- arquivo (Operador Universal, etapa 5 do plano). A varredura
+-- database/verificacoes/alcance-da-agencia.sql rodou depois, sem divergências.
 --
 -- ===========================================================================
 -- O PROBLEMA QUE ESTA TABELA RESOLVE

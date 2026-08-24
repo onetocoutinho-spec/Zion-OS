@@ -1,6 +1,6 @@
 -- 068 — o perfil de conteúdo da loja
 --
--- NÃO APLICADA. Nasceu como arquivo, para o dono aplicar no projeto principal
+-- APLICADA em 2026-08-23 no projeto principal. Nasceu como arquivo
 -- (auditoria do Copilot, 2026-08-22, roadmap NEXT item 7 / trilha 6).
 --
 -- O QUE MUDA

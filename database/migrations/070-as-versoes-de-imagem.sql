@@ -1,6 +1,6 @@
 -- 070 — as versões de imagem geradas pela IA
 --
--- NÃO APLICADA. Nasceu como arquivo, para o dono aplicar no projeto principal
+-- APLICADA em 2026-08-23 no projeto principal. Nasceu como arquivo
 -- (auditoria do Copilot, 2026-08-22, roadmap NEXT item 8 / trilha 5).
 --
 -- O QUE MUDA

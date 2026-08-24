@@ -1,6 +1,6 @@
 -- 066 — o tipo da proposta admite a publicação
 --
--- NÃO APLICADA. Nasceu como arquivo, para o dono aplicar no projeto principal
+-- APLICADA em 2026-08-23 no projeto principal. Nasceu como arquivo
 -- (auditoria do Copilot, 2026-08-22, roadmap NOW item 4).
 --
 -- O QUE MUDA

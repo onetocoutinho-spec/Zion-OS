@@ -1,6 +1,6 @@
 -- 069 — as tarefas DA LOJA
 --
--- NÃO APLICADA. Nasceu como arquivo, para o dono aplicar no projeto principal
+-- APLICADA em 2026-08-23 no projeto principal. Nasceu como arquivo
 -- (auditoria do Copilot, 2026-08-22, roadmap NEXT item 6 — "cria as tarefas").
 --
 -- DECISÃO DE PRODUTO, registrada aqui porque a alternativa parecia óbvia e
