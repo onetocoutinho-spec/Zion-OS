@@ -81,6 +81,7 @@ import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
 import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
+import { habilidades, lacunaPorAssunto, lacunas } from "@/modules/assistant/domain/habilidades";
 import {
   gradesDosProdutos,
   LACUNA_DA_FAMILIA,
@@ -182,6 +183,12 @@ export interface ContextoDasFerramentas {
   comparar?: () => Promise<ComparacaoDeLojas>;
   /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
   diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
+  /**
+   * O SINAL de pedido sem capacidade — gravado quando a conferência encontra
+   * uma lacuna. Opcional: sem ele a resposta honesta continua saindo, só não
+   * fica registrada.
+   */
+  registrarLacuna?: (assunto: string, pedido: string) => Promise<void>;
   /**
    * As linhas de anúncio da loja — o INSUMO das duas leituras de marketplace.
    *
@@ -1100,6 +1107,9 @@ export async function executarFerramenta(
 
     case "diagnostico_de_agrupamento":
       return diagnosticarGrade(ctx);
+
+    case "o_que_eu_consigo":
+      return conferirHabilidade(args, ctx);
 
     case "diagnostico_do_anuncio": {
       const produtoId = texto(args, "produtoId");
@@ -2614,6 +2624,67 @@ async function consultarVendas(
         "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
         "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
       ].join(" "),
+    },
+  };
+}
+
+/**
+ * "Você consegue fazer X?" — a conferência ANTES da promessa.
+ *
+ * É a peça que faltava para o Copilot dizer "isto eu não faço, e é por isto"
+ * em vez de improvisar. E a checagem É o sinal: quando o assunto é uma lacuna,
+ * o pedido fica registrado — é dele que sai a lista do que construir.
+ */
+async function conferirHabilidade(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const assunto = texto(args, "assunto");
+  const pedido = texto(args, "pedido");
+  const lacuna = assunto ? lacunaPorAssunto(assunto) : null;
+
+  if (assunto && !lacuna) {
+    // Assunto que não existe no registro NÃO vira "não sei fazer": seria uma
+    // recusa inventada, que é o defeito que este arquivo existe para impedir.
+    return {
+      saida: {
+        assuntoDesconhecido: assunto,
+        habilidades: habilidades().map((h) => ({ ferramenta: h.ferramenta, oQueFaz: h.oQueFaz, nivel: h.nivel })),
+        comoResponder:
+          "O assunto que você passou não está na lista de limitações conhecidas — então NÃO afirme que não consegue. Procure a habilidade correspondente na lista e use a ferramenta certa; se nenhuma servir, diga o que você tentou e pergunte o que a pessoa quer alcançar.",
+      },
+    };
+  }
+
+  if (lacuna) {
+    // O sinal, gravado no momento honesto. Nunca derruba a resposta.
+    if (ctx.registrarLacuna) {
+      await ctx.registrarLacuna(lacuna.assunto, pedido).catch(() => {});
+    }
+    return {
+      saida: {
+        consigo: false,
+        assunto: lacuna.assunto,
+        codigo: lacuna.codigo,
+        porQue: lacuna.porQue,
+        oQueFaltaria: lacuna.oQueFaltaria,
+        comoResponder:
+          "Diga que NÃO consegue fazer isso, e diga o MOTIVO com as palavras de porQue — nunca 'não consigo' sozinho, nunca 'ainda não implementado'. Depois diga o que existe de caminho, usando oQueFaltaria: se houver uma saída pelas telas ou pelo próprio marketplace, aponte-a. Não prometa prazo e não diga que vai fazer depois. Se houver algo próximo que você CONSIGA fazer, ofereça — mas deixe claro que é outra coisa.",
+      },
+    };
+  }
+
+  return {
+    saida: {
+      habilidades: habilidades().map((h) => ({
+        ferramenta: h.ferramenta,
+        oQueFaz: h.oQueFaz,
+        nivel: h.nivel,
+        precisaDe: h.precisaDe,
+      })),
+      limitacoesConhecidas: lacunas().map((l) => ({ assunto: l.assunto, resumo: l.porQue })),
+      comoResponder:
+        "Responda com o que a pessoa consegue FAZER a partir daqui, agrupado por assunto (o que eu leio, o que eu proponho, o que eu executo), não com a lista crua de ferramentas. Não cite nomes técnicos de ferramenta. Se ela perguntou sobre algo específico que está em limitacoesConhecidas, chame esta ferramenta de novo passando o assunto.",
     },
   };
 }

@@ -323,6 +323,19 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "o_que_eu_consigo",
+    efeito: "le",
+    descricao:
+      "O QUE EU SEI E NÃO SEI FAZER. Use SEMPRE quando estiver prestes a dizer que não consegue algo, quando o lojista perguntar o que você faz, e antes de prometer qualquer coisa que você não tenha certeza de alcançar. Sem parâmetro, devolve o que eu faço. Com 'assunto', devolve por que aquilo não é possível hoje e o que faria falta — os assuntos são: editar_anuncio_publicado (mudar preço, título, descrição, estoque ou variação de um anúncio JÁ no ar), detalhe_da_moderacao (o que o ML quer que se mude), agrupar_anuncios, outros_marketplaces (TikTok, Shopee, Amazon), erp, perguntas_e_mensagens, anuncios_patrocinados, estado_ao_vivo, excluir. Passe também 'pedido' com a frase do lojista: é assim que a Zion descobre o que falta construir.",
+    parametros: {
+      type: "object",
+      properties: {
+        assunto: { type: "string", description: "O assunto da limitação, quando você já sabe qual é." },
+        pedido: { type: "string", description: "O que o lojista pediu, nas palavras dele." },
+      },
+    },
+  },
+  {
     nome: "diagnostico_de_agrupamento",
     efeito: "le",
     descricao:

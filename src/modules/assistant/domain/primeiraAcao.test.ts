@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 19 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 20 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 19);
+  assert.equal(PRIMEIRA_ACAO.length, 20);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas dezenove — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas vinte — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -154,6 +154,24 @@ test("T2: são exatamente estas dezenove — a matriz que autorizou a decisão",
   // que o ML agrupou ou não. A conferência de referência repetida sai com a
   // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
   // cadastro legítimo.
+  //
+  // De 31 para 32 em 24/08/2026: `o_que_eu_consigo`, LEITURA — 32 / 20.
+  //
+  // Ela não lê a loja: lê o REGISTRO DE HABILIDADES (`habilidades.ts`), que
+  // declara o que o Copilot faz e, o que nenhuma outra peça sabia dizer, o que
+  // ele NÃO faz — com o motivo medido e o que faltaria. Existe porque o
+  // catálogo sabe o que existe e não sabe o que está ausente: sem isso, "você
+  // consegue mudar o preço no ML?" é respondido pelo prompt, e prompt não é
+  // dado.
+  //
+  // Por que pode ser a PRIMEIRA ação: não toca banco de loja nenhum, não chama
+  // rede e não custa modelo — lê uma tabela declarativa em memória. O pior caso
+  // de um "obrigado" dispará-la é a lojista ler o que o assistente faz.
+  //
+  // Ela também é o ÚNICO ponto do catálogo que grava um sinal: quando o assunto
+  // é uma lacuna, o pedido vai para o journal (contexto `copilot-lacuna`). A
+  // checagem e o sinal são o mesmo movimento — é assim que a Zion descobre o
+  // que os operadores tentam fazer e o Zion ainda não faz.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "anuncios_a_corrigir",
@@ -165,6 +183,7 @@ test("T2: são exatamente estas dezenove — a matriz que autorizou a decisão",
     "estado_da_loja",
     "meu_perfil_de_conteudo",
     "meus_custos",
+    "o_que_eu_consigo",
     "o_que_falta_no_produto",
     "o_que_impede",
     "pendencias",
@@ -379,8 +398,8 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
   // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
   // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
-  assert.equal(FERRAMENTAS.length, 31);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 19);
+  assert.equal(FERRAMENTAS.length, 32);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

@@ -401,8 +401,26 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // que o ML agrupou ou não. A conferência de referência repetida sai com a
   // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
   // cadastro legítimo.
-  assert.equal(FERRAMENTAS.length, 31);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 19);
+  //
+  // De 31 para 32 em 24/08/2026: `o_que_eu_consigo`, LEITURA — 32 / 20.
+  //
+  // Ela não lê a loja: lê o REGISTRO DE HABILIDADES (`habilidades.ts`), que
+  // declara o que o Copilot faz e, o que nenhuma outra peça sabia dizer, o que
+  // ele NÃO faz — com o motivo medido e o que faltaria. Existe porque o
+  // catálogo sabe o que existe e não sabe o que está ausente: sem isso, "você
+  // consegue mudar o preço no ML?" é respondido pelo prompt, e prompt não é
+  // dado.
+  //
+  // Por que pode ser a PRIMEIRA ação: não toca banco de loja nenhum, não chama
+  // rede e não custa modelo — lê uma tabela declarativa em memória. O pior caso
+  // de um "obrigado" dispará-la é a lojista ler o que o assistente faz.
+  //
+  // Ela também é o ÚNICO ponto do catálogo que grava um sinal: quando o assunto
+  // é uma lacuna, o pedido vai para o journal (contexto `copilot-lacuna`). A
+  // checagem e o sinal são o mesmo movimento — é assim que a Zion descobre o
+  // que os operadores tentam fazer e o Zion ainda não faz.
+  assert.equal(FERRAMENTAS.length, 32);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -418,7 +436,7 @@ test("T17: o C1R continua intacto", () => {
   // garante NÃO mudou e é o que a linha seguinte prova: toda ferramenta da
   // primeira ação tem efeito `le`. O número trava o tamanho; o laço trava a
   // natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 19);
+  assert.equal(PRIMEIRA_ACAO.length, 20);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

@@ -43,6 +43,7 @@ import { vendasNoServidor } from "@/lib/services/vendasNoServidor";
 import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { varrerAnunciosDaLoja } from "@/lib/services/anunciosNoArNoServidor";
+import { registrarLacuna } from "@/lib/services/lacunasDoCopilot";
 import { perfilDeConteudoNoServidor } from "@/lib/services/perfilDeConteudoNoServidor";
 import { tendenciasDaLoja } from "@/lib/services/decisoesDoCopilot";
 import { congelarTarefas, resumoDasTarefas } from "@/modules/assistant/domain/propostaDeTarefas";
@@ -615,6 +616,19 @@ export async function POST(request: Request) {
     // mesma fala lê o banco uma vez só. A leitura é do estado JÁ MEDIDO, com
     // a data — ver `anunciosNoArNoServidor`.
     noAr: umaVezPorTurno(() => varrerAnunciosDaLoja(clienteDaSessao)),
+    // ---- O SINAL DE LACUNA ----
+    //
+    // Registrado quando o Copilot confere se sabe fazer algo e descobre que
+    // não sabe. É o dado que responde "o que construir a seguir" sem depender
+    // de opinião — e ele nasce do pedido real, na palavra de quem operou.
+    registrarLacuna: (assunto, pedido) =>
+      registrarLacuna({
+        clienteId: clienteDaSessao,
+        usuarioId,
+        assunto,
+        pedido,
+        conversaId: conversaId ?? null,
+      }),
     // ---- AS VENDAS ----
     //
     // Em porto, com a credencial do SERVIDOR e o tenant da sessão. Memoizado
