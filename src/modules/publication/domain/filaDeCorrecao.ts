@@ -94,6 +94,21 @@ const MOTIVOS: Readonly<Record<string, ExplicacaoDoMotivo>> = {
     oQueFazer:
       "NÃO reative: recolocar no ar o que o ML cancelou é reincidência e pode custar a conta. A infração precisa ser tratada no Mercado Livre.",
   },
+  // MEDIDO EM 24/08/2026. Quinze anúncios da conta voltaram `inactive` com
+  // `["deleted", "forbidden"]` — cancelados por infração E apagados. Eles
+  // sumiram da busca do vendedor em 08/07 e ficaram invisíveis até a leitura
+  // por id existir.
+  //
+  // Sem esta entrada, `deleted` caía em "motivo desconhecido" e a fila dizia
+  // "não sei o que é isso" sobre a única coisa que estava clara. E o balde
+  // ficava com número: 164 unidades de estoque ordenando trabalho que não
+  // existe, porque anúncio apagado não se conserta — ele não está lá.
+  deleted: {
+    significa: "O anúncio foi APAGADO no Mercado Livre. Ele não existe mais lá.",
+    acao: "nunca_reativar",
+    oQueFazer:
+      "Não há o que corrigir neste anúncio: ele não existe mais no Mercado Livre. O produto pode voltar a vender em um anúncio NOVO — mas se veio junto de `forbidden`, trate a infração antes, porque republicar o que o ML cancelou é reincidência.",
+  },
 };
 
 /** O que se sabe sobre um motivo. Desconhecido devolve desconhecido. */

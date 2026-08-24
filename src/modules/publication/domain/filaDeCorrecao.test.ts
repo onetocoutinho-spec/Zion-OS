@@ -85,7 +85,9 @@ test("waiting_for_patch declara a LACUNA em vez de prometer conserto", () => {
 });
 
 test("cada motivo conhecido tem ação declarada, e forbidden nunca reativa", () => {
+  // `deleted` entrou em 24/08/2026 — ver o teste no fim do arquivo.
   assert.deepEqual(motivosConhecidos(), [
+    "deleted",
     "forbidden",
     "out_of_stock",
     "paused_by_seller",
@@ -215,4 +217,23 @@ test("a saída obriga a resposta a dizer a lacuna e a idade da leitura", () => {
   assert.match(fn[0], /nunca_reativar.*reincidência/s);
   assert.match(fn[0], /lidoHaDias/);
   assert.match(fn[0], /semMotivoDeclarado.*não invente causa/s);
+});
+
+test("`deleted` é motivo CONHECIDO — e nunca vira 'reativar'", () => {
+  // Medido em 24/08/2026: 15 anúncios voltaram `inactive` com
+  // `["deleted", "forbidden"]`. Sem esta entrada, `deleted` caía em "motivo
+  // desconhecido" — a fila dizia "não sei o que é isso" sobre a única coisa
+  // que estava clara, e o balde ainda levava 164 unidades de estoque
+  // ordenando trabalho que não existe.
+  const e = explicacaoDoMotivo("deleted");
+  assert.equal(e.acao, "nunca_reativar");
+  assert.match(e.significa, /não existe mais/i);
+  assert.match(e.oQueFazer, /reincidência/i, "perdeu o aviso que protege a conta");
+});
+
+test("os dois motivos dos 15 apontam para a MESMA ação", () => {
+  // Eles vêm juntos. Se um dissesse "reativar" e o outro "nunca", a fila
+  // ofereceria e proibiria a mesma coisa na mesma tela.
+  assert.equal(explicacaoDoMotivo("deleted").acao, "nunca_reativar");
+  assert.equal(explicacaoDoMotivo("forbidden").acao, "nunca_reativar");
 });
