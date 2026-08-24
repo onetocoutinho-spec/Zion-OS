@@ -24,13 +24,14 @@
 // camada, a conta é a mesma e só a procedência muda de `tabela` para `api`.
 
 import { getSupabaseAdmin } from "../supabase/admin";
-import { lerTudoPorIds } from "../supabase/paginado";
+import { lerTudoPaginado, lerTudoPorIds } from "../supabase/paginado";
 import {
   MARGEM_MINIMA_PADRAO,
   TAXAS_PADRAO,
   margemLiquida,
   type ModeloTaxas,
 } from "../../modules/pricing/domain/modeloPreco";
+import { nomeDoTipoDeAnuncio, tipoUnicoDosAnuncios } from "../../modules/pricing/domain/custosML";
 import {
   normalizarCustos,
   SEM_CUSTOS_DO_LOJISTA,
@@ -133,10 +134,19 @@ export async function configuracaoDoLojista(clienteId: string): Promise<Configur
 function montarTaxas(
   p: LinhaDeProduto,
   variantes: readonly LinhaDeVariante[],
-  config: ConfiguracaoDoLojista
+  config: ConfiguracaoDoLojista,
+  tipoDoAnuncioNoMl: string | null
 ): ModeloTaxas {
+  const tipo = nomeDoTipoDeAnuncio(tipoDoAnuncioNoMl);
   return {
     ...TAXAS_PADRAO,
+    // O TIPO DO ANÚNCIO, quando o ML já disse qual é (074).
+    //
+    // Sem ele, TAXAS_PADRAO traz "Premium" — uma suposição sobre a loja
+    // inteira. Em Moda a diferença é 14% contra 19%, e ela sai no número que a
+    // lojista usa para decidir preço. Tipo não reconhecido NÃO entra: cai no
+    // default e a procedência diz "tabela", que é a resposta honesta.
+    ...(tipo ? { tipoAnuncio: tipo } : {}),
     custosDoLojista: config.custos,
     embalagem: embalagemDe(variantes),
     // `null` no banco significa "não sabemos quem paga" (034), e o domínio já
@@ -146,11 +156,19 @@ function montarTaxas(
   };
 }
 
-function procedencia(taxas: ModeloTaxas, config: ConfiguracaoDoLojista): ProcedenciaDoCalculo {
+function procedencia(
+  taxas: ModeloTaxas,
+  config: ConfiguracaoDoLojista,
+  tipoVeioDoAnuncio: boolean
+): ProcedenciaDoCalculo {
   return {
-    // Ver o cabeçalho: sem a categoria e sem rotacionar credencial por preço, a
-    // comissão que este caminho tem é a da tabela. Dizer isso é o serviço.
-    comissao: "tabela",
+    // Ver o cabeçalho: sem a categoria e sem rotacionar credencial por preço,
+    // este caminho não fala com a API de tarifas — a comissão continua saindo
+    // da tabela de Moda. O que MUDA com o tipo lido do anúncio é qual linha da
+    // tabela: clássico ou premium. Por isso "anuncio" e não "api": o
+    // percentual é de tabela, mas o TIPO é do anúncio dela, e a diferença
+    // entre 14% e 19% é o que a lojista precisa poder conferir.
+    comissao: tipoVeioDoAnuncio ? "anuncio" : "tabela",
     envio:
       taxas.vendedorPagaFrete === false
         ? "nao_se_aplica"
@@ -183,6 +201,24 @@ export async function precoDoProduto(
   const p = data as LinhaDeProduto | null;
   if (!p) return null;
 
+  // FORA do `Promise.all`, e por um motivo de ferramenta, não de desenho: o
+  // scanner de `leituraNaoTruncada` perde a leitura IRMÃ quando uma paginada
+  // entra no mesmo array — foi o que aconteceu com `produto_variantes` aqui, e
+  // a lista de dispensa já registra o mesmo mascaramento em
+  // `pendenciasDoCatalogo`. Uma guarda que para de enxergar não é guarda.
+  // O paralelismo continua: a promessa começa agora e é aguardada depois.
+  const tiposDosAnuncios = lerTudoPaginado<{ tipo_anuncio_ml: string | null }>(
+    "tipo de anúncio do produto",
+    (de, ate) =>
+      admin
+        .from("anuncios_gerados")
+        .select("tipo_anuncio_ml")
+        .eq("cliente_id", clienteId)
+        .eq("produto_id", produtoId)
+        .order("id", { ascending: true })
+        .range(de, ate)
+  );
+
   const [variantes, config] = await Promise.all([
     admin
       .from("produto_variantes")
@@ -192,7 +228,18 @@ export async function precoDoProduto(
     configuracaoDoLojista(clienteId),
   ]);
 
-  const taxas = montarTaxas(p, (variantes.data ?? []) as LinhaDeVariante[], config);
+  // O TIPO DO ANÚNCIO NO ML (074) — o que decide se a comissão é 14% ou 19%.
+  //
+  // PAGINADO, e não `.limit()`. Um calçado tem um anúncio por numeração — o
+  // maior medido nesta base tem 41 — então um teto de 1.000 pareceria folgado.
+  // Mas truncar AQUI é pior que em outros lugares: `tipoUnicoDosAnuncios`
+  // devolve `null` quando os tipos DIVERGEM, e um corte que deixasse de fora
+  // justamente o anúncio divergente produziria um "todos Premium" confiante e
+  // errado. Ler tudo elimina o modo de falha em vez de torná-lo improvável.
+  const tipoDoAnuncio = tipoUnicoDosAnuncios(
+    (await tiposDosAnuncios).map((l) => l.tipo_anuncio_ml)
+  );
+  const taxas = montarTaxas(p, (variantes.data ?? []) as LinhaDeVariante[], config, tipoDoAnuncio);
   const custo = Number(p.custo ?? 0);
   const precoAtual = Number(p.preco_venda ?? 0);
 
@@ -218,7 +265,7 @@ export async function precoDoProduto(
       precoAtual,
       taxas,
       margemMinima: config.margemMinima,
-      procedencia: procedencia(taxas, config),
+      procedencia: procedencia(taxas, config, tipoDoAnuncio !== null),
       custoEmConflito: anomalia?.explicacao ?? null,
     },
   };
@@ -254,7 +301,7 @@ export async function catalogoParaTriagem(clienteId: string): Promise<CatalogoPa
     return {
       produtos: [],
       margemMinima: config.margemMinima,
-      procedencia: procedencia(TAXAS_PADRAO, config),
+      procedencia: procedencia(TAXAS_PADRAO, config, false),
       totalNoCatalogo: count ?? 0,
     };
   }
@@ -280,9 +327,40 @@ export async function catalogoParaTriagem(clienteId: string): Promise<CatalogoPa
     porProduto.set(v.produto_id, lista);
   }
 
+  // O TIPO DE ANÚNCIO DE CADA PRODUTO (074) — o que decide 14% ou 19%.
+  //
+  // Uma consulta paginada para a página inteira, do mesmo jeito que as
+  // variantes: um produto de calçado tem um anúncio por numeração, e 300
+  // produtos passariam de 1.000 linhas com folga.
+  const anunciosDaPagina = await lerTudoPorIds<{ produto_id: string | null; tipo_anuncio_ml: string | null }>(
+    "tipos de anúncio do copiloto",
+    linhas.map((l) => l.id),
+    (lote, de, ate) =>
+      admin
+        .from("anuncios_gerados")
+        .select("produto_id, tipo_anuncio_ml")
+        .eq("cliente_id", clienteId)
+        .in("produto_id", lote)
+        .order("id", { ascending: true })
+        .range(de, ate)
+  );
+  const tiposCrus = new Map<string, (string | null)[]>();
+  for (const a of anunciosDaPagina) {
+    if (!a.produto_id) continue;
+    const lista = tiposCrus.get(a.produto_id) ?? [];
+    lista.push(a.tipo_anuncio_ml);
+    tiposCrus.set(a.produto_id, lista);
+  }
+  // `tipoUnicoDosAnuncios` devolve null quando os anúncios do produto DIVERGEM
+  // — esse produto não tem UMA comissão, e escolher uma delas daria cara de
+  // exato a uma pergunta sem resposta única.
+  const tipoPorProduto = new Map<string, string | null>(
+    [...tiposCrus].map(([id, tipos]) => [id, tipoUnicoDosAnuncios(tipos)])
+  );
+
   return {
     produtos: linhas.map((p) => {
-      const taxas = montarTaxas(p, porProduto.get(p.id) ?? [], config);
+      const taxas = montarTaxas(p, porProduto.get(p.id) ?? [], config, tipoPorProduto.get(p.id) ?? null);
       const custo = Number(p.custo ?? 0);
       const precoVenda = Number(p.preco_venda ?? 0);
       const anomalia = anomaliaDeCusto({
@@ -305,7 +383,15 @@ export async function catalogoParaTriagem(clienteId: string): Promise<CatalogoPa
       };
     }),
     margemMinima: config.margemMinima,
-    procedencia: procedencia(TAXAS_PADRAO, config),
+    // TUDO OU NADA, de propósito. Uma lista em que parte dos produtos teve o
+    // tipo lido do anúncio e parte não teve não é "do anúncio": dizer isso
+    // sobre a lista inteira daria ao lojista uma garantia que vale só para
+    // alguns. "tabela" aqui significa "pelo menos um caiu na estimativa".
+    procedencia: procedencia(
+      TAXAS_PADRAO,
+      config,
+      linhas.every((p) => (tipoPorProduto.get(p.id) ?? null) !== null)
+    ),
     totalNoCatalogo: count ?? linhas.length,
   };
 }

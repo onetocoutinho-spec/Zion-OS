@@ -94,7 +94,10 @@ export const COLUNAS_DO_RESUMO =
   "id, cliente_id, produto_id, auditoria_id, marketplace, origem, tipo_execucao, " +
   "nota_diagnostico, veredito_a10, qtd_pendencias, status, aprovado_por, aprovado_em, " +
   "observacoes, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, " +
-  "sub_status_marketplace, foto_capa_max_size, estoque_marketplace, categoria_ml, created_at, " +
+  "sub_status_marketplace, foto_capa_max_size, estoque_marketplace, categoria_ml, " +
+  // 074 — o que o ML já dizia e a importação descartava.
+  "tipo_anuncio_ml, criado_em_ml, atualizado_em_ml, vendidos_ml, saude_ml, " +
+  "do_catalogo_ml, tem_descricao_ml, created_at, " +
   "clientes(empresa), produtos(nome)";
 
 /**

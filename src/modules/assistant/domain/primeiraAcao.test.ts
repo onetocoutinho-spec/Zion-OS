@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 20 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 21 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 20);
+  assert.equal(PRIMEIRA_ACAO.length, 21);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas vinte — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas vinte e uma — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -172,6 +172,37 @@ test("T2: são exatamente estas vinte — a matriz que autorizou a decisão", ()
   // é uma lacuna, o pedido vai para o journal (contexto `copilot-lacuna`). A
   // checagem e o sinal são o mesmo movimento — é assim que a Zion descobre o
   // que os operadores tentam fazer e o Zion ainda não faz.
+  //
+  // De 32 para 33 em 24/08/2026: `saude_do_catalogo`, LEITURA — 33 / 21.
+  //
+  // A decisão saiu de uma pergunta do dono: "o que o ML diz mas o chat não
+  // lê?". A varredura do repositório respondeu com um caso que não era falta de
+  // dado, era falta de ALCANCE:
+  //
+  //   `retratarCatalogo` existe desde 02/08/2026 e sempre funcionou — saúde
+  //   média, os piores anúncios, quantos disputam o catálogo do ML, quantos
+  //   estão no ar sem NUNCA ter vendido, quantos não têm descrição, a divisão
+  //   entre Clássico e Premium, os dias de alteração em massa. Só que ele
+  //   rodava dentro da importação, sobre o que acabara de chegar do ML, e o
+  //   resultado ia embora com a requisição. E `importacoes_anuncios`, a tabela
+  //   da importação, é lida só por `importacoes.ts`, que serve uma tela:
+  //   NENHUMA ferramenta do Copilot toca nela.
+  //
+  // O Zion calculava um diagnóstico bom e o assistente não sabia que existia.
+  // A 074 passou a guardar os sete campos que o ML já mandava e a importação
+  // descartava, e esta ferramenta os transforma de volta em retrato.
+  //
+  // Por que pode ser a PRIMEIRA ação: reusa o porto `noAr` — a MESMA varredura
+  // de `anuncios_ativos`, memoizada por turno. Nenhuma linha nova é lida,
+  // nenhuma rede é chamada, nenhum modelo é pago. O pior caso de um "obrigado"
+  // dispará-la é a loja ver a saúde dos próprios anúncios: o mesmo dano de
+  // `estado_da_loja`, ou seja, nenhum.
+  //
+  // E ela nasce com a recusa que este projeto já pagou para aprender: um
+  // retrato calculado sobre ZERO medições sai com saúde média 0, zero no
+  // catálogo e zero sem descrição — e lido sem contexto parece um catálogo
+  // impecável. É o "nada travado, sua loja está em dia" de novo. Quando
+  // `medidos === 0` a saída nem monta o retrato: diz que ainda não leu.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "anuncios_a_corrigir",
@@ -191,6 +222,7 @@ test("T2: são exatamente estas vinte — a matriz que autorizou a decisão", ()
     "pricing",
     "procedencia",
     "proximo_passo",
+    "saude_do_catalogo",
     "tabela_de_medidas",
     "vendas_da_loja",
   ]);
@@ -432,8 +464,19 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
   // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
   // a releitura é o que torna seguro publicá-lo.
-  assert.equal(FERRAMENTAS.length, 34);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
+  // De 34 para 35 em 24/08/2026: `saude_do_catalogo`, LEITURA —
+  // 35 / 21 / 2 / 11 / 1.
+  //
+  // Ela não abre capacidade nova: `retratarCatalogo` já calculava tudo isto
+  // desde 02/08/2026. O que ela abre é ALCANCE — o retrato rodava dentro da
+  // importação e ia embora com a requisição, e `importacoes_anuncios` não é
+  // lida por ferramenta nenhuma. A matriz de T2 tem a decisão por extenso.
+  //
+  // O que mudou no banco para isto ser possível é a 074: sete campos que o ML
+  // já mandava no MESMO multiget e a importação descartava — o mais caro deles
+  // sendo `listing_type_id`, que decide se a comissão é 14% ou 19%.
+  assert.equal(FERRAMENTAS.length, 35);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 21);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

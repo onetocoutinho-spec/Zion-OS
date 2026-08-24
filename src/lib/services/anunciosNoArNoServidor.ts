@@ -33,6 +33,16 @@ interface LinhaDoBanco {
   // nasceram quebradas e só falharam em produção. É o mesmo defeito de
   // 10/08/2026 (`criado_em` por `created_at`), no mesmo lugar.
   produtos: { nome: string } | null;
+  // 074 — o que o ML já dizia e a importação descartava. A MESMA varredura
+  // responde "quantos no ar" e "como está a saúde do catálogo": eram duas
+  // leituras das mesmas 880 linhas, e a segunda nem existia porque o dado
+  // morria na importação.
+  tipo_anuncio_ml: string | null;
+  atualizado_em_ml: string | null;
+  vendidos_ml: number | null;
+  saude_ml: number | null;
+  do_catalogo_ml: boolean | null;
+  tem_descricao_ml: boolean | null;
 }
 
 /**
@@ -58,7 +68,11 @@ export async function varrerAnunciosDaLoja(clienteId: string): Promise<LinhaDaFi
   const linhas = await lerTudoPaginado<LinhaDoBanco>("anúncios no marketplace", (de, ate) =>
     admin
       .from("anuncios_gerados")
-      .select("produto_id, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, sub_status_marketplace, anuncio, produtos(nome)")
+      .select(
+        "produto_id, ml_item_id, ml_permalink, status_marketplace, status_marketplace_em, " +
+          "sub_status_marketplace, anuncio, produtos(nome), " +
+          "tipo_anuncio_ml, atualizado_em_ml, vendidos_ml, saude_ml, do_catalogo_ml, tem_descricao_ml"
+      )
       .eq("cliente_id", clienteId)
       .not("ml_item_id", "is", null)
       .order("id", { ascending: true })
@@ -74,6 +88,14 @@ export async function varrerAnunciosDaLoja(clienteId: string): Promise<LinhaDaFi
     subStatusMarketplace: l.sub_status_marketplace,
     produto: l.produtos?.nome ?? null,
     produtoId: l.produto_id,
+    // `?? null` de novo, e não `?? 0` nem `?? false`: um anúncio que ninguém
+    // mediu não "vendeu zero" nem "está fora do catálogo".
+    tipoAnuncioMl: l.tipo_anuncio_ml ?? null,
+    atualizadoEmMl: l.atualizado_em_ml ?? null,
+    vendidosMl: l.vendidos_ml ?? null,
+    saudeMl: l.saude_ml ?? null,
+    doCatalogoMl: l.do_catalogo_ml ?? null,
+    temDescricaoMl: l.tem_descricao_ml ?? null,
   }));
 }
 

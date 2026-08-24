@@ -130,10 +130,60 @@ export interface ComissaoPorTipo {
 /** Moda / Roupa & Calçado — a categoria do cliente atual. */
 export const COMISSAO_MODA: ComissaoPorTipo = { classico: 14, premium: 19 };
 
+/**
+ * O tipo do anúncio em português, venha ele do ML ou da configuração da loja.
+ *
+ * Existe porque as duas fontes falam dialetos diferentes: `canais_marketplace`
+ * guarda "Premium"/"Clássico", e o Mercado Livre devolve `gold_pro` /
+ * `gold_special` no `listing_type_id`. Até 24/08/2026 só o primeiro dialeto
+ * chegava aqui, porque o segundo era descartado na importação — e alimentar
+ * `comissaoDoAnuncio` com o código cru faria `gold_special` cair no default e
+ * ser cobrado como Premium: 19% sobre um anúncio que paga 14%.
+ *
+ * O mapeamento é o mesmo já registrado em `diagnosticoNoServidor.ts` e em
+ * `mlPayload.ts`. Uma terceira versão dele divergiria das outras duas.
+ *
+ * `null` = NÃO RECONHEÇO. Um tipo novo que o ML crie amanhã não pode virar
+ * "clássico" em silêncio, porque quem lê a resposta decide preço com ela.
+ */
+export function nomeDoTipoDeAnuncio(bruto: string | null | undefined): "Clássico" | "Premium" | null {
+  const t = (bruto ?? "").trim().toLowerCase();
+  if (!t) return null;
+  if (t === "clássico" || t === "classico" || t === "gold_special") return "Clássico";
+  if (t === "premium" || t === "gold_pro") return "Premium";
+  return null;
+}
+
+/**
+ * O tipo de anúncio DE UM PRODUTO, a partir dos anúncios dele no ML.
+ *
+ * Um produto de calçado tem um anúncio por numeração — dezesseis, no caso que
+ * motivou isto. Eles quase sempre compartilham o tipo, mas nada no ML obriga.
+ *
+ * Quando DIVERGEM, a resposta é `null`, e não "o do primeiro" nem "o mais
+ * comum": esse produto não tem UMA comissão, e escolher uma delas produziria
+ * um número com cara de exato sobre uma pergunta que não tem resposta única. O
+ * `null` faz a procedência cair para "tabela", que é a frase honesta.
+ *
+ * Anúncio sem tipo lido é ignorado — ausência de leitura não é divergência.
+ */
+export function tipoUnicoDosAnuncios(tipos: readonly (string | null | undefined)[]): string | null {
+  const conhecidos = new Set<string>();
+  for (const t of tipos) {
+    const nome = nomeDoTipoDeAnuncio(t);
+    if (nome) conhecidos.add(nome);
+  }
+  return conhecidos.size === 1 ? [...conhecidos][0] : null;
+}
+
 export function comissaoDoAnuncio(
   tipoAnuncio: string | null | undefined,
   comissao: ComissaoPorTipo = COMISSAO_MODA
 ): number {
   // O default espelha `canaisMarketplace.paraApp`: sem tipo, o canal é Premium.
-  return tipoAnuncio === "Clássico" ? comissao.classico : comissao.premium;
+  //
+  // E ele também é a direção SEGURA quando o tipo não é reconhecido: premium é
+  // a comissão MAIOR, então supor premium faz a margem parecer pior do que é.
+  // O contrário — inflar a margem — é o defeito que este modelo mais repetiu.
+  return nomeDoTipoDeAnuncio(tipoAnuncio) === "Clássico" ? comissao.classico : comissao.premium;
 }

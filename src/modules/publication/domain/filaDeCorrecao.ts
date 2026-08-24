@@ -155,6 +155,23 @@ export const PRODUTOS_POR_GRUPO = 5;
 export interface LinhaDaFila extends AnuncioLido {
   produto: string | null;
   produtoId: string | null;
+  /**
+   * 074 — o que o Mercado Livre já dizia e a importação descartava.
+   *
+   * Vem na MESMA varredura de `anunciosNoArNoServidor`: "quantos estão no ar" e
+   * "como está a saúde do catálogo" leem exatamente as mesmas linhas, e a
+   * segunda pergunta nem existia porque o dado morria na importação.
+   *
+   * Opcionais porque a fila de correção não depende deles: quem só quer saber o
+   * motivo de um anúncio estar fora do ar continua montando `LinhaDaFila` sem
+   * nada disto. `null` = não lido — nunca zero, nunca false.
+   */
+  tipoAnuncioMl?: string | null;
+  atualizadoEmMl?: string | null;
+  vendidosMl?: number | null;
+  saudeMl?: number | null;
+  doCatalogoMl?: boolean | null;
+  temDescricaoMl?: boolean | null;
 }
 
 function idadeEmDias(iso: string | null, agora: number): number | null {

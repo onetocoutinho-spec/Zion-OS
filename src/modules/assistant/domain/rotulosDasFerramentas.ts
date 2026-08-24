@@ -29,6 +29,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   anuncios_ativos: "os anúncios da loja no Mercado Livre",
   anuncios_a_corrigir: "a fila de anúncios a corrigir",
   diagnostico_de_agrupamento: "a grade dos produtos no Mercado Livre",
+  saude_do_catalogo: "a saúde dos anúncios no Mercado Livre",
   o_que_eu_consigo: "o que eu consigo fazer",
   diagnostico_do_anuncio: "o diagnóstico do anúncio no Mercado Livre",
   propor_gravacao: "a proposta de preenchimento",

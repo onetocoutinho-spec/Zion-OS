@@ -330,6 +330,13 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "saude_do_catalogo",
+    efeito: "le",
+    descricao:
+      "A SAÚDE DOS ANÚNCIOS NO MERCADO LIVRE, na nota do próprio ML: a saúde média e os piores anúncios (a nota decide a exposição — anúncio com saúde baixa aparece menos na busca), quantos disputam o catálogo do ML, quantos estão NO AR e nunca venderam nada, quantos não têm descrição, a divisão entre Clássico e Premium (que muda a comissão), e os dias em que muitos anúncios foram alterados de uma vez. Use para \"como estão meus anúncios?\", \"por que apareço pouco?\", \"o que está no ar sem vender?\", \"quais anúncios estão incompletos?\", \"meus anúncios são clássicos ou premium?\".",
+    parametros: { type: "object", properties: {} },
+  },
+  {
     nome: "o_que_eu_consigo",
     efeito: "le",
     descricao:

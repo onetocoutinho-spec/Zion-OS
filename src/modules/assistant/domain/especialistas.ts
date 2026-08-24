@@ -96,7 +96,7 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   publicacao: {
     quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou, quais anúncios estão ativos, o que está parado, o que preciso corrigir, as variações não estão agrupadas",
-    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio"],
+    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio", "saude_do_catalogo"],
     instrucao: "Foque em colocar no ar. Publicar é proposta com ensaio; reativar tem trava de posse e de infração. Nunca afirme que está no ar sem a palavra do Mercado Livre.",
   },
   cadastro: {

@@ -602,4 +602,21 @@ export interface AnuncioGeradoRegistro {
    * do ERP não serve, porque o que interessa é o que está parado NA VITRINE.
    */
   estoqueMarketplace?: number | null;
+  /**
+   * 074 — o que o ML já dizia e a importação descartava.
+   *
+   * `tipoAnuncioMl` vem CRU (`gold_pro`/`gold_special`). A tradução para
+   * Premium/Clássico é decisão de domínio e mora em `custosML`: guardar já
+   * traduzido faria um tipo novo do ML virar "clássico" em silêncio.
+   *
+   * `null` em todos = não lido. Nunca zero, nunca false por omissão — a mesma
+   * regra de `statusMarketplace`.
+   */
+  tipoAnuncioMl?: string | null;
+  criadoEmMl?: string | null;
+  atualizadoEmMl?: string | null;
+  vendidosMl?: number | null;
+  saudeMl?: number | null;
+  doCatalogoMl?: boolean | null;
+  temDescricaoMl?: boolean | null;
 }

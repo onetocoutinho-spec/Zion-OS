@@ -971,6 +971,19 @@ export async function importarAnunciosDoCliente(
       subStatusMarketplace: a.subStatus ?? [],
       fotoCapaMaxSize: (a.fotoCapaMaxSize || "").trim() || null,
       estoqueMarketplace: typeof a.estoque === "number" ? a.estoque : null,
+      // 074 — SETE CAMPOS QUE JÁ CHEGAVAM E MORRIAM AQUI.
+      //
+      // Nada de leitura nova: `mapearItem` já extraía os sete do mesmo
+      // multiget. Eles atravessavam a importação inteira e sumiam quando a
+      // requisição terminava. O caro é `tipoAnuncioMl`: sem ele a comissão da
+      // margem sai da configuração da loja inteira, e o ML diz por anúncio.
+      tipoAnuncioMl: (a.tipoDeAnuncio || "").trim() || null,
+      criadoEmMl: (a.criadoEmML || "").trim() || null,
+      atualizadoEmMl: (a.atualizadoEmML || "").trim() || null,
+      vendidosMl: typeof a.vendidos === "number" ? a.vendidos : null,
+      saudeMl: typeof a.saude === "number" ? a.saude : null,
+      doCatalogoMl: typeof a.doCatalogo === "boolean" ? a.doCatalogo : null,
+      temDescricaoMl: typeof a.temDescricao === "boolean" ? a.temDescricao : null,
       aprovadoPor: "Mercado Livre",
       aprovadoEm: agora,
       criadoEm: agora,

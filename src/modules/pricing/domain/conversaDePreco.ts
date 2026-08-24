@@ -60,7 +60,7 @@ import {
   SEM_CUSTOS_DO_LOJISTA,
   type CustosDoLojista,
 } from "./custosDoLojista.ts";
-import { pesoCobravelGramas } from "./custosML.ts";
+import { nomeDoTipoDeAnuncio, pesoCobravelGramas } from "./custosML.ts";
 
 // ---------------------------------------------------------------------------
 // de onde vem cada número
@@ -74,7 +74,21 @@ import { pesoCobravelGramas } from "./custosML.ts";
  * prometer. `indisponivel` é quando nem uma nem outra: aí não se inventa
  * percentual, o resultado é bloqueado.
  */
-export type OrigemDaComissao = "api" | "tabela" | "indisponivel";
+/**
+ * De onde saiu o percentual de comissão do cálculo.
+ *
+ * `anuncio` entrou em 24/08/2026 e é o único que fala do ANÚNCIO em questão:
+ * o `listing_type_id` que o próprio Mercado Livre informou para aquele MLB.
+ * Antes dele, o tipo vinha de `canais_marketplace` — uma configuração da LOJA
+ * INTEIRA com padrão "Premium" — enquanto o ML dizia anúncio por anúncio e a
+ * importação descartava. Em Moda são 14% contra 19%: cinco pontos sobre o
+ * número que decide preço, errados em silêncio numa loja com os dois tipos.
+ *
+ * `tabela` continua sendo a resposta honesta quando não se sabe o tipo, e é
+ * por isso que os dois não podem ser o mesmo valor: o lojista precisa saber
+ * quando o número é sobre o anúncio dele e quando é sobre a média.
+ */
+export type OrigemDaComissao = "api" | "anuncio" | "tabela" | "indisponivel";
 
 /**
  * A procedência dos inputs do cálculo.
@@ -578,6 +592,11 @@ export function escreverComissao(e: EntradasDoPreco): string {
   switch (e.procedencia.comissao) {
     case "api":
       return `${pct}% da sua conta no Mercado Livre${sufixo}.`;
+    case "anuncio":
+      // O TIPO É DITO. "19%" sozinho não deixa a lojista conferir; "19%,
+      // porque este anúncio é Premium" deixa — e é ela quem sabe se o anúncio
+      // deveria ser Premium.
+      return `${pct}% — este anúncio é ${nomeDoTipoDeAnuncio(e.taxas.tipoAnuncio)} no Mercado Livre${sufixo}.`;
     case "tabela":
       return `${pct}% — estimativa da tabela de Moda, não a comissão exata da sua conta${sufixo}.`;
     case "indisponivel":

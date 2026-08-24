@@ -90,6 +90,9 @@ import {
   type Investigacao,
 } from "@/modules/assistant/domain/investigacao";
 import { fraseDaFamilia, retratoDaFamilia } from "@/modules/publication/domain/familiaNoMarketplace";
+import { entradaDaSaude, NADA_MEDIDO } from "@/modules/publication/domain/saudeDoCatalogoDaLoja";
+import { retratarCatalogo } from "@/modules/integration/domain/saudeDoCatalogo";
+import { nomeDoTipoDeAnuncio } from "@/modules/pricing/domain/custosML";
 import type { LeituraDeFamilias } from "@/lib/marketplaces/mercadolivre";
 import {
   gradesDosProdutos,
@@ -1153,6 +1156,9 @@ export async function executarFerramenta(
 
     case "anuncios_a_corrigir":
       return listarFilaDeCorrecao(ctx);
+
+    case "saude_do_catalogo":
+      return saudeDoCatalogo(ctx);
 
     case "diagnostico_de_agrupamento":
       return diagnosticarGrade(args, ctx);
@@ -3128,6 +3134,77 @@ async function compararAsLojas(ctx: ContextoDasFerramentas): Promise<ResultadoDa
       ...(r.truncado ? { aviso: `Mostrei ${r.lojas.length} de ${r.totalNoAlcance} lojas (em ordem de nome).` } : {}),
       comoResponder:
         "Use uma TABELA, uma loja por linha, com as colunas que a pergunta pede. Os números são exatos — não some, não tire média. Aponte a loja mais atrasada pelo que está nas colunas (mais 'sem') e diga o que fazer primeiro nela. Loja sem 'infracoes' é loja cuja infração ainda não foi lida — não diga que não tem.",
+    },
+  };
+}
+
+/**
+ * A saúde dos anúncios na nota do próprio Mercado Livre.
+ *
+ * Reusa o porto `noAr` — a MESMA varredura que responde "quantos estão no ar",
+ * memoizada por turno. Uma leitura própria seria pagar duas vezes pelas mesmas
+ * 880 linhas, e uma segunda implementação do mapeamento divergiria da primeira
+ * em algum momento, que é o defeito que este repositório mais encontrou.
+ */
+async function saudeDoCatalogo(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const { anuncios, medidos } = entradaDaSaude(await ctx.noAr());
+  if (anuncios.length === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está.",
+      },
+    };
+  }
+
+  // NADA MEDIDO NÃO É CATÁLOGO PERFEITO.
+  //
+  // Um retrato sobre zero medições sai com saúde média 0, zero no catálogo e
+  // zero sem descrição — e lido sem contexto parece impecável. É o mesmo erro
+  // do "nada travado, sua loja está em dia" que este projeto já cometeu. Aqui
+  // a saída nem monta o retrato: diz o que falta.
+  if (medidos === 0) {
+    return {
+      saida: {
+        montada: false,
+        anunciosConhecidos: anuncios.length,
+        motivo: NADA_MEDIDO,
+        comoResponder:
+          "Diga o campo 'motivo' como está e NÃO apresente número nenhum de saúde. Ofereça reimportar do Mercado Livre, que é o que traz essa leitura.",
+      },
+    };
+  }
+
+  const r = retratarCatalogo(anuncios);
+  return {
+    saida: {
+      anunciosConhecidos: anuncios.length,
+      anunciosComLeitura: medidos,
+      saudeMedia: r.comSaude > 0 ? Math.round(r.saudeMedia * 100) : null,
+      anunciosComSaudeLida: r.comSaude,
+      piores: r.piores.map((p) => ({ mlb: p.mlb, saudePercentual: Math.round(p.saude * 100) })),
+      noArSemNenhumaVenda: r.noArSemVenda,
+      vendidosTotal: r.vendidosTotal,
+      semDescricao: r.semDescricao,
+      disputamCatalogoDoMl: r.doCatalogo,
+      porTipoDeAnuncio: r.porTipo.map((t) => ({
+        tipo: nomeDoTipoDeAnuncio(t.tipo) ?? t.tipo,
+        anuncios: t.anuncios,
+      })),
+      alteradosPorDia: r.alteradosPorDia,
+      comoResponder: [
+        "SAÚDE VEM EM PORCENTAGEM INTEIRA — escreva \"84%\", nunca \"0,84\". O número sai pronto; não converta nada.",
+        "A saúde é a nota do PRÓPRIO Mercado Livre e é ela que decide exposição: anúncio com nota baixa aparece menos na busca. Não é opinião do Zion.",
+        "Se 'anunciosComLeitura' for MENOR que 'anunciosConhecidos', diga sobre quantos você está falando. Um número sobre parte do catálogo apresentado como sobre o todo é falso.",
+        "'noArSemNenhumaVenda' é o achado mais acionável: estão visíveis, custam atenção e nunca venderam. Ofereça diagnostico_do_anuncio num deles para saber se é exposição ou conversão.",
+        "'porTipoDeAnuncio' muda a COMISSÃO — Clássico e Premium pagam percentuais diferentes. Se houver os dois, diga: o preço de um não serve de régua para o outro.",
+        "'alteradosPorDia' com um pico num único dia sugere edição em massa. É PISTA, não conclusão: diga como pista e pergunte se houve alguma alteração naquele dia.",
+        "NÃO diga que o catálogo está bem só porque um número veio zero. Zero em 'semDescricao' é boa notícia; zero em 'vendidosTotal' não é.",
+      ].join(" "),
     },
   };
 }

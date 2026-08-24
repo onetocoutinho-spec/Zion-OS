@@ -451,8 +451,14 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
   // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
   // a releitura é o que torna seguro publicá-lo.
-  assert.equal(FERRAMENTAS.length, 34);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
+  // De 34 para 35 em 24/08/2026: `saude_do_catalogo`, LEITURA — 35 / 21.
+  //
+  // NÃO é capacidade nova: `retratarCatalogo` calcula isto desde 02/08/2026.
+  // É ALCANCE — o retrato rodava dentro da importação, ia embora com a
+  // requisição, e a tabela dela não é lida por ferramenta nenhuma. A decisão
+  // por extenso está na matriz de T2, em `primeiraAcao.test.ts`.
+  assert.equal(FERRAMENTAS.length, 35);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 21);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -468,7 +474,8 @@ test("T17: o C1R continua intacto", () => {
   // garante NÃO mudou e é o que a linha seguinte prova: toda ferramenta da
   // primeira ação tem efeito `le`. O número trava o tamanho; o laço trava a
   // natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 20);
+  // 21 desde 24/08/2026 com `saude_do_catalogo`.
+  assert.equal(PRIMEIRA_ACAO.length, 21);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

@@ -1063,6 +1063,20 @@ const SEM_MEDIDAS: MedidasDaEmbalagem = {
  *   2. os atributos PACKAGE_HEIGHT / _WIDTH / _LENGTH / _WEIGHT, que alguns
  *      itens trazem no lugar.
  *
+ * ⚠️ A FONTE (1) NUNCA EXECUTOU EM PRODUÇÃO. Descoberto em 24/08/2026: o
+ * multiget filtra por campo e `shipping` NÃO está em `CAMPOS_PEDIDOS_AO_ML`,
+ * então o objeto nunca chega. Todo peso que a importação conseguiu até hoje
+ * veio da fonte (2). Produto cujas medidas só existem em `shipping.dimensions`
+ * entra zerado — e zero aqui vira `envio: "ausente"` na precificação, ou seja,
+ * margem sem frete.
+ *
+ * Acrescentar "shipping" à lista é provavelmente a correção, e ela NÃO foi
+ * feita porque o mesmo arquivo já ensinou o preço de chutar: se o ML recusar o
+ * campo no filtro, o pedido inteiro degrada para `CAMPOS_MINIMOS_AO_ML` e a
+ * importação perde de uma vez health, sold_quantity e listing_type_id. O
+ * caminho é `scripts/medicoes/camposDoMercadoLivre.ts` contra a conta real —
+ * e `camposDoMercadoLivre.test.ts` segura o achado até lá.
+ *
  * Zero em tudo quando nenhuma fonte responde — e zero significa "não sei",
  * tratado como pendência pela precificação, nunca como "não pesa nada".
  */

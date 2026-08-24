@@ -784,6 +784,16 @@ export function anuncioGeradoParaApp(row: AnuncioGeradoRow): AnuncioGeradoRegist
     // 056. `?? null` e nao `?? ""`: string vazia seria uma categoria que nao
     // existe, e quem pedir a tarifa com ela recebe erro em vez de ausencia.
     categoriaMl: row.categoria_ml ?? null,
+    // 074. `?? null` em todos, pelo mesmo motivo dos de cima: um `vendidos_ml`
+    // virando 0 diria "não vendeu nada" sobre anúncio que ninguém mediu, e um
+    // `do_catalogo_ml` virando false diria que ele não disputa catálogo.
+    tipoAnuncioMl: row.tipo_anuncio_ml ?? null,
+    criadoEmMl: row.criado_em_ml ?? null,
+    atualizadoEmMl: row.atualizado_em_ml ?? null,
+    vendidosMl: row.vendidos_ml ?? null,
+    saudeMl: row.saude_ml ?? null,
+    doCatalogoMl: row.do_catalogo_ml ?? null,
+    temDescricaoMl: row.tem_descricao_ml ?? null,
   };
 }
 
@@ -813,6 +823,13 @@ export function anuncioGeradoParaBanco(
   if (d.fotoCapaMaxSize !== undefined) r.foto_capa_max_size = d.fotoCapaMaxSize;
   if (d.estoqueMarketplace !== undefined) r.estoque_marketplace = d.estoqueMarketplace;
   if (d.categoriaMl !== undefined) r.categoria_ml = d.categoriaMl;
+  if (d.tipoAnuncioMl !== undefined) r.tipo_anuncio_ml = d.tipoAnuncioMl;
+  if (d.criadoEmMl !== undefined) r.criado_em_ml = d.criadoEmMl;
+  if (d.atualizadoEmMl !== undefined) r.atualizado_em_ml = d.atualizadoEmMl;
+  if (d.vendidosMl !== undefined) r.vendidos_ml = d.vendidosMl;
+  if (d.saudeMl !== undefined) r.saude_ml = d.saudeMl;
+  if (d.doCatalogoMl !== undefined) r.do_catalogo_ml = d.doCatalogoMl;
+  if (d.temDescricaoMl !== undefined) r.tem_descricao_ml = d.temDescricaoMl;
   // criadoEm fica por conta do created_at (default now() no banco)
   return r;
 }

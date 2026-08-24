@@ -428,6 +428,20 @@ export interface AnuncioGeradoRow {
   sub_status_marketplace?: string[] | null;
   foto_capa_max_size?: string | null;
   estoque_marketplace?: number | null;
+  /**
+   * Migração 074 — o que o ML já dizia e a importação descartava.
+   *
+   * `tipo_anuncio_ml` é o mais caro dos sete: sem ele a comissão sai da
+   * configuração da loja inteira (default "Premium"), e em Moda são 14% contra
+   * 19% sobre o número que decide preço.
+   */
+  tipo_anuncio_ml?: string | null;
+  criado_em_ml?: string | null;
+  atualizado_em_ml?: string | null;
+  vendidos_ml?: number | null;
+  saude_ml?: number | null;
+  do_catalogo_ml?: boolean | null;
+  tem_descricao_ml?: boolean | null;
   created_at?: string;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;
