@@ -507,6 +507,21 @@ async function chamarOpenAI(c: ChamadaIA): Promise<RespostaIA> {
   }
 }
 
+/**
+ * A folga de RACIOCÍNIO somada ao teto de cada chamada.
+ *
+ * `maxTokens` foi escrito na era Claude, onde ele limitava o TEXTO visível.
+ * Na Responses API, `max_output_tokens` inclui os tokens de raciocínio — e o
+ * gpt-5 raciocina antes de escrever. Medido em produção em 24/08/2026, no
+ * primeiro dia do ChatGPT: a classificação de intenção (`maxTokens: 400`)
+ * voltou `incomplete` em 6,7s com texto VAZIO — o modelo gastou os 400
+ * pensando e não sobrou nada para o JSON. A lojista leu "Não consegui
+ * entender a pergunta agora".
+ *
+ * A folga é teto, não gasto: só é cobrada se o modelo a usar.
+ */
+export const FOLGA_DO_RACIOCINIO = 8000;
+
 async function chamarOpenAICom(c: ChamadaIA, modelo: string): Promise<RespostaIA> {
   const esforco = esforcoDaOpenAI(c.esforco);
   // `strict: false` de propósito: os schemas do projeto foram escritos para o
@@ -518,13 +533,15 @@ async function chamarOpenAICom(c: ChamadaIA, modelo: string): Promise<RespostaIA
     input: [{ role: "user", content: conteudoDaMensagemOpenAI(c) }],
     text: { format: { type: "json_schema", name: "saida", schema: c.schema, strict: false } },
     ...(esforco ? { reasoning: { effort: esforco } } : {}),
-    max_output_tokens: c.maxTokens ?? 16000,
+    max_output_tokens: (c.maxTokens ?? 16000) + FOLGA_DO_RACIOCINIO,
   });
-  if (r.recusa || !r.texto) {
-    throw new Error("O modelo não pôde completar esta solicitação. Ajuste a entrada e tente novamente.");
-  }
+  // A ORDEM importa: `incomplete` costuma vir com texto vazio, e checar o
+  // vazio primeiro esconderia a causa atrás do erro genérico.
   if (r.motivoIncompleta === "max_output_tokens") {
     throw new Error("A resposta estourou o teto de saída e veio incompleta. Divida a entrada e tente novamente.");
+  }
+  if (r.recusa || !r.texto) {
+    throw new Error("O modelo não pôde completar esta solicitação. Ajuste a entrada e tente novamente.");
   }
   return {
     json: r.texto,
