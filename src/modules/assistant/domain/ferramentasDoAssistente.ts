@@ -309,6 +309,13 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: { type: "object", properties: {} },
   },
   {
+    nome: "anuncios_ativos",
+    efeito: "le",
+    descricao:
+      "OS ANÚNCIOS DA LOJA NO MERCADO LIVRE, por estado: quantos estão ATIVOS (no ar), quantos pausados, em revisão, encerrados ou inativos — na palavra do próprio ML — e quantos nunca tiveram o estado medido. Traz também POR QUE não estão no ar (out_of_stock, forbidden) e HÁ QUANTOS DIAS cada estado foi lido. Use para \"quais anúncios estão ativos?\", \"quantos anúncios tenho no ar?\", \"o que está pausado?\", \"tem anúncio em revisão?\". Para UM produto específico use diagnostico_do_anuncio.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
     nome: "diagnostico_do_anuncio",
     efeito: "le",
     descricao:

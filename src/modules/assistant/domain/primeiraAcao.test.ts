@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 16 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 17 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 16);
+  assert.equal(PRIMEIRA_ACAO.length, 17);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas dezesseis — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas dezessete — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -105,8 +105,27 @@ test("T2: são exatamente estas dezesseis — a matriz que autorizou a decisão"
   // visitas, vendas, saúde e estado do anúncio publicado e separa exposição
   // de conversão. Leitura pura com a credencial do servidor; pior caso de um
   // "obrigado" é a loja ver o diagnóstico do próprio anúncio.
+  //
+  // A DÉCIMA SÉTIMA entrou em 24/08/2026: `anuncios_ativos`.
+  //
+  // Ela existe por uma pergunta que a lojista fez em produção — "quais são os
+  // anúncios ativos hoje?" — e que o Copilot respondeu, corretamente, não
+  // saber: nenhuma das dezesseis olhava a loja INTEIRA no marketplace, só
+  // produto a produto. O dado já estava no banco desde a 050/051.
+  //
+  // Por que pode ser a PRIMEIRA ação: lê a tabela `anuncios_gerados` com o
+  // tenant da sessão, paginada, sem escrita, sem chamada externa e sem custo
+  // de modelo. O pior caso de um "obrigado" dispará-la é a loja ver o estado
+  // dos próprios anúncios — o mesmo dano de `estado_da_loja`, ou seja, nenhum.
+  //
+  // E ela nasce com a distinção que a 050 pagou caro para aprender: ativo,
+  // outro estado e SEM LEITURA são três coisas, e a idade da medição vai
+  // junto. Em 24/08/2026 a loja real tinha 489 ativos medidos havia 10 dias —
+  // uma resposta que omitisse a data afirmaria sobre hoje o que se sabe sobre
+  // a semana passada.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
+    "anuncios_ativos",
     "comparar_lojas",
     "contar",
     "diagnostico_do_anuncio",
@@ -313,8 +332,17 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // E `propor_imagem` (PROPOSTA, risco médio): a imagem gerada fica no bucket
   // privado como rascunho até a aprovação; nada sobe sozinho (070). 27 / 10.
   // E `diagnostico_do_anuncio` (LEITURA): 28 / 16.
-  assert.equal(FERRAMENTAS.length, 28);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 16);
+  //
+  // De 28 para 29 em 24/08/2026: `anuncios_ativos`, LEITURA — 29 / 17. Só a
+  // leitura subiu; continuam 1 rascunho, 10 propostas e 1 ação.
+  //
+  // A decisão veio de uma pergunta feita em produção — "quais são os anúncios
+  // ativos hoje?" — que o Copilot respondeu não saber, com razão: as 16
+  // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
+  // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
+  // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
+  assert.equal(FERRAMENTAS.length, 29);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 17);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

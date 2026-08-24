@@ -79,6 +79,7 @@ import type { PedidoCongelado } from "./propostaDePublicacao";
 import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
 import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
+import type { RetratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
 import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
 import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
 import { lerSlot } from "./briefingDeImagem";
@@ -175,6 +176,13 @@ export interface ContextoDasFerramentas {
   comparar?: () => Promise<ComparacaoDeLojas>;
   /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
   diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
+  /**
+   * O retrato dos anúncios da loja no marketplace — quantos no ar, por estado.
+   *
+   * Lê o que JÁ foi medido (050/051) com a data da medição, e não o ML ao
+   * vivo: ~800 anúncios não cabem no orçamento de um turno. Ver o serviço.
+   */
+  noAr?: () => Promise<RetratoDosAnuncios>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -1075,6 +1083,9 @@ export async function executarFerramenta(
 
     case "comparar_lojas":
       return compararAsLojas(ctx);
+
+    case "anuncios_ativos":
+      return listarAnunciosNoAr(ctx);
 
     case "diagnostico_do_anuncio": {
       const produtoId = texto(args, "produtoId");
@@ -2588,6 +2599,48 @@ async function consultarVendas(
         "Quando 'anterior' for zero, não há comparação: diga isso em vez de calcular porcentagem.",
         "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
         "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
+ * "Quais anúncios estão ativos?" — a loja inteira, por estado.
+ *
+ * A saída separa os TRÊS eixos que a 050 pagou caro para distinguir: no ar,
+ * em outro estado, e SEM LEITURA. E carrega a idade da medição, porque um
+ * `active` lido há três semanas não é uma afirmação sobre hoje.
+ */
+async function listarAnunciosNoAr(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const r = await ctx.noAr();
+  if (r.comMlb === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem nenhum anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está. Não confunda com 'produto sem anúncio preparado' — para isso existe estado_da_loja.",
+      },
+    };
+  }
+  return {
+    saida: {
+      anunciosComMlb: r.comMlb,
+      ativos: r.totalAtivos,
+      listaDeAtivos: r.ativos,
+      listaRecortada: r.totalAtivos > r.ativos.length,
+      outrosEstados: r.outros,
+      semLeitura: r.semLeitura,
+      desatualizados: r.desatualizados,
+      leituraMaisAntigaEmDias: r.leituraMaisAntigaEmDias,
+      comoResponder: [
+        "Comece pelo número de ATIVOS e pelo total com anúncio no ML. Depois os outros estados, do maior para o menor, com a palavra do Mercado Livre e a tradução ao lado (paused = pausado, under_review = em revisão, closed = encerrado, inactive = inativo).",
+        "SEMPRE diga há quantos dias o estado foi lido quando 'desatualizados' for maior que zero — esta leitura é do que foi MEDIDO, não do Mercado Livre agora. Para atualizar, a lojista usa Importar do Mercado Livre na tela de Produtos.",
+        "'semLeitura' NÃO é 'inativo': são anúncios cujo estado nunca foi medido. Diga 'não sei o estado de N' — nunca os some aos ativos nem aos pausados.",
+        "Quando um estado tiver 'motivos', cite-os: eles dizem POR QUE o anúncio não está no ar (out_of_stock = sem estoque, forbidden = infração).",
+        "Não liste os ativos um a um se forem muitos: dê o número e ofereça olhar um produto específico com diagnostico_do_anuncio.",
       ].join(" "),
     },
   };
