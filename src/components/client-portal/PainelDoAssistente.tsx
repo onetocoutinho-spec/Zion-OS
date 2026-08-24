@@ -24,17 +24,27 @@ import { useContextoDaPergunta } from "./useEstadoDaLoja";
 import { useClientPortal } from "./context";
 import { notificarMudanca } from "@/lib/store";
 
-export function PainelDoAssistente() {
+/**
+ * O painel do assistente.
+ *
+ * `lojaId` existe para as telas da AGÊNCIA, que não têm o provider do portal:
+ * lá a loja vem do seletor global (`useLojaAtual`). Omitido, o painel segue
+ * lendo a loja do portal — o caminho do lojista, inalterado.
+ */
+export function PainelDoAssistente({ lojaId }: { lojaId?: string | null } = {}) {
   // useSearchParams exige Suspense no App Router.
   return (
     <Suspense fallback={null}>
-      <Painel />
+      <Painel lojaId={lojaId} />
     </Suspense>
   );
 }
 
-function Painel() {
-  const { clienteId } = useClientPortal();
+function Painel({ lojaId }: { lojaId?: string | null }) {
+  const portal = useClientPortal();
+  // A loja da prop VENCE: quem a passa é a casca da agência, que sabe qual
+  // loja está sendo operada. Sem ela, a do portal — onde o lojista É a loja.
+  const clienteId = lojaId ?? portal.clienteId;
   const [aberto, setAberto] = useState(false);
   /**
    * O FOCO tem ida e volta. O gatilho era DESMONTADO no mesmo render em que o

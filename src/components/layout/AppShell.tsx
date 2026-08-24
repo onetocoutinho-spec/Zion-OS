@@ -12,6 +12,7 @@ import { useTituloDaAba } from "./tituloDaAba";
 import { LojaAtualProvider, useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { buscarAgencia } from "@/lib/services/agencias";
 import { SeletorDeLoja } from "./SeletorDeLoja";
+import { AssistenteDaAgencia } from "./AssistenteDaAgencia";
 import { EsqueletoDeTexto } from "@/components/ui/Skeleton";
 
 /** O item "casa" com a rota se ele ou um filho dele for o prefixo dela. */
@@ -352,6 +353,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
       </div>
+
+      {/* O assistente também aqui. Ele fica DENTRO do LojaAtualProvider porque
+          é dele que sai a loja em operação — para a agência, a loja nunca é
+          implícita. Sem loja escolhida, o botão não aparece. */}
+      <AssistenteDaAgencia />
     </div>
     </LojaAtualProvider>
   );

@@ -587,6 +587,12 @@ export function ChatDaOperacao({
             {
               lojaId: clienteId,
               produtoAbertoId: contexto.produto?.id ?? null,
+              // A TELA em que a pessoa está. O campo existia no protocolo dos
+              // dois lados desde sempre e nunca era enviado: o servidor não
+              // sabia se a pergunta vinha de Produtos, de Vendas ou do painel
+              // da agência, e a conversa era gravada sem essa marca. Uma linha,
+              // e o contexto passa a existir. (Auditoria de 24/08/2026.)
+              ...(pathname ? { rota: pathname } : {}),
               ...(conversaId ? { conversaId } : {}),
             },
             aoVivo,
@@ -807,7 +813,11 @@ export function ChatDaOperacao({
         setOcupado(false);
       }
     },
-    [contexto, ocupado, produtos, conversando, conversaId, guardarFio, clienteId]
+    // `pathname` entra porque a rota agora VIAJA no corpo: fora das
+    // dependências, o callback guardaria a tela em que ele foi criado, e a
+    // conversa nasceria marcada com a página anterior — um dado errado é pior
+    // que o dado ausente que havia antes.
+    [contexto, ocupado, produtos, conversando, conversaId, guardarFio, clienteId, pathname]
   );
 
   /**
