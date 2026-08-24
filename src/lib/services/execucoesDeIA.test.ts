@@ -54,12 +54,21 @@ test("o turno do chat é registrado nos QUATRO desfechos: ok, parcial, timeout, 
 
 test("o laço tem orçamento de TEMPO, decidido antes de cada passo, e sai pela porta honesta", () => {
   const rota = ler("app/api/assistente/conversa/route.ts");
-  assert.match(rota, /const ORCAMENTO_DO_LACO_MS = 45_000/);
-  assert.match(rota, /if \(passo > 0 && relogio\.ms\(\) > ORCAMENTO_DO_LACO_MS\) \{\s*semTempo = true;\s*break;/);
+  // OS NÚMEROS MUDARAM EM 24/08/2026, e o motivo está em
+  // `turnoQueNaoMorre.test.ts`: com 45 s de orçamento contra 60 de teto, a
+  // plataforma ganhou a corrida e um turno morreu sem gravar nada. Agora são
+  // 100 s contra 150, e o relógio também é olhado antes de cada ferramenta.
+  // Aqui fica a garantia ESTRUTURAL (existe orçamento, existe saída honesta);
+  // os valores e a folga são conferidos lá.
+  assert.match(rota, /const ORCAMENTO_DO_LACO_MS = [0-9_]+;/);
+  assert.match(rota, /if \(passo > 0 && estourouOTempo\(relogio\.ms\(\)\)\) \{\s*semTempo = true;\s*break;/);
   assert.match(rota, /Demorei demais nessa e parei antes de terminar/);
   // O orçamento cabe dentro de `maxDuration` com folga para gravar.
   const max = Number(/export const maxDuration = (\d+)/.exec(rota)?.[1]);
-  assert.ok(45_000 < max * 1000 - 10_000, "o orçamento não deixa folga para gravar o turno");
+  const orcamento = Number(
+    /const ORCAMENTO_DO_LACO_MS = ([0-9_]+)/.exec(rota)?.[1].replace(/_/g, "")
+  );
+  assert.ok(orcamento < max * 1000 - 10_000, "o orçamento não deixa folga para gravar o turno");
 });
 
 test("a leitura pesada do catálogo é UMA por turno — e falha não é memoizada", () => {

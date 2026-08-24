@@ -144,7 +144,24 @@ import { configuracaoDoLojista, catalogoParaTriagem, precoDoProduto } from "@/li
 import { precondicoesDePreco } from "@/modules/pricing/domain/conversaDePreco";
 import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 
-export const maxDuration = 60;
+/**
+ * O teto da função.
+ *
+ * Era 60 s, e em 24/08/2026 isso passou a matar turnos em produção: o turno
+ * "Analisa a papete modare" morreu sem gravar NADA — sem `fim` no stream, sem
+ * linha em `ia_execucoes`, sem mensagem na conversa —, e a lojista leu "a
+ * resposta foi interrompida no meio".
+ *
+ * Duas coisas mudaram no mesmo dia e empurraram o turno para além dos 60 s: o
+ * catálogo de ferramentas foi de 28 para 34 (todas viajam em toda chamada) e o
+ * modelo passou a ser o gpt-5, que raciocina antes de responder.
+ *
+ * 150 s é folga para o mecanismo de parada honesta abaixo funcionar — ele
+ * precisa poder disparar ANTES da plataforma. Um turno longo hoje é visível
+ * (a trilha mostra o passo a passo), o que era falso quando isto era um
+ * spinner mudo.
+ */
+export const maxDuration = 150;
 
 /**
  * Tetos do corpo. Sem eles a cota cobra "um turno" e o turno pode carregar um
@@ -156,13 +173,32 @@ const MAXIMO_DE_FALAS = 40;
 const MAXIMO_DO_CORPO = 200_000;
 
 /**
- * O orçamento de TEMPO do laço. `maxDuration` é 60 s e a Vercel mata a função
- * no meio — o stream já entregou texto, então o corte aparece como resposta
- * truncada com cara de completa, e NADA é gravado. Com este teto, o laço para
- * antes, diz que parou, e grava o turno. Folga de 15 s para o último passo
- * terminar de escrever e para a gravação.
+ * O orçamento de TEMPO do laço. A Vercel mata a função no `maxDuration` — o
+ * stream já entregou texto, então o corte aparece como resposta truncada com
+ * cara de completa, e NADA é gravado. Com este teto, o laço para antes, diz
+ * que parou, e grava o turno.
+ *
+ * 100 s contra 150 de teto: 50 s de folga, e a folga precisa caber a chamada
+ * de modelo MAIS LONGA que ainda pode começar depois da última verificação —
+ * medido em ~35 s com o gpt-5 e o catálogo atual. Era 45 s contra 60, e em
+ * 24/08/2026 a plataforma venceu a corrida.
  */
-const ORCAMENTO_DO_LACO_MS = 45_000;
+const ORCAMENTO_DO_LACO_MS = 100_000;
+
+/**
+ * O mesmo teto, verificado ANTES DE CADA FERRAMENTA — não só entre passos.
+ *
+ * A verificação por passo tem um buraco: um passo com quatro ferramentas roda
+ * as quatro sem olhar o relógio. Se a terceira for lenta, o turno atravessa o
+ * teto inteiro dentro de um passo que já tinha sido autorizado, e a plataforma
+ * mata a função no meio da quarta.
+ *
+ * Verificar antes de cada ferramenta transforma isso numa resposta parcial
+ * honesta: o que já foi consultado vale, e o turno diz que parou.
+ */
+function estourouOTempo(msDecorridos: number): boolean {
+  return msDecorridos > ORCAMENTO_DO_LACO_MS;
+}
 
 /** O cartão sem o pedido congelado — ele fica no servidor, na Proposal. */
 function semOCongelado<T extends { congelado?: unknown }>(p: T): Omit<T, "congelado"> {
@@ -935,7 +971,7 @@ Responda só o nome.`,
       try {
         for (let passo = 0; passo < MAXIMO_DE_PASSOS; passo++) {
           // ---- O ORÇAMENTO DE TEMPO. Ver `ORCAMENTO_DO_LACO_MS`.
-          if (passo > 0 && relogio.ms() > ORCAMENTO_DO_LACO_MS) {
+          if (passo > 0 && estourouOTempo(relogio.ms())) {
             semTempo = true;
             break;
           }
@@ -1526,6 +1562,11 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
           // antes de propor). Paralelizar aqui trocaria ordem por microssegundos.
           const respostas: { functionResponse: { name: string; response: unknown } }[] = [];
           for (const c of turno.chamadas) {
+            // O RELÓGIO, antes de cada uma. Ver `estourouOTempo`.
+            if (estourouOTempo(relogio.ms())) {
+              semTempo = true;
+              break;
+            }
             usadas.push(c.nome);
             // O aviso sai ANTES de executar: é o que aparece na tela enquanto a
             // ferramenta roda, no lugar do silêncio.
