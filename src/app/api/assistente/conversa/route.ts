@@ -44,6 +44,7 @@ import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { varrerAnunciosDaLoja } from "@/lib/services/anunciosNoArNoServidor";
 import { registrarLacuna } from "@/lib/services/lacunasDoCopilot";
+import { familiaDosAnunciosDoProduto } from "@/lib/services/familiaNoAnuncio";
 import { tituloNoArDoProduto } from "@/lib/services/tituloNoAnuncio";
 import {
   abrirInvestigacao,
@@ -685,6 +686,15 @@ export async function POST(request: Request) {
       ? {
           tituloNoAr: (produtoId: string) =>
             tituloNoArDoProduto(clienteDaSessao, produtoId, {
+              clientId: process.env.ML_CLIENT_ID as string,
+              clientSecret: process.env.ML_CLIENT_SECRET as string,
+            }),
+          // ---- A FAMÍLIA NO ML ----
+          //
+          // Mesma condição, mesmo motivo: é leitura viva. Sem credencial o
+          // porto não existe e a ferramenta volta a dizer a lacuna.
+          familiaNoAr: (produtoId: string) =>
+            familiaDosAnunciosDoProduto(clienteDaSessao, produtoId, {
               clientId: process.env.ML_CLIENT_ID as string,
               clientSecret: process.env.ML_CLIENT_SECRET as string,
             }),

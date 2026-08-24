@@ -89,6 +89,8 @@ import {
   podeContinuar,
   type Investigacao,
 } from "@/modules/assistant/domain/investigacao";
+import { fraseDaFamilia, retratoDaFamilia } from "@/modules/publication/domain/familiaNoMarketplace";
+import type { LeituraDeFamilias } from "@/lib/marketplaces/mercadolivre";
 import {
   gradesDosProdutos,
   LACUNA_DA_FAMILIA,
@@ -215,6 +217,18 @@ export interface ContextoDasFerramentas {
     titulo: string;
     permalink: string | null;
   } | null>;
+  /**
+   * A FAMÍLIA DOS ANÚNCIOS NO ML — leitura viva, e a lacuna que ela fecha.
+   *
+   * Até 24/08/2026 o Copilot respondia "não sei se estão agrupados", e estava
+   * certo: o vínculo de família chega na importação e não é guardado em lugar
+   * nenhum do banco. Mas "não guardo" não é "não dá para saber" — o ML devolve
+   * `family_name` e `user_product_id`, e 20 itens cabem numa chamada.
+   *
+   * Opcional: sem credencial no servidor o porto não é montado e a ferramenta
+   * volta a dizer a lacuna, em vez de inventar veredito.
+   */
+  familiaNoAr?: (produtoId: string) => Promise<LeituraDeFamilias | null>;
   /**
    * O SINAL de pedido sem capacidade — gravado quando a conferência encontra
    * uma lacuna. Opcional: sem ele a resposta honesta continua saindo, só não
@@ -1141,7 +1155,7 @@ export async function executarFerramenta(
       return listarFilaDeCorrecao(ctx);
 
     case "diagnostico_de_agrupamento":
-      return diagnosticarGrade(ctx);
+      return diagnosticarGrade(args, ctx);
 
     case "o_que_eu_consigo":
       return conferirHabilidade(args, ctx);
@@ -2914,7 +2928,10 @@ async function conferirHabilidade(
  * sabe: sem o vínculo de família guardado, ninguém aqui pode afirmar que o ML
  * agrupou ou deixou de agrupar.
  */
-async function diagnosticarGrade(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+async function diagnosticarGrade(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
   if (!ctx.noAr) {
     return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
   }
@@ -2944,6 +2961,33 @@ async function diagnosticarGrade(ctx: ContextoDasFerramentas): Promise<Resultado
     }
   }
   const quebradas = grades.filter((g) => g.situacao === "so_um_no_ar" || g.situacao === "partida" || g.situacao === "fora_do_ar");
+
+  // ---- A FAMÍLIA, PERGUNTADA AO ML — só quando alguém aponta um produto.
+  //
+  // A leitura é por PRODUTO de propósito. Fazê-la para os dez piores seriam
+  // dez idas ao ML numa pergunta só, e ninguém perguntou sobre os dez. Quando
+  // a lojista diz "as variações da Papete não estão agrupadas", o modelo já
+  // achou o produto no passo anterior e passa o id aqui.
+  const alvo = texto(args, "produtoId").trim();
+  let agrupamentoNoML: unknown;
+  if (alvo && ctx.familiaNoAr) {
+    const leitura = await ctx.familiaNoAr(alvo);
+    if (leitura) {
+      const r = retratoDaFamilia(leitura);
+      agrupamentoNoML = {
+        situacao: r.situacao,
+        anunciosLidosNoML: r.lidos,
+        anunciosSemResposta: r.naoLidos,
+        familias: r.familias,
+        semFamilia: r.semFamilia,
+        // A FRASE VEM PRONTA. Deixar o modelo redigir a partir dos números
+        // abriria espaço para "estão agrupados" sair de uma leitura parcial —
+        // e é justamente essa a diferença que a lojista precisa ver.
+        frase: fraseDaFamilia(r),
+      };
+    }
+  }
+
   return {
     saida: {
       produtosComAnuncio: grades.length,
@@ -2955,12 +2999,16 @@ async function diagnosticarGrade(ctx: ContextoDasFerramentas): Promise<Resultado
       piores: quebradas.slice(0, 10).map(({ cobertura: _fracao, ...g }) => g),
       referenciasParaConferir: referencias.slice(0, 10),
       conferenciaDeReferenciaDisponivel: Boolean(ctx.analise),
-      oQueNaoSei: LACUNA_DA_FAMILIA,
+      ...(agrupamentoNoML ? { agrupamentoNoML } : {}),
+      // A LACUNA SÓ APARECE QUANDO AINDA É VERDADE. Mandá-la junto com a
+      // leitura faria o modelo dizer as duas coisas — "estão agrupados" e "não
+      // sei se estão agrupados" — na mesma resposta.
+      ...(agrupamentoNoML ? {} : { oQueNaoSei: LACUNA_DA_FAMILIA }),
       comoResponder: [
         "EXPLIQUE O FORMATO ANTES DE APONTAR O DEFEITO: em categoria de calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo. Muitos anúncios para um produto NÃO é o problema.",
         "O problema é a GRADE PARTIDA. Para cada produto em 'piores' diga: X anúncios, Y no ar, e o que está bloqueando o resto (campo motivos). 'so_um_no_ar' é o caso mais caro: quem procura outro número não encontra a loja.",
         "'coberturaPercentual' JÁ ESTÁ EM PORCENTAGEM INTEIRA: escreva \"6%\", nunca \"0,06\" nem \"0.0625\". Não converta nada — o número sai pronto.",
-        "Repita o campo oQueNaoSei quando a pergunta for sobre AGRUPAMENTO: não dá para afirmar que estão ou não agrupados numa família no ML, porque esse vínculo não é guardado aqui.",
+        "SOBRE AGRUPAMENTO: se veio 'agrupamentoNoML', a resposta É o campo 'frase' dele — copie o sentido, não recalcule a partir dos números. Se NÃO veio, repita 'oQueNaoSei' e diga que para conferir a família você precisa saber de qual produto se trata (ache com achar_produto e chame de novo com produtoId).",
         "Sobre 'referenciasParaConferir': diga 'confira se são o mesmo produto' e mostre os modelos lado a lado. NUNCA diga que são duplicados — dois materiais do mesmo modelo é cadastro legítimo, e quem decide é a lojista.",
         "Se 'conferenciaDeReferenciaDisponivel' for falso, não diga que não há referência repetida: diga que não conferiu.",
         "Para resolver, ofereça o caminho que existe: anuncios_a_corrigir mostra o motivo de cada um estar fora do ar, e diagnostico_do_anuncio olha um anúncio específico.",

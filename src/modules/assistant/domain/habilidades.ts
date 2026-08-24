@@ -224,10 +224,15 @@ const LACUNAS: readonly Lacuna[] = [
       "separa esses anúncios",
     ],
     codigo: "CAPACIDADE_AUSENTE",
+    // METADE DESTA LACUNA FECHOU EM 24/08/2026. A frase dizia também que "nem
+    // dá para dizer como eles estão agrupados hoje", e isso deixou de ser
+    // verdade: `diagnostico_de_agrupamento` com produtoId pergunta ao ML. O que
+    // continua ausente é AGIR — juntar ou separar anúncios já publicados.
+    // Manter a metade morta faria o Copilot recusar o que ele agora faz.
     porQue:
-      "O Zion cria a família quando publica (todos os tamanhos com o mesmo nome de família), mas não reagrupa nem desagrupa anúncios que já existem. E o vínculo de família que vem do Mercado Livre não é guardado, então nem dá para dizer como eles estão agrupados hoje.",
+      "O Zion cria a família quando publica (todos os tamanhos com o mesmo nome de família), mas não reagrupa nem desagrupa anúncios que já existem. CONFERIR como estão agrupados hoje eu consigo — leio no Mercado Livre pelo diagnóstico de agrupamento; o que não consigo é mudar o agrupamento.",
     oQueFaltaria:
-      "Guardar o vínculo de família na importação e escrever a operação de reagrupamento no Mercado Livre.",
+      "Escrever a operação de reagrupamento no Mercado Livre — criar ou trocar a família de um anúncio que já está publicado.",
   },
   {
     assunto: "outros_marketplaces",

@@ -483,6 +483,91 @@ export async function mlbsComInfracao(
   return bloqueados;
 }
 
+/**
+ * A FAMÍLIA DE CADA ITEM, PERGUNTADA AO ML NA HORA.
+ *
+ * ===========================================================================
+ * POR QUE PERGUNTAR EM VEZ DE GUARDAR
+ * ===========================================================================
+ *
+ * O vínculo de família chega na importação e não é guardado: conferido em
+ * 24/08/2026, nem `anuncios_gerados` nem `produtos` têm coluna de família, e
+ * o jsonb `anuncio` só carrega o conteúdo gerado. Por isso o Copilot vinha
+ * respondendo "não sei se estão agrupados" — e estava certo sobre o que sabia.
+ *
+ * Guardar na importação resolveria o custo, ao preço de responder com o
+ * retrato do dia da última importação. A pergunta "estão agrupados?" é sobre
+ * AGORA: quem acabou de agrupar no painel do ML quer ver agrupado. Dezesseis
+ * numerações cabem em UMA chamada (o multiget vai de 20 em 20), então o preço
+ * de estar certo é baixo o bastante para valer sempre.
+ *
+ * ===========================================================================
+ * O QUE ELA DEVOLVE, E O QUE ELA NUNCA DEVOLVE
+ * ===========================================================================
+ *
+ * Devolve o que LEU, e a lista do que não conseguiu ler. Não devolve
+ * "soltos" para um item que o ML não entregou: item não lido é desconhecido,
+ * e tratar desconhecido como resposta é como o Zion já disse a uma lojista
+ * que a loja estava em dia sem ter olhado. Quem decide a situação é
+ * `familiaNoMarketplace.ts`, que recebe as duas listas separadas.
+ */
+export interface FamiliaDoItem {
+  mlb: string;
+  /** O nome que o ML compartilha entre os itens da mesma família. */
+  familyName: string;
+  /** `user_product_id` — sozinho não agrupa; repetido em 2+ itens, agrupa. */
+  userProductId: string;
+  /** `family_id`. Chega como número às vezes — ver o incidente de 02/08. */
+  familyId: string;
+}
+
+export interface LeituraDeFamilias {
+  lidos: FamiliaDoItem[];
+  /** Ids que o ML não devolveu. Não são "soltos": são desconhecidos. */
+  naoLidos: string[];
+}
+
+export async function familiasDosItens(
+  accessToken: string,
+  mlbs: readonly string[]
+): Promise<LeituraDeFamilias> {
+  const ids = [...new Set(mlbs.map((m) => (m ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return { lidos: [], naoLidos: [] };
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const lidos: FamiliaDoItem[] = [];
+  const naoLidos: string[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20);
+    const vieram = new Set<string>();
+    try {
+      const r = await fetch(
+        `${API}/items?ids=${lote.join(",")}&attributes=id,family_name,user_product_id,family_id`,
+        { headers }
+      );
+      if (r.ok) {
+        const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+        for (const x of arr) {
+          if (x.code !== 200 || !x.body?.id) continue;
+          vieram.add(x.body.id);
+          lidos.push({
+            mlb: x.body.id,
+            familyName: (x.body.family_name ?? "").trim(),
+            userProductId: (x.body.user_product_id ?? "").toString().trim(),
+            // `texto()` porque `family_id` já chegou como NÚMERO e derrubou a
+            // importação inteira em 02/08/2026 com ".trim is not a function".
+            familyId: texto(x.body.family_id),
+          });
+        }
+      }
+    } catch {
+      // Rede caiu, ML fora, JSON quebrado: o lote inteiro vira desconhecido.
+      // NÃO lança — quem pergunta sobre família continua tendo resposta sobre
+      // a grade, e a parte que faltou é dita por extenso.
+    }
+    for (const id of lote) if (!vieram.has(id)) naoLidos.push(id);
+  }
+  return { lidos, naoLidos };
+}
 // ---- Fotos: ler a maior, subir a nova, trocar a capa ------------------------
 
 /**

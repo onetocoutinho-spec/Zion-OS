@@ -346,8 +346,17 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "diagnostico_de_agrupamento",
     efeito: "le",
     descricao:
-      "A GRADE DE CADA PRODUTO NO MERCADO LIVRE: quantos anúncios ele tem, quantos estão no ar, e quanto da grade está comprável hoje. Em calçado o ML NÃO aceita um anúncio com variações — cada numeração é um anúncio próprio — então muitos anúncios para um produto é o formato certo; o defeito é quando só uma parte está no ar (ex.: 16 anúncios e 1 ativo significa que quem procura outro número não acha a loja). Também aponta produtos que compartilham a mesma referência de fabricante, para CONFERIR se é duplicidade de cadastro ou dois materiais do mesmo modelo. Use para \"as variações não estão agrupadas\", \"o que está errado nos meus anúncios?\", \"tem produto duplicado?\", \"por que só aparece um número?\".",
-    parametros: { type: "object", properties: {} },
+      "A GRADE DE CADA PRODUTO NO MERCADO LIVRE: quantos anúncios ele tem, quantos estão no ar, e quanto da grade está comprável hoje. Em calçado o ML NÃO aceita um anúncio com variações — cada numeração é um anúncio próprio — então muitos anúncios para um produto é o formato certo; o defeito é quando só uma parte está no ar (ex.: 16 anúncios e 1 ativo significa que quem procura outro número não acha a loja). Também aponta produtos que compartilham a mesma referência de fabricante, para CONFERIR se é duplicidade de cadastro ou dois materiais do mesmo modelo. Use para \"as variações não estão agrupadas\", \"o que está errado nos meus anúncios?\", \"tem produto duplicado?\", \"por que só aparece um número?\". PASSANDO produtoId, ela também PERGUNTA AO MERCADO LIVRE se aqueles anúncios estão agrupados numa família — a única forma de saber, porque o Zion não guarda esse vínculo.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: {
+          type: "string",
+          description:
+            "Opcional. O id do produto (de achar_produto). Com ele a ferramenta lê no Mercado Livre se os anúncios desse produto estão na mesma família. Sem ele, o diagnóstico sai igual mas sem a resposta sobre agrupamento.",
+        },
+      },
+    },
   },
   {
     nome: "diagnostico_do_anuncio",
