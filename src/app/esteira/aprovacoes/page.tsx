@@ -24,7 +24,10 @@ import { Table, Td, TdSelecao, EmptyRow } from "@/components/ui/Table";
 import { estadoDaMarcaMestre, alternarTodos, alternarUm } from "@/modules/portal/domain/selecaoEmLote";
 import {
   executarLote,
+  faixaDaNota,
   fraseDoResultado,
+  motivosDaTrava,
+  passouATrava,
   planejarLote,
   podeAprovar as podeAprovarRegistro,
   podeRejeitar as podeRejeitarRegistro,
@@ -55,9 +58,11 @@ import type { AnuncioGeradoRegistro } from "@/lib/types";
 
 const HEADERS = [
   "Anúncio gerado",
-  "Nota",
-  "A10",
-  "Pend.",
+  // UMA coluna no lugar de Nota, A10 e Pend. As três respondiam a mesma
+  // pergunta — "dá para aprovar isto?" — sem nenhuma delas dar a resposta:
+  // quem operava lia "Reprovado" numa, "2" noutra, e concluía sozinho o que a
+  // trava já sabe. A regra é pura e testada, em ./loteDeAprovacao.ts.
+  "Trava",
   "Origem",
   "Tipo",
   "Situação",
@@ -161,6 +166,53 @@ export default function AprovacoesPage() {
         carregando={carregando}
       />
     </>
+  );
+}
+
+/**
+ * A célula "Trava" — dá para aprovar isto, e se não, por quê.
+ *
+ * A NOTA CONTINUA VISÍVEL nos dois casos, e não é redundância: ela não faz
+ * parte da trava (um anúncio passa com nota 58) mas é o sinal de qualidade que
+ * decide QUAL aprovar primeiro quando há trinta liberados. Juntar as colunas
+ * era para tirar a leitura de três lugares, não para jogar dado fora.
+ */
+function ATrava({ registro }: { registro: AnuncioGeradoRegistro }) {
+  const motivos = motivosDaTrava(registro);
+  const faixa = faixaDaNota(registro.notaDiagnostico);
+  const tomDaNota = faixa === "boa" ? "green" : faixa === "atenção" ? "yellow" : "red";
+
+  return (
+    <div className="flex flex-col gap-1">
+      {passouATrava(registro) ? (
+        <span
+          className="inline-flex w-fit items-center gap-1 whitespace-nowrap rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300"
+          title="Passou no A10 e não tem pendências — pode aprovar."
+        >
+          <ShieldCheck size={11} /> liberado
+        </span>
+      ) : (
+        <span className="flex flex-wrap gap-1">
+          {motivos.map((m) => (
+            // O ícone acompanha a cor porque cor sozinha não informa; o rótulo
+            // é texto, e o title diz o que resolve — as colunas antigas diziam
+            // "Reprovado" e "2", nunca o que fazer com isso.
+            <span
+              key={m.tipo}
+              title={m.explica}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-300"
+            >
+              <XCircle size={11} /> {m.rotulo}
+            </span>
+          ))}
+        </span>
+      )}
+      {/* A nota é o desempate, então vem discreta, debaixo da resposta. */}
+      <Badge tone={tomDaNota}>
+        {registro.notaDiagnostico}
+        <span className="ml-1 opacity-70">{faixa}</span>
+      </Badge>
+    </div>
   );
 }
 
@@ -369,6 +421,11 @@ function ConteudoAprovacoes({
 
       <Table
         headers={HEADERS}
+        // Ainda sobra: medido a 1280px com uma linha real, 1010px num container
+        // de 964. Juntar Nota/A10/Pend. tirou 71 dos 117px de excesso, não os
+        // 117 — então a ação continua grudada à direita para não ser o que a
+        // rolagem come.
+        acaoFixa
         marcaMestre={{
           estado: estadoDaMestre,
           aoAlternar: () => setMarcados((m) => alternarTodos(idsVisiveis, m)),
@@ -428,21 +485,8 @@ function ConteudoAprovacoes({
                 </details>
               </td>
               <Td>
-                {/* A faixa vai em TEXTO, não só na cor do badge: verde/âmbar/
-                    vermelho sozinhos não dizem nada a quem não distingue cor. */}
-                <Badge tone={r.notaDiagnostico >= 75 ? "green" : r.notaDiagnostico >= 55 ? "yellow" : "red"}>
-                  {r.notaDiagnostico}
-                  <span className="ml-1 opacity-70">
-                    {r.notaDiagnostico >= 75 ? "boa" : r.notaDiagnostico >= 55 ? "atenção" : "ruim"}
-                  </span>
-                </Badge>
+                <ATrava registro={r} />
               </Td>
-              <Td>
-                <Badge tone={r.vereditoA10 === "aprovado" ? "green" : "red"}>
-                  {r.vereditoA10 === "aprovado" ? "OK" : "Reprovado"}
-                </Badge>
-              </Td>
-              <Td className="whitespace-nowrap text-zinc-300">{r.qtdPendencias}</Td>
               <Td>
                 <Badge tone="gray">{r.origem === "esteira_lote" ? "Lote" : "Esteira"}</Badge>
               </Td>

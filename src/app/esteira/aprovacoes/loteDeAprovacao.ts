@@ -18,10 +18,80 @@ import type { AnuncioGeradoRegistro } from "@/lib/types";
 
 export type AcaoEmLote = "aprovar" | "rejeitar";
 
+// ---------------------------------------------------------------------------
+// A TRAVA, E POR QUE ELA VIROU UMA COLUNA SÓ
+// ---------------------------------------------------------------------------
+//
+// A tabela tinha três colunas — Nota, A10 e Pend. — e as três respondiam a
+// MESMA pergunta: "dá para aprovar isto?". Pior, a resposta não estava em
+// nenhuma delas: quem operava lia o "Reprovado" de uma, o "2" de outra, e
+// concluía sozinho o que a trava já sabe. Medido a 1280px em 24/08/2026, com
+// uma linha de conteúdo real: a tabela pedia 1081px num container de 964, e as
+// três somavam 189px do excesso de 117.
+//
+// Agora a coluna DIZ a resposta, e os motivos quando é "não".
+
+export type TipoMotivoDaTrava = "a10" | "pendencias";
+
+export interface MotivoDaTrava {
+  tipo: TipoMotivoDaTrava;
+  /** Curto — cabe num chip. */
+  rotulo: string;
+  /** O que resolve. Vai no `title`. */
+  explica: string;
+}
+
+/**
+ * Por que este registro NÃO passa na trava de qualidade.
+ *
+ * Devolve `[]` quando passa. Só olha A10 e pendências: o status ("rascunho",
+ * "publicado") é outra pergunta e tem a sua própria coluna, Situação.
+ */
+export function motivosDaTrava(
+  r: Pick<AnuncioGeradoRegistro, "vereditoA10" | "qtdPendencias">
+): MotivoDaTrava[] {
+  const motivos: MotivoDaTrava[] = [];
+  if (r.vereditoA10 !== "aprovado") {
+    motivos.push({
+      tipo: "a10",
+      rotulo: "A10 reprovado",
+      explica: "O diagnóstico A10 reprovou este anúncio. Rode a esteira de novo depois de corrigir.",
+    });
+  }
+  if (r.qtdPendencias > 0) {
+    motivos.push({
+      tipo: "pendencias",
+      rotulo: `${r.qtdPendencias} ${r.qtdPendencias === 1 ? "pendência" : "pendências"}`,
+      explica: "Resolva as pendências listadas em 'ver detalhes' antes de aprovar.",
+    });
+  }
+  return motivos;
+}
+
+/** Passou na trava de qualidade? É o `[]` de `motivosDaTrava`, com nome. */
+export function passouATrava(
+  r: Pick<AnuncioGeradoRegistro, "vereditoA10" | "qtdPendencias">
+): boolean {
+  return motivosDaTrava(r).length === 0;
+}
+
+export type FaixaDaNota = "boa" | "atenção" | "ruim";
+
+/**
+ * A faixa da nota de diagnóstico.
+ *
+ * Existe para que o rótulo seja TEXTO e não só a cor do badge — verde e
+ * vermelho sozinhos não dizem nada a quem não distingue cor.
+ */
+export function faixaDaNota(nota: number): FaixaDaNota {
+  if (nota >= 75) return "boa";
+  if (nota >= 55) return "atenção";
+  return "ruim";
+}
+
 /** A mesma trava da linha — uma regra, dois lugares que a usam. */
 export function podeAprovar(r: Pick<AnuncioGeradoRegistro, "vereditoA10" | "qtdPendencias" | "status">): boolean {
-  const passouA10 = r.vereditoA10 === "aprovado" && r.qtdPendencias === 0;
-  return passouA10 && (r.status === "aguardando_aprovacao" || r.status === "rascunho");
+  return passouATrava(r) && (r.status === "aguardando_aprovacao" || r.status === "rascunho");
 }
 
 export function podeRejeitar(r: Pick<AnuncioGeradoRegistro, "status">): boolean {

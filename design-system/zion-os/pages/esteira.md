@@ -22,4 +22,5 @@ Auditoria `ui-ux-pro-max` em 2026-08-23.
 ## Pendente (Medium/Low)
 - ~~Filtros fora da URL~~ → `useFiltroNaUrl` (`?status=`; `?prioridade=&quantidade=`) em 2026-08-23.
 - ~~Aprovações sem multi-select~~ → caixa mestre + `TdSelecao` + barra "Aprovar N / Rejeitar N" com a mesma trava da linha (`loteDeAprovacao.ts`, testado) em 2026-08-23.
-- Aprovações: 9 colunas; coluna de ação é a última — em desktop estreito pode ficar atrás da rolagem do contêiner (não medido).
+- ~~Aprovações: 9 colunas, ação atrás da rolagem (não medido)~~ → MEDIDO em 2026-08-24 com uma linha de conteúdo real (o modo demo não tem dados): 1081px num container de 964 a 1280px de janela. Resolvido juntando Nota, A10 e Pend. em UMA coluna "Trava" (regra pura e testada em `loteDeAprovacao.ts`): caiu para 1010px, e a 1440 cabe exato (1134 em 1134). Os 46px que ainda sobram a 1280 ficam cobertos pelo `acaoFixa` — a ação nunca é o que a rolagem come.
+- **Aberto:** para caber também a 1280 faltam ~46px. A coluna mais gorda é `Criado` (152px, data + hora); mostrar só a data, ou tempo relativo ("há 2h"), provavelmente fecha a conta. Decisão sua.
