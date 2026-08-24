@@ -1,7 +1,8 @@
 -- 072 — a correção do TÍTULO num anúncio publicado
 --
--- NÃO APLICADA. Nasce como arquivo, para o dono aplicar (Operador Universal,
--- 2026-08-24, etapa 7 do plano).
+-- APLICADA em 2026-08-24 no projeto principal, a pedido do dono (Operador
+-- Universal, etapa 7 do plano). Não cria tabela: só amplia o CHECK, então a
+-- varredura de alcance da agência não muda.
 --
 -- ===========================================================================
 -- O QUE ESTA MIGRAÇÃO AUTORIZA
