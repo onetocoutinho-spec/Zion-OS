@@ -11,8 +11,22 @@
 // que o especialista alcança é esta tabela, não o modelo. `geral` é a rede:
 // tudo o que existe, como antes — e é para onde cai o que não se encaixa.
 //
-// Atrás da flag `COPILOT_ROTEAMENTO=1` (ver a rota): o roteamento custa uma
-// classificação por turno, e o rollback é desligar a flag.
+// LIGADO POR PADRÃO desde 24/08/2026, e o motivo foi medido no mesmo dia.
+//
+// O catálogo cresceu de 17 para 34 ferramentas, e ele viaja INTEIRO em toda
+// chamada ao modelo: 26.297 caracteres, ~6.574 tokens de prefixo por chamada,
+// até seis vezes por fala. No dia em que isso aconteceu, um turno atravessou o
+// teto de 60 s da plataforma e morreu sem gravar nada — a lojista leu "a
+// resposta foi interrompida no meio".
+//
+// Com o roteamento, cada especialista carrega entre 9 e 15 ferramentas: de 62%
+// a 78% menos prefixo por chamada. O custo é uma classificação barata por
+// turno (esforço baixo, enum fechado, ~1.400 tokens), paga uma vez contra até
+// seis chamadas economizadas.
+//
+// `COPILOT_ROTEAMENTO=0` desliga e volta ao catálogo inteiro — o rollback
+// continua sendo configuração, não deploy. Ver `scripts/medicoes/tamanhoDoCatalogo.ts`
+// para refazer a conta quando o catálogo mudar.
 
 export type Especialista =
   | "catalogo"
@@ -30,7 +44,20 @@ export const ESPECIALISTAS: readonly Especialista[] = [
 ];
 
 /** As leituras que TODO especialista leva — sem elas "este produto" não resolve. */
-const BASE: readonly string[] = ["achar_produto", "o_que_falta_no_produto", "contar", "estado_da_loja", "proximo_passo"];
+const BASE: readonly string[] = [
+  "achar_produto",
+  "o_que_falta_no_produto",
+  "contar",
+  "estado_da_loja",
+  "proximo_passo",
+  // TRANSVERSAIS, desde 24/08/2026. Não são de assunto nenhum — são de todos:
+  // `o_que_eu_consigo` é a conferência que evita a promessa falsa, e ela
+  // precisa estar à mão exatamente quando o especialista NÃO tem a ferramenta
+  // que a pessoa pediu. `investigar` porque qualquer assunto pode chegar
+  // grande demais para um turno.
+  "o_que_eu_consigo",
+  "investigar",
+];
 
 interface DefinicaoDeEspecialista {
   /** O que classifica: a descrição que o classificador lê. */
@@ -44,7 +71,7 @@ interface DefinicaoDeEspecialista {
 export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>> = {
   catalogo: {
     quando: "pendências, o que falta, o que travou, peso, custo, foto, medidas, preencher um dado, resolver o que der",
-    ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas"],
+    ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas", "diagnostico_de_agrupamento"],
     instrucao: "Foque no cadastro: o que falta, por quê, e o que você prepara sozinho. Números só de ferramenta.",
   },
   preco: {
@@ -53,8 +80,8 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
     instrucao: "Foque no preço: a decomposição vem do motor financeiro, você só apresenta. Confira os custos do lojista antes de julgar uma margem.",
   },
   conteudo: {
-    quando: "título, descrição, palavras-chave, SEO, texto do anúncio, deixar mais curto, mais premium, melhorar o anúncio",
-    ferramentas: ["preparacao_de_anuncio", "diagnostico_do_anuncio", "propor_titulo", "propor_descricao", "propor_palavras_chave", "propor_anuncio", "meu_perfil_de_conteudo"],
+    quando: "título, descrição, palavras-chave, SEO, texto do anúncio, deixar mais curto, mais premium, melhorar o anúncio, corrigir o título do anúncio que está no ar",
+    ferramentas: ["preparacao_de_anuncio", "diagnostico_do_anuncio", "propor_titulo", "propor_titulo_no_anuncio", "propor_descricao", "propor_palavras_chave", "propor_anuncio", "meu_perfil_de_conteudo"],
     instrucao: "Foque no texto do anúncio. Respeite o perfil de conteúdo da loja. 'Otimiza esse anúncio' começa por diagnostico_do_anuncio — título só se o eixo for exposição. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
   },
   imagem: {
@@ -64,12 +91,12 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   vendas: {
     quando: "vendas, faturamento, quanto vendi, por que caíram, o que vende mais, comparar períodos",
-    ferramentas: ["vendas_da_loja", "diagnostico_do_anuncio", "pendencias", "pricing", "propor_tarefas"],
+    ferramentas: ["vendas_da_loja", "diagnostico_do_anuncio", "pendencias", "pricing", "propor_tarefas", "anuncios_ativos", "diagnostico_de_agrupamento"],
     instrucao: "Foque nas vendas: três blocos — o que os números mostram, o que isso sugere (como hipótese), o que você não sabe. Proponha tarefas quando ele aceitar um plano.",
   },
   publicacao: {
-    quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou",
-    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede"],
+    quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou, quais anúncios estão ativos, o que está parado, o que preciso corrigir, as variações não estão agrupadas",
+    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio"],
     instrucao: "Foque em colocar no ar. Publicar é proposta com ensaio; reativar tem trava de posse e de infração. Nunca afirme que está no ar sem a palavra do Mercado Livre.",
   },
   cadastro: {
@@ -79,7 +106,7 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   agencia: {
     quando: "comparar lojas, qual loja está mais atrasada, panorama das lojas, todas as lojas",
-    ferramentas: ["comparar_lojas", "pendencias"],
+    ferramentas: ["comparar_lojas", "pendencias", "anuncios_ativos"],
     instrucao: "Foque na comparação entre lojas: uma por linha, mesma régua, aponte a mais atrasada e o primeiro passo nela.",
   },
   geral: {

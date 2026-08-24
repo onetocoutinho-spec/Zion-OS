@@ -822,7 +822,9 @@ export async function POST(request: Request) {
   // como antes: o catálogo inteiro do papel e o prompt base. A restrição por
   // papel vem ANTES e nunca é afrouxada pelo especialista.
   let especialista: Especialista = "geral";
-  if (process.env.COPILOT_ROTEAMENTO === "1") {
+  // LIGADO por padrão desde 24/08/2026 (ver `especialistas.ts` para a medição
+  // que decidiu). `COPILOT_ROTEAMENTO=0` desliga e volta ao catálogo inteiro.
+  if (process.env.COPILOT_ROTEAMENTO !== "0") {
     try {
       const { json } = await chamarIAEstruturada({
         system: `Classifique o pedido de um lojista num destes especialistas:
