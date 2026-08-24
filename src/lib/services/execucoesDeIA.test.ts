@@ -115,3 +115,46 @@ test("registrarExecucaoIA nunca lança e avisa UMA vez se a 067 não foi aplicad
   assert.match(svc, /avisouAusencia/);
   assert.match(svc, /catch \(err\)/);
 });
+
+test("o turno separa TEMPO EM FERRAMENTA de tempo em modelo", () => {
+  // Em 24/08/2026 concluí que a latência do chat é volume de saída — cinco
+  // turnos entre 16,5 e 20,0 ms por token gerado. O sexto mediu 25,2 com uma
+  // resposta MAIS CURTA (879 tokens em 22,2 s contra 1.175 em 20,5 s), e a
+  // conclusão caiu. Ferramenta que fala com o Mercado Livre custa parede, e
+  // parede não encolhe quando a resposta encolhe: sem separar as parcelas, as
+  // duas explicações são indistinguíveis.
+  const rota = ler("app/api/assistente/conversa/route.ts");
+  assert.match(rota, /let msEmFerramentas = 0;/);
+  assert.match(rota, /const t0Ferramenta = Date\.now\(\);/);
+  assert.match(rota, /msEmFerramentas \+= Date\.now\(\) - t0Ferramenta;/);
+  assert.match(rota, /^\s*msEmFerramentas,$/m, "o número não chega ao registro");
+});
+
+test("a ferramenta que FALHOU também conta o tempo dela", () => {
+  // Descontá-la faria a conta mentir para baixo justo no caso que mais
+  // interessa investigar. O relógio fecha depois do catch, não dentro dele.
+  const rota = ler("app/api/assistente/conversa/route.ts");
+  const trecho = rota.slice(rota.indexOf("const t0Ferramenta"), rota.indexOf("msEmFerramentas += Date.now()"));
+  assert.match(trecho, /\.catch\(/, "o catch saiu de dentro da janela cronometrada");
+});
+
+test("COLUNA AUSENTE NÃO CEGA O MEDIDOR — 42703 tenta de novo sem o campo", () => {
+  // O PostgREST recusa o INSERT INTEIRO por causa de uma coluna que não
+  // existe. Sem esta rede, subir o código antes da 073 apagaria TODO registro
+  // de execução — e um medidor que some é pior que um campo que falta.
+  const svc = ler("lib/services/execucoesDeIA.ts");
+  assert.match(svc, /error\?\.code === "42703"/);
+  assert.match(svc, /const \{ ms_ferramentas: _semAColuna, \.\.\.semOCampoNovo \} = linha;/);
+  assert.match(svc, /avisouColunaAusente/, "o aviso viraria ruído a cada turno sem a trava de uma vez");
+  assert.match(svc, /073-o-tempo-gasto-em-ferramenta\.sql/, "o aviso não diz o que aplicar");
+});
+
+test("migração 073: só acrescenta coluna anulável, e nada mais", () => {
+  const sql = readFileSync(new URL("../database/migrations/073-o-tempo-gasto-em-ferramenta.sql", raiz), "utf8");
+  assert.match(sql, /add column if not exists ms_ferramentas integer/);
+  assert.match(sql, /comment on column public\.ia_execucoes\.ms_ferramentas/);
+  // Linha antiga fica null, não zero: zero afirmaria "nenhum tempo em
+  // ferramenta" sobre turnos anteriores à medição.
+  assert.doesNotMatch(sql, /default 0/i, "o default zeraria o passado e mentiria sobre ele");
+  assert.doesNotMatch(sql, /drop |truncate |delete /i);
+});

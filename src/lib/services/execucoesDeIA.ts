@@ -45,17 +45,29 @@ export interface ExecucaoDeIA {
     total?: number | null;
   } | null;
   ms: number;
+  /**
+   * Do `ms` acima, quanto foi gasto DENTRO das ferramentas.
+   *
+   * `ms - msEmFerramentas` é o tempo em modelo. Separados porque em
+   * 24/08/2026 eu afirmei que a latência do chat é volume de saída, e o turno
+   * seguinte desmentiu: 879 tokens em 22,2 s contra 1.175 em 20,5 s. A parcela
+   * de ferramenta não cresce com o tamanho da resposta — desde hoje o
+   * diagnóstico de agrupamento fala com o Mercado Livre — e sem separá-la as
+   * duas explicações são indistinguíveis.
+   */
+  msEmFerramentas?: number | null;
   status: StatusDaExecucao;
   erro?: string | null;
   degradado?: boolean;
 }
 
 let avisouAusencia = false;
+let avisouColunaAusente = false;
 
 export async function registrarExecucaoIA(e: ExecucaoDeIA): Promise<void> {
   if (!adminConfigurado()) return;
   try {
-    const { error } = await getSupabaseAdmin().from("ia_execucoes").insert({
+    const linha = {
       cliente_id: e.clienteId,
       usuario_id: e.usuarioId,
       conversa_id: e.conversaId ?? null,
@@ -73,7 +85,21 @@ export async function registrarExecucaoIA(e: ExecucaoDeIA): Promise<void> {
       status: e.status,
       erro: e.erro ? String(e.erro).slice(0, 500) : null,
       degradado: e.degradado ?? false,
-    });
+      ms_ferramentas: e.msEmFerramentas == null ? null : Math.max(0, Math.round(e.msEmFerramentas)),
+    };
+    let { error } = await getSupabaseAdmin().from("ia_execucoes").insert(linha);
+    // 42703 = a coluna não existe (073 não aplicada). O INSERT INTEIRO é
+    // recusado pelo PostgREST, então um campo novo cegaria o medidor por
+    // completo — e um medidor que some é pior que um campo que falta. Tenta de
+    // novo sem ele, uma vez, e avisa uma vez por processo.
+    if (error?.code === "42703" && "ms_ferramentas" in linha) {
+      if (!avisouColunaAusente) {
+        avisouColunaAusente = true;
+        console.error("[ia_execucoes] sem `ms_ferramentas` — aplique database/migrations/073-o-tempo-gasto-em-ferramenta.sql");
+      }
+      const { ms_ferramentas: _semAColuna, ...semOCampoNovo } = linha;
+      ({ error } = await getSupabaseAdmin().from("ia_execucoes").insert(semOCampoNovo));
+    }
     if (error) {
       // 42P01 = tabela não existe: a 067 não foi aplicada. Uma vez por
       // processo, com todas as letras — não a cada turno.

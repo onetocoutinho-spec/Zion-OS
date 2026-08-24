@@ -885,6 +885,13 @@ Responda só o nome.`,
       let doCache = 0;
       /** Do total acima, quanto foi GERADO — a parcela que explica o relógio. */
       let deSaida = 0;
+      /**
+       * Quanto do turno foi ESPERA DE FERRAMENTA, não geração.
+       *
+       * O eixo que `ms` sozinho esconde. Uma ferramenta que fala com o Mercado
+       * Livre custa parede, e parede não encolhe quando a resposta encolhe.
+       */
+      let msEmFerramentas = 0;
       /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
       let proposta: Proposta | undefined;
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
@@ -965,6 +972,7 @@ Responda só o nome.`,
           passos,
           tokens: { total: tokens, saida: deSaida, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
           ms: relogio.ms(),
+          msEmFerramentas,
           status,
           erro,
         });
@@ -1607,6 +1615,7 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             // falhou, e jogando fora o que as outras ferramentas já tinham
             // lido. Agora a exceção vira saída da ferramenta, com a fonte, e o
             // modelo diz "não consegui ler X" em vez de nada.
+            const t0Ferramenta = Date.now();
             const r = await executarFerramenta({ nome: c.nome, args: c.args }, ctx).catch((e: unknown) => {
               console.error(`[assistente/conversa] ferramenta ${c.nome} falhou:`, e);
               return {
@@ -1618,6 +1627,11 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
                 },
               } as Awaited<ReturnType<typeof executarFerramenta>>;
             });
+
+            // O relógio fecha DEPOIS do catch: a ferramenta que falhou também
+            // gastou tempo, e descontá-la faria a conta mentir para baixo justo
+            // no caso que mais interessa investigar.
+            msEmFerramentas += Date.now() - t0Ferramenta;
 
             // E o desfecho DELA, não só o começo. `ok: false` quando a
             // ferramenta devolveu `erro` — o modelo já sabe lidar com isso, e
