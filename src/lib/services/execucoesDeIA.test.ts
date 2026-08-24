@@ -20,7 +20,10 @@ test("o provedor registra toda chamada estruturada com rastro — sucesso E falh
 });
 
 test("quem tem sessão passa o rastro: intenção, agente, esteira, catálogo, imagem", () => {
-  assert.match(ler("app/api/assistente/route.ts"), /rastro: \{ origem: "intencao"/);
+  // `intencao` era da rota de classificação, aposentada em 24/08/2026. A
+  // origem sobreviveu no ROTEADOR DE ESPECIALISTA, que é a classificação que
+  // restou — e mora dentro da rota da conversa.
+  assert.match(ler("app/api/assistente/conversa/route.ts"), /rastro: \{ origem: "intencao"/);
   assert.match(ler("app/api/agentes/executar/route.ts"), /rastro: \{ origem: "agente"/);
   assert.match(ler("app/api/agentes/esteira/route.ts"), /rastro: \{ origem: "esteira"/);
   assert.match(ler("app/api/catalogo/extrair/route.ts"), /rastro: \{ origem: "catalogo"/);

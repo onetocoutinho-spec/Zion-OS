@@ -130,9 +130,16 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: {
       type: "object",
       properties: {
+        // `infracao` entrou em 24/08/2026, e a ausência dela era um defeito
+        // VIVO: o domínio sabe contar infração, o card POSSO_RESPONDER anuncia
+        // a pergunta à lojista, e o enum não deixava o modelo pedir. Com saída
+        // estruturada, valor fora do enum não é emitido — a pergunta era
+        // anunciada e impossível. É o mesmo defeito que a rota de classificação
+        // teve um dia; ele mudou de lugar quando ela foi aposentada, e o teste
+        // que o pegava veio junto.
         assunto: {
           type: "string",
-          enum: ["peso", "custo", "foto", "anuncio", "aprovacao", "publicacao", "precificacao"],
+          enum: ["peso", "custo", "foto", "anuncio", "aprovacao", "publicacao", "precificacao", "infracao"],
         },
       },
       required: ["assunto"],

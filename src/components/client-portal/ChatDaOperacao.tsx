@@ -29,7 +29,6 @@ import {
   MessagesSquare,
   Paperclip,
 } from "lucide-react";
-import { classificarPergunta } from "@/lib/services/assistenteDaOperacao";
 import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
@@ -89,12 +88,10 @@ import {
   paraGuardar,
 } from "@/modules/assistant/domain/conversaGuardada";
 import {
-  montarProposta,
   type Proposta,
   type ProdutoAlvo,
 } from "@/modules/assistant/domain/propostaDeCorrecao";
 import {
-  responder,
   POSSO_RESPONDER,
   type ContextoDaPergunta,
   type RespostaDaOperacao,
@@ -715,88 +712,44 @@ export function ChatDaOperacao({
           return;
         }
 
-        const criterio = await classificarPergunta(pergunta, contexto.produto?.nome);
-
-        // ESCALADA AUTOMÁTICA — o interruptor vira roteamento.
+        // TODA PERGUNTA VAI PARA A CONVERSA.
         //
-        // O classificador já dizia `entendeu: false` quando a pergunta não cabe
-        // na lista fechada de assuntos, e ninguém usava esse sinal: a rota
-        // barata devolvia "não sei" e a conversa ficava atrás de um botão que a
-        // lojista tinha que descobrir.
-        //
-        // Pedir a ela que escolha entre "barato e limitado" e "caro e capaz" é
-        // transferir uma decisão do SISTEMA para quem não tem como tomá-la —
-        // ela não sabe de antemão qual pergunta precisa de fio.
-        //
-        // E a escolha estava invertida: medido em 03/08/2026, o caminho CARO
-        // foi o honesto ("não tenho como saber") e o barato respondeu outra
-        // coisa afirmando ter entendido.
-        //
-        // Agora o barato é a via rápida, não o teto: resolve o caso comum
-        // (39/39 na extração de intenção, EXP-004) e, quando não entende,
-        // repassa em vez de inventar. O custo continua baixo porque a maioria
-        // das perguntas não escala — e o contador de tokens do fio mostra
-        // quando escala.
-        if (!criterio.entendeu) {
-          await responderConversando(pergunta);
-          return;
-        }
-        // Ditar um valor não é perguntar. Vira PROPOSTA — nada é gravado até
-        // alguém ler o cartão e clicar. Ver `propostaDeCorrecao`.
-        const encerra =
-          criterio.intencao === "preencher"
-            ? {
-                proposta: montarProposta(
-                  criterio,
-                  produtos,
-                  contexto.produto
-                    ? { id: contexto.produto.id, nome: contexto.produto.nome }
-                    : null
-                ),
-              }
-            : // A resposta é montada AQUI, contra o estado real. O que voltou do
-              // servidor foi só a intenção.
-              { resposta: responder(criterio, contexto) };
-
         // ===================================================================
-        // A SEGUNDA PORTA DA ESCALADA: entendeu, mas não sei responder
+        // O CAMINHO BARATO FOI APOSENTADO EM 24/08/2026
         // ===================================================================
         //
-        // A escalada acima cobre `!entendeu` — a frase que não cabe em assunto
-        // nenhum. Ela NÃO cobre o caso oposto e mais comum: o modelo entendeu
-        // perfeitamente, escreveu a interpretação, e a lista fechada não tinha
-        // balde.
+        // Havia aqui um portão: uma classificação barata decidia a intenção e,
+        // para seis assuntos, a resposta era montada NO CLIENTE, contra o
+        // estado que a tela já tinha carregado. Ele nasceu quando a conversa
+        // era cara e lenta, e fazia sentido: respondia contagem na hora.
         //
-        // Medido em 10/08/2026, em produção: "quanto sai de mim em cada venda?"
-        // voltou com a interpretação correta ("você quer saber quanto sai do
-        // seu bolso") seguida da lista "o que eu consigo responder". A
-        // ferramenta `meus_custos` existia e respondia essa pergunta — atrás de
-        // um botão desligado que a lojista não tem como saber que existe.
+        // Duas medições em produção o aposentaram, no mesmo dia:
         //
-        // É estrutural, não um caso: `nao_sei` nasce em QUATRO lugares (intenção
-        // fora da lista, produto não aberto, assunto desconhecido, capacidade
-        // desconhecida), e o caminho do fio resolve os quatro — inclusive "não
-        // há produto aberto", porque lá existe `achar_produto`.
+        //   1. ELE ERRAVA, e o erro era do tipo pior. "Confere as variações da
+        //      Papete, parece que os anúncios não estão agrupados" foi
+        //      classificada como panorama da loja e respondida com "Nada
+        //      travado. Sua loja está em dia." — numa loja com 303 anúncios
+        //      fora do ar. A lista fechada de assuntos é de uma era ANTERIOR
+        //      às ferramentas de marketplace, e interceptava perguntas que
+        //      hoje têm ferramenta própria. Capacidade que não é alcançada é
+        //      capacidade que não existe.
         //
-        // Toda capacidade nova cai aqui. A lista fechada responde seis coisas;
-        // o fio tem dezoito ferramentas. Sem esta porta, cada ferramenta nova
-        // nasce inalcançável pelo caminho padrão.
+        //   2. ELE DEIXOU DE SER BARATO. Medido às 16:48: a classificação
+        //      custou 8,1 s e o CHAT INTEIRO, com ferramenta e tudo, custou
+        //      5,3 s. O portão que existe para economizar passou a custar
+        //      mais que aquilo que ele evita — porque o chat desceu para o
+        //      gpt-5-mini e ficou 20× mais rápido.
         //
-        // O CUSTO: uma classificação desperdiçada — Gemini Flash, teto de 400
-        // tokens. É o preço de a lojista nunca ver a parede, e ele não cresce:
-        // a maioria das perguntas continua sendo resolvida pela via rápida.
-        if ("resposta" in encerra && encerra.resposta?.tipo === "nao_sei") {
-          await responderConversando(pergunta);
-          return;
-        }
-
-        setTurnos((t) =>
-          t.map((turno, i) =>
-            i === t.length - 1
-              ? { ...turno, ...encerra, interpretacao: criterio.interpretacao }
-              : turno
-          )
-        );
+        // O que se perde: a resposta instantânea de contagem, montada pelo
+        // domínio sem passar por modelo. O que NÃO se perde é a propriedade
+        // que importava nela — os números continuam vindo do domínio, agora
+        // pelas ferramentas (`contar`, `estado_da_loja`, `pendencias`), e o
+        // modelo continua proibido de inventá-los.
+        //
+        // O que sobrou aqui em cima é a saudação: "oi" não vale uma chamada
+        // de rede, e continua respondida sem sair da tela.
+        await responderConversando(pergunta);
+        return;
       } catch (e) {
         // PARAR não é erro: a pessoa pediu. O que já chegou fica na tela, e a
         // linha diz que parou a pedido. A resposta parcial também fica nos
@@ -817,7 +770,7 @@ export function ChatDaOperacao({
     // dependências, o callback guardaria a tela em que ele foi criado, e a
     // conversa nasceria marcada com a página anterior — um dado errado é pior
     // que o dado ausente que havia antes.
-    [contexto, ocupado, produtos, conversando, conversaId, guardarFio, clienteId, pathname]
+    [contexto, ocupado, conversando, conversaId, guardarFio, clienteId, pathname]
   );
 
   /**

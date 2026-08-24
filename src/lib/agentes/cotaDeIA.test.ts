@@ -104,12 +104,21 @@ test("/api/assistente/conversa cobra a cota ANTES de abrir o fluxo e de chamar o
   assert.match(f, /if \(!adminConfigurado\(\)\)[\s\S]{0,200}status: 503/);
 });
 
-test("/api/assistente (intenção) cobra a cota antes do classificador", () => {
-  const f = rota("assistente");
-  const cobra = f.indexOf('cobrarCota(ctx, "intencao"');
-  const chama = f.indexOf("chamarIAEstruturada(");
-  assert.ok(cobra > 0, "a rota de intenção não cobra cota");
-  assert.ok(cobra < chama);
+test("o chat cobra a cota antes de QUALQUER chamada de modelo — inclusive a do roteador", () => {
+  // Era a rota `/api/assistente` que cobrava `intencao`, e ela foi aposentada
+  // em 24/08/2026 (ver `escaladaDaPergunta.test.ts`). O turno agora paga UMA
+  // vez, no chat — antes eram dois créditos quando a pergunta escalava.
+  //
+  // A ordem é a garantia: o roteador de especialista também é uma chamada de
+  // modelo, e ela acontece depois. Cobrar depois de chamar é dar de graça a
+  // quem já estourou a cota.
+  const f = rota("assistente/conversa");
+  const cobra = f.indexOf('cobrarCota(ctxAuth, "chat"');
+  const roteador = f.indexOf("chamarIAEstruturada(");
+  const laco = f.indexOf("pedirTurnoEmFluxo(");
+  assert.ok(cobra > 0, "o chat não cobra cota");
+  assert.ok(cobra < roteador, "o roteador de especialista roda antes de a cota ser cobrada");
+  assert.ok(cobra < laco);
   assert.match(f, /if \(!cota\.ok\) return respostaCotaRecusada\(cota\)/);
 });
 

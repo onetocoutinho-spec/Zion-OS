@@ -195,10 +195,15 @@ test("OpenAI: o anexo vira input_file/input_image, e o texto vem DEPOIS do mater
 });
 
 test("a classificação pede a linha própria da tabela — 9,5s por frase era o preço do raciocínio", () => {
-  const rota = readFileSync(new URL("../../app/api/assistente/route.ts", import.meta.url), "utf8");
-  // `low`, não `minimal`: ver `esforcoDaClassificacao.test.ts` — o mínimo
-  // trocou 2,5 s por uma classificação errada com afirmação falsa na tela.
-  assert.match(rota, /esforco: "low"/);
+  // A classificação que restou é o ROTEADOR DE ESPECIALISTA, dentro da rota da
+  // conversa: a de intenção foi aposentada em 24/08/2026 junto com o caminho
+  // barato. Ela roda em `minimal` porque errar ali cai no especialista
+  // `geral`, que tem o catálogo inteiro — o erro custa tokens, não a resposta.
+  const rota = readFileSync(
+    new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(rota, /esforco: "minimal"/);
   assert.match(rota, /tarefa: "classificacao"/);
   // E a tabela é consultada pela tarefa da chamada, não por um literal.
   const fonte = readFileSync(new URL("./provedorIA.ts", import.meta.url), "utf8");
