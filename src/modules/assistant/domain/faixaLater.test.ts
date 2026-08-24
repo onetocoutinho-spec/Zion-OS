@@ -127,10 +127,16 @@ test("23/08/2026 — só o ChatGPT: a tabela roteia por provedor, e a OpenAI vem
   const so: AmbienteDoModelo = { OPENAI_API_KEY: "o" };
   assert.equal(provedorRoteado(so), "openai");
   assert.deepEqual(rotaDoModelo("estruturada", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
-  assert.deepEqual(rotaDoModelo("conversa", so), { principal: "gpt-5", reserva: "gpt-5-mini" });
+  // O CHAT desceu para o mini em 24/08/2026, com a reserva no gpt-5 — medido:
+  // um turno de três passos levava 107 s no gpt-5, e o custo eram as chamadas
+  // de modelo, não as ferramentas. Ver a decisão em `roteamentoDeModelo.ts`.
+  assert.deepEqual(rotaDoModelo("conversa", so), { principal: "gpt-5-mini", reserva: "gpt-5" });
   const ambos: AmbienteDoModelo = { OPENAI_API_KEY: "o", ANTHROPIC_API_KEY: "a", OPENAI_MODELO_CONVERSA: "gpt-5-mini", OPENAI_MODEL_RESERVA: "gpt-4.1" };
   assert.equal(provedorRoteado(ambos), "openai");
-  assert.deepEqual(rotaDoModelo("conversa", ambos), { principal: "gpt-5-mini", reserva: "gpt-4.1" });
+  // O chat NÃO herda `OPENAI_MODEL` (que é do trabalho pesado): ele tem linha
+  // própria, e herdar traria o gpt-5 de volta em qualquer ambiente que só
+  // defina a variável genérica.
+  assert.deepEqual(rotaDoModelo("conversa", ambos), { principal: "gpt-5-mini", reserva: "gpt-5" });
   assert.deepEqual(rotaDoModelo("estruturada", ambos), { principal: "gpt-5", reserva: "gpt-4.1" });
   // Pedir o Claude por nome ainda vale.
   assert.equal(provedorRoteado({ ...ambos, IA_PROVEDOR: "anthropic" }), "anthropic");
@@ -149,4 +155,25 @@ test("24/08/2026 — classificar uma frase tem linha própria: gpt-5-mini, com o
   // O caminho Anthropic é legado e NÃO muda: classificação cai na linha estruturada.
   const cl = { ANTHROPIC_API_KEY: "a" } as NodeJS.ProcessEnv;
   assert.deepEqual(rotaDoModelo("classificacao", cl), rotaDoModelo("estruturada", cl));
+});
+
+test("o TRABALHO PESADO não desce de modelo junto com o chat — a régua é outra", () => {
+  // Em 24/08/2026 o dono pediu "os modelos mais rápidos". O chat desceu; a
+  // esteira, a extração de catálogo e o gerador de título/descrição NÃO.
+  //
+  // O motivo está escrito no arquivo e é o que este teste guarda: no chat o
+  // erro é visível e corrigível na próxima fala; na esteira ele ENTRA NO
+  // CADASTRO em escala — um título ruim vira 40 anúncios ruins, e a lojista
+  // descobre semanas depois pela venda que não veio.
+  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  assert.equal(rotaDoModelo("estruturada", so).principal, "gpt-5");
+  assert.notEqual(
+    rotaDoModelo("estruturada", so).principal,
+    rotaDoModelo("conversa", so).principal,
+    "o trabalho pesado e o chat voltaram a compartilhar modelo"
+  );
+  // E a reserva do chat é MAIS forte que o principal — cair por sobrecarga não
+  // pode cair para pior. Mesma regra da classificação.
+  assert.equal(rotaDoModelo("conversa", so).reserva, "gpt-5");
+  assert.equal(rotaDoModelo("classificacao", so).reserva, "gpt-5");
 });

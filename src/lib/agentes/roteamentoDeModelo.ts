@@ -27,12 +27,58 @@ export interface RotaDeModelo {
 }
 
 /**
- * Os padrões da OpenAI. `gpt-5` para tudo — o chat com ferramentas de vários
- * passos é onde o raciocínio importa, e a reserva é o `gpt-5-mini`, mais
- * barato e raramente sobrecarregado ao mesmo tempo. Sobrescrevíveis por env.
+ * O padrão do TRABALHO PESADO: esteira, extração de catálogo em PDF, título e
+ * descrição.
+ *
+ * Continua no `gpt-5`, e a decisão é deliberada mesmo depois de o dono pedir
+ * "os modelos mais rápidos" em 24/08/2026. A régua não é a mesma para as duas
+ * famílias de chamada:
+ *
+ *   CHAT       chamada frequente, uma pessoa esperando na tela, e o erro é
+ *              visível e corrigível na próxima fala.
+ *   ESTEIRA    chamada rara, ninguém esperando, e o erro ENTRA NO CADASTRO em
+ *              escala — um título ruim vira 40 anúncios ruins, e a lojista
+ *              descobre semanas depois, pela venda que não veio.
+ *
+ * Trocar este por um modelo menor economizaria segundos que ninguém está
+ * contando e pagaria com a única coisa que este projeto inteiro protege: o que
+ * fica gravado. Quem quiser mesmo assim: `OPENAI_MODEL=gpt-5-mini`.
  */
 export const MODELO_OPENAI_PADRAO = "gpt-5";
 export const MODELO_OPENAI_RESERVA_PADRAO = "gpt-5-mini";
+
+/**
+ * O modelo do CHAT — `gpt-5-mini` desde 24/08/2026.
+ *
+ * ===========================================================================
+ * O QUE FOI MEDIDO
+ * ===========================================================================
+ *
+ * No gpt-5, um turno de três passos levou **107 segundos** em produção — e só
+ * chamou uma ferramenta, duas vezes. O custo não eram as ferramentas nem os
+ * tokens: eram as três chamadas de modelo, ~30 s cada, porque o gpt-5 raciocina
+ * antes de responder e o laço faz uma chamada por passo.
+ *
+ * Cento e sete segundos é uma pessoa achando que o sistema travou.
+ *
+ * ===========================================================================
+ * O QUE SE PAGA, E O QUE SEGURA
+ * ===========================================================================
+ *
+ * O mini escolhe ferramenta pior em pedido ambíguo. Três coisas seguram isso,
+ * e nenhuma depende da inteligência do modelo:
+ *
+ *   - o passo 0 só alcança LEITURA (a fronteira do INC-003);
+ *   - o roteamento por especialista entrega 9 a 15 ferramentas em vez de 34 —
+ *     escolher entre menos é mais fácil, e ajuda o modelo menor mais do que
+ *     ajudava o grande;
+ *   - tudo que tem efeito passa por proposta e clique humano, com trava de
+ *     posse e de infração no servidor.
+ *
+ * A RESERVA é o `gpt-5`: como na classificação, cair por sobrecarga não pode
+ * cair para pior. `OPENAI_MODELO_CONVERSA=gpt-5` volta atrás sem deploy.
+ */
+export const MODELO_OPENAI_CONVERSA = "gpt-5-mini";
 /**
  * O modelo de CLASSIFICAR UMA FRASE — "isto é pergunta de peso ou de preço?".
  *
@@ -46,6 +92,15 @@ export const MODELO_OPENAI_RESERVA_PADRAO = "gpt-5-mini";
  * aos 31s do turno do chat, a lojista esperava ~40s por pergunta.
  */
 export const MODELO_OPENAI_CLASSIFICACAO = "gpt-5-mini";
+
+/**
+ * Por que a classificação NÃO desce para o `gpt-5-nano`.
+ *
+ * Ela decide o critério da resposta e o especialista do turno — errar aqui não
+ * deixa a resposta lenta, deixa a resposta sobre outro assunto. E o ganho seria
+ * pequeno: medido em 24/08/2026, o mini classifica em ~2 s. Não há segundo a
+ * ganhar que pague um turno inteiro no assunto errado.
+ */
 
 /**
  * O QUE O ROTEAMENTO LÊ DO AMBIENTE — e só isto.
@@ -113,8 +168,11 @@ export function rotaDoModelo(
     }
     if (tarefa === "conversa") {
       return {
-        principal: env.OPENAI_MODELO_CONVERSA ?? env.OPENAI_MODEL ?? MODELO_OPENAI_PADRAO,
-        reserva: env.OPENAI_MODELO_CONVERSA_RESERVA ?? env.OPENAI_MODEL_RESERVA ?? MODELO_OPENAI_RESERVA_PADRAO,
+        // Sem `?? env.OPENAI_MODEL`: o chat tem linha PRÓPRIA desde 24/08/2026,
+        // e herdar o modelo do trabalho pesado o traria de volta ao gpt-5 em
+        // qualquer ambiente que só defina OPENAI_MODEL.
+        principal: env.OPENAI_MODELO_CONVERSA ?? MODELO_OPENAI_CONVERSA,
+        reserva: env.OPENAI_MODELO_CONVERSA_RESERVA ?? MODELO_OPENAI_PADRAO,
       };
     }
     return {
