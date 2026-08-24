@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
 import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
@@ -32,6 +32,10 @@ const HEADERS = [
   "Imagens",
   "Preço OK",
   "Prioridade",
+  // A coluna de AÇÃO, sem rótulo — é o padrão das outras tabelas da agência
+  // (/agencias, /clientes): "Abrir" já se explica, e um cabeçalho "Ação" só
+  // gastaria a largura que esta tabela não tem de sobra.
+  "",
 ];
 
 export default function ProdutosPage() {
@@ -209,7 +213,7 @@ export default function ProdutosPage() {
               </div>
 
               {aberto && (
-                <Table headers={HEADERS}>
+                <Table headers={HEADERS} acaoFixa>
                   {itens.map((p) => (
                     <tr key={p.id} className="hover:bg-white/[0.02]">
                       {/* TdMain, não <td> cru: esta célula tinha `whitespace-nowrap` no
@@ -233,6 +237,19 @@ export default function ProdutosPage() {
                       <Td><Badge>{p.statusImagens}</Badge></Td>
                       <Td><Badge>{p.statusPrecificacao}</Badge></Td>
                       <Td><Badge>{p.prioridade}</Badge></Td>
+                      {/* A AÇÃO EXPLÍCITA. O nome do produto já leva à mesma
+                          tela, mas texto sublinhado no meio de onze colunas não
+                          se anuncia como o lugar de clicar — e no celular, onde
+                          a linha vira cartão, o nome é o TÍTULO do cartão, que
+                          se lê como rótulo e não como botão. */}
+                      <Td>
+                        <Link
+                          href={`/produtos/${p.id}`}
+                          className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
+                        >
+                          Abrir <ArrowRight size={12} />
+                        </Link>
+                      </Td>
                     </tr>
                   ))}
                 </Table>

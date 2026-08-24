@@ -11,5 +11,6 @@ Auditoria `ui-ux-pro-max` em 2026-08-23 (régua: tabelas, feedback, vazio/carga,
 
 ## Pendente (Medium/Low)
 - ~~Filtros fora da URL~~ → `useFiltroNaUrl` (`?cadastro=&prioridade=`) em 2026-08-23.
-- 11 colunas e **sem coluna de ação** (a ação é só o link no nome). Avaliar reduzir colunas ou coluna "Abrir".
+- ~~Sem coluna de ação~~ → coluna "Abrir" em 2026-08-23, **grudada à direita** (`<Table acaoFixa>`).
+- **Aberto (decisão de produto):** a tabela não cabe. Medido a 1440px: 12 colunas pedem 1201px num container de 1134 — e já não cabia antes (11 colunas = 1127px num container de 911 a 961px de janela). O `acaoFixa` garante que a AÇÃO nunca some, mas as colunas do meio continuam rolando. Caber de verdade pede cortar ~3 colunas; quais é decisão sua. Candidatas pelo critério que o repo já usou (constante ou derivada): `Prioridade` é derivada de nota/pendências, e `Cadastro`/`SEO`/`Descrição`/`Imagens`/`Preço OK` são cinco badges de status que poderiam virar uma coluna "o que falta".
 - Sem multi-select/ação em massa por produto (a ação em lote é por grupo inteiro). Primitivas `marcaMestre`/`TdSelecao` já existem em `Table.tsx`.

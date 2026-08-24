@@ -134,6 +134,43 @@ button:disabled,
 }
 
 /* ===========================================================================
+   A COLUNA DE AÇÃO NÃO SAI DA TELA
+   ===========================================================================
+
+   Quando a tabela é larga demais, o `overflow-x-auto` deixa rolar — e o que
+   fica de fora é a ponta DIREITA, onde mora a ação. É o defeito que
+   `tabelaCabeNaTela.test.ts` narra com todas as letras: "nas telas de 7 colunas
+   isso escondia as três últimas — inclusive a de AÇÃO, que é onde a pessoa
+   clica".
+
+   Medido em /produtos a 1440px, em 23/08/2026: 12 colunas pedem 1201px num
+   container de 1134. Sobram 67px para fora, e 75 deles são a coluna "Abrir".
+   Cortar coluna resolveria melhor, mas quais colunas cortar é decisão do dono
+   do produto — este arquivo não a toma sozinho.
+
+   Só a partir de 640px: abaixo disso a linha vira cartão (regra abaixo) e não
+   há rolagem para escapar. Vale apenas para quem pede `acaoFixa` na <Table>.
+
+   O `background` é obrigatório e não é estético: sem ele as células que passam
+   por baixo aparecem através da coluna grudada. */
+@media (min-width: 640px) {
+  .tabela-cartao [data-acao] {
+    position: sticky;
+    right: 0;
+    background: var(--surface-raised);
+    /* A sombra à esquerda é o que diz "tem conteúdo passando por baixo" — sem
+       ela a coluna parece apenas a última, e a rolagem fica invisível. */
+    box-shadow: -10px 0 10px -10px rgb(0 0 0 / 0.7);
+  }
+
+  /* O realce da linha sob o cursor precisa alcançar a célula grudada também,
+     senão ela fica como um retalho apagado no fim de uma linha acesa. */
+  .tabela-cartao tbody tr:hover [data-acao] {
+    background-image: linear-gradient(rgb(255 255 255 / 0.02), rgb(255 255 255 / 0.02));
+  }
+}
+
+/* ===========================================================================
    NO CELULAR, A LINHA DA TABELA É UM CARTÃO
    ===========================================================================
 

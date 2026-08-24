@@ -41,6 +41,21 @@ interface TableProps {
     aoAlternar: () => void;
     rotulo: string;
   };
+  /**
+   * Gruda a ÚLTIMA coluna na borda direita enquanto o resto rola.
+   *
+   * Para as tabelas largas demais para caber. Medido em /produtos a 1440px:
+   * 12 colunas pedem 1201px num container de 1134 — a rolagem come 67px, e o
+   * que fica de fora é justamente a ponta direita, onde mora a ação. Este
+   * arquivo já documenta o caso ("uma tabela que esconde o botão é pior que
+   * uma tabela com o nome em duas linhas"); aqui está a saída para quando
+   * cortar coluna não é uma decisão que o código possa tomar sozinho.
+   *
+   * Opt-in: sem a prop, nada muda em nenhuma tabela. A pintura é do
+   * `globals.css` (`[data-acao]`), e só a partir de 640px — abaixo disso a
+   * linha vira cartão e não há o que grudar.
+   */
+  acaoFixa?: boolean;
 }
 
 /**
@@ -60,7 +75,7 @@ interface TableProps {
  * Só mexe em `<td>` DIRETO de `<tr>`: célula com `colSpan` (o estado vazio) não
  * é par rótulo/valor e passa intacta.
  */
-function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNode {
+function comRotulos(children: React.ReactNode, headers: string[], acaoFixa = false): React.ReactNode {
   return Children.map(children, (linha) => {
     if (!isValidElement(linha)) return linha;
     const props = linha.props as { children?: React.ReactNode };
@@ -88,13 +103,14 @@ function comRotulos(children: React.ReactNode, headers: string[]): React.ReactNo
       return cloneElement(celula as ReactElement<Record<string, unknown>>, {
         "data-rotulo": headers[indice] ?? "",
         ...(indice === 0 ? { "data-identidade": "" } : {}),
+        ...(acaoFixa && indice === headers.length - 1 ? { "data-acao": "" } : {}),
       });
     });
     return cloneElement(linha as ReactElement<Record<string, unknown>>, { children: celulas });
   });
 }
 
-export function Table({ headers, children, carregando = false, marcaMestre }: TableProps) {
+export function Table({ headers, children, carregando = false, marcaMestre, acaoFixa = false }: TableProps) {
   return (
     <div className="tabela-cartao rounded-xl border border-white/5 bg-surface-raised sm:overflow-x-auto">
       {/* `aria-busy`: as linhas fantasma são `aria-hidden` (o leitor de tela não
@@ -113,9 +129,10 @@ export function Table({ headers, children, carregando = false, marcaMestre }: Ta
                 />
               </th>
             )}
-            {headers.map((h) => (
+            {headers.map((h, i) => (
               <th
                 key={h}
+                {...(acaoFixa && i === headers.length - 1 ? { "data-acao": "" } : {})}
                 className="whitespace-nowrap px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500"
               >
                 {h}
@@ -127,7 +144,7 @@ export function Table({ headers, children, carregando = false, marcaMestre }: Ta
           {carregando ? (
             <LinhasFantasma colunas={headers.length + (marcaMestre ? 1 : 0)} />
           ) : (
-            comRotulos(children, headers)
+            comRotulos(children, headers, acaoFixa)
           )}
         </tbody>
       </table>
