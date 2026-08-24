@@ -13,7 +13,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { cronometro, registrarExecucaoIA, type OrigemDaExecucao } from "@/lib/services/execucoesDeIA";
-import { cabeReserva, rotaDoModelo } from "./roteamentoDeModelo";
+import { cabeReserva, rotaDoModelo, type TarefaDeIA } from "./roteamentoDeModelo";
 import {
   criarResposta,
   enviarArquivo,
@@ -92,7 +92,16 @@ export interface ChamadaIA {
    * Ou seja: esforço alto numa tarefa trivial não sai mais lento — sai QUEBRADO,
    * e quebrado de um jeito que não diz o que aconteceu.
    */
-  esforco?: "low" | "medium" | "high" | "xhigh" | "max";
+  esforco?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  /**
+   * QUE TIPO de trabalho é este — decide a linha da tabela de modelos.
+   *
+   * Omitido = `estruturada`, que é o trabalho pesado (esteira, catálogo).
+   * `classificacao` existe porque decidir "esta frase é sobre peso ou sobre
+   * preço?" não é o mesmo trabalho que ler 90 páginas de catálogo, e pagá-los
+   * no mesmo modelo é o que fazia a lojista esperar 9,5s por uma classificação.
+   */
+  tarefa?: TarefaDeIA;
   maxTokens?: number;
   /**
    * QUEM está pagando e POR QUÊ — para a linha em `ia_execucoes` (067).
@@ -405,7 +414,7 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   // A RESERVA: se o principal estiver sobrecarregado, UMA tentativa no modelo
   // de reserva, e a resposta sai marcada `degradado` — quem registra em
   // ia_execucoes vê que aquela chamada não rodou onde devia.
-  const rota = rotaDoModelo("estruturada");
+  const rota = rotaDoModelo(c.tarefa ?? "estruturada");
   try {
     return await chamarAnthropicCom(c, rota.principal);
   } catch (e) {
@@ -436,7 +445,10 @@ async function chamarAnthropicCom(c: ChamadaIA, modelo: string): Promise<Respost
     system: c.system,
     output_config: {
       format: { type: "json_schema", schema: c.schema },
-      ...(c.esforco ? { effort: c.esforco } : {}),
+      // `minimal` é nível da OpenAI e a Anthropic recusa — vira `low`, o mais
+      // baixo que ela tem. Traduzir aqui é o que mantém `esforco` uma palavra
+      // do PROJETO, e não do provedor da vez.
+      ...(c.esforco ? { effort: c.esforco === "minimal" ? "low" : c.esforco } : {}),
     },
     messages: [{ role: "user", content: blocosDaMensagem(c) }],
     ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
@@ -496,7 +508,7 @@ export function conteudoDaMensagemOpenAI(c: ChamadaIA): ConteudoDeEntrada[] {
 }
 
 async function chamarOpenAI(c: ChamadaIA): Promise<RespostaIA> {
-  const rota = rotaDoModelo("estruturada", process.env, "openai");
+  const rota = rotaDoModelo(c.tarefa ?? "estruturada", process.env, "openai");
   try {
     return await chamarOpenAICom(c, rota.principal);
   } catch (e) {

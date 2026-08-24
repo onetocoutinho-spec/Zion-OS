@@ -136,3 +136,17 @@ test("23/08/2026 — só o ChatGPT: a tabela roteia por provedor, e a OpenAI vem
   assert.equal(provedorRoteado({ ...ambos, IA_PROVEDOR: "anthropic" }), "anthropic");
   assert.equal(rotaDoModelo("conversa", { ...ambos, IA_PROVEDOR: "anthropic" }).principal, "claude-sonnet-5");
 });
+
+test("24/08/2026 — classificar uma frase tem linha própria: gpt-5-mini, com o gpt-5 de RESERVA", () => {
+  // A única linha em que a reserva é mais FORTE que o principal: cair por
+  // sobrecarga não pode piorar a classificação que decide a resposta inteira.
+  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  assert.deepEqual(rotaDoModelo("classificacao", so), { principal: "gpt-5-mini", reserva: "gpt-5" });
+  assert.deepEqual(
+    rotaDoModelo("classificacao", { ...so, OPENAI_MODELO_CLASSIFICACAO: "gpt-5-nano" } as NodeJS.ProcessEnv),
+    { principal: "gpt-5-nano", reserva: "gpt-5" }
+  );
+  // O caminho Anthropic é legado e NÃO muda: classificação cai na linha estruturada.
+  const cl = { ANTHROPIC_API_KEY: "a" } as NodeJS.ProcessEnv;
+  assert.deepEqual(rotaDoModelo("classificacao", cl), rotaDoModelo("estruturada", cl));
+});

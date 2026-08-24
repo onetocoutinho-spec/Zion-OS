@@ -193,3 +193,15 @@ test("OpenAI: o anexo vira input_file/input_image, e o texto vem DEPOIS do mater
     /não suportado/
   );
 });
+
+test("a classificação pede esforço mínimo e a linha própria da tabela — 9,5s por frase era o preço do raciocínio", () => {
+  const rota = readFileSync(new URL("../../app/api/assistente/route.ts", import.meta.url), "utf8");
+  assert.match(rota, /esforco: "minimal"/);
+  assert.match(rota, /tarefa: "classificacao"/);
+  // E a tabela é consultada pela tarefa da chamada, não por um literal.
+  const fonte = readFileSync(new URL("./provedorIA.ts", import.meta.url), "utf8");
+  assert.match(fonte, /rotaDoModelo\(c\.tarefa \?\? "estruturada", process\.env, "openai"\)/);
+  assert.match(fonte, /rotaDoModelo\(c\.tarefa \?\? "estruturada"\)/);
+  // `minimal` é palavra da OpenAI: no caminho Anthropic ela vira `low`.
+  assert.match(fonte, /effort: c\.esforco === "minimal" \? "low" : c\.esforco/);
+});

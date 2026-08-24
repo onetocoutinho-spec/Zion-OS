@@ -186,7 +186,13 @@ export async function POST(request: Request) {
       // Classificar uma frase é a tarefa mais simples que este sistema pede a
       // um modelo. Esforço alto aqui não melhorava a classificação e estourava
       // o tempo da rota — ver `ChamadaIA.esforco`.
-      esforco: "low",
+      //
+      // Era `low`, e em 24/08/2026 virou `minimal` com modelo próprio: medido
+      // em produção no gpt-5, `low` custou 9,5s e 630 tokens de saída — quase
+      // todos de RACIOCÍNIO, para escolher entre valores que o schema já
+      // enumera. A lojista esperava isso ANTES de o chat começar a responder.
+      esforco: "minimal",
+      tarefa: "classificacao",
       rastro: { origem: "intencao", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
     return Response.json({ criterio: JSON.parse(json) });

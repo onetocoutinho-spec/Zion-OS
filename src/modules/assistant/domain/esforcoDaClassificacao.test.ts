@@ -37,8 +37,19 @@ const ROTA = semComentarios(ler("app/api/assistente/route.ts"));
 const CLIENTE = semComentarios(ler("lib/services/assistenteDaOperacao.ts"));
 const PROVEDOR = semComentarios(ler("lib/agentes/provedorIA.ts"));
 
-test("classificar uma frase roda em esforço BAIXO", () => {
-  assert.match(ROTA, /esforco:\s*"low"/);
+test("classificar uma frase roda no esforço MÍNIMO — e num modelo próprio", () => {
+  // Era `low`. Em 24/08/2026, primeiro dia no ChatGPT, a mesma lição de 05/08
+  // apareceu de novo com outra cara: no gpt-5, `low` gastou 9,5s e 630 tokens
+  // de saída para classificar UMA frase — raciocínio quase todo — e a lojista
+  // esperava isso ANTES de o chat começar a responder.
+  //
+  // Duas mudanças, e as duas são a mesma decisão: a tarefa é trivial e tem que
+  // ser paga como trivial. `minimal` é o piso de raciocínio da OpenAI, e
+  // `classificacao` é a linha da tabela de modelos que roda no gpt-5-mini —
+  // com o gpt-5 de RESERVA, porque cair por sobrecarga não pode piorar a
+  // classificação que decide a resposta inteira.
+  assert.match(ROTA, /esforco:\s*"minimal"/);
+  assert.match(ROTA, /tarefa:\s*"classificacao"/);
 });
 
 test("o esforço chega à API como `effort` dentro de output_config", () => {
@@ -58,7 +69,14 @@ test("o esforço chega à API como `effort` dentro de output_config", () => {
 test("omitir o esforço não manda `effort: undefined`", () => {
   // Os outros cinco pontos de chamada não passam esforço e devem continuar no
   // padrão da API. Mandar a chave com undefined é outra coisa.
-  assert.match(PROVEDOR, /\.\.\.\(c\.esforco\s*\?\s*\{\s*effort:\s*c\.esforco\s*\}\s*:\s*\{\}\)/);
+  //
+  // A FORMA mudou em 24/08/2026 — `minimal` é palavra da OpenAI e o caminho
+  // Anthropic a traduz para `low` — mas a garantia é a mesma: sem esforço,
+  // sem chave.
+  assert.match(
+    PROVEDOR,
+    /\.\.\.\(c\.esforco\s*\?\s*\{\s*effort:\s*c\.esforco === "minimal" \? "low" : c\.esforco\s*\}\s*:\s*\{\}\)/
+  );
 });
 
 test("a leitura da resposta da classificação tem guarda contra HTML", () => {

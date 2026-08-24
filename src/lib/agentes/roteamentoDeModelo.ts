@@ -17,7 +17,7 @@
 // existe. As linhas da Anthropic ficam para quem pedir por nome
 // (`IA_PROVEDOR=anthropic`) — ver `provedorConfigurado`.
 
-export type TarefaDeIA = "estruturada" | "conversa";
+export type TarefaDeIA = "estruturada" | "conversa" | "classificacao";
 export type ProvedorRoteado = "openai" | "anthropic";
 
 export interface RotaDeModelo {
@@ -33,6 +33,19 @@ export interface RotaDeModelo {
  */
 export const MODELO_OPENAI_PADRAO = "gpt-5";
 export const MODELO_OPENAI_RESERVA_PADRAO = "gpt-5-mini";
+/**
+ * O modelo de CLASSIFICAR UMA FRASE — "isto é pergunta de peso ou de preço?".
+ *
+ * `gpt-5-mini`, e a reserva é o `gpt-5` — a única linha da tabela em que a
+ * reserva é MAIS forte que o principal, porque aqui a queda por sobrecarga não
+ * pode piorar a classificação.
+ *
+ * Medido em produção em 24/08/2026: a classificação no gpt-5 com esforço
+ * `low` levou 9,5s e gastou 630 tokens de saída — quase tudo raciocínio, para
+ * decidir uma coisa que o schema já restringe a um punhado de valores. Somados
+ * aos 31s do turno do chat, a lojista esperava ~40s por pergunta.
+ */
+export const MODELO_OPENAI_CLASSIFICACAO = "gpt-5-mini";
 
 /**
  * O QUE O ROTEAMENTO LÊ DO AMBIENTE — e só isto.
@@ -92,6 +105,12 @@ export function rotaDoModelo(
   provedor: ProvedorRoteado = provedorRoteado(env)
 ): RotaDeModelo {
   if (provedor === "openai") {
+    if (tarefa === "classificacao") {
+      return {
+        principal: env.OPENAI_MODELO_CLASSIFICACAO ?? MODELO_OPENAI_CLASSIFICACAO,
+        reserva: env.OPENAI_MODELO_CLASSIFICACAO_RESERVA ?? MODELO_OPENAI_PADRAO,
+      };
+    }
     if (tarefa === "conversa") {
       return {
         principal: env.OPENAI_MODELO_CONVERSA ?? env.OPENAI_MODEL ?? MODELO_OPENAI_PADRAO,
@@ -103,6 +122,9 @@ export function rotaDoModelo(
       reserva: env.OPENAI_MODEL_RESERVA ?? MODELO_OPENAI_RESERVA_PADRAO,
     };
   }
+  // O caminho Anthropic é legado (só por `IA_PROVEDOR=anthropic`), e
+  // `classificacao` cai na linha estruturada de propósito: mudar o modelo dele
+  // aqui seria alterar em silêncio um comportamento que ninguém pediu.
   if (tarefa === "conversa") {
     return {
       principal: env.ANTHROPIC_MODELO_CONVERSA ?? "claude-sonnet-5",
