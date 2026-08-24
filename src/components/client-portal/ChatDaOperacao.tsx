@@ -2565,7 +2565,21 @@ function CartaoDeTitulo({
 
   return (
     <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
-      <p className="text-[11px] uppercase tracking-wider text-zinc-500">Trocar o título</p>
+      <p className="text-[11px] uppercase tracking-wider text-zinc-500">
+        {t.noMarketplace ? "Trocar o título no anúncio publicado" : "Trocar o título"}
+      </p>
+      {/* A CONSEQUÊNCIA, escrita. O cartão é o mesmo do título de catálogo, e
+          é justamente por isso que ele precisa dizer quando a troca sai daqui
+          e chega na vitrine. */}
+      {t.noMarketplace && (
+        <p className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          <span>
+            Isto muda o anúncio que está no ar{t.mlb ? ` (${t.mlb})` : ""} — é o título que o
+            comprador vê. Depois de trocar eu releio o anúncio para confirmar.
+          </span>
+        </p>
+      )}
       <dl className="space-y-1.5 text-sm">
         <div>
           <dt className="text-[11px] text-zinc-500">Hoje ({e.caracteresAtual} caracteres)</dt>
@@ -2588,7 +2602,7 @@ function CartaoDeTitulo({
           disabled={ocupado}
           className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-40"
         >
-          {ocupado ? "Trocando…" : e.rotuloBotao}
+          {ocupado ? "Trocando…" : t.noMarketplace ? "Trocar no anúncio" : e.rotuloBotao}
         </button>
         <button
           type="button"

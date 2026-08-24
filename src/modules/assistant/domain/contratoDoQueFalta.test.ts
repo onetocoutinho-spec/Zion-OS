@@ -432,9 +432,28 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // RASCUNHO e não proposta: ela não autoriza nada, não tem alvo e não tem
   // valor. Só LÊ e ANOTA — toda escrita continua passando por
   // `copilot_propostas` e pelo clique. O poder de agir não mudou: segue 1.
-  assert.equal(FERRAMENTAS.length, 33);
+  //
+  // De 33 para 34 em 24/08/2026: `propor_titulo_no_anuncio`, PROPOSTA —
+  // 34 / 20 / 2 / 11 / 1. Etapa 7 do Operador Universal.
+  //
+  // É a PRIMEIRA escrita de conteúdo do projeto num anúncio que já está no ar:
+  // até aqui dava para criar, encerrar, pausar, reativar e trocar fotos, e
+  // corrigir um título errado exigia encerrar e republicar — perdendo
+  // histórico e relevância na busca.
+  //
+  // PROPOSTA e não ação, apesar de reversível: o que ela muda é o que o
+  // COMPRADOR vê. A régua de `executa` é reversibilidade E dano baixo no pior
+  // caso; aqui o pior caso é um título errado na vitrine, e o clique humano é
+  // barato perto disso. Risco `alto` (migração 072), que já exige que quem
+  // confirma seja quem pediu.
+  //
+  // E ela nasce com a trava que nenhuma escrita anterior tinha: depois de
+  // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
+  // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
+  // a releitura é o que torna seguro publicá-lo.
+  assert.equal(FERRAMENTAS.length, 34);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.

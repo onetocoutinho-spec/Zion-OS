@@ -148,6 +148,7 @@ const DETALHE: Readonly<Record<string, { oQueFaz: string; precisaDe: readonly st
   propor_descricao: { oQueFaz: "Propõe uma descrição nova, mostrando a atual ao lado.", precisaDe: ["o produto identificado"] },
   propor_palavras_chave: { oQueFaz: "Propõe acrescentar palavras-chave — nunca substitui as que existem.", precisaDe: ["o produto identificado"] },
   propor_titulo: { oQueFaz: "Propõe um título novo dentro do limite do canal, mostrando o atual ao lado.", precisaDe: ["o produto identificado"] },
+  propor_titulo_no_anuncio: { oQueFaz: "Troca o título do anúncio que está no ar no Mercado Livre, e relê o anúncio depois para confirmar que mudou.", precisaDe: ["loja conectada ao Mercado Livre", "o produto com anúncio publicado e sem infração"] },
   propor_imagem: { oQueFaz: "Propõe gerar uma imagem a partir da foto real do produto, por tipo (capa, detalhe, medidas).", precisaDe: ["foto real do produto", "cota de IA disponível"] },
   propor_tarefas: { oQueFaz: "Propõe uma lista de tarefas para a loja, com motivo e prioridade.", precisaDe: [] },
   propor_anuncio: { oQueFaz: "Confere os pré-requisitos e encaminha para gerar o anúncio completo.", precisaDe: ["o produto com cadastro completo"] },
@@ -198,9 +199,9 @@ const LACUNAS: readonly Lacuna[] = [
     ],
     codigo: "CAPACIDADE_AUSENTE",
     porQue:
-      "O Zion publica, encerra, pausa, reativa e troca as fotos de um anúncio — mas não altera preço, estoque, título, descrição, atributo ou variação de um anúncio que já está no ar. Esse caminho não existe no código.",
+      "Num anúncio que já está no ar eu troco o TÍTULO e as fotos, e sei publicar, encerrar, pausar e reativar. O que eu ainda NÃO altero é preço, estoque, descrição, atributo e variação — esses caminhos não existem no código.",
     oQueFaltaria:
-      "Escrever a alteração de item no Mercado Livre e fazê-la passar por proposta com confirmação e releitura. Hoje, a única forma de corrigir um anúncio publicado é encerrá-lo e republicar — o que perde o histórico e a relevância dele.",
+      "Escrever cada um desses campos no Mercado Livre, com a mesma disciplina do título: proposta, confirmação e releitura para conferir. Enquanto isso, eles se corrigem no próprio Mercado Livre — ou encerrando o anúncio e republicando, o que perde o histórico e a relevância dele.",
   },
   {
     assunto: "detalhe_da_moderacao",

@@ -44,6 +44,7 @@ import { compararLojas } from "@/lib/services/comparacaoDeLojas";
 import { diagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { varrerAnunciosDaLoja } from "@/lib/services/anunciosNoArNoServidor";
 import { registrarLacuna } from "@/lib/services/lacunasDoCopilot";
+import { tituloNoArDoProduto } from "@/lib/services/tituloNoAnuncio";
 import {
   abrirInvestigacao,
   fecharRodada,
@@ -637,6 +638,20 @@ export async function POST(request: Request) {
     // mesma fala lê o banco uma vez só. A leitura é do estado JÁ MEDIDO, com
     // a data — ver `anunciosNoArNoServidor`.
     noAr: umaVezPorTurno(() => varrerAnunciosDaLoja(clienteDaSessao)),
+    // ---- O TÍTULO QUE ESTÁ NO AR ----
+    //
+    // Leitura VIVA no Mercado Livre, e não do catálogo: o cartão precisa
+    // mostrar o que o comprador vê agora. Sem credencial no servidor o porto
+    // não é montado, e a ferramenta diz que não alcança o ML.
+    ...(process.env.ML_CLIENT_ID && process.env.ML_CLIENT_SECRET
+      ? {
+          tituloNoAr: (produtoId: string) =>
+            tituloNoArDoProduto(clienteDaSessao, produtoId, {
+              clientId: process.env.ML_CLIENT_ID as string,
+              clientSecret: process.env.ML_CLIENT_SECRET as string,
+            }),
+        }
+      : {}),
     // ---- O SINAL DE LACUNA ----
     //
     // Registrado quando o Copilot confere se sabe fazer algo e descobre que
@@ -1216,18 +1231,28 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             if (propostaDeTitulo && conversaId) {
               try {
                 const t = propostaDeTitulo;
+                // DOIS TIPOS, um cartão. `titulo` muda o catálogo do Zion;
+                // `titulo_no_ml` muda o que o comprador vê. O cartão é o mesmo
+                // (atual × proposto) e a consequência não é — por isso a
+                // auditoria precisa dos dois nomes, e a tela avisa qual é.
+                const noMarketplace = t.noMarketplace === true;
                 const gravada = await criarProposta({
                   clienteId: clienteDaSessao,
                   conversaId,
                   criadaPor: usuarioId,
-                  tipo: "titulo",
+                  tipo: noMarketplace ? "titulo_no_ml" : "titulo",
                   alvos: [t.anuncioId],
                   // O número que importa num título é o tamanho: o limite de 60
                   // caracteres do ML é a razão de o agente existir.
                   valor: t.tituloProposto.length,
                   texto: t.tituloProposto,
                   autoridade: t.autoridade,
-                  resumo: `Trocar o título de "${t.nome}" para "${t.tituloProposto}".`,
+                  resumo: noMarketplace
+                    ? `Trocar o título NO ANÚNCIO PUBLICADO (${t.mlb ?? "sem MLB"}) para "${t.tituloProposto}".`
+                    : `Trocar o título de "${t.nome}" para "${t.tituloProposto}".`,
+                  // A precondição continua sendo o título de PARTIDA. No caso
+                  // do marketplace ele é o que o ML mostrava quando o cartão
+                  // nasceu: se alguém trocou no meio, a autorização morre.
                   precondicoes: [
                     { campo: CAMPO_TITULO_ATUAL, valorNaCriacao: impressaoDoTitulo(t.tituloAtual) },
                   ],

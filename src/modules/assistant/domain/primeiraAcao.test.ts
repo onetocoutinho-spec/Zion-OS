@@ -206,7 +206,8 @@ test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
   // para quem compra antes de ser visível para quem vende.
   // 12 desde 22/08/2026: `propor_tarefas` e `propor_imagem`, PROPOSTAS.
   // 13 desde 24/08/2026: `investigar`, RASCUNHO — ver a decisão no T12.
-  assert.equal(COM_EFEITO.length, 13);
+  // 14 no mesmo dia: `propor_titulo_no_anuncio`, PROPOSTA.
+  assert.equal(COM_EFEITO.length, 14);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
@@ -412,10 +413,29 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // RASCUNHO e não proposta: ela não autoriza nada, não tem alvo e não tem
   // valor. Só LÊ e ANOTA — toda escrita continua passando por
   // `copilot_propostas` e pelo clique. O poder de agir não mudou: segue 1.
-  assert.equal(FERRAMENTAS.length, 33);
+  //
+  // De 33 para 34 em 24/08/2026: `propor_titulo_no_anuncio`, PROPOSTA —
+  // 34 / 20 / 2 / 11 / 1. Etapa 7 do Operador Universal.
+  //
+  // É a PRIMEIRA escrita de conteúdo do projeto num anúncio que já está no ar:
+  // até aqui dava para criar, encerrar, pausar, reativar e trocar fotos, e
+  // corrigir um título errado exigia encerrar e republicar — perdendo
+  // histórico e relevância na busca.
+  //
+  // PROPOSTA e não ação, apesar de reversível: o que ela muda é o que o
+  // COMPRADOR vê. A régua de `executa` é reversibilidade E dano baixo no pior
+  // caso; aqui o pior caso é um título errado na vitrine, e o clique humano é
+  // barato perto disso. Risco `alto` (migração 072), que já exige que quem
+  // confirma seja quem pediu.
+  //
+  // E ela nasce com a trava que nenhuma escrita anterior tinha: depois de
+  // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
+  // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
+  // a releitura é o que torna seguro publicá-lo.
+  assert.equal(FERRAMENTAS.length, 34);
   assert.equal(FERRAMENTAS_DE_LEITURA.length, 20);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 

@@ -81,6 +81,8 @@ import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
 import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
+import { podeCorrigirTitulo } from "@/modules/publication/domain/correcaoNoAnuncio";
+import { limiteDoTituloNoCanal } from "@/modules/publication/domain/regrasDoCanal";
 import { habilidades, lacunaPorAssunto, lacunas } from "@/modules/assistant/domain/habilidades";
 import {
   motivoDeParar,
@@ -200,6 +202,19 @@ export interface ContextoDasFerramentas {
     anotar: (proximoPasso: string) => void;
     concluir: () => void;
   };
+  /**
+   * O TÍTULO QUE ESTÁ NO AR — leitura viva no Mercado Livre.
+   *
+   * Existe porque o cartão precisa mostrar o que o COMPRADOR vê agora, e não o
+   * título do catálogo do Zion: os dois divergirem é justamente o caso que a
+   * correção conserta. `null` = produto sem anúncio publicado nesta loja.
+   */
+  tituloNoAr?: (produtoId: string) => Promise<{
+    anuncioId: string;
+    mlb: string;
+    titulo: string;
+    permalink: string | null;
+  } | null>;
   /**
    * O SINAL de pedido sem capacidade — gravado quando a conferência encontra
    * uma lacuna. Opcional: sem ele a resposta honesta continua saindo, só não
@@ -591,6 +606,9 @@ export interface ResultadoDaFerramenta {
     autoridade: "nao_se_aplica";
   };
   propostaDeTitulo?: {
+    /** Muda o anúncio NO AR, não o catálogo. A tela precisa avisar. */
+    noMarketplace?: boolean;
+    mlb?: string;
     anuncioId: string;
     produtoId: string;
     nome: string;
@@ -1232,6 +1250,9 @@ export async function executarFerramenta(
 
     case "propor_titulo":
       return proporTitulo(args, ctx);
+
+    case "propor_titulo_no_anuncio":
+      return proporTituloNoAnuncio(args, ctx);
 
     case "tabela_de_medidas": {
       const a = ctx.anuncio;
@@ -1878,6 +1899,100 @@ async function proporTexto(
       // ACRESCENTA, não substitui. Se o modelo disser "vou trocar suas
       // palavras-chave", ela entende errado o que o botão faz.
       aviso: "Estas ACRESCENTAM às que já existem. Nenhuma palavra atual é removida.",
+    },
+  };
+}
+
+/**
+ * "Corrige o título do anúncio" — a troca no item QUE ESTÁ NO AR.
+ *
+ * Irmã de `proporTitulo`, e deliberadamente separada: aquela muda o catálogo
+ * do Zion e ninguém de fora vê; esta muda o que o comprador lê agora. O cartão
+ * carrega `noMarketplace` para a tela poder dizer isso — um botão idêntico
+ * para consequências diferentes seria a armadilha.
+ *
+ * O "atual" vem do Mercado Livre, não do Zion: os dois divergirem é o caso.
+ */
+async function proporTituloNoAnuncio(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const produtoId = texto(args, "produtoId");
+  if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+  if (!ctx.tituloNoAr) {
+    return {
+      saida: {
+        erro: "Não consigo ler o anúncio no Mercado Livre por aqui agora.",
+        comoResponder: "Diga que não conseguiu alcançar o Mercado Livre e que por isso não vai propor troca nenhuma.",
+      },
+    };
+  }
+
+  let noAr: Awaited<ReturnType<NonNullable<ContextoDasFerramentas["tituloNoAr"]>>>;
+  try {
+    noAr = await ctx.tituloNoAr(produtoId);
+  } catch {
+    return {
+      saida: {
+        erro: "Não consegui ler o título que está no ar.",
+        comoResponder: "Diga que não conseguiu ler o anúncio no Mercado Livre agora. Não proponha troca sem saber o que está lá.",
+      },
+    };
+  }
+  if (!noAr) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Este produto não tem anúncio publicado no Mercado Livre — não há título no ar para corrigir.",
+        comoResponder: "Diga isso como está. Se ele quiser melhorar o título do CADASTRO, existe propor_titulo.",
+      },
+    };
+  }
+
+  // O título pedido, ou o que a Zion já tem — o caso "o Zion está certo e o ML
+  // está velho". Sem nenhum dos dois, não há o que propor.
+  let pedido = texto(args, "titulo");
+  if (!pedido && ctx.anuncio?.anuncioParaTitulo) {
+    // O título que a Zion já tem para este produto — o caso "o cadastro está
+    // certo e o Mercado Livre está velho".
+    pedido = (await ctx.anuncio.anuncioParaTitulo(produtoId))?.tituloAtual ?? "";
+  }
+  const pode = podeCorrigirTitulo(noAr.titulo, pedido, limiteDoTituloNoCanal("Mercado Livre"));
+  if (!pode.pode) {
+    return {
+      saida: {
+        montada: false,
+        motivo: pode.explicacao,
+        tituloNoAr: noAr.titulo,
+        comoResponder:
+          pode.motivo === "igual"
+            ? "Diga que o anúncio já está com esse título e que não há o que trocar."
+            : "Diga o motivo como está. Se for tamanho, ofereça gerar um título dentro do limite com propor_titulo.",
+      },
+    };
+  }
+
+  return {
+    propostaDeTitulo: {
+      noMarketplace: true,
+      mlb: noAr.mlb,
+      anuncioId: noAr.anuncioId,
+      produtoId,
+      nome: noAr.titulo,
+      tituloAtual: noAr.titulo,
+      tituloProposto: pedido,
+      justificativa: "",
+      autoridade: "nao_se_aplica",
+    },
+    saida: {
+      montada: true,
+      noMarketplace: true,
+      mlb: noAr.mlb,
+      tituloNoAr: noAr.titulo,
+      tituloProposto: pedido,
+      caracteres: pedido.length,
+      comoResponder:
+        "Deixe CLARO que isto muda o anúncio que está no ar, e não o cadastro: é o que o comprador vê. Mostre os dois títulos. NÃO diga que trocou — nada acontece até o clique, e depois do clique eu releio o anúncio para confirmar antes de afirmar qualquer coisa.",
     },
   };
 }

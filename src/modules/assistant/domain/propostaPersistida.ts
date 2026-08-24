@@ -73,6 +73,12 @@ export type TipoDeProposta =
   // fora da Proposal. `texto` carrega o pedido congelado (ver
   // `propostaDePublicacao.ts`) e `alvos[0]` é o anúncio.
   | "publicacao"
+  // TÍTULO NO ANÚNCIO PUBLICADO, desde 24/08/2026. Separado de `titulo` de
+  // propósito: aquele muda o catálogo do Zion, este muda o que o COMPRADOR vê
+  // agora. A auditoria precisa distinguir os dois — e é justamente essa
+  // distinção que alguém vai procurar no dia em que um título aparecer errado
+  // na vitrine. `alvos[0]` é o registro do anúncio; `texto` é o título novo.
+  | "titulo_no_ml"
   // TAREFAS DA LOJA, desde 22/08/2026. `texto` carrega a lista congelada (ver
   // `propostaDeTarefas.ts`); `alvos` são os produtos citados, se houver.
   | "tarefas"
@@ -253,6 +259,11 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Publicar é o que o COMPRADOR vê, e o Mercado Livre não tem "desfazer":
   // um anúncio duplicado ou errado no ar é reputação, não só dado. Crítico.
   publicacao: "critico",
+  // Trocar o título de um anúncio no ar é o que o comprador vê — mas é
+  // REVERSÍVEL (o texto antigo volta) e não move dinheiro. Alto, não crítico:
+  // a diferença entre isto e publicar é que publicar cria algo que o ML não
+  // desfaz. Alto já exige que quem confirma seja quem pediu.
+  titulo_no_ml: "alto",
   // Criar uma lista de tarefas é reversível com um clique (descartar) e não
   // toca catálogo, preço nem marketplace. Baixo — exige confirmação, não o
   // cuidado de uma escrita irreversível.

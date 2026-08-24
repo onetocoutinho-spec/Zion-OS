@@ -1693,3 +1693,60 @@ export async function visitasDoItem(accessToken: string, itemId: string, dias: n
   const j = (await r.json()) as { total_visits?: unknown };
   return typeof j.total_visits === "number" ? j.total_visits : null;
 }
+
+/**
+ * Troca o TÍTULO de um anúncio publicado — `PUT /items/{id}` com `{ title }`.
+ *
+ * ===========================================================================
+ * A PRIMEIRA ESCRITA DE CONTEÚDO EM ANÚNCIO NO AR
+ * ===========================================================================
+ *
+ * Até 24/08/2026 este cliente tinha seis escritas e NENHUMA delas mudava o
+ * conteúdo de um item publicado: dava para criar, encerrar, pausar, reativar e
+ * trocar as fotos, e mais nada. Corrigir um título errado exigia encerrar o
+ * anúncio e republicar — perdendo histórico, reputação e a relevância que ele
+ * tinha na busca.
+ *
+ * Título e não preço/estoque: é reversível (o título antigo volta), não move
+ * dinheiro, e é o campo que decide se o anúncio APARECE na busca.
+ *
+ * ===========================================================================
+ * ESTE CAMINHO NÃO FOI MEDIDO CONTRA A API REAL
+ * ===========================================================================
+ *
+ * O formato vem da documentação, não de uma chamada observada — e este
+ * repositório já pagou por essa diferença uma vez (a OpenAI passou um dia com
+ * "chave aceita e caminho inexistente", ver `provedorImagem`).
+ *
+ * Por isso quem chama é obrigado a RELER o item e comparar (ver
+ * `tituloNoAnuncio.ts`). Se o ML aceitar a requisição e não aplicar a mudança,
+ * a releitura pega — e a resposta diz "enviei, mas não consegui confirmar" em
+ * vez de "pronto". A verificação não é zelo: é o que torna seguro publicar um
+ * caminho que ninguém observou ainda.
+ *
+ * O ML também RECUSA a troca em alguns casos (item com vendas, certas
+ * categorias). A recusa dele sobe como está, porque ela diz o motivo e este
+ * arquivo não sabe reescrevê-lo sem inventar.
+ */
+export async function atualizarTituloDoItem(
+  accessToken: string,
+  itemId: string,
+  titulo: string
+): Promise<{ id: string; titulo: string }> {
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title: titulo }),
+  });
+  if (!r.ok) {
+    throw new Error(`ML recusou trocar o título do anúncio ${itemId}: ${await extrairErro(r)}`);
+  }
+  const j = (await r.json()) as { id?: string; title?: string };
+  // O título que o ML CONFIRMOU na resposta, não o que pedimos — pelo mesmo
+  // motivo de `definirEstadoDoItem`: devolver o pedido faria a resposta
+  // afirmar uma mudança que pode não ter acontecido.
+  return { id: String(j.id ?? itemId), titulo: String(j.title ?? "") };
+}

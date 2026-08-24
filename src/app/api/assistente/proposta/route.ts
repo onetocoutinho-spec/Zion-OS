@@ -78,6 +78,7 @@ import { registrarVarias, type RegistroDeProcedencia } from "@/lib/services/proc
 import { CAMPO_PUBLICACAO } from "@/modules/assistant/domain/propostaDePublicacao";
 import { impressaoAtualDaPublicacao } from "@/lib/services/ensaioDaPublicacao";
 import { executarPublicacaoDaProposta } from "@/lib/services/publicacaoDaProposta";
+import { executarTituloNoAnuncio } from "@/lib/services/tituloNoAnuncio";
 import { executarTarefasDaProposta } from "@/lib/services/tarefasDaProposta";
 import { executarImagemDaProposta } from "@/lib/services/imagemDaProposta";
 import { registrarDecisaoDoCopilot } from "@/lib/services/decisoesDoCopilot";
@@ -1063,6 +1064,45 @@ export async function POST(request: Request) {
     }
     if (d.jaFeito) {
       return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não publiquei de novo." });
+    }
+    return Response.json(
+      { ok: false, mensagem: d.mensagem, ...(d.motivo ? { motivo: d.motivo } : {}) },
+      { status: 409 }
+    );
+  }
+
+  // ---- TÍTULO NO ANÚNCIO PUBLICADO — a primeira escrita de conteúdo no ar.
+  //
+  // Fora do despacho atômico pelo mesmo motivo da publicação: o efeito é
+  // EXTERNO e não cabe numa transação do banco. A diferença para ela está no
+  // fim — aqui a resposta só afirma o que uma LEITURA NOVA provou, e "não
+  // consegui confirmar" é um desfecho legítimo, não um erro.
+  if (p.tipo === "titulo_no_ml") {
+    const clientId = process.env.ML_CLIENT_ID;
+    const clientSecret = process.env.ML_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return Response.json(
+        { ok: false, mensagem: "Integração com o Mercado Livre não configurada no servidor." },
+        { status: 503 }
+      );
+    }
+    const d = await executarTituloNoAnuncio(p, usuario, { clientId, clientSecret });
+    if (d.ok) {
+      // `ok: true` diz que o caminho rodou até o fim — NÃO que o título mudou.
+      // Quem diz isso é `veredicto`, e a frase vem do domínio.
+      return Response.json({
+        ok: true,
+        afetados: d.resultado.veredicto === "confirmada" ? 1 : 0,
+        produtoId: p.alvos[0],
+        mlItemId: d.mlb,
+        veredicto: d.resultado.veredicto,
+        tituloAntes: d.resultado.antes,
+        tituloAgora: d.resultado.agora,
+        mensagem: d.resultado.frase,
+      });
+    }
+    if (d.jaFeito) {
+      return Response.json({ ok: false, jaFeito: true, mensagem: "Isso já foi feito — não troquei de novo." });
     }
     return Response.json(
       { ok: false, mensagem: d.mensagem, ...(d.motivo ? { motivo: d.motivo } : {}) },

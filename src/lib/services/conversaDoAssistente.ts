@@ -126,6 +126,9 @@ export interface RespostaDaConversa {
   propostaDeTextoId?: string;
   /** Título atual e proposto, lado a lado. Sem `propostaDeTituloId`, sem botão. */
   propostaDeTitulo?: {
+    /** A troca é no anúncio PUBLICADO — a tela avisa a consequência. */
+    noMarketplace?: boolean;
+    mlb?: string;
     anuncioId: string;
     produtoId: string;
     nome: string;

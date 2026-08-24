@@ -494,6 +494,24 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    nome: "propor_titulo_no_anuncio",
+    efeito: "propoe",
+    descricao:
+      "Monta a proposta de TROCAR O TÍTULO NO ANÚNCIO QUE JÁ ESTÁ NO AR no Mercado Livre — o texto que o COMPRADOR vê agora. Diferente de propor_titulo, que muda só o catálogo do Zion. Lê o título que está publicado neste momento e mostra ao lado do novo. NÃO grava: só o clique troca, e depois da troca eu releio o anúncio para confirmar. Use quando ele disser \"corrige o título do anúncio\", \"o título no Mercado Livre está errado\", \"aplica esse título no anúncio\" ou \"atualiza o anúncio com o título novo\". Precisa de um produtoId com anúncio publicado.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: { type: "string" },
+        titulo: {
+          type: "string",
+          description:
+            "O título que deve ficar no anúncio. Omitido, uso o título que a Zion já tem para este produto — o caso de \"o Zion está certo e o Mercado Livre está velho\".",
+        },
+      },
+      required: ["produtoId"],
+    },
+  },
+  {
     nome: "propor_imagem",
     efeito: "propoe",
     descricao:

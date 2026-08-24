@@ -38,6 +38,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   propor_descricao: "a proposta de descrição",
   propor_palavras_chave: "a proposta de palavras-chave",
   propor_titulo: "a proposta de título",
+  propor_titulo_no_anuncio: "a troca do título no anúncio publicado",
   propor_anuncio: "a proposta de anúncio",
   propor_tarefas: "a lista de tarefas",
   propor_imagem: "a proposta de imagem",

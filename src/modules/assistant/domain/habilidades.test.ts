@@ -66,7 +66,14 @@ test("toda lacuna diz o motivo E o que faltaria — nunca só 'não consigo'", (
 
 test("as lacunas medidas na auditoria estão declaradas, com o código certo", () => {
   assert.equal(lacunaPorAssunto("editar_anuncio_publicado")?.codigo, "CAPACIDADE_AUSENTE");
-  assert.match(lacunaPorAssunto("editar_anuncio_publicado")?.porQue ?? "", /não altera preço, estoque, título/);
+  // A LACUNA ENCOLHEU em 24/08/2026 (etapa 7): o título passou a ser
+  // possível, e a lacuna precisou mudar junto — uma lacuna que descreve algo
+  // que o catálogo já faz ensina o Copilot a recusar o que ele sabe fazer.
+  assert.match(lacunaPorAssunto("editar_anuncio_publicado")?.porQue ?? "", /eu troco o TÍTULO e as fotos/);
+  assert.match(
+    lacunaPorAssunto("editar_anuncio_publicado")?.porQue ?? "",
+    /NÃO altero é preço, estoque, descrição, atributo e variação/
+  );
   assert.equal(lacunaPorAssunto("detalhe_da_moderacao")?.codigo, "DADO_AUSENTE");
   assert.equal(lacunaPorAssunto("outros_marketplaces")?.codigo, "CAPACIDADE_AUSENTE");
   assert.equal(lacunaPorAssunto("estado_ao_vivo")?.codigo, "LIMITE_DO_MARKETPLACE");
@@ -101,7 +108,7 @@ test("nenhuma lacuna descreve algo que o catálogo JÁ faz", () => {
   }
   // E a lacuna de editar anúncio publicado precisa distinguir os dois casos,
   // senão ela nega o `propor_preco`, que muda o preço NO CATÁLOGO do Zion.
-  assert.match(lacunaPorAssunto("editar_anuncio_publicado")?.porQue ?? "", /já está no ar|publicado/);
+  assert.match(lacunaPorAssunto("editar_anuncio_publicado")?.porQue ?? "", /já está no ar|no ar|publicado/);
 });
 
 test("a ferramenta de checagem existe, é leitura, e grava o sinal do pedido sem capacidade", () => {
