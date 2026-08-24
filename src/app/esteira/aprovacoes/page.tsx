@@ -492,7 +492,12 @@ function ConteudoAprovacoes({
               </Td>
               <Td><Badge>{r.tipoExecucao}</Badge></Td>
               <Td><Badge>{ROTULO_STATUS_ANUNCIO_GERADO[r.status]}</Badge></Td>
-              <Td className="whitespace-nowrap text-xs">{formatDateTime(r.criadoEm)}</Td>
+              {/* Só a data: "23/08/2026 14:32" gastava 152px numa tabela que não
+                  cabia, e a hora quase nunca decide qual anúncio aprovar. Ela
+                  não se perde — vai no title, junto por extenso. */}
+              <Td className="whitespace-nowrap text-xs" title={formatDateTime(r.criadoEm)}>
+                {formatDateTime(r.criadoEm, { comHora: false })}
+              </Td>
               <Td>
                 <div className="flex flex-wrap gap-1.5">
                   {r.status === "aprovado" && (
