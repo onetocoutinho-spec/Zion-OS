@@ -146,12 +146,32 @@ export interface RespostaDaConversa {
   propostaDePrecoId?: string;
 }
 
+/** O estado de uma consulta dentro de um passo. */
+export type EstadoDaConsulta = "rodando" | "ok" | "falhou";
+
+export interface PassoDaTrilha {
+  /** 1-based, como a pessoa conta. */
+  passo: number;
+  /** O teto de passos do turno — para a tela poder dizer "2 de 6". */
+  de: number;
+  consultas: { nome: string; estado: EstadoDaConsulta }[];
+}
+
 /** O que a tela recebe enquanto a resposta acontece. */
 export interface AoVivo {
   /** Um pedaço de texto acabou de chegar. Some com o acumulado e redesenha. */
   aoTexto: (textoAcumulado: string) => void;
   /** Uma ferramenta começou a rodar. Aparece na tela no lugar do silêncio. */
   aoFerramenta: (nome: string) => void;
+  /**
+   * A TRILHA inteira, remontada a cada mudança.
+   *
+   * Opcional para não quebrar quem já chama `conversar` — e entregue pronta,
+   * não em pedaços: quem desenha não deveria precisar reconstruir estado a
+   * partir de três eventos diferentes. Quem acumula é este arquivo, que já
+   * acumula o texto pelo mesmo motivo.
+   */
+  aoTrilha?: (trilha: readonly PassoDaTrilha[]) => void;
 }
 
 /**
@@ -221,6 +241,8 @@ export async function conversar(
   const decodificador = new TextDecoder();
   let sobra = "";
   let acumulado = "";
+  /** A trilha dos passos, montada aqui — ver `AoVivo.aoTrilha`. */
+  const trilha: PassoDaTrilha[] = [];
   let fim: RespostaDaConversa | null = null;
   let erro: string | null = null;
 
@@ -243,8 +265,25 @@ export async function conversar(
       if (e.tipo === "texto" && typeof e.delta === "string") {
         acumulado += e.delta;
         aoVivo?.aoTexto(acumulado);
+      } else if (e.tipo === "etapa" && typeof e.passo === "number") {
+        trilha.push({
+          passo: e.passo,
+          de: typeof e.de === "number" ? e.de : e.passo,
+          consultas: (Array.isArray(e.ferramentas) ? e.ferramentas : [])
+            .filter((n): n is string => typeof n === "string")
+            .map((nome) => ({ nome, estado: "rodando" as const })),
+        });
+        aoVivo?.aoTrilha?.(trilha.map((p) => ({ ...p, consultas: [...p.consultas] })));
       } else if (e.tipo === "ferramenta" && typeof e.nome === "string") {
         aoVivo?.aoFerramenta(e.nome);
+      } else if (e.tipo === "ferramenta_fim" && typeof e.nome === "string") {
+        // A PRIMEIRA ainda rodando com este nome — FIFO, como o dialeto casa
+        // chamada e resposta. Duas consultas do mesmo nome no mesmo passo
+        // terminam na ordem em que começaram.
+        const passoAtual = trilha[trilha.length - 1];
+        const alvo = passoAtual?.consultas.find((c) => c.nome === e.nome && c.estado === "rodando");
+        if (alvo) alvo.estado = e.ok === false ? "falhou" : "ok";
+        aoVivo?.aoTrilha?.(trilha.map((p) => ({ ...p, consultas: [...p.consultas] })));
       } else if (e.tipo === "erro") {
         erro = typeof e.erro === "string" ? e.erro : "Não consegui responder agora.";
       } else if (e.tipo === "fim") {

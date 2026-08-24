@@ -1403,6 +1403,21 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             role: "model",
             parts: turno.chamadas.map((c) => ({ functionCall: { name: c.nome, args: c.args } })),
           });
+          // A ETAPA, ANTES de rodar qualquer coisa.
+          //
+          // Até 24/08/2026 o protocolo tinha quatro eventos e nenhum falava de
+          // PROGRESSO: a tela mostrava "Consultando X…" e essa linha sumia no
+          // primeiro pedaço de texto. Um turno de vários passos ficava
+          // indistinguível de um travado.
+          //
+          // Este evento diz o passo, o teto e o que ele vai consultar — antes,
+          // não depois. É o que permite a uma investigação longa se mostrar.
+          mandar({
+            tipo: "etapa",
+            passo: passo + 1,
+            de: MAXIMO_DE_PASSOS,
+            ferramentas: turno.chamadas.map((c) => c.nome),
+          });
           // SEQUENCIAL, nao Promise.all: a busca forte vai ao banco, e as
           // ferramentas do mesmo turno costumam depender uma da outra (achar
           // antes de propor). Paralelizar aqui trocaria ordem por microssegundos.
@@ -1431,6 +1446,15 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
                     "Diga que NÃO conseguiu consultar essa fonte e o que isso impede. Não preencha o que faltou com estimativa. Se outras ferramentas responderam, use o que elas devolveram.",
                 },
               } as Awaited<ReturnType<typeof executarFerramenta>>;
+            });
+
+            // E o desfecho DELA, não só o começo. `ok: false` quando a
+            // ferramenta devolveu `erro` — o modelo já sabe lidar com isso, e
+            // agora quem está olhando a tela também vê qual fonte falhou.
+            mandar({
+              tipo: "ferramenta_fim",
+              nome: c.nome,
+              ok: !(r.saida && typeof r.saida === "object" && "erro" in (r.saida as object)),
             });
 
             // A AÇÃO ACONTECE AQUI, não no domínio.

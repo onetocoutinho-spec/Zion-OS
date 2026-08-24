@@ -34,7 +34,7 @@ import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistent
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
-import type { RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
+import type { PassoDaTrilha, RespostaDaConversa } from "@/lib/services/conversaDoAssistente";
 import type { Consequencia } from "@/modules/workspace/domain/consequencia";
 import { ofertasQueValem, rotuloDoDesbloqueio } from "@/modules/workspace/domain/consequencia";
 import { desfechoPorVencimento } from "@/modules/assistant/domain/vencimentoNaTela";
@@ -327,6 +327,15 @@ interface Turno {
    * distinção não se enxerga pela forma da frase.
    */
   ferramentas?: readonly string[];
+  /**
+   * A TRILHA do turno: cada passo e o que ele consultou, com o desfecho.
+   *
+   * Separada de `ferramentas` de propósito. Aquela é a lista chapada para o
+   * rodapé "Consultei: …"; esta tem a ESTRUTURA — passo, teto, e o estado de
+   * cada consulta — que é o que permite mostrar uma investigação andando em
+   * vez de um spinner mudo.
+   */
+  trilha?: readonly PassoDaTrilha[];
   erro?: string;
 }
 
@@ -565,6 +574,10 @@ export function ChatDaOperacao({
                     ? { ...turno, ferramentas: [...(turno.ferramentas ?? []), nomeDaFerramenta] }
                     : turno
                 )
+              ),
+            aoTrilha: (novaTrilha: readonly PassoDaTrilha[]) =>
+              setTurnos((t) =>
+                t.map((turno, i) => (i === t.length - 1 ? { ...turno, trilha: novaTrilha } : turno))
               ),
           };
           // Só PONTEIROS viajam: a loja (conferida no servidor), o id do produto
@@ -1568,7 +1581,13 @@ export function ChatDaOperacao({
                   {/* A ETAPA, não um spinner mudo: enquanto só há chamadas de
                       ferramenta (o caso comum — o modelo consulta antes de
                       escrever), a tela diz QUAL fonte está lendo. */}
-                  {ocupado && i === turnos.length - 1 && t.texto === undefined && (t.ferramentas?.length ?? 0) > 0 && (
+                  {ocupado && i === turnos.length - 1 && (t.trilha?.length ?? 0) > 0 && (
+                    <TrilhaDaConversa trilha={t.trilha!} />
+                  )}
+                  {/* O caminho antigo continua para o turno que não recebeu
+                      trilha — servidor mais velho que a tela, durante um
+                      deploy. Sem ele, esses segundos voltariam a ser mudos. */}
+                  {ocupado && i === turnos.length - 1 && !t.trilha && t.texto === undefined && (t.ferramentas?.length ?? 0) > 0 && (
                     <p className="flex items-center gap-2 text-sm text-zinc-500" aria-live="polite">
                       <Loader2 size={14} className="animate-spin" /> Consultando {rotuloDaFerramenta(t.ferramentas![t.ferramentas!.length - 1])}…
                     </p>
@@ -2585,6 +2604,65 @@ function CartaoDeTitulo({
  * quanto dele NÃO é problema dele, e só então o que sobra. Começar pelo que ele
  * precisa fazer transformaria um alívio em cobrança.
  */
+/**
+ * A TRILHA — o que o assistente está fazendo, enquanto faz.
+ *
+ * ===========================================================================
+ * POR QUE ISTO SUBSTITUIU A LINHA "Consultando X…"
+ * ===========================================================================
+ *
+ * A linha antiga dizia UMA fonte, a última, e só enquanto `texto === undefined`
+ * — ela sumia no primeiro pedaço de texto. Um turno de vários passos ficava
+ * indistinguível de um travado, e era exatamente esse o limite que impedia uma
+ * investigação longa de existir na conversa.
+ *
+ * Esta mostra os passos, o que cada um consultou e como terminou, e continua
+ * visível enquanto o turno corre. Os nomes continuam passando por
+ * `rotuloDaFerramenta` — identificador cru não é coisa para a lojista ler.
+ */
+function TrilhaDaConversa({ trilha }: { trilha: readonly PassoDaTrilha[] }) {
+  if (trilha.length === 0) return null;
+  const atual = trilha[trilha.length - 1];
+  return (
+    <div
+      className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
+      role="status"
+      aria-live="polite"
+    >
+      {/* O teto só aparece a partir do segundo passo: dizer "1 de 6" numa
+          pergunta simples assusta sem informar. */}
+      {trilha.length > 1 && (
+        <p className="mb-1 text-[11px] font-medium text-zinc-500">
+          Passo {atual.passo} de {atual.de}
+        </p>
+      )}
+      <ul className="space-y-1">
+        {trilha.map((p) =>
+          p.consultas.map((c, j) => (
+            <li
+              key={p.passo + "-" + c.nome + "-" + j}
+              className="flex items-center gap-2 text-sm text-zinc-400"
+            >
+              {c.estado === "rodando" ? (
+                <Loader2 size={13} className="shrink-0 animate-spin text-zinc-500" />
+              ) : c.estado === "falhou" ? (
+                <AlertTriangle size={13} className="shrink-0 text-amber-400" />
+              ) : (
+                <CheckCircle2 size={13} className="shrink-0 text-emerald-500/70" />
+              )}
+              <span className={c.estado === "falhou" ? "text-amber-300" : undefined}>
+                {c.estado === "rodando" ? "Consultando " : c.estado === "falhou" ? "Não consegui ler " : "Li "}
+                {rotuloDaFerramenta(c.nome)}
+                {c.estado === "rodando" ? "…" : ""}
+              </span>
+            </li>
+          ))
+        )}
+      </ul>
+    </div>
+  );
+}
+
 function PainelDePendencias({ p }: { p: PendenciasNaTela }) {
   const e = estadoDoPainel(p);
 
