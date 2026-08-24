@@ -126,8 +126,21 @@ test("o caminho barato DECLARA que não cobre o Mercado Livre — e devolve a pe
   // pergunta para a conversa, que tem as ferramentas.
   assert.match(ROTA, /O QUE ESTA LISTA NÃO COBRE/);
   assert.match(ROTA, /ANÚNCIO, MERCADO LIVRE, VARIAÇÃO, AGRUPAMENTO/);
-  assert.match(ROTA, /nomeia um produto específico e pede uma análise dele/);
+  assert.match(ROTA, /nomeie um produto e peça uma análise dele/);
   // E `estado_geral` passa a dizer que é do CADASTRO, não da loja inteira.
   assert.match(ROTA, /panorama do CADASTRO/);
-  assert.match(ROTA, /um pedido sobre UM produto nunca é panorama da loja/);
+  assert.match(ROTA, /Um pedido sobre UM produto nomeado nunca é panorama da loja/);
+
+  // E O PROMPT PRECISA CABER NO ORÇAMENTO DE TEMPO.
+  //
+  // Medido em 24/08/2026: a primeira versão desta regra somou 930 caracteres
+  // ao prompt (+22%) e a classificação foi de 2,4 s para 8,1 s — mais lenta
+  // que o próprio chat, que responde em ~5 s. Regra nova aqui é regra CURTA;
+  // explicação longa vai para o comentário do código, que não é enviado.
+  const corpo = /return `([\s\S]*?)`;/.exec(ROTA)?.[1] ?? "";
+  assert.ok(corpo.length > 0, "não achei o prompt");
+  assert.ok(
+    corpo.length < 4800,
+    `o prompt do classificador tem ${corpo.length} chars — cada linha aqui é paga em latência`
+  );
 });
