@@ -3005,7 +3005,7 @@ async function diagnosticarGrade(
       // sei se estão agrupados" — na mesma resposta.
       ...(agrupamentoNoML ? {} : { oQueNaoSei: LACUNA_DA_FAMILIA }),
       comoResponder: [
-        "EXPLIQUE O FORMATO ANTES DE APONTAR O DEFEITO: em categoria de calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo. Muitos anúncios para um produto NÃO é o problema.",
+        "COMECE PELO ACHADO, não pela aula. A primeira frase diz o que está errado neste produto (ou que nada está). SÓ ENTÃO, e em uma linha, o formato: em calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo — muitos anúncios NÃO é o problema. Essa linha existe para impedir a conclusão errada, não para abrir a resposta.",
         "O problema é a GRADE PARTIDA. Para cada produto em 'piores' diga: X anúncios, Y no ar, e o que está bloqueando o resto (campo motivos). 'so_um_no_ar' é o caso mais caro: quem procura outro número não encontra a loja.",
         "'coberturaPercentual' JÁ ESTÁ EM PORCENTAGEM INTEIRA: escreva \"6%\", nunca \"0,06\" nem \"0.0625\". Não converta nada — o número sai pronto.",
         "SOBRE AGRUPAMENTO: se veio 'agrupamentoNoML', diga o campo 'frase' dele UMA VEZ e siga em frente — não liste as famílias antes e repita a frase depois, é a mesma informação duas vezes. Não recalcule o veredito a partir dos números. Se NÃO veio, repita 'oQueNaoSei' e diga que para conferir a família você precisa saber de qual produto se trata (ache com achar_produto e chame de novo com produtoId).",

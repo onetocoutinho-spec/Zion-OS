@@ -179,3 +179,24 @@ test("a ferramenta NÃO entrega a fração ao modelo — só a porcentagem", () 
   assert.match(fn[0], /piores: quebradas\.slice\(0, 10\)\.map\(\(\{ cobertura: _fracao, \.\.\.g \}\) => g\)/);
   assert.match(fn[0], /JÁ ESTÁ EM PORCENTAGEM INTEIRA/);
 });
+
+test("a resposta COMEÇA pelo achado — a aula de formato vem depois, e curta", () => {
+  // Medido em 24/08/2026: cinco turnos ficaram entre 16,5 e 20,0 ms por token
+  // GERADO. Latência aqui é volume de saída, quase linear — então resposta
+  // mais curta é resposta mais rápida, não só mais legível.
+  //
+  // A instrução antiga ("EXPLIQUE O FORMATO ANTES DE APONTAR O DEFEITO") era
+  // certa quando a resposta possível era "16 anúncios é normal": a aula
+  // impedia a conclusão errada. Com a leitura de família confirmando o defeito
+  // real, abrir pela aula enterra o achado e dobrou a resposta — 1.175 tokens
+  // contra 602 para a mesma pergunta.
+  const exec = readFileSync(new URL("../../assistant/domain/executarFerramenta.ts", import.meta.url), "utf8");
+  const fn = /async function diagnosticarGrade\([\s\S]*?\n\}/.exec(exec);
+  assert.ok(fn, "não achei `diagnosticarGrade`");
+  assert.match(fn[0], /COMECE PELO ACHADO/);
+  // A aula NÃO pode voltar a ser a abertura...
+  assert.doesNotMatch(fn[0], /EXPLIQUE O FORMATO ANTES/);
+  // ...mas também não pode sumir: sem ela, "16 anúncios" vira defeito.
+  assert.match(fn[0], /não aceita um anúncio com variações/);
+  assert.match(fn[0], /muitos anúncios NÃO é o problema/i);
+});
