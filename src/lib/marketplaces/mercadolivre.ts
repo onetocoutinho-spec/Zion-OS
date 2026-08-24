@@ -1277,6 +1277,76 @@ export const CAMPOS_MINIMOS_AO_ML =
   "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
 
 /**
+ * OS ANÚNCIOS QUE A BUSCA DO VENDEDOR NÃO DEVOLVE — lidos por ID.
+ *
+ * ===========================================================================
+ * O BURACO QUE ISTO FECHA — MEDIDO EM 24/08/2026
+ * ===========================================================================
+ *
+ * A conferida funciona assim: lista o que o `/users/{id}/items/search`
+ * devolve, e atualiza o estado desses. Anúncio que sai do resultado da busca
+ * NUNCA MAIS é atualizado — e a regra que protege isso ("ausência não é
+ * encerramento") está certa, mas deixa o item congelado para sempre.
+ *
+ * Medido na conta real: 15 dos 792 anúncios. Onze deles importados em 08/07 e
+ * nunca medidos — quatro conferidas passaram por cima sem vê-los. Os outros
+ * quatro estão em `under_review`, três com `forbidden`, com o último estado
+ * de 01/08 e 10/08: duas e três semanas parados.
+ *
+ * O multiget lê POR ID e não depende da busca. Então a pergunta que faltava
+ * não é cara — são os mesmos 20 por chamada, e aqui são 15 no total.
+ *
+ * ===========================================================================
+ * O QUE ELA DEVOLVE, E POR QUE `naoEncontrados` IMPORTA
+ * ===========================================================================
+ *
+ * O ML pode responder que o item NÃO EXISTE. Isso é informação, e é diferente
+ * de "não perguntei": um anúncio que o Mercado Livre não reconhece mais não
+ * está em revisão nem pausado, e continuar contando-o como desconhecido
+ * esconde a única coisa que se sabe sobre ele.
+ *
+ * Esta função NÃO decide o que fazer com isso — ela separa as duas listas e
+ * deixa a decisão para quem chama, que é onde a política mora.
+ */
+export interface LeituraPorIds {
+  anuncios: AnuncioML[];
+  /** Ids que o ML recusou ou não devolveu. NÃO é "encerrado": é o que ele disse. */
+  naoEncontrados: string[];
+}
+
+export async function lerItensPorIds(
+  accessToken: string,
+  mlbs: readonly string[]
+): Promise<LeituraPorIds> {
+  const ids = [...new Set(mlbs.map((m) => (m ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return { anuncios: [], naoEncontrados: [] };
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const anuncios: AnuncioML[] = [];
+  const naoEncontrados: string[] = [];
+
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20);
+    const vieram = new Set<string>();
+    for (const campos of [CAMPOS_PEDIDOS_AO_ML, CAMPOS_MINIMOS_AO_ML]) {
+      try {
+        const r = await fetch(`${API}/items?ids=${lote.join(",")}&attributes=${campos}`, { headers });
+        if (!r.ok) continue;
+        const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+        for (const x of arr) {
+          if (x.code !== 200 || !x.body?.id || vieram.has(x.body.id)) continue;
+          vieram.add(x.body.id);
+          anuncios.push(mapearItem(x.body));
+        }
+        break; // a lista completa respondeu; não precisa do degrau
+      } catch {
+        // Rede ou JSON quebrado: tenta o degrau menor antes de desistir.
+      }
+    }
+    for (const id of lote) if (!vieram.has(id)) naoEncontrados.push(id);
+  }
+  return { anuncios, naoEncontrados };
+}
+/**
  * A parede que interrompeu a leitura, quando ela não leu tudo.
  *
  * `offset-1000` é do ML, não nossa: o `/items/search` clássico recusa

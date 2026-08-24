@@ -7,8 +7,10 @@
 
 import {
   buscarAnunciosDoVendedor,
+  lerItensPorIds,
   recorteDaCategoria,
 } from "@/lib/marketplaces/mercadolivre";
+import { lerTudoPaginado } from "@/lib/supabase/paginado";
 import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
@@ -83,6 +85,56 @@ export async function POST(request: Request) {
     const leitura = await buscarAnunciosDoVendedor(tokens.accessToken, sellerId);
     const anuncios = leitura.anuncios;
 
+    // ================================================================
+    // OS ÓRFÃOS — anúncios que a BUSCA não devolve e o Zion conhece
+    // ================================================================
+    //
+    // A conferida atualiza o que o `/users/{id}/items/search` lista. Item que
+    // sai do resultado da busca nunca mais é atualizado — e a regra que
+    // protege isso ("ausência não é encerramento") está certa, mas deixa o
+    // anúncio congelado para sempre no último estado conhecido, ou em `null`
+    // se nunca houve um.
+    //
+    // Medido em 24/08/2026: 15 de 792. Onze importados em 08/07 e nunca
+    // medidos — quatro conferidas passaram sem vê-los; quatro em
+    // `under_review`, três com `forbidden`, parados desde 01 e 10/08.
+    //
+    // O multiget lê POR ID e não depende da busca. Vão numa lista à parte:
+    // `substituir` reconstrói o catálogo a partir de `anuncios`, e enfiar os
+    // órfãos ali mudaria o agrupamento de produtos no caminho DESTRUTIVO. Quem
+    // usa `orfaos` é só a conferida, que apenas atualiza estado.
+    const orfaos: Awaited<ReturnType<typeof lerItensPorIds>> = { anuncios: [], naoEncontrados: [] };
+    try {
+      const vistos = new Set(anuncios.map((a) => a.mlb));
+      const conhecidos = await lerTudoPaginado<{ ml_item_id: string | null }>(
+        "MLBs conhecidos do cliente",
+        (de, ate) =>
+          ctx.supabase!
+            .from("anuncios_gerados")
+            .select("ml_item_id")
+            .eq("cliente_id", corpo.clienteId)
+            .not("ml_item_id", "is", null)
+            .order("id", { ascending: true })
+            .range(de, ate)
+      );
+      const faltando = [
+        ...new Set(
+          conhecidos
+            .map((l) => (l.ml_item_id ?? "").trim())
+            .filter((m) => m && !vistos.has(m))
+        ),
+      ];
+      if (faltando.length > 0) {
+        const r = await lerItensPorIds(tokens.accessToken, faltando);
+        orfaos.anuncios = r.anuncios;
+        orfaos.naoEncontrados = r.naoEncontrados;
+      }
+    } catch (e) {
+      // FALHA ABERTA: a conferida inteira não pode morrer por causa do
+      // complemento. Sem os órfãos ela volta a ser o que era — e o log diz.
+      console.error("[ml/importar-anuncios] não consegui ler os órfãos:", e);
+    }
+
     // O recorte da ficha vem do ML, por categoria — não de uma lista escrita
     // por nós. Vai junto porque é aqui que as categorias são conhecidas, e
     // porque o endpoint é público: uma chamada a mais no servidor, nenhuma no
@@ -100,6 +152,9 @@ export async function POST(request: Request) {
     // parava nos 500 e ninguém sabia — inclusive nós.
     return Response.json({
       anuncios,
+      // Separados de propósito — ver o bloco acima.
+      orfaos: orfaos.anuncios,
+      orfaosNaoEncontrados: orfaos.naoEncontrados,
       sellerId,
       foraDaFicha,
       obrigatorios,

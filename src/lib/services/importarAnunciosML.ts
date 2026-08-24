@@ -634,6 +634,10 @@ export async function importarAnunciosDoCliente(
   });
   const dados = await lerJson<{
     anuncios?: AnuncioML[];
+    /** Os que a BUSCA não devolve, lidos por id. Só a conferida os usa. */
+    orfaos?: AnuncioML[];
+    /** Ids que o ML não reconheceu. Informação, não "encerrado". */
+    orfaosNaoEncontrados?: string[];
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
     obrigatorios?: Record<string, { id: string; nome: string }[]>;
@@ -705,9 +709,18 @@ export async function importarAnunciosDoCliente(
     // intocado: ausência não é encerramento.
     let gravados = 0;
     let gravadosQueFalharam = 0;
+    // OS ÓRFÃOS ENTRAM AQUI, e só aqui.
+    //
+    // `todos` alimenta o agrupamento em produtos nos modos destrutivos; os
+    // órfãos não podem entrar lá sem mudar como o catálogo é reconstruído. A
+    // conferida só ATUALIZA ESTADO, então juntá-los é seguro — e é o único
+    // jeito de os 15 pararem de ficar congelados.
+    const orfaos = (dados.orfaos ?? []).filter((a) => a.mlb);
+    const paraMedir = [...todos, ...orfaos];
+
     const mudaram = estadosDesatualizados(
       existentes,
-      todos.map((a) => ({
+      paraMedir.map((a) => ({
         mlb: a.mlb,
         status: a.status,
         subStatus: a.subStatus ?? [],
