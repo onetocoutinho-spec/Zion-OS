@@ -1,10 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   classificar,
   comoAchado,
   LIMITE_DE_CANDIDATOS,
+  palavrasDaBusca,
   paraOModelo,
   pareceEan,
   pareceModelo,
@@ -211,4 +213,61 @@ test("SKU com zero inicial chega intacto na saída", () => {
   const r = paraOModelo(classificar([VARIANTE], "sku_exato", "01040533")) as Record<string, unknown>;
   const a = r.achado as Record<string, unknown>;
   assert.equal(a.sku, "01040533");
+});
+
+// ===========================================================================
+// A BUSCA POR PALAVRAS FORA DE ORDEM — medido em produção, 24/08/2026
+// ===========================================================================
+//
+// A lojista escreveu "Papete Modare Nobuck 7208.101". O catálogo tem "Papete
+// Slide Modare 7208.101 Nobuck". O `%termo inteiro%` não casou, e a resposta
+// foi "não achei nada com esse termo" sobre um produto que existe — o mesmo
+// desfecho de uma coluna inexistente, por outro caminho.
+//
+// Custou dois turnos extras à lojista (16 s) antes de ela chegar ao produto
+// por outro caminho.
+
+test("O CASO REAL: palavras fora de ordem geram uma tentativa por palavras", () => {
+  const ts = tentativasPara("Papete Modare Nobuck 7208.101", "auto");
+  const porPalavras = ts.filter((t) => t.modo === "todas_as_palavras");
+  assert.equal(porPalavras.length, 1, "a busca não degrada para palavras soltas");
+  assert.equal(porPalavras[0].coluna, "nome");
+  assert.equal(porPalavras[0].termo, "Papete Modare Nobuck 7208.101", "o termo viaja inteiro; quem separa é quem consulta");
+});
+
+test("o `contem` VEM ANTES — frase inteira que casa é achado mais forte", () => {
+  const ts = tentativasPara("Papete Modare Nobuck", "auto");
+  const iContem = ts.findIndex((t) => t.modo === "contem");
+  const iPalavras = ts.findIndex((t) => t.modo === "todas_as_palavras");
+  assert.ok(iContem >= 0 && iPalavras > iContem, "degradar antes da hora traria ruído para toda busca");
+});
+
+test("termo de UMA palavra não ganha o degrau — seria a mesma consulta duas vezes", () => {
+  assert.equal(tentativasPara("Papete", "auto").filter((t) => t.modo === "todas_as_palavras").length, 0);
+  assert.equal(tentativasPara("7208.101", "auto").filter((t) => t.modo === "todas_as_palavras").length, 0);
+});
+
+test("palavra de UMA letra sai fora — casaria com metade do catálogo", () => {
+  assert.deepEqual(palavrasDaBusca("Papete de Modare"), ["Papete", "de", "Modare"].filter((p) => p.length > 1));
+  assert.deepEqual(palavrasDaBusca("Tenis a Modare"), ["Tenis", "Modare"]);
+  assert.deepEqual(palavrasDaBusca("  Papete   Slide  "), ["Papete", "Slide"]);
+});
+
+test("o campo 'nome' explícito também degrada — a lojista escreve igual nos dois", () => {
+  const ts = tentativasPara("Papete Modare Nobuck", "nome");
+  assert.equal(ts.length, 2);
+  assert.equal(ts[1].modo, "todas_as_palavras");
+});
+
+test("QUEM CONSULTA usa as MESMAS palavras que quem decidiu tentar", () => {
+  // Se as duas listas divergirem, a decisão de tentar e o que é tentado deixam
+  // de ser a mesma coisa — e a busca "funciona" fazendo outra pergunta.
+  const svc = readFileSync(
+    new URL("../../../lib/services/buscaNoCatalogo.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(svc, /for \(const p of palavrasDaBusca\(t\.termo\)\)/);
+  assert.match(svc, /q = q\.ilike\(t\.coluna, `%\$\{semCuringas\(p\)\}%`\)/, "o curinga do texto da lojista deixou de ser escapado");
+  // O tenant continua na consulta, não na palavra.
+  assert.match(svc, /\.eq\("cliente_id", clienteId\)/);
 });
