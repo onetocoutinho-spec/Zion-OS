@@ -873,6 +873,8 @@ Responda só o nome.`,
       let tokens = 0;
       /** Do total acima, quanto foi servido do cache. Prova de que ele pega. */
       let doCache = 0;
+      /** Do total acima, quanto foi GERADO — a parcela que explica o relógio. */
+      let deSaida = 0;
       /** A última proposta montada. Só uma sobrevive: é a que a tela mostra. */
       let proposta: Proposta | undefined;
       /** A proposta de GERAR ANUNCIO. Separada: a tela poe outro botao nela. */
@@ -951,7 +953,7 @@ Responda só o nome.`,
           degradado,
           ferramentas: usadas,
           passos,
-          tokens: { total: tokens, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
+          tokens: { total: tokens, saida: deSaida, cacheLidos: doCache, cacheEscritos: noCacheEscrito },
           ms: relogio.ms(),
           status,
           erro,
@@ -1027,6 +1029,10 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
           // número é a única prova, e é ele que a sentinela de produção lê.
           doCache += turno.tokensLidosDoCache;
           noCacheEscrito += turno.tokensEscritosNoCache;
+          // A SAÍDA É O QUE DEMORA. Entrada cacheada chega quase de graça em
+          // tempo; cada token gerado é gerado um a um. Sem esta parcela, dois
+          // turnos de mesmo formato medindo 13 s e 21 s são inexplicáveis.
+          deSaida += turno.tokensDeSaida;
 
           // ---- DEFESA DE PROTOCOLO, não classificação semântica.
           //

@@ -53,6 +53,21 @@ test("o turno do chat é registrado nos QUATRO desfechos: ok, parcial, timeout, 
   assert.match(rota, /await registrar\("erro", msg \|\| "desconhecido"\)/);
   assert.match(rota, /modelo: MODELO_DA_CONVERSA/);
   assert.match(rota, /cacheEscritos: noCacheEscrito/, "o que foi ESCRITO no cache (1,25×) não é medido");
+  // A SAÍDA, separada em 24/08/2026. Sem ela, `ms` é um número sem explicação:
+  // dois turnos de 3 passos e as mesmas ferramentas mediram 13,3 s e 20,7 s, e
+  // o total de tokens não distingue resposta longa de provedor lento.
+  assert.match(rota, /saida: deSaida/, "a parcela gerada saiu do registro — a latência volta a ser inexplicável");
+  assert.match(rota, /deSaida \+= turno\.tokensDeSaida/, "o laço parou de acumular a saída");
+});
+
+test("a saída é DEVOLVIDA pelos dois provedores — um só deixaria metade cega", () => {
+  // O mesmo defeito que este repo mais encontra: consertar num lugar e esquecer
+  // o irmão. Aqui são a OpenAI e a Anthropic, em funções separadas.
+  const conv = ler("lib/agentes/conversaComFerramentas.ts");
+  assert.match(conv, /tokensDeSaida: r\.uso\?\.saida \?\? 0/, "o caminho da OpenAI não devolve a saída");
+  assert.match(conv, /tokensDeSaida: u\?\.output_tokens \?\? 0/, "o caminho da Anthropic não devolve a saída");
+  // E ela é PARCELA do total, não um número à parte somado de novo.
+  assert.match(conv, /tokens: \(u\?\.input_tokens \?\? 0\) \+ \(u\?\.output_tokens \?\? 0\)/);
 });
 
 test("o laço tem orçamento de TEMPO, decidido antes de cada passo, e sai pela porta honesta", () => {

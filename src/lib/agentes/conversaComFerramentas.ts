@@ -79,6 +79,16 @@ export interface TurnoDoModelo {
   tokens: number;
   /** Do total acima, quanto veio do cache — mais barato que entrada nova. */
   tokensLidosDoCache: number;
+  /**
+   * Do total acima, quanto foi GERADO — a parcela que custa caro e que demora.
+   *
+   * Separada em 24/08/2026 porque sem ela não dá para explicar latência. Dois
+   * turnos com o MESMO número de passos e as MESMAS ferramentas mediram 13,3 s
+   * e 20,7 s, e com só o total gravado não havia como dizer se a diferença foi
+   * resposta mais longa ou lentidão do provedor. Entrada cacheada chega quase
+   * de graça em tempo; saída é gerada token a token.
+   */
+  tokensDeSaida: number;
   /** Quanto foi ESCRITO no cache neste turno (só a Anthropic cobra à parte). */
   tokensEscritosNoCache: number;
   /** Rodou no modelo de RESERVA por sobrecarga do principal. Ausente = não. */
@@ -262,6 +272,7 @@ function turnoDaOpenAI(r: RespostaDaOpenAI): TurnoDoModelo {
     // Na OpenAI `input_tokens` já inclui os cacheados — não se soma de novo.
     tokens: (r.uso?.entrada ?? 0) + (r.uso?.saida ?? 0),
     tokensLidosDoCache: r.uso?.lidosDoCache ?? 0,
+    tokensDeSaida: r.uso?.saida ?? 0,
     tokensEscritosNoCache: 0,
   };
 }
@@ -331,6 +342,7 @@ function turnoDaResposta(m: Anthropic.Message): TurnoDoModelo {
     // Os QUATRO. `input_tokens` sozinho é o resto não cacheado — ver o campo.
     tokens: (u?.input_tokens ?? 0) + (u?.output_tokens ?? 0) + lidos + escritos,
     tokensLidosDoCache: lidos,
+    tokensDeSaida: u?.output_tokens ?? 0,
     tokensEscritosNoCache: escritos,
   };
 }
