@@ -410,14 +410,36 @@ export function responder(
       const impedimento = oQueImpede(capacidade, lista);
       const nome = NOME_DA_CAPACIDADE[capacidade];
       if (!impedimento) {
-        return { tipo: "nada_travado", frase: `Nada impede ${nome} hoje.` };
+        // Mesmo cuidado: o que não impede é o CADASTRO. O marketplace tem
+        // travas próprias (infração, moderação) que esta lista não enxerga.
+        return {
+          tipo: "nada_travado",
+          frase: `Pelo cadastro, nada impede ${nome} hoje. O Mercado Livre pode ter trava própria, e isso eu vejo perguntando sobre os anúncios.`,
+        };
       }
       return { tipo: "passo", lacuna: impedimento, frase: `O que impede ${nome}:` };
     }
 
     case "estado_geral": {
       if (lista.length === 0) {
-        return { tipo: "nada_travado", frase: "Nada travado. Sua loja está em dia." };
+        // "SUA LOJA ESTÁ EM DIA" ERA UMA AFIRMAÇÃO QUE ESTE MÓDULO NÃO PODE FAZER.
+        //
+        // Medido em produção em 24/08/2026: a lojista perguntou sobre as
+        // variações de um produto e leu "Nada travado. Sua loja está em dia."
+        // — numa loja com 303 anúncios FORA DO AR, 148 esperando correção e
+        // uma grade com 16 anúncios e 1 ativo.
+        //
+        // A lista que este caminho enxerga é só a de PENDÊNCIA DE CADASTRO:
+        // peso, custo, foto, anúncio gerado. Ela não sabe nada sobre o que
+        // está no ar, sobre infração, sobre a grade. Vazio ali é "não há
+        // pendência de cadastro", não "está tudo bem" — é o mesmo
+        // "vazio ≠ negado ≠ desconhecido" que o resto do projeto respeita, e
+        // aqui ele tinha sido esquecido.
+        return {
+          tipo: "nada_travado",
+          frase:
+            "Nenhuma pendência de cadastro: peso, custo, foto e anúncio estão preenchidos. Isso não diz nada sobre os anúncios que já estão no Mercado Livre — para isso, pergunte sobre eles.",
+        };
       }
       return {
         tipo: "lista",

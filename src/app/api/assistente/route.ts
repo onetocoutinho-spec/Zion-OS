@@ -98,7 +98,7 @@ ${temProdutoAberto ? `CONTEXTO: há um produto aberto na tela — "${nomeDoProdu
 - "contagem": quer saber QUANTOS estão em alguma condição. Preencha "assunto".
 - "proximo_passo": quer saber por onde começar, o que fazer primeiro, qual a prioridade.
 - "por_que_travado": quer saber por que algo não funciona ou não sai. Preencha "capacidade".
-- "estado_geral": quer um panorama — como está a loja, o que falta no geral, o que tem de errado.
+- "estado_geral": quer um panorama do CADASTRO — o que falta preencher na loja no geral (peso, custo, foto, anúncio gerado). NÃO use quando a frase falar de um produto específico pelo nome: um pedido sobre UM produto nunca é panorama da loja.
 - "sobre_este_produto": quer saber o que falta no produto que está aberto.
 - "preencher": o lojista está DITANDO UM VALOR para ser gravado — "o peso do chinelo zaxy é 300 gramas", "custo desse aqui 17,16", "põe 0,4 kg nesse". Preencha "campo", "valor", "unidade" e "termosDoAlvo".
 - "fora_do_alcance": a pergunta não é nenhuma das acima. Inclui previsão de vendas, opinião de mercado, o que o concorrente faz, preço ideal de um item específico, e qualquer coisa que dependa de dado que a loja não tem. Em "interpretacao", diga em uma frase o que você não consegue responder, sem prometer que outro sistema consegue.
@@ -128,7 +128,13 @@ DISTINÇÃO QUE IMPORTA: perguntar não é mandar. "quanto pesa o chinelo?" é u
 
 Use "nenhum" em "assunto" e em "capacidade" quando não se aplicarem.
 
-"entendeu": false só quando a frase é ambígua a ponto de duas classificações diferentes serem igualmente plausíveis. Nesse caso escreva em "perguntar" a pergunta curta que desfaz a dúvida. Quando a frase é clara mas está fora do alcance, "entendeu" é true e "intencao" é "fora_do_alcance".
+O QUE ESTA LISTA NÃO COBRE — e por isso vira "entendeu": false:
+
+Tudo que for sobre os ANÚNCIOS NO MERCADO LIVRE. Anúncio ativo, pausado, em revisão, fora do ar, agrupamento, variações, grade, o que o ML pediu para corrigir, vendas, visitas, diagnóstico de um anúncio, trocar título/preço/foto de um anúncio publicado. Nada disso está nas intenções acima, e um outro sistema — que tem as ferramentas e os dados do Mercado Livre — responde melhor. Devolva "entendeu": false, sem "perguntar" (não há dúvida a desfazer; é só um assunto que não é meu).
+
+A regra prática: se a frase menciona ANÚNCIO, MERCADO LIVRE, VARIAÇÃO, AGRUPAMENTO, ATIVO/PAUSADO, VENDAS — ou nomeia um produto específico e pede uma análise dele — devolva "entendeu": false.
+
+"entendeu": false também quando a frase é ambígua a ponto de duas classificações diferentes serem igualmente plausíveis. Nesse caso escreva em "perguntar" a pergunta curta que desfaz a dúvida. Quando a frase é clara, está dentro dos assuntos acima e ainda assim fora do alcance, "entendeu" é true e "intencao" é "fora_do_alcance".
 
 "interpretacao": uma frase curta, em português, do que você entendeu. É mostrada ao lojista.`;
 }
@@ -191,7 +197,13 @@ export async function POST(request: Request) {
       // em produção no gpt-5, `low` custou 9,5s e 630 tokens de saída — quase
       // todos de RACIOCÍNIO, para escolher entre valores que o schema já
       // enumera. A lojista esperava isso ANTES de o chat começar a responder.
-      esforco: "minimal",
+      // `low` e não `minimal`: medido em 24/08/2026, com esforço mínimo o
+      // classificador mandou "confere as variações da Papete, parece que os
+      // anúncios não estão agrupados" para `estado_geral`, e a lojista leu
+      // "sua loja está em dia" numa loja com 303 anúncios fora do ar. A
+      // decisão entre sete intenções não é trivial como parecia; no mini,
+      // `low` custa ~2,5 s — o barato aqui não vale a resposta errada.
+      esforco: "low",
       tarefa: "classificacao",
       rastro: { origem: "intencao", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
