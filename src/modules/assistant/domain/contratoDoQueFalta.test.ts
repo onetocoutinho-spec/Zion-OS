@@ -385,8 +385,24 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // vai na resposta: em 24/08/2026 os 489 ativos tinham sido medidos havia 10
   // dias, e a ferramenta manda dizer isso. Nenhuma das outras vinte e oito
   // mudou de efeito.
-  assert.equal(FERRAMENTAS.length, 30);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 18);
+  //
+  // De 30 para 31 em 24/08/2026: `diagnostico_de_agrupamento`, LEITURA — 31 / 19.
+  //
+  // A decisão nasceu de uma frase da lojista — "as variações da Papete Modare
+  // não estão agrupadas" — que aponta o lugar certo e nomeia a coisa errada.
+  // Medido: em calçado o ML NÃO aceita `variations[]`, então um anúncio por
+  // numeração é o formato dele. O defeito é a GRADE PARTIDA: 16 anúncios e 1
+  // no ar; 41 e 1 no Havaianas Slim. Quem procura outro número não acha a loja.
+  //
+  // Ela lê a MESMA varredura de `anuncios_ativos` e o catálogo do porto de
+  // análise, os dois memoizados por turno — nenhuma leitura nova. E declara o
+  // que não sabe: o vínculo de família do ML não é guardado em
+  // `anuncios_gerados` (conferido no banco), então ninguém aqui pode afirmar
+  // que o ML agrupou ou não. A conferência de referência repetida sai com a
+  // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
+  // cadastro legítimo.
+  assert.equal(FERRAMENTAS.length, 31);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 19);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -402,7 +418,7 @@ test("T17: o C1R continua intacto", () => {
   // garante NÃO mudou e é o que a linha seguinte prova: toda ferramenta da
   // primeira ação tem efeito `le`. O número trava o tamanho; o laço trava a
   // natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 18);
+  assert.equal(PRIMEIRA_ACAO.length, 19);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

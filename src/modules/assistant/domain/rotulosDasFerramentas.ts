@@ -28,6 +28,7 @@ const ROTULOS: Readonly<Record<string, string>> = {
   meu_perfil_de_conteudo: "o perfil de conteúdo da loja",
   anuncios_ativos: "os anúncios da loja no Mercado Livre",
   anuncios_a_corrigir: "a fila de anúncios a corrigir",
+  diagnostico_de_agrupamento: "a grade dos produtos no Mercado Livre",
   diagnostico_do_anuncio: "o diagnóstico do anúncio no Mercado Livre",
   propor_gravacao: "a proposta de preenchimento",
   preparar_resolucao: "a resolução da pendência",

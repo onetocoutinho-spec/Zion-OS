@@ -47,19 +47,19 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 18 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 19 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 18);
+  assert.equal(PRIMEIRA_ACAO.length, 19);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas dezoito — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas dezenove — a matriz que autorizou a decisão", () => {
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -138,12 +138,29 @@ test("T2: são exatamente estas dezoito — a matriz que autorizou a decisão", 
   // `capacidade_ausente`. Dos 148 `waiting_for_patch` medidos em produção, o
   // Zion sabe QUE o ML pediu alteração e não sabe QUAL campo; prometer conserto
   // ali seria a invenção que o A0 cometia. A lacuna declarada é a resposta.
+  //
+  // De 30 para 31 em 24/08/2026: `diagnostico_de_agrupamento`, LEITURA — 31 / 19.
+  //
+  // A decisão nasceu de uma frase da lojista — "as variações da Papete Modare
+  // não estão agrupadas" — que aponta o lugar certo e nomeia a coisa errada.
+  // Medido: em calçado o ML NÃO aceita `variations[]`, então um anúncio por
+  // numeração é o formato dele. O defeito é a GRADE PARTIDA: 16 anúncios e 1
+  // no ar; 41 e 1 no Havaianas Slim. Quem procura outro número não acha a loja.
+  //
+  // Ela lê a MESMA varredura de `anuncios_ativos` e o catálogo do porto de
+  // análise, os dois memoizados por turno — nenhuma leitura nova. E declara o
+  // que não sabe: o vínculo de família do ML não é guardado em
+  // `anuncios_gerados` (conferido no banco), então ninguém aqui pode afirmar
+  // que o ML agrupou ou não. A conferência de referência repetida sai com a
+  // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
+  // cadastro legítimo.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
     "anuncios_a_corrigir",
     "anuncios_ativos",
     "comparar_lojas",
     "contar",
+    "diagnostico_de_agrupamento",
     "diagnostico_do_anuncio",
     "estado_da_loja",
     "meu_perfil_de_conteudo",
@@ -354,15 +371,16 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   //
   // E de 29 para 30 no mesmo dia: `anuncios_a_corrigir`, LEITURA — 30 / 18.
   // Mesma varredura, pergunta seguinte: o que fazer com os que não estão no ar.
-  // Ver a matriz do T2.
+  // E de 30 para 31: `diagnostico_de_agrupamento`, LEITURA — 31 / 19, a grade
+  // de cada produto sobre a MESMA varredura. Ver a matriz do T2.
   //
   // A decisão veio de uma pergunta feita em produção — "quais são os anúncios
   // ativos hoje?" — que o Copilot respondeu não saber, com razão: as 16
   // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
   // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
   // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
-  assert.equal(FERRAMENTAS.length, 30);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 18);
+  assert.equal(FERRAMENTAS.length, 31);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 19);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 10);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

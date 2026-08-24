@@ -81,6 +81,11 @@ import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
 import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
 import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
 import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
+import {
+  gradesDosProdutos,
+  LACUNA_DA_FAMILIA,
+  referenciasRepetidas,
+} from "@/modules/publication/domain/gradeNoMarketplace";
 import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
 import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
 import { lerSlot } from "./briefingDeImagem";
@@ -1092,6 +1097,9 @@ export async function executarFerramenta(
 
     case "anuncios_a_corrigir":
       return listarFilaDeCorrecao(ctx);
+
+    case "diagnostico_de_agrupamento":
+      return diagnosticarGrade(ctx);
 
     case "diagnostico_do_anuncio": {
       const produtoId = texto(args, "produtoId");
@@ -2605,6 +2613,66 @@ async function consultarVendas(
         "Quando 'anterior' for zero, não há comparação: diga isso em vez de calcular porcentagem.",
         "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
         "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
+ * "As variações não estão agrupadas" — a grade de cada produto no ML.
+ *
+ * A frase da lojista aponta para o lugar certo e nomeia a coisa errada: em
+ * calçado, um anúncio por numeração É o formato do ML. O que dói é a grade
+ * PARTIDA — 16 anúncios e 1 no ar. Esta saída mede isso, e declara o que não
+ * sabe: sem o vínculo de família guardado, ninguém aqui pode afirmar que o ML
+ * agrupou ou deixou de agrupar.
+ */
+async function diagnosticarGrade(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const grades = gradesDosProdutos(await ctx.noAr());
+  if (grades.length === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está.",
+      },
+    };
+  }
+  // O catálogo já foi lido neste turno se alguém o pediu — é o mesmo porto
+  // memoizado da análise. Sem ele, a conferência de referência apenas não sai.
+  let referencias: ReturnType<typeof referenciasRepetidas> = [];
+  if (ctx.analise) {
+    try {
+      const c = await ctx.analise.catalogo();
+      referencias = referenciasRepetidas(
+        c.produtos.map((p) => ({ id: p.id, nome: p.nome, modelo: p.modelo }))
+      );
+    } catch {
+      // Falha ao ler o catálogo não derruba o diagnóstico da grade: some a
+      // conferência de referência, e a saída não afirma que não há repetida.
+      referencias = [];
+    }
+  }
+  const quebradas = grades.filter((g) => g.situacao === "so_um_no_ar" || g.situacao === "partida" || g.situacao === "fora_do_ar");
+  return {
+    saida: {
+      produtosComAnuncio: grades.length,
+      produtosComGradeQuebrada: quebradas.length,
+      anunciosForaDoAr: grades.reduce((t, g) => t + g.fora, 0),
+      piores: quebradas.slice(0, 10),
+      referenciasParaConferir: referencias.slice(0, 10),
+      conferenciaDeReferenciaDisponivel: Boolean(ctx.analise),
+      oQueNaoSei: LACUNA_DA_FAMILIA,
+      comoResponder: [
+        "EXPLIQUE O FORMATO ANTES DE APONTAR O DEFEITO: em categoria de calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo. Muitos anúncios para um produto NÃO é o problema.",
+        "O problema é a GRADE PARTIDA. Para cada produto em 'piores' diga: X anúncios, Y no ar, e o que está bloqueando o resto (campo motivos). 'so_um_no_ar' é o caso mais caro: quem procura outro número não encontra a loja.",
+        "Repita o campo oQueNaoSei quando a pergunta for sobre AGRUPAMENTO: não dá para afirmar que estão ou não agrupados numa família no ML, porque esse vínculo não é guardado aqui.",
+        "Sobre 'referenciasParaConferir': diga 'confira se são o mesmo produto' e mostre os modelos lado a lado. NUNCA diga que são duplicados — dois materiais do mesmo modelo é cadastro legítimo, e quem decide é a lojista.",
+        "Se 'conferenciaDeReferenciaDisponivel' for falso, não diga que não há referência repetida: diga que não conferiu.",
+        "Para resolver, ofereça o caminho que existe: anuncios_a_corrigir mostra o motivo de cada um estar fora do ar, e diagnostico_do_anuncio olha um anúncio específico.",
       ].join(" "),
     },
   };
