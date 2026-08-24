@@ -833,7 +833,14 @@ Responda só o nome.`,
         mensagem: mensagem.slice(0, 600),
         schema: { type: "object", properties: { especialista: { type: "string", enum: [...ESPECIALISTAS] } }, required: ["especialista"], additionalProperties: false },
         maxTokens: 60,
-        esforco: "low",
+        // MEDIDO em 24/08/2026: esta chamada rodava no gpt-5 com esforço
+        // `low` e custava ~3 s por turno — para escolher um nome numa lista
+        // de nove. É a MESMA natureza da classificação de intenção, que já
+        // tem linha própria na tabela de modelos (gpt-5-mini, esforço
+        // mínimo, ~2 s com quatro vezes mais entrada). Sem `tarefa` ela caía
+        // na linha do trabalho pesado.
+        esforco: "minimal",
+        tarefa: "classificacao",
         rastro: { origem: "intencao", clienteId: clienteDaSessao, usuarioId },
       });
       especialista = lerEspecialista((JSON.parse(json) as { especialista?: unknown }).especialista);

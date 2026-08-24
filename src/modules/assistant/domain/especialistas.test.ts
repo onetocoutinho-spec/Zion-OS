@@ -42,7 +42,7 @@ test("o classificador recebe uma linha por especialista; nome fora da lista vira
   assert.equal(lerEspecialista("vendas"), "vendas");
 });
 
-test("a rota roteia só com COPILOT_ROTEAMENTO=1, cai no geral se a classificação falhar, e o papel vem antes", () => {
+test("a rota roteia por padrão, cai no geral se a classificação falhar, e o papel vem antes", () => {
   const rota = readFileSync(new URL("../../../app/api/assistente/conversa/route.ts", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   // Era `=== "1"` (desligado por padrão) até 24/08/2026 — ver a medição em
@@ -51,7 +51,11 @@ test("a rota roteia só com COPILOT_ROTEAMENTO=1, cai no geral se a classificaç
   assert.match(rota, /const catalogoDoPapel = ferramentasParaPapel\(papel\)/);
   assert.match(rota, /ferramentasDoEspecialista\(especialista, catalogoDoPapel\)/);
   assert.match(rota, /seguindo como geral/);
-  assert.match(rota, /esforco: "low"/);
+  // Era `low` no gpt-5; virou `minimal` com linha própria na tabela de
+  // modelos em 24/08/2026 — escolher um nome numa lista de nove é a MESMA
+  // natureza da classificação de intenção, e custava ~3 s por turno.
+  assert.match(rota, /esforco: "minimal"/);
+  assert.match(rota, /tarefa: "classificacao"/);
   assert.match(rota, /ESPECIALISTA \(\$\{especialista\}\)/);
 });
 

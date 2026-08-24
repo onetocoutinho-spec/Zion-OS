@@ -143,15 +143,42 @@ const MAX_TOKENS = 32000;
 /**
  * Esforço do raciocínio.
  *
- * `medium`, e não `low`: a trajetória que mais importa aqui (achar → conferir
- * que o alvo é único → propor) é de vários passos, e é exatamente onde esforço
- * baixo arrisca raciocinar de menos. Parâmetro de amostragem (`temperature`)
- * é recusado pelos dois provedores nos modelos com raciocínio.
+ * ===========================================================================
+ * ERA `medium`. O QUE MUDOU FOI O MODELO, NÃO O ARGUMENTO
+ * ===========================================================================
+ *
+ * O argumento de `medium` continua verdadeiro: a trajetória que mais importa
+ * aqui (achar → conferir que o alvo é único → propor) é de vários passos, e é
+ * onde esforço baixo arrisca raciocinar de menos. Ele foi escrito para o
+ * Claude, onde `medium` custava segundos.
+ *
+ * Medido em produção em 24/08/2026, já no gpt-5: um turno de três passos levou
+ * **107 segundos** — e só chamou `achar_produto`, duas vezes. As ferramentas
+ * não foram o custo; as três chamadas de modelo foram. O raciocínio do gpt-5
+ * em esforço médio é da ordem de 30 s por chamada, e o laço faz uma por passo.
+ *
+ * Cento e sete segundos não é "um pouco lento": é uma pessoa achando que o
+ * sistema travou. Entre um turno mais esperto e um turno que a lojista espera
+ * até o fim, o segundo vale mais — e a fronteira do passo 0, as travas de
+ * posse e a Proposal continuam de pé, que é o que impede esforço menor de
+ * virar erro com consequência.
+ *
+ * `IA_ESFORCO_CONVERSA=medium` volta atrás sem deploy.
  */
-const ESFORCO = (process.env.IA_ESFORCO_CONVERSA ?? process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "medium") as
+const ESFORCO = (process.env.IA_ESFORCO_CONVERSA ?? process.env.ANTHROPIC_ESFORCO_CONVERSA ?? "low") as
+  | "minimal"
   | "low"
   | "medium"
   | "high";
+
+/**
+ * O mesmo esforço, no vocabulário da Anthropic.
+ *
+ * `minimal` é nível da OpenAI e a Anthropic recusa — vira `low`, o mais baixo
+ * que ela tem. Traduzir aqui é o que mantém `IA_ESFORCO_CONVERSA` uma palavra
+ * do PROJETO, e não do provedor da vez. (Mesma tradução de `provedorIA`.)
+ */
+const ESFORCO_ANTHROPIC = ESFORCO === "minimal" ? "low" : ESFORCO;
 
 /**
  * O PREFIXO CACHEADO: ferramentas + prompt do sistema.
@@ -339,7 +366,7 @@ async function turnoAnthropicEmFluxo(
       // caminho até ela. Desligar seria pior que inútil — com pensamento
       // desligado o modelo às vezes ESCREVE a chamada de ferramenta como texto.
       thinking: { type: "adaptive" },
-      output_config: { effort: ESFORCO },
+      output_config: { effort: ESFORCO_ANTHROPIC },
     });
     // Só o texto vaza para a tela.
     fluxo.on("text", (pedaco) => aoTexto(pedaco));
@@ -364,7 +391,7 @@ async function turnoAnthropic(
     tools,
     tool_choice,
     thinking: { type: "adaptive" as const },
-    output_config: { effort: ESFORCO },
+    output_config: { effort: ESFORCO_ANTHROPIC },
   };
   const MAX = 3;
   let ultimo: unknown;
