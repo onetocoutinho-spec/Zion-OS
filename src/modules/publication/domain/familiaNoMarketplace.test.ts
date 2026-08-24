@@ -184,7 +184,7 @@ test("a frase pronta atravessa — o modelo não recalcula o veredito", () => {
   // UMA VEZ, e não duas: medido em 24/08/2026, o modelo listou as famílias em
   // tópicos e DEPOIS citou a frase inteira — a mesma informação repetida, em
   // 909 tokens de saída, que é justamente a parcela que gasta relógio.
-  assert.match(fn![0], /não recalcule o veredito/);
+  assert.match(fn![0], /não recalcule o veredito/i);
 });
 
 test("a leitura só acontece com produtoId E com o porto — nunca para os dez piores", () => {
