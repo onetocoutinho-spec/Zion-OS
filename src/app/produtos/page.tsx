@@ -18,6 +18,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { gerarAuditoriasDaBase } from "@/lib/services/auditoriaDaBase";
 import { formatBRL } from "@/lib/format";
+import { oQueFaltaNoCadastro, estaNoAr } from "@/modules/catalog/domain/etapasDoCadastro";
 import type { Produto } from "@/lib/types";
 
 const HEADERS = [
@@ -26,17 +27,68 @@ const HEADERS = [
   "Custo",
   "Preço",
   "Estoque",
-  "Cadastro",
-  "SEO",
-  "Descrição",
-  "Imagens",
-  "Preço OK",
+  // UMA coluna no lugar de cinco (Cadastro, SEO, Descrição, Imagens, Preço OK).
+  // As cinco somavam 531px e quase sempre repetiam "Pendente" — cinco badges
+  // para responder uma pergunta que uma lista de faltas responde melhor.
+  // A regra é pura e testada: modules/catalog/domain/etapasDoCadastro.ts.
+  "O que falta",
   "Prioridade",
   // A coluna de AÇÃO, sem rótulo — é o padrão das outras tabelas da agência
   // (/agencias, /clientes): "Abrir" já se explica, e um cabeçalho "Ação" só
   // gastaria a largura que esta tabela não tem de sobra.
   "",
 ];
+
+/**
+ * A célula "O que falta" — chips do que resta, ou a confirmação de que não resta.
+ *
+ * Três estados, e os três precisam ser distinguíveis:
+ *   * faltas   → um chip por pendência, na ordem de quanto destrava;
+ *   * no ar    → publicado e sem pendência;
+ *   * pronto   → sem pendência, mas ainda não publicado (em cadastro).
+ *
+ * Sem essa última distinção, "completo" cobriria um produto que ninguém
+ * publicou — e a lista diria que o trabalho acabou quando não acabou.
+ */
+function OQueFalta({ produto }: { produto: Produto }) {
+  const faltas = oQueFaltaNoCadastro(produto);
+
+  if (faltas.length === 0) {
+    return estaNoAr(produto) ? (
+      <span className="whitespace-nowrap text-xs text-emerald-400">no ar</span>
+    ) : (
+      <span className="whitespace-nowrap text-xs text-zinc-400">pronto p/ publicar</span>
+    );
+  }
+
+  return (
+    <span className="flex flex-wrap gap-1">
+      {faltas.map((f) => (
+        // O `title` carrega o "por quê" que as cinco colunas não tinham: elas
+        // diziam "Pendente", nunca o que aquilo impede.
+        //
+        // TRÊS TONS, E CADA UM DIZ UMA COISA: vermelho é defeito (cadastro com
+        // erro), âmbar é trabalho não começado, violeta é trabalho em curso —
+        // a informação que as colunas de status davam e que uma lista de
+        // faltas perderia. O tom nunca vai sozinho: o rótulo é texto, e
+        // "em andamento" também está escrito no title.
+        <span
+          key={f.tipo}
+          title={f.emAndamento ? `${f.impede} (em andamento)` : f.impede}
+          className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] ${
+            f.comErro
+              ? "border-red-500/30 bg-red-500/10 text-red-300"
+              : f.emAndamento
+                ? "border-violet-500/25 bg-violet-500/10 text-violet-300"
+                : "border-amber-500/25 bg-amber-500/10 text-amber-300"
+          }`}
+        >
+          {f.rotulo}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export default function ProdutosPage() {
   // Filtros na URL (?cadastro=&prioridade=): sobrevivem ao F5 e vão no link.
@@ -231,11 +283,9 @@ export default function ProdutosPage() {
                       <Td className="whitespace-nowrap">{formatBRL(p.custo)}</Td>
                       <Td className="whitespace-nowrap text-zinc-200">{formatBRL(p.precoVenda)}</Td>
                       <Td>{p.estoque}</Td>
-                      <Td><Badge>{p.statusCadastro}</Badge></Td>
-                      <Td><Badge>{p.statusSeo}</Badge></Td>
-                      <Td><Badge>{p.statusDescricao}</Badge></Td>
-                      <Td><Badge>{p.statusImagens}</Badge></Td>
-                      <Td><Badge>{p.statusPrecificacao}</Badge></Td>
+                      <Td>
+                        <OQueFalta produto={p} />
+                      </Td>
                       <Td><Badge>{p.prioridade}</Badge></Td>
                       {/* A AÇÃO EXPLÍCITA. O nome do produto já leva à mesma
                           tela, mas texto sublinhado no meio de onze colunas não
