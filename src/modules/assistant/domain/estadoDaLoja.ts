@@ -33,9 +33,6 @@ export function montarEstadoDaLoja(
    * lemos, e é o padrão. Não vira `0`: dizer "nenhuma infração" sem ter olhado
    * é a afirmação que a AUD-001 passou o dia arrancando das telas.
    */
-<<<<<<< Updated upstream
-  infracoes: { infracoes: number; anuncios: number } | null = null
-=======
   infracoes: { infracoes: number; anuncios: number } | null = null,
   /**
    * O MUNDO DEPOIS DA PUBLICAÇÃO — pendências do ML e produtos no ar sem IA.
@@ -58,7 +55,6 @@ export function montarEstadoDaLoja(
     pecasParadas: number;
     noArSemOtimizacao: number;
   } | null = null
->>>>>>> Stashed changes
 ): EstadoDaLoja {
   const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
   const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
@@ -83,8 +79,6 @@ export function montarEstadoDaLoja(
     ...(infracoes
       ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
       : {}),
-<<<<<<< Updated upstream
-=======
     // Espalhado, e não com `?? 0`: ausente tem que continuar ausente até o
     // domínio, senão `lacunasDaLoja` lê zero e a tela volta a dizer "em dia"
     // por não ter olhado — que é o defeito inteiro que isto conserta.
@@ -95,6 +89,5 @@ export function montarEstadoDaLoja(
           noArSemOtimizacao: noAr.noArSemOtimizacao,
         }
       : {}),
->>>>>>> Stashed changes
   } satisfies EstadoDaLoja;
 }

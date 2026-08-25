@@ -70,13 +70,8 @@ interface DefinicaoDeEspecialista {
 
 export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>> = {
   catalogo: {
-<<<<<<< Updated upstream
-    quando: "pendências, o que falta, o que travou, peso, custo, foto, medidas, preencher um dado, resolver o que der",
-    ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas", "diagnostico_de_agrupamento"],
-=======
     quando: "pendências, o que falta, o que travou, peso, custo, foto, medidas, preencher um dado, resolver o que der, SKU repetido, código duplicado, variação sem código, faltando derivação",
     ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas", "diagnostico_de_agrupamento", "duplicatas_e_faltantes"],
->>>>>>> Stashed changes
     instrucao: "Foque no cadastro: o que falta, por quê, e o que você prepara sozinho. Números só de ferramenta.",
   },
   preco: {
@@ -90,13 +85,8 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
     instrucao: "Foque no texto do anúncio. Respeite o perfil de conteúdo da loja. 'Otimiza esse anúncio' começa por diagnostico_do_anuncio — título só se o eixo for exposição. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
   },
   imagem: {
-<<<<<<< Updated upstream
-    quando: "foto, imagem, capa, infográfico, gerar imagem, não gostei da imagem, fundo branco, produto maior",
-    ferramentas: ["propor_imagem", "preparacao_de_anuncio"],
-=======
     quando: "foto, imagem, capa, infográfico, gerar imagem, não gostei da imagem, fundo branco, produto maior, preciso fotografar este produto, a foto serve, a capa está boa",
     ferramentas: ["propor_imagem", "preparacao_de_anuncio", "fotos_do_produto"],
->>>>>>> Stashed changes
     instrucao: "Foque na imagem. 'Não gostei' de uma versão vira propor_imagem com paiVersaoId e o feedback dele. Nunca descreva uma imagem que não foi gerada.",
   },
   vendas: {
@@ -106,11 +96,7 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
   },
   publicacao: {
     quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou, quais anúncios estão ativos, o que está parado, o que preciso corrigir, as variações não estão agrupadas",
-<<<<<<< Updated upstream
-    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio", "saude_do_catalogo"],
-=======
     ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio", "saude_do_catalogo", "pendencias_da_conta"],
->>>>>>> Stashed changes
     instrucao: "Foque em colocar no ar. Publicar é proposta com ensaio; reativar tem trava de posse e de infração. Nunca afirme que está no ar sem a palavra do Mercado Livre.",
   },
   cadastro: {

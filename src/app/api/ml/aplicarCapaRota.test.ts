@@ -14,7 +14,14 @@ import { readFileSync } from "node:fs";
 // base no 200, a lojista reconferiu, e a capa era a antiga.
 
 const FONTE = readFileSync(new URL("./aplicar-capa/route.ts", import.meta.url), "utf8");
-const CODIGO = FONTE.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+// `\r\n` VIRA `\n` ANTES DE TUDO — este teste ancora em trechos
+// LITERAIS de codigo, e o git entrega CRLF no working tree do Windows
+// (`core.autocrlf`). Sem esta linha ele passava nesta maquina e reprovava num
+// checkout limpo, pela PLATAFORMA e nao pelo codigo — o tipo de prova que
+// ensina a desligar prova.
+const CODIGO = FONTE.replace(/\r\n/g, "\n")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*\/\/.*$/gm, "");
 
 /** O laço de escrita, em UM lugar: duas provas o ancoram e a assinatura muda. */
 const LACO_DE_ESCRITA = "for (const [i, a] of daCor.entries())";

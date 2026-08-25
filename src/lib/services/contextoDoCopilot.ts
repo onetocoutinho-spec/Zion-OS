@@ -23,12 +23,9 @@ import {
   type ContextoAutorizado,
 } from "@/lib/auth/serverAuthorization";
 import { montarEstadoDaLoja, type ProdutoParaContar } from "@/modules/assistant/domain/estadoDaLoja";
-<<<<<<< Updated upstream
-=======
 import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
->>>>>>> Stashed changes
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 import type { ProdutoAlvo } from "@/modules/assistant/domain/propostaDeCorrecao";
 
@@ -173,12 +170,6 @@ export async function contextoDoCopilotNoServidor(
   const admin = getSupabaseAdmin();
   const [catalogo, anuncios, canal, infracoes] = await Promise.all([
     medirCatalogo(clienteId),
-<<<<<<< Updated upstream
-    lerTudoPaginado<{ produto_id: string | null; status: string }>("anúncios da loja", (de, ate) =>
-      admin
-        .from("anuncios_gerados")
-        .select("produto_id, status")
-=======
     // AS COLUNAS DO MUNDO DEPOIS DA PUBLICACAO.
     //
     // Isto lia `produto_id, status` — o bastante para contar quem tem anuncio,
@@ -210,7 +201,6 @@ export async function contextoDoCopilotNoServidor(
             "status_marketplace_em, estoque_marketplace, sub_status_marketplace, " +
             "foto_capa_max_size, nota_diagnostico, produto, created_at"
         )
->>>>>>> Stashed changes
         .eq("cliente_id", clienteId)
         .order("id", { ascending: true })
         .range(de, ate)
@@ -223,12 +213,6 @@ export async function contextoDoCopilotNoServidor(
       .maybeSingle(),
     // Leitura que falhou não vira "nenhuma infração": fica `null`, que a conta
     // trata como "não olhei" — e a tela não afirma zero.
-<<<<<<< Updated upstream
-    lerTudoPaginado<{ related_item_id: string | null }>("infrações da loja", (de, ate) =>
-      admin
-        .from("infracoes_marketplace")
-        .select("related_item_id")
-=======
     // `filter_subgroup` E `motivo` ENTRAM porque a classificacao depende deles:
     // `pendenciasDaConta` separa propriedade intelectual do resto por ai, e
     // foto se conserta refotografando enquanto acusacao de falsificado nao.
@@ -246,15 +230,12 @@ export async function contextoDoCopilotNoServidor(
       admin
         .from("infracoes_marketplace")
         .select("related_item_id, motivo, filter_subgroup")
->>>>>>> Stashed changes
         .eq("cliente_id", clienteId)
         .order("id", { ascending: true })
         .range(de, ate)
     ).catch(() => null),
   ]);
 
-<<<<<<< Updated upstream
-=======
   // O MUNDO DEPOIS DA PUBLICACAO, pelas MESMAS funcoes que o navegador usa.
   //
   // `pendenciasDaMemoria` e `estadoDeOtimizacao` sao puras e ja sao a verdade
@@ -306,7 +287,6 @@ export async function contextoDoCopilotNoServidor(
       }
     : null;
 
->>>>>>> Stashed changes
   const loja = montarEstadoDaLoja(
     catalogo.produtos,
     anuncios.map((a) => ({ produtoId: a.produto_id, status: a.status })),
@@ -317,12 +297,8 @@ export async function contextoDoCopilotNoServidor(
       : {
           infracoes: infracoes.length,
           anuncios: new Set(infracoes.map((l) => l.related_item_id).filter(Boolean)).size,
-<<<<<<< Updated upstream
-        }
-=======
         },
     noAr
->>>>>>> Stashed changes
   );
 
   const produtos: ProdutoAlvo[] = catalogo.produtos.map((p) => ({

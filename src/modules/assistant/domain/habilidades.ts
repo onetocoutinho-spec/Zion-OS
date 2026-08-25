@@ -126,8 +126,6 @@ const DETALHE: Readonly<Record<string, { oQueFaz: string; precisaDe: readonly st
   achar_produto: { oQueFaz: "Acha um produto por nome, SKU, referência ou EAN.", precisaDe: [] },
   o_que_falta_no_produto: { oQueFaz: "Lista o que falta preencher num produto específico.", precisaDe: ["o produto identificado"] },
   pendencias: { oQueFaz: "Agrupa as pendências da loja por decisão, separando o que dá para preparar sozinho.", precisaDe: [] },
-<<<<<<< Updated upstream
-=======
   pendencias_da_conta: {
     oQueFaz:
       "Mostra o que o Mercado Livre disse sobre os anúncios desta conta: infração com o motivo e o remédio na palavra dele, pausado, em revisão, bloqueado — cada um com o MLB.",
@@ -144,7 +142,6 @@ const DETALHE: Readonly<Record<string, { oQueFaz: string; precisaDe: readonly st
       "Varre o catálogo inteiro atrás de código repetido em produtos diferentes e de variação sem código.",
     precisaDe: [],
   },
->>>>>>> Stashed changes
   preparacao_de_anuncio: { oQueFaz: "Mostra em que etapa a preparação do anúncio está e o que trava.", precisaDe: ["o produto identificado"] },
   pricing: { oQueFaz: "Calcula preço, margem e lucro pelo motor financeiro, e simula cenários.", precisaDe: ["custo do produto", "peso, quando o frete é por conta da loja"] },
   meus_custos: { oQueFaz: "Mostra os custos e a margem mínima configurados pela loja.", precisaDe: [] },
