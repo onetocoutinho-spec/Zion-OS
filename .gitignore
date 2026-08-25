@@ -58,9 +58,21 @@ segredos*
 .claude/*
 !.claude/skills/
 
+# O cache do Python das skills. Ele nasce DENTRO de `.claude/skills/`, que a
+# excecao acima re-inclui de proposito — entao sem esta linha o bytecode entra
+# de carona com a regua. Ele se refaz a cada execucao e suja o `git status` de
+# toda maquina que roda a skill.
+__pycache__/
+*.pyc
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
 # Obsidian (estado do app na raiz — pessoal, nao versionar)
 /.obsidian/
+
+# Exportacoes locais do Mercado Livre (CSV/JSON de conferencia). Sao retrato de
+# conta real, refeito por medicao quando precisa — nao e fonte, e nao deve
+# viajar entre maquinas.
+/backup/
