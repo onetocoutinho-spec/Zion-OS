@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Truck, Gauge } from "lucide-react";
 import { Table, Td, TdMain, TdSelecao, EmptyRow } from "@/components/ui/Table";
@@ -94,6 +95,16 @@ const MESTRE_INERTE = {
 };
 
 export default function ClienteProdutos() {
+  // `useSearchParams` exige Suspense no App Router — mesmo padrão de
+  // `/cliente/anunciar` e `/cliente/conectar-ml`.
+  return (
+    <Suspense fallback={null}>
+      <Produtos />
+    </Suspense>
+  );
+}
+
+function Produtos() {
   const { clienteId, nome } = useClientPortal();
   /** O que o chat desta tela pode responder e sobre quais produtos. */
   const chat = useContextoDaPergunta(clienteId);
@@ -169,7 +180,25 @@ export default function ClienteProdutos() {
   );
 
   const [fMarket, setFMarket] = useState("Todos");
-  const [fStatus, setFStatus] = useState("Todos");
+  // O FILTRO PODE CHEGAR PELA URL — foi assim que a Visão geral passou a
+  // entregar o que promete.
+  //
+  // O cartão "Produtos no ar, sem otimização: 36" virou link em 24/08/2026, e
+  // um link que larga a lojista na lista inteira de 72 devolve para ela o
+  // garimpo que o número deveria ter poupado. Com `?status=`, o clique chega
+  // nos 36.
+  //
+  // SÓ VALORES DA LISTA ENTRAM. Um `?status=qualquer-coisa` não casaria com
+  // produto nenhum e produziria uma tela vazia sem explicação — pior que
+  // ignorar o parâmetro, porque parece base vazia.
+  //
+  // Semente de `useState`, não efeito: o filtro é dela a partir daqui. Um
+  // efeito que reescrevesse o estado a cada render desfaria a escolha que ela
+  // fizesse no seletor.
+  const statusDaUrl = useSearchParams().get("status") ?? "";
+  const [fStatus, setFStatus] = useState(
+    (STATUS as readonly string[]).includes(statusDaUrl) ? statusDaUrl : "Todos"
+  );
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   // O menu "o que você tem?" — uma porta para as cinco fontes de importação.

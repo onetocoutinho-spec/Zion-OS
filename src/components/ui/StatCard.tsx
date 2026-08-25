@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { type LucideIcon } from "lucide-react";
 import { Tone } from "@/lib/status";
 
@@ -18,10 +19,37 @@ interface StatCardProps {
   hint?: string;
   icon: LucideIcon;
   tone?: Tone;
+  /**
+   * Para onde este número leva. Opcional — e a ausência é informação.
+   *
+   * ===========================================================================
+   * POR QUE ISTO EXISTE (24/08/2026)
+   * ===========================================================================
+   *
+   * A Visão geral tinha nove cartões e TRÊS elementos interativos: abrir menu,
+   * sair e abrir o assistente. Nenhum número era clicável. A tela dizia
+   * "90 anúncios" e "70 pendências" e não havia caminho daquele número até
+   * aqueles anúncios — a lojista lia o problema e tinha que ir procurá-lo no
+   * menu, sozinha.
+   *
+   * SEM `href` O CARTÃO CONTINUA UM `div`, e isso é de propósito: um cartão
+   * cujo destino seria a própria tela onde ele está não ganha link. A régua diz
+   * "o que é interativo tem que PARECER interativo"; o contrário também vale —
+   * hover e anel de foco em algo que não navega ensinam a clicar no que não
+   * responde.
+   */
+  href?: string;
 }
 
-export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: StatCardProps) {
-  return (
+export function StatCard({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  tone = "violet",
+  href,
+}: StatCardProps) {
+  const conteudo = (
     // O ÍCONE SAI DO FLUXO DO TEXTO.
     //
     // Ele é decorativo e ocupava 36px + 12px de gap num cartão que no celular
@@ -37,7 +65,7 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: St
     // `scrollWidth > clientWidth`, e texto quebrado não vaza. Disse "0
     // cortados". Só a captura de tela pegou. Fica registrado porque é a lição
     // do dia: métrica de layout não substitui olhar a tela.
-    <div className="relative rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors hover:border-white/10">
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 pr-9 sm:pr-10">
           {/* O RÓTULO NÃO TRUNCA — ele quebra.
@@ -62,7 +90,13 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: St
           <p className="mt-1.5 text-xl font-semibold tracking-tight text-white sm:text-2xl">
             {value}
           </p>
-          {hint && <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>}
+          {/* 12px, e não 11.
+              A dica deixou de ser enfeite: é ela que carrega o DENOMINADOR
+              ("de 880 anúncios gerados"), sem o qual "90" ao lado de "26 no ar"
+              é uma conta impossível. Informação que resolve contradição não
+              pode ser o menor texto da tela — 11px estava abaixo do piso que a
+              régua usa para corpo de texto. */}
+          {hint && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
         </div>
         <div
           aria-hidden="true"
@@ -71,6 +105,36 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet" }: St
           <Icon size={17} />
         </div>
       </div>
-    </div>
+    </>
+  );
+
+  const CAIXA =
+    "relative block rounded-xl border border-white/5 bg-[#0e0e16] p-4 transition-colors";
+
+  if (!href) {
+    return <div className={`${CAIXA} hover:border-white/10`}>{conteudo}</div>;
+  }
+
+  return (
+    <Link
+      href={href}
+      className={
+        `${CAIXA} hover:border-violet-500/40 hover:bg-[#12121c] ` +
+        // O ANEL DE FOCO, e ele não é detalhe de acabamento.
+        //
+        // A varredura de 24/08/2026 contou 86 botões e 31 declarações de foco
+        // no portal inteiro: quem navega por teclado atravessava a tela sem
+        // saber onde estava. `focus-visible` (e não `focus`) para o anel não
+        // aparecer no clique de mouse — o teclado ganha a marca, o ponteiro
+        // não ganha ruído.
+        //
+        // `ring-offset` no fundo da página, senão o anel encosta na borda do
+        // cartão e some contra ela.
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 " +
+        "focus-visible:ring-offset-2 focus-visible:ring-offset-[#08080d]"
+      }
+    >
+      {conteudo}
+    </Link>
   );
 }
