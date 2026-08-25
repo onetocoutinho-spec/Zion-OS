@@ -33,7 +33,28 @@ export function montarEstadoDaLoja(
    * lemos, e é o padrão. Não vira `0`: dizer "nenhuma infração" sem ter olhado
    * é a afirmação que a AUD-001 passou o dia arrancando das telas.
    */
-  infracoes: { infracoes: number; anuncios: number } | null = null
+  infracoes: { infracoes: number; anuncios: number } | null = null,
+  /**
+   * O MUNDO DEPOIS DA PUBLICAÇÃO — pendências do ML e produtos no ar sem IA.
+   *
+   * CHEGAM PRONTOS, e é a decisão principal deste parâmetro. Contar aqui
+   * exigiria alargar o tipo de `anuncios` (estreito de propósito: o servidor e
+   * o navegador buscam só `produtoId` e `status`) e — pior — escreveria uma
+   * SEGUNDA regra para "sem otimização", que já existe em `estadoDeOtimizacao`
+   * e já discordou de si mesma em três telas no dia 03/08/2026.
+   *
+   * Cada número segue com uma regra só, no módulo dela:
+   *   pendências + peças paradas → `pendenciasDaMemoria` → `pendenciasDaConta`
+   *   no ar sem otimização       → `estadoDeOtimizacao`
+   *
+   * `null` = não levantamos. Não vira zero: é a mesma regra de `infracoes`, e é
+   * ela que impede a tela de afirmar "nada travado" sem ter olhado.
+   */
+  noAr: {
+    pendenciasAbertas: number;
+    pecasParadas: number;
+    noArSemOtimizacao: number;
+  } | null = null
 ): EstadoDaLoja {
   const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
   const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
@@ -57,6 +78,16 @@ export function montarEstadoDaLoja(
     conectadoAoMarketplace: conectado,
     ...(infracoes
       ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
+      : {}),
+    // Espalhado, e não com `?? 0`: ausente tem que continuar ausente até o
+    // domínio, senão `lacunasDaLoja` lê zero e a tela volta a dizer "em dia"
+    // por não ter olhado — que é o defeito inteiro que isto conserta.
+    ...(noAr
+      ? {
+          pendenciasAbertas: noAr.pendenciasAbertas,
+          pecasParadas: noAr.pecasParadas,
+          noArSemOtimizacao: noAr.noArSemOtimizacao,
+        }
       : {}),
   } satisfies EstadoDaLoja;
 }

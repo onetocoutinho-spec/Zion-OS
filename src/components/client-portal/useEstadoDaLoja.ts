@@ -19,7 +19,12 @@ import { listarProdutosComPeso, type ProdutoComPeso } from "@/lib/services/pesoD
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
-import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
+import {
+  retratoDasInfracoes,
+  infracoesPorAnuncioDoCliente,
+} from "@/lib/services/infracoesMarketplace";
+import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
+import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 
 /**
@@ -79,15 +84,49 @@ export function useContextoDaPergunta(
     () => retratoDasInfracoes(clienteId),
     [clienteId]
   );
+  // AS INFRACOES POR ANUNCIO — a mesma leitura que a Visao geral faz.
+  //
+  // E uma SEGUNDA consulta a mesma tabela da linha acima, e isso e escolha:
+  // `retratoDasInfracoes` conta linhas com `related_item_id` e esta agrupa por
+  // item. Derivar uma da outra parece economia e e suposicao sobre filtro — e
+  // deduzir o que dava para medir ja gravou R$ 1,77 de piso nesta base.
+  //
+  // `pendenciasDaConta` precisa do MAPA, nao da contagem: sem ele o chat volta
+  // a responder "nada travado" com 70 pendencias abertas.
+  const { data: infracoesPorAnuncio } = useLiveQuery(
+    () => infracoesPorAnuncioDoCliente(clienteId),
+    [clienteId]
+  );
 
   return useMemo((): ContextoDoChat => {
     if (!produtos || !anuncios) return { contexto: null, produtos: [] };
+
+    // O MUNDO DEPOIS DA PUBLICACAO, pelas funcoes que ja sao a verdade dele.
+    //
+    // So entra quando as infracoes CHEGARAM: `pendenciasDaMemoria` sem o mapa
+    // devolveria menos pendencias do que existem, e um numero baixo e pior que
+    // numero nenhum — ele parece medido.
+    const pend = infracoesPorAnuncio
+      ? pendenciasDaMemoria(anuncios, infracoesPorAnuncio)
+      : null;
+    const semOtimizacao = [...estadoDeOtimizacao(anuncios).values()].filter(
+      (e) => e === "No ar, sem otimização"
+    ).length;
+    const noAr = pend
+      ? {
+          pendenciasAbertas: pend.grupos.length,
+          pecasParadas: pend.estoqueTravado,
+          noArSemOtimizacao: semOtimizacao,
+        }
+      : null;
+
     const loja = montarEstadoDaLoja(
       produtos,
       anuncios,
       imagens ?? [],
       Boolean(canal?.ativo),
-      infracoes ?? null
+      infracoes ?? null,
+      noAr
     );
 
     // O produto vem DESTA lista, não da que a tela já tinha: `Produto` não
@@ -117,5 +156,5 @@ export function useContextoDaPergunta(
       },
     };
     return { contexto, produtos };
-  }, [produtos, anuncios, imagens, canal, infracoes, produtoEmFoco]);
+  }, [produtos, anuncios, imagens, canal, infracoes, infracoesPorAnuncio, produtoEmFoco]);
 }

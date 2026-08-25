@@ -8,7 +8,6 @@ import {
   ListChecks,
   FileText,
   Sparkles,
-  ArrowRight,
   Gauge,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
@@ -137,6 +136,22 @@ export default function ClienteHome() {
     const semEstadoConhecido = ans.filter(
       (a) => a.mlItemId && !a.statusMarketplace
     ).length;
+    // O QUE ESTE NUMERO MEDE DE VERDADE — e por que o rotulo mudou (24/08/2026).
+    //
+    // `qtdPendencias` e `anuncio.pendencias.length`: a lista que a ESTEIRA
+    // produz ao gerar o anuncio (o que o A10 achou faltando). Nao tem relacao
+    // com o que o Mercado Livre cobra — isso e `pendenciasDaConta`, e e o
+    // cartao "Pendencias abertas".
+    //
+    // As duas metades daqui sao a mesma pergunta: a esteira terminou este
+    // anuncio? `status` fora de (aprovado, publicado) e "ainda em revisao";
+    // `qtdPendencias > 0` e "gerado com item faltando".
+    //
+    // O ROTULO DIZIA "Anuncios com problemas", e ao lado de "Anuncios no ar:
+    // 26" mostrava 90. Ninguem le isso como duas populacoes diferentes — le
+    // como "26 no ar e 90 deles com problema", que e impossivel e destroi a
+    // confianca nos dois numeros. O denominador vai na dica para a conta
+    // fechar na cabeca de quem le.
     const comProblema = ans.filter(
       (a) => a.qtdPendencias > 0 || (a.status !== "aprovado" && a.status !== "publicado")
     ).length;
@@ -168,10 +183,29 @@ export default function ClienteHome() {
       ativos,
       semEstadoConhecido,
       comProblema,
+      /** O denominador de `comProblema` — a populacao que ele conta. */
+      gerados: ans.length,
       semOtimizacao,
       score,
       pendencias: daConta ? daConta.grupos.length : pendsInternas.length,
       pecasParadas: daConta?.estoqueTravado ?? 0,
+      // O MESMO FATO QUE OS CARTOES MOSTRAM, indo tambem para as lacunas.
+      //
+      // Esta tela ja contava tudo isto e passava para `montarEstadoDaLoja` um
+      // estado que nao o continha — entao `lacunasDaLoja` devolvia `[]` e a
+      // abertura dizia "Nada travado" acima de 70 pendencias e 2708 pecas
+      // paradas. O numero nao faltava; faltava chegar.
+      //
+      // `null` quando nao ha retrato do marketplace: sem leitura gravada nao se
+      // afirma nem que ha pendencia nem que nao ha. As internas ficam de fora
+      // de proposito — o menu "Pendencias" que a lojista abre e o do ML.
+      noAr: daConta
+        ? {
+            pendenciasAbertas: daConta.grupos.length,
+            pecasParadas: daConta.estoqueTravado,
+            noArSemOtimizacao: semOtimizacao,
+          }
+        : null,
       relatorios: (relatorios ?? []).length,
       auditados: auds.length,
     };
@@ -192,10 +226,14 @@ export default function ClienteHome() {
       produtos ?? [],
       anuncios ?? [],
       imagens ?? [],
-      Boolean(canal?.ativo)
+      Boolean(canal?.ativo),
+      // As infracoes entram DENTRO de `m.noAr`, ja dobradas nos grupos por
+      // `pendenciasDaConta`. Passa-las aqui de novo as contaria duas vezes.
+      null,
+      m.noAr
     );
     return { lista: lacunasDaLoja(estado), estado };
-  }, [produtos, anuncios, imagens, canal]);
+  }, [produtos, anuncios, imagens, canal, m.noAr]);
 
   return (
     <>
@@ -215,18 +253,37 @@ export default function ClienteHome() {
         * A frase nomeia a consequência, não a contagem: "4 coisas estão
         * travando sua loja" é um fato sobre a loja dela; "4 pontos a resolver"
         * é um número sobre a nossa lista. */}
-      <OQueImportaAgora
-        lacunas={lacunas.lista}
-        estado={lacunas.estado}
-        nome={nome}
-        acao={
-          quota ? (
-            <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
-              <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
-            </Pill>
-          ) : undefined
-        }
-      />
+      {/* A ABERTURA ESPERA O DADO — senao ela abre MENTINDO.
+        *
+        * `montarEstadoDaLoja(produtos ?? [], ...)` transforma "ainda nao
+        * chegou" em `produtos: 0`, e zero produtos e a lacuna `sem_produtos`,
+        * que e `bloqueiaTudo`. Medido em 24/08/2026 numa conta de 72 produtos:
+        * por um instante o `h1` da tela dizia "Sua base esta vazia", com o
+        * botao "Trazer produtos".
+        *
+        * E a regra que `useContextoDaPergunta` ja aplica ao chat, pelo motivo
+        * escrito la: "meio segundo de numero errado continua sendo numero
+        * errado". So que aqui saia no MAIOR texto da pagina, aconselhando
+        * importar uma base que ja existe.
+        *
+        * Os cartoes abaixo ja esperavam por `carregandoOsNumeros`; a abertura
+        * nao. O esqueleto reserva a altura para a pagina nao pular. */}
+      {carregandoOsNumeros ? (
+        <EsqueletoDeBloco altura="h-[132px]" className="rounded-xl" />
+      ) : (
+        <OQueImportaAgora
+          lacunas={lacunas.lista}
+          estado={lacunas.estado}
+          nome={nome}
+          acao={
+            quota ? (
+              <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
+                <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
+              </Pill>
+            ) : undefined
+          }
+        />
+      )}
 
       {/* O que a LOJA decidiu fazer — nasce do Copilot, some quando vazio. */}
       <TarefasDaLoja />
@@ -281,18 +338,31 @@ export default function ClienteHome() {
           icon={Megaphone}
           tone="green"
           hint={m.semEstadoConhecido > 0 ? `${m.semEstadoConhecido} sem estado conhecido` : undefined}
+          href="/cliente/anuncios"
         />
         <StatCard
-          label="Anúncios com problemas"
+          label="Anúncios que a esteira não fechou"
           value={m.comProblema}
           icon={AlertTriangle}
           tone={m.comProblema > 0 ? "yellow" : "gray"}
+          // A POPULACAO, na dica: e ela que resolve o "90 de 26".
+          hint={m.gerados > 0 ? `de ${m.gerados} anúncios gerados` : undefined}
+          href="/cliente/anuncios"
         />
+        {/* "PRODUTOS", e nao "anuncios" — o mesmo conserto do cartao acima.
+            `estadoDeOtimizacao` devolve um Map por `produtoId`: um produto com
+            cinco anuncios conta uma vez. O rotulo dizia "Anuncios" e mostrava
+            36 ao lado de "Anuncios no ar: 26" — outra conta impossivel. */}
         <StatCard
-          label="Anúncios no ar, sem otimização"
+          label="Produtos no ar, sem otimização"
           value={m.semOtimizacao}
           icon={Package}
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
+          hint={m.total > 0 ? `de ${m.total} produtos` : undefined}
+          // COM O FILTRO JA APLICADO. Largar a lojista na lista inteira de 72 e
+          // esperar que ela ache o seletor de Status devolve o garimpo que o
+          // numero deveria ter poupado.
+          href={`/cliente/produtos?status=${encodeURIComponent("No ar, sem otimização")}`}
         />
         {/* A NOTA MÉDIA SAIU DA PRIMEIRA TELA.
           *
@@ -313,10 +383,31 @@ export default function ClienteHome() {
           icon={ListChecks}
           tone={m.pendencias > 0 ? "yellow" : "gray"}
           hint={m.pecasParadas > 0 ? `${m.pecasParadas} peças paradas` : undefined}
+          href="/cliente/pendencias"
         />
-        <StatCard label="Relatórios" value={m.relatorios} icon={FileText} tone="blue" />
+        <StatCard
+          label="Relatórios"
+          value={m.relatorios}
+          icon={FileText}
+          tone="blue"
+          href="/cliente/relatorios"
+        />
+        {/* SEM `href`, e e decisao: o destino deste numero seria esta mesma
+            tela. Os pontos ja estao abertos no topo dela, com a consequencia e
+            o link de cada um. Um cartao que rola a pagina 300px para cima e
+            pior que um cartao que nao promete nada. */}
         <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
-        <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
+        {/* "PROXIMAS ACOES" SAIU DAQUI — o conserto que faltou terminar.
+          *
+          * Ele lia `portal_proximas_acoes`, um RPC sobre a tabela `tarefas`,
+          * que SO a equipe preenche. A secao "Recados" abaixo lia o mesmo RPC e
+          * ja foi consertada para so aparecer quando existe recado; o cartao
+          * ficou para tras, afirmando "Proximas acoes: 0" permanentemente num
+          * produto onde ninguem preenche aquela tabela.
+          *
+          * E hoje o lugar dessa pergunta e `<TarefasDaLoja />`, que nasce do
+          * Copilot e some quando vazia. Um zero fixo ao lado de "Pontos a
+          * resolver" so ensinava a desconfiar dos dois. */}
       </div>
       )}
 
