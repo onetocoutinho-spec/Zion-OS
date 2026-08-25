@@ -64,3 +64,11 @@ next-env.d.ts
 
 # Obsidian (estado do app na raiz — pessoal, nao versionar)
 /.obsidian/
+
+# E o RASCUNHO que o Obsidian cria na raiz do cofre: "Sem titulo.canvas",
+# "Sem titulo.base", a nota do dia que ficou vazia. Sao 0 a 40 bytes cada e
+# apareciam em todo `git status`, ensinando a passar o olho pela lista de
+# untracked — que e onde um arquivo que IMPORTA se esconde.
+/Sem t*.canvas
+/Sem t*.base
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
