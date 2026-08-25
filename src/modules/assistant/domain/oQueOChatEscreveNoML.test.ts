@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // O QUE O CHAT ESCREVE NO MERCADO LIVRE — e a lacuna que esta prova fecha.
 //
@@ -36,7 +37,11 @@ import { join } from "node:path";
 // 2. ALCANCE: das rotas que escrevem, o chat só pode alcançar as três
 //    declaradas — e cada uma tem, escrito, por que o clique basta.
 
-const RAIZ = new URL("../../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+// `fileURLToPath`, e NAO `.pathname`: quando o caminho da pasta tem espaco no
+// nome, o `pathname` volta percent-encoded ("Maxi%20do%20Brasil") e o
+// `readFileSync` nao acha o arquivo. A sentinela reprovava pela PLATAFORMA e
+// nao pelo codigo — a mesma familia do CRLF de 24/08/2026.
+const RAIZ = fileURLToPath(new URL("../../../", import.meta.url));
 const ler = (rel: string) => readFileSync(join(RAIZ, rel), "utf8");
 
 /**

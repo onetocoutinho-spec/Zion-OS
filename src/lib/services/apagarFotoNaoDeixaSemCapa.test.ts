@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // APAGAR A CAPA NÃO PODE DEIXAR O PRODUTO SEM CAPA.
 //
@@ -21,7 +22,11 @@ import { join } from "node:path";
 // morando fora do lugar onde ela pode ser lida inteira. Lá eram quatro caminhos
 // de upload; aqui, dois caminhos de exclusão.
 
-const RAIZ = new URL("../../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+// `fileURLToPath`, e NAO `.pathname`: quando o caminho da pasta tem espaco no
+// nome, o `pathname` volta percent-encoded ("Maxi%20do%20Brasil") e o
+// `readFileSync` nao acha o arquivo. A sentinela reprovava pela PLATAFORMA e
+// nao pelo codigo — a mesma familia do CRLF de 24/08/2026.
+const RAIZ = fileURLToPath(new URL("../../", import.meta.url));
 
 function arquivosDeCodigo(dir: string, achados: string[] = []): string[] {
   for (const nome of readdirSync(dir)) {

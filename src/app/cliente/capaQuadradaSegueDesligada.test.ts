@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // O CAMINHO FALSIFICADO NÃO PODE VOLTAR A SER CLICÁVEL.
 //
@@ -37,7 +38,11 @@ import { join } from "node:path";
 // dono que a lojista tinha um botão vivo piorando a loja. Estava errado. Se um
 // leitor atento erra a leitura, um leitor apressado erra a edição.
 
-const RAIZ = new URL("../", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+// `fileURLToPath`, e NAO `.pathname`: quando o caminho da pasta tem espaco no
+// nome, o `pathname` volta percent-encoded ("Maxi%20do%20Brasil") e o
+// `readFileSync` nao acha o arquivo. A sentinela reprovava pela PLATAFORMA e
+// nao pelo codigo — a mesma familia do CRLF de 24/08/2026.
+const RAIZ = fileURLToPath(new URL("../", import.meta.url));
 
 function telas(dir: string, achados: string[] = []): string[] {
   for (const nome of readdirSync(dir)) {
