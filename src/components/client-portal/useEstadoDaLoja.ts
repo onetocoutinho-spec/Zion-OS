@@ -20,7 +20,12 @@ import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDe
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
-import { retratoDasInfracoes } from "@/lib/services/infracoesMarketplace";
+import {
+  retratoDasInfracoes,
+  infracoesPorAnuncioDoCliente,
+} from "@/lib/services/infracoesMarketplace";
+import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
+import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
 import type { AnuncioGeradoRegistro } from "@/lib/types";
 import { amostraDeNomes, type EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
@@ -52,7 +57,28 @@ export function montarEstadoDaLoja(
    * infração" sem ter olhado é a afirmação que a AUD-001 passou o dia
    * arrancando das telas.
    */
-  infracoes: { infracoes: number; anuncios: number } | null = null
+  infracoes: { infracoes: number; anuncios: number } | null = null,
+  /**
+   * O MUNDO DEPOIS DA PUBLICAÇÃO — pendências do ML e anúncios no ar sem IA.
+   *
+   * CHEGAM PRONTOS, e isso é a decisão principal desta mudança. Contar aqui
+   * exigiria alargar o tipo de `anuncios` (que é estreito de propósito, para o
+   * chamador poder usar a consulta leve) e — pior — escreveria uma SEGUNDA
+   * regra para "sem otimização", que já existe em `estadoDeOtimizacao` e já
+   * discordou de si mesma em três telas no dia 03/08/2026.
+   *
+   * Então cada número continua com uma regra só, no módulo dela:
+   *   pendências + peças paradas → `pendenciasDaMemoria` → `pendenciasDaConta`
+   *   no ar sem otimização       → `estadoDeOtimizacao`
+   *
+   * `null` = não levantamos. Não vira zero: é a mesma regra de `infracoes`, e
+   * é ela que impede a tela de afirmar "nada travado" sem ter olhado.
+   */
+  noAr: {
+    pendenciasAbertas: number;
+    pecasParadas: number;
+    noArSemOtimizacao: number;
+  } | null = null
 ): EstadoDaLoja {
   const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
   const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
@@ -108,6 +134,16 @@ export function montarEstadoDaLoja(
     conectadoAoMarketplace: conectado,
     ...(infracoes
       ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
+      : {}),
+    // Espalhado, e não com `?? 0`: ausente tem que continuar ausente até o
+    // domínio, senão `lacunasDaLoja` lê zero e a tela volta a dizer "em dia"
+    // por não ter olhado — que é o defeito inteiro que esta mudança conserta.
+    ...(noAr
+      ? {
+          pendenciasAbertas: noAr.pendenciasAbertas,
+          pecasParadas: noAr.pecasParadas,
+          noArSemOtimizacao: noAr.noArSemOtimizacao,
+        }
       : {}),
   } satisfies EstadoDaLoja;
 }
@@ -182,15 +218,51 @@ export function useContextoDaPergunta(
     // anotacao ela recarregava a cada linha de QUALQUER outra tabela.
     { tabelas: ["infracoes_marketplace"] }
   );
+  // AS INFRAÇÕES POR ANÚNCIO — a mesma leitura que a Visão geral faz.
+  //
+  // É uma SEGUNDA consulta à mesma tabela da linha acima, e isso é escolha, não
+  // descuido: `retratoDasInfracoes` conta linhas com `related_item_id` e esta
+  // agrupa por item. Derivar uma da outra parece economia e é suposição sobre
+  // filtro — e este arquivo inteiro existe porque deduzir o que dava para medir
+  // já gravou R$ 1,77 de piso nesta base.
+  //
+  // `pendenciasDaConta` precisa do mapa, não da contagem: sem ele o chat volta
+  // a responder "nada travado" com 70 pendências abertas.
+  const { data: infracoesPorAnuncio } = useLiveQuery(
+    () => infracoesPorAnuncioDoCliente(clienteId),
+    [clienteId],
+    { tabelas: ["infracoes_marketplace"] }
+  );
 
   return useMemo((): ContextoDoChat => {
     if (!produtos || !anuncios) return { contexto: null, produtos: [] };
+
+    // O MUNDO DEPOIS DA PUBLICAÇÃO, pelas funções que já são a verdade dele.
+    //
+    // Só entra quando as infrações CHEGARAM: `pendenciasDaMemoria` sem o mapa
+    // devolveria menos pendências do que existem, e um número baixo é pior que
+    // número nenhum — ele parece medido.
+    const pend = infracoesPorAnuncio
+      ? pendenciasDaMemoria(anuncios, infracoesPorAnuncio)
+      : null;
+    const semOtimizacao = [...estadoDeOtimizacao(anuncios).values()].filter(
+      (e) => e === "No ar, sem otimização"
+    ).length;
+    const noAr = pend
+      ? {
+          pendenciasAbertas: pend.grupos.length,
+          pecasParadas: pend.estoqueTravado,
+          noArSemOtimizacao: semOtimizacao,
+        }
+      : null;
+
     const loja = montarEstadoDaLoja(
       produtos,
       anuncios,
       imagens ?? [],
       Boolean(canal?.ativo),
-      infracoes ?? null
+      infracoes ?? null,
+      noAr
     );
 
     // O produto vem DESTA lista, não da que a tela já tinha: `Produto` não
@@ -220,5 +292,5 @@ export function useContextoDaPergunta(
       },
     };
     return { contexto, produtos };
-  }, [produtos, anuncios, imagens, canal, infracoes, produtoEmFoco]);
+  }, [produtos, anuncios, imagens, canal, infracoes, infracoesPorAnuncio, produtoEmFoco]);
 }
