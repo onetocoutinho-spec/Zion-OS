@@ -38,6 +38,8 @@ import { definirLojaEmOperacao } from "@/lib/contexto/lojaEmOperacao";
 import { saudeDaLoja } from "@/lib/contexto/saudeDaLoja";
 import { EstadoDaLoja } from "@/components/ui/EstadoDaLoja";
 import { SeletorDeLoja } from "@/components/layout/SeletorDeLoja";
+import { ID_DO_CONTEUDO, PularParaConteudo } from "@/components/layout/PularParaConteudo";
+import { NavegacaoDeBaixo } from "./NavegacaoDeBaixo";
 
 /** Um ícone por ÁREA. As telas de dentro não têm ícone: são texto, e texto lê-se mais rápido. */
 const ICONE_DA_AREA: Record<ContextoPortal, typeof Home> = {
@@ -358,6 +360,7 @@ function CascaDoPortal({
 
   return (
     <ClientPortalProvider value={{ perfil, clienteId, nome, marketplace }}>
+      <PularParaConteudo />
       <div className="flex min-h-screen bg-[#08080d] text-zinc-200">
         {/* Sidebar desktop */}
         <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
@@ -429,7 +432,15 @@ function CascaDoPortal({
             </div>
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <main
+            id={ID_DO_CONTEUDO}
+            /* `pt-6` + `pb-*` explicito, e nao `py-6`: a barra de baixo cobre
+               a ultima fileira do conteudo. 3.5rem e a altura dela (min-h-14),
+               1.5rem o respiro, e `env(safe-area-inset-bottom)` a faixa do
+               indicador de home do iPhone. Em `lg` a barra some e o padding
+               volta a 6. */
+            className="flex-1 px-4 pt-6 pb-[calc(3.5rem+1.5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-6"
+          >
             <div className="mx-auto max-w-5xl space-y-6">{children}</div>
             {/* O assistente existe em TODA tela do portal, e nao so nas tres
                 que o embutiram. Fica aqui e nao em cada pagina porque a
@@ -437,6 +448,10 @@ function CascaDoPortal({
                 repetida em N paginas diverge na primeira que alguem esquecer. */}
             <PainelDoAssistente />
           </main>
+
+          {/* Fora do <main>: e navegacao, nao conteudo — e o atalho "pular
+              para o conteudo" existe justamente para saltar navegacao. */}
+          <NavegacaoDeBaixo />
         </div>
       </div>
     </ClientPortalProvider>

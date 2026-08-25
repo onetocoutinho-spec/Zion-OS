@@ -9,6 +9,7 @@ import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { estaNoPortalCliente } from "@/lib/auth/roteamentoPapel";
 import { meuPerfil, type Perfil } from "@/lib/services/perfil";
 import { useTituloDaAba } from "./tituloDaAba";
+import { ID_DO_CONTEUDO, PularParaConteudo } from "./PularParaConteudo";
 import { LojaAtualProvider, useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { buscarAgencia } from "@/lib/services/agencias";
 import { SeletorDeLoja } from "./SeletorDeLoja";
@@ -267,6 +268,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // estou" para as telas da equipe/agência (docs/product/ux/03 §Contexto global).
   return (
     <LojaAtualProvider perfil={perfil}>
+    <PularParaConteudo />
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="hidden lg:block w-60 shrink-0 fixed inset-y-0 left-0 z-30">
@@ -351,7 +353,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main id={ID_DO_CONTEUDO} className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          {children}
+        </main>
       </div>
 
       {/* O assistente também aqui. Ele fica DENTRO do LojaAtualProvider porque

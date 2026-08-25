@@ -109,13 +109,17 @@ function Painel({ lojaId }: { lojaId?: string | null }) {
 
   return (
     <>
+      {/* O botao SOBE acima da barra de baixo no celular: `bottom-0` dela +
+          3.5rem de altura + o respiro de 1.25rem. Com `bottom-5` cravado ele
+          cobriria o ultimo item da barra, que tem z-30 contra os z-40 daqui.
+          Em `lg` a barra some (`lg:hidden`) e o botao volta para `bottom-5`. */}
       <button
         ref={gatilho}
         type="button"
         onClick={() => setAberto(true)}
         aria-expanded={aberto}
         aria-controls="painel-do-assistente"
-        className={`fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 [@media(pointer:coarse)]:min-h-12 ${
+        className={`fixed bottom-[calc(3.5rem+1.25rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] z-40 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-violet-900/40 transition hover:bg-violet-500 lg:bottom-[calc(1.25rem+env(safe-area-inset-bottom))] [@media(pointer:coarse)]:min-h-12 ${
           aberto ? "pointer-events-none opacity-0" : ""
         }`}
         aria-label="Abrir o assistente"
