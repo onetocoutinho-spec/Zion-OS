@@ -8,6 +8,10 @@
 import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira } from "@/lib/agentes/esteira";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 // 60s = limite do plano Hobby (grátis) da Vercel. A esteira (Gemini) roda em
 // ~25–40s. Em plano pago dá para subir para 300.
@@ -22,7 +26,16 @@ interface CorpoEsteira {
 function montarMensagem(briefing: string, contexto: string): string {
   const partes: string[] = [];
   if (contexto) {
-    partes.push("Dados cadastrados no Zion OS para este produto:", "", contexto, "", "---", "");
+    partes.push(
+      REGRA_DO_DADO_EXTERNO,
+      "",
+      "Dados cadastrados no Zion OS para este produto:",
+      "",
+      dadoExterno("cadastro", contexto),
+      "",
+      "---",
+      ""
+    );
   }
   partes.push(
     "Briefing / instruções adicionais:",
@@ -34,8 +47,9 @@ function montarMensagem(briefing: string, contexto: string): string {
 export async function POST(request: Request) {
   // Autorização: só usuário autenticado (no modo demo, libera). Evita que a
   // rota de IA (paga) seja chamada sem sessão.
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -44,7 +58,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         configurado: false,
-        erro: "Nenhum provedor de IA configurado (GEMINI_API_KEY ou ANTHROPIC_API_KEY). A esteira será simulada.",
+        erro: "Nenhum provedor de IA configurado (OPENAI_API_KEY). A esteira será simulada.",
       },
       { status: 503 }
     );
@@ -66,12 +80,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // ZION-QUOTA-001: a cota é cobrada AQUI, antes do provedor — não no botão.
+  // Atômica no banco; falha fechada se a reserva não responder. Equipe e
+  // agência não têm cliente_id e seguem sem cota (ver cotaDeIA.ts).
+  if (ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "esteira", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
+  }
+
   try {
     const { json, provedor, modelo } = await chamarIAEstruturada({
       system: montarSystemPromptEsteira(),
       mensagem: montarMensagem(briefing, contexto),
       schema: ESQUEMA_ANUNCIO,
       maxTokens: 16000,
+      rastro: { origem: "esteira", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
 
     let anuncio: unknown;
@@ -85,9 +111,6 @@ export async function POST(request: Request) {
     }
     return Response.json({ anuncio, provedor, modelo });
   } catch (erro) {
-    return Response.json(
-      { erro: erro instanceof Error ? erro.message : "Falha ao rodar a esteira." },
-      { status: 500 }
-    );
+    return respostaDeErro("agentes/esteira", erro, "Falha ao rodar a esteira.", 500);
   }
 }

@@ -1,11 +1,15 @@
 // Execução real de Agentes IA via provedor de IA (Gemini ou Claude).
 //
-// Roda somente no servidor: as chaves (GEMINI_API_KEY / ANTHROPIC_API_KEY) vêm
+// Roda somente no servidor: as chaves (OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY) vêm
 // do .env.local e nunca chegam ao navegador. Sem nenhuma chave, retorna 503 e o
 // frontend cai para a execução simulada (comportamento das versões anteriores).
 
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
 
 // 60s = limite do plano Hobby (grátis) da Vercel.
 export const maxDuration = 60;
@@ -72,10 +76,14 @@ interface CorpoExecucao {
 
 function montarMensagem(entrada: string, contexto: string): string {
   if (!contexto) return entrada;
+  // O contexto é texto de fora (cadastro importado, planilha, PDF) — DADO,
+  // não instrução. Entra cercado; ver `dadoExterno.ts`.
   return [
+    REGRA_DO_DADO_EXTERNO,
+    ``,
     `Dados cadastrados no Zion OS para esta execução:`,
     ``,
-    contexto,
+    dadoExterno("cadastro", contexto),
     ``,
     `---`,
     ``,
@@ -99,13 +107,18 @@ function montarSystemPrompt(agente: CorpoExecucao["agente"]): string {
     ``,
     `Responda sempre em português do Brasil, com formatação clara em Markdown no campo resultado_markdown.`,
     `Entregue diretamente a saída esperada, pronta para a equipe usar — sem preâmbulos.`,
-    `Se a entrada não tiver informação suficiente, entregue o melhor resultado possível e liste ao final o que faltou.`,
+    // ERA "entregue o melhor resultado possível e liste ao final o que faltou".
+    // Última linha do system prompt, depois das regras do agente — e "melhor
+    // resultado possível" com dado faltando é licença para preencher com
+    // palpite, o oposto da regra-mãe "NUNCA inventar dado de produto".
+    `Se a entrada não tiver informação suficiente, NÃO a preencha: escreva exatamente "⚠️ informação necessária: <campo>" no lugar do dado e siga sem afirmar o que não sabe. Material, medidas, composição, garantia, peso, cor e certificação não se deduzem.`,
   ].join("\n");
 }
 
 export async function POST(request: Request) {
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -114,7 +127,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         configurado: false,
-        erro: "Nenhum provedor de IA configurado (GEMINI_API_KEY ou ANTHROPIC_API_KEY). A execução será simulada.",
+        erro: "Nenhum provedor de IA configurado (OPENAI_API_KEY). A execução será simulada.",
       },
       { status: 503 }
     );
@@ -137,12 +150,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // ZION-QUOTA-001: a cota é cobrada AQUI, antes do provedor — não no botão.
+  // Atômica no banco; falha fechada se a reserva não responder. Equipe e
+  // agência não têm cliente_id e seguem sem cota (ver cotaDeIA.ts).
+  if (ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "agente", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
+  }
+
   try {
     const { json, modelo } = await chamarIAEstruturada({
       system: montarSystemPrompt(corpo.agente),
       mensagem: montarMensagem(entrada, contexto),
       schema: ESQUEMA_RESULTADO,
       maxTokens: 8000,
+      rastro: { origem: "agente", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
     });
 
     try {
@@ -158,9 +183,6 @@ export async function POST(request: Request) {
       return Response.json({ resultado: json, modelo });
     }
   } catch (erro) {
-    return Response.json(
-      { erro: erro instanceof Error ? erro.message : "Falha ao executar o agente." },
-      { status: 500 }
-    );
+    return respostaDeErro("agentes/executar", erro, "Falha ao executar o agente.", 500);
   }
 }

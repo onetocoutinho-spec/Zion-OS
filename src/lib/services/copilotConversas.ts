@@ -31,6 +31,16 @@ export interface TurnoGravado {
    * de ordem. Ver `referenciasDaConversa`.
    */
   metadata?: Record<string, unknown> | null;
+  /**
+   * As FALAS deste turno, no dialeto do laço: a pergunta, as chamadas de
+   * ferramenta, os resultados e o texto final.
+   *
+   * É o que permite reconstruir o histórico do MODELO a partir do banco no
+   * turno seguinte — em vez de aceitá-lo do navegador, que podia forjar
+   * "a ferramenta pricing devolveu margem de 40%". Gravadas aqui porque são
+   * produzidas no servidor, com o tenant da sessão; nada disto veio de fora.
+   */
+  falas?: readonly unknown[];
 }
 
 /**
@@ -133,7 +143,13 @@ export async function gravarTurno(
           texto: turno.resposta,
           ferramentas: turno.ferramentas,
           tokens: turno.tokens,
-          metadata: turno.metadata ?? null,
+          // `falas` entra DENTRO de metadata (jsonb), ao lado das referências:
+          // não é coluna nova, e quem lê metadata para "o segundo" segue lendo
+          // as mesmas chaves.
+          metadata:
+            turno.metadata || turno.falas
+              ? { ...(turno.metadata ?? {}), ...(turno.falas ? { falas: turno.falas } : {}) }
+              : null,
         },
       ]);
     // ---- O CLIENTE NÃO LANÇA EM ERRO DE BANCO: devolve `{ data, error }`.
@@ -181,5 +197,45 @@ export async function ultimaApresentacao(
   } catch (e) {
     console.error("[copilot] falha ao ler a última apresentação:", e);
     return [];
+  }
+}
+
+/**
+ * O histórico do MODELO, reconstruído do banco.
+ *
+ * Concatena as `falas` gravadas em cada turno (ver `TurnoGravado.falas`), na
+ * ordem em que aconteceram. Turnos antigos, gravados antes de as falas irem
+ * para o banco, não contribuem — a conversa continua, só sem a memória
+ * daquelas mensagens, e isso é declarado pelo retorno (`turnosSemFalas`).
+ *
+ * O TENANT entra na consulta: conversa de outro cliente devolve vazio.
+ */
+export async function historicoDaConversa(
+  clienteId: string,
+  conversaId: string,
+  /** Quantos turnos (pares lojista/assistente) ler, do mais recente para trás. */
+  turnos = 12
+): Promise<{ falas: unknown[]; turnosSemFalas: number }> {
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from("copilot_mensagens")
+      .select("metadata")
+      .eq("cliente_id", clienteId)
+      .eq("conversa_id", conversaId)
+      .eq("papel", "assistente")
+      .order("criada_em", { ascending: false })
+      .limit(turnos);
+    if (error || !data) return { falas: [], turnosSemFalas: 0 };
+    const falas: unknown[] = [];
+    let turnosSemFalas = 0;
+    for (const linha of [...data].reverse() as { metadata: unknown }[]) {
+      const m = linha.metadata as { falas?: unknown } | null;
+      if (Array.isArray(m?.falas)) falas.push(...m.falas);
+      else turnosSemFalas++;
+    }
+    return { falas, turnosSemFalas };
+  } catch (e) {
+    console.error("[copilot] falha ao ler o histórico da conversa:", e);
+    return { falas: [], turnosSemFalas: 0 };
   }
 }

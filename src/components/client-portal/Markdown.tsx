@@ -12,6 +12,7 @@
  * código aberta. Cada prefixo passa por aqui, e isso está testado.
  */
 
+import Link from "next/link";
 import { blocosDoMarkdown, type Bloco, type Trecho } from "@/modules/assistant/domain/markdownDaResposta";
 
 function Trechos({ partes }: { partes: readonly Trecho[] }) {
@@ -26,6 +27,25 @@ function Trechos({ partes }: { partes: readonly Trecho[] }) {
           <code key={i} className="rounded bg-black/40 px-1 py-0.5 text-[0.9em] text-violet-300">
             {t.texto}
           </code>
+        ) : t.tipo === "link" ? (
+          // Interno (`/cliente/...`) abre na mesma aba; externo (o permalink do
+          // ML) abre em outra, sem `opener`. O destino já passou pela lista do
+          // domínio — aqui só se desenha.
+          t.destino.startsWith("/") ? (
+            <Link key={i} href={t.destino} className="text-violet-300 underline underline-offset-2 hover:text-violet-200">
+              {t.texto}
+            </Link>
+          ) : (
+            <a
+              key={i}
+              href={t.destino}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="break-all text-violet-300 underline underline-offset-2 hover:text-violet-200"
+            >
+              {t.texto}
+            </a>
+          )
         ) : (
           <span key={i}>{t.texto}</span>
         )

@@ -483,6 +483,91 @@ export async function mlbsComInfracao(
   return bloqueados;
 }
 
+/**
+ * A FAMÍLIA DE CADA ITEM, PERGUNTADA AO ML NA HORA.
+ *
+ * ===========================================================================
+ * POR QUE PERGUNTAR EM VEZ DE GUARDAR
+ * ===========================================================================
+ *
+ * O vínculo de família chega na importação e não é guardado: conferido em
+ * 24/08/2026, nem `anuncios_gerados` nem `produtos` têm coluna de família, e
+ * o jsonb `anuncio` só carrega o conteúdo gerado. Por isso o Copilot vinha
+ * respondendo "não sei se estão agrupados" — e estava certo sobre o que sabia.
+ *
+ * Guardar na importação resolveria o custo, ao preço de responder com o
+ * retrato do dia da última importação. A pergunta "estão agrupados?" é sobre
+ * AGORA: quem acabou de agrupar no painel do ML quer ver agrupado. Dezesseis
+ * numerações cabem em UMA chamada (o multiget vai de 20 em 20), então o preço
+ * de estar certo é baixo o bastante para valer sempre.
+ *
+ * ===========================================================================
+ * O QUE ELA DEVOLVE, E O QUE ELA NUNCA DEVOLVE
+ * ===========================================================================
+ *
+ * Devolve o que LEU, e a lista do que não conseguiu ler. Não devolve
+ * "soltos" para um item que o ML não entregou: item não lido é desconhecido,
+ * e tratar desconhecido como resposta é como o Zion já disse a uma lojista
+ * que a loja estava em dia sem ter olhado. Quem decide a situação é
+ * `familiaNoMarketplace.ts`, que recebe as duas listas separadas.
+ */
+export interface FamiliaDoItem {
+  mlb: string;
+  /** O nome que o ML compartilha entre os itens da mesma família. */
+  familyName: string;
+  /** `user_product_id` — sozinho não agrupa; repetido em 2+ itens, agrupa. */
+  userProductId: string;
+  /** `family_id`. Chega como número às vezes — ver o incidente de 02/08. */
+  familyId: string;
+}
+
+export interface LeituraDeFamilias {
+  lidos: FamiliaDoItem[];
+  /** Ids que o ML não devolveu. Não são "soltos": são desconhecidos. */
+  naoLidos: string[];
+}
+
+export async function familiasDosItens(
+  accessToken: string,
+  mlbs: readonly string[]
+): Promise<LeituraDeFamilias> {
+  const ids = [...new Set(mlbs.map((m) => (m ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return { lidos: [], naoLidos: [] };
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const lidos: FamiliaDoItem[] = [];
+  const naoLidos: string[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20);
+    const vieram = new Set<string>();
+    try {
+      const r = await fetch(
+        `${API}/items?ids=${lote.join(",")}&attributes=id,family_name,user_product_id,family_id`,
+        { headers }
+      );
+      if (r.ok) {
+        const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+        for (const x of arr) {
+          if (x.code !== 200 || !x.body?.id) continue;
+          vieram.add(x.body.id);
+          lidos.push({
+            mlb: x.body.id,
+            familyName: (x.body.family_name ?? "").trim(),
+            userProductId: (x.body.user_product_id ?? "").toString().trim(),
+            // `texto()` porque `family_id` já chegou como NÚMERO e derrubou a
+            // importação inteira em 02/08/2026 com ".trim is not a function".
+            familyId: texto(x.body.family_id),
+          });
+        }
+      }
+    } catch {
+      // Rede caiu, ML fora, JSON quebrado: o lote inteiro vira desconhecido.
+      // NÃO lança — quem pergunta sobre família continua tendo resposta sobre
+      // a grade, e a parte que faltou é dita por extenso.
+    }
+    for (const id of lote) if (!vieram.has(id)) naoLidos.push(id);
+  }
+  return { lidos, naoLidos };
+}
 // ---- Fotos: ler a maior, subir a nova, trocar a capa ------------------------
 
 /**
@@ -1138,6 +1223,20 @@ const SEM_MEDIDAS: MedidasDaEmbalagem = {
  *   2. os atributos PACKAGE_HEIGHT / _WIDTH / _LENGTH / _WEIGHT, que alguns
  *      itens trazem no lugar.
  *
+ * ⚠️ A FONTE (1) NUNCA EXECUTOU EM PRODUÇÃO. Descoberto em 24/08/2026: o
+ * multiget filtra por campo e `shipping` NÃO está em `CAMPOS_PEDIDOS_AO_ML`,
+ * então o objeto nunca chega. Todo peso que a importação conseguiu até hoje
+ * veio da fonte (2). Produto cujas medidas só existem em `shipping.dimensions`
+ * entra zerado — e zero aqui vira `envio: "ausente"` na precificação, ou seja,
+ * margem sem frete.
+ *
+ * Acrescentar "shipping" à lista é provavelmente a correção, e ela NÃO foi
+ * feita porque o mesmo arquivo já ensinou o preço de chutar: se o ML recusar o
+ * campo no filtro, o pedido inteiro degrada para `CAMPOS_MINIMOS_AO_ML` e a
+ * importação perde de uma vez health, sold_quantity e listing_type_id. O
+ * caminho é `scripts/medicoes/camposDoMercadoLivre.ts` contra a conta real —
+ * e `camposDoMercadoLivre.test.ts` segura o achado até lá.
+ *
  * Zero em tudo quando nenhuma fonte responde — e zero significa "não sei",
  * tratado como pendência pela precificação, nunca como "não pesa nada".
  */
@@ -1250,7 +1349,23 @@ function mapearItem(it: ItemRaw): AnuncioML {
     // recusou a lista de 31 campos, a leitura caiu para a lista mínima (que não
     // pede `descriptions`), e a tela afirmou "781 sem descrição" sobre um campo
     // que ninguém tinha lido. Ausência virando afirmação, no meu próprio código.
-    temDescricao: it.descriptions == null ? undefined : it.descriptions.length > 0,
+    //
+    // O MESMO DEFEITO VOLTOU EM 24/08/2026, um nível abaixo. A lição de 02/08
+    // tratou `null`, e a lista vazia passou: medido na conta real, o multiget
+    // devolveu `descriptions: []` para 649 de 649 anúncios — cem por cento —
+    // numa loja que vende desde abril. O mapeador transformava isso em
+    // `false`, e a coluna gravou "não tem descrição" para o catálogo inteiro.
+    //
+    // Lista VAZIA não prova ausência: ela é indistinguível de "este endpoint
+    // não popula o campo". O texto da descrição mora em `/items/{id}/description`,
+    // uma rota que este arquivo não chama. Então só o caso NÃO VAZIO afirma
+    // alguma coisa — e o que ele afirma é presença, nunca ausência.
+    //
+    // A assimetria de custo decide o empate: dizer "sem descrição" de um
+    // anúncio que tem manda a lojista reescrever 649 descrições que já
+    // existem. Dizer "não sei" só deixa de responder.
+    temDescricao:
+      it.descriptions != null && it.descriptions.length > 0 ? true : undefined,
     garantia: texto(it.warranty),
     condicao: texto(it.condition),
     videoId: texto(it.video_id),
@@ -1330,6 +1445,76 @@ export const CAMPOS_PEDIDOS_AO_ML = [
 export const CAMPOS_MINIMOS_AO_ML =
   "id,title,price,available_quantity,category_id,status,sub_status,permalink,seller_custom_field,family_name,user_product_id,attributes,pictures,variations";
 
+/**
+ * OS ANÚNCIOS QUE A BUSCA DO VENDEDOR NÃO DEVOLVE — lidos por ID.
+ *
+ * ===========================================================================
+ * O BURACO QUE ISTO FECHA — MEDIDO EM 24/08/2026
+ * ===========================================================================
+ *
+ * A conferida funciona assim: lista o que o `/users/{id}/items/search`
+ * devolve, e atualiza o estado desses. Anúncio que sai do resultado da busca
+ * NUNCA MAIS é atualizado — e a regra que protege isso ("ausência não é
+ * encerramento") está certa, mas deixa o item congelado para sempre.
+ *
+ * Medido na conta real: 15 dos 792 anúncios. Onze deles importados em 08/07 e
+ * nunca medidos — quatro conferidas passaram por cima sem vê-los. Os outros
+ * quatro estão em `under_review`, três com `forbidden`, com o último estado
+ * de 01/08 e 10/08: duas e três semanas parados.
+ *
+ * O multiget lê POR ID e não depende da busca. Então a pergunta que faltava
+ * não é cara — são os mesmos 20 por chamada, e aqui são 15 no total.
+ *
+ * ===========================================================================
+ * O QUE ELA DEVOLVE, E POR QUE `naoEncontrados` IMPORTA
+ * ===========================================================================
+ *
+ * O ML pode responder que o item NÃO EXISTE. Isso é informação, e é diferente
+ * de "não perguntei": um anúncio que o Mercado Livre não reconhece mais não
+ * está em revisão nem pausado, e continuar contando-o como desconhecido
+ * esconde a única coisa que se sabe sobre ele.
+ *
+ * Esta função NÃO decide o que fazer com isso — ela separa as duas listas e
+ * deixa a decisão para quem chama, que é onde a política mora.
+ */
+export interface LeituraPorIds {
+  anuncios: AnuncioML[];
+  /** Ids que o ML recusou ou não devolveu. NÃO é "encerrado": é o que ele disse. */
+  naoEncontrados: string[];
+}
+
+export async function lerItensPorIds(
+  accessToken: string,
+  mlbs: readonly string[]
+): Promise<LeituraPorIds> {
+  const ids = [...new Set(mlbs.map((m) => (m ?? "").trim()).filter(Boolean))];
+  if (ids.length === 0) return { anuncios: [], naoEncontrados: [] };
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const anuncios: AnuncioML[] = [];
+  const naoEncontrados: string[] = [];
+
+  for (let i = 0; i < ids.length; i += 20) {
+    const lote = ids.slice(i, i + 20);
+    const vieram = new Set<string>();
+    for (const campos of [CAMPOS_PEDIDOS_AO_ML, CAMPOS_MINIMOS_AO_ML]) {
+      try {
+        const r = await fetch(`${API}/items?ids=${lote.join(",")}&attributes=${campos}`, { headers });
+        if (!r.ok) continue;
+        const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
+        for (const x of arr) {
+          if (x.code !== 200 || !x.body?.id || vieram.has(x.body.id)) continue;
+          vieram.add(x.body.id);
+          anuncios.push(mapearItem(x.body));
+        }
+        break; // a lista completa respondeu; não precisa do degrau
+      } catch {
+        // Rede ou JSON quebrado: tenta o degrau menor antes de desistir.
+      }
+    }
+    for (const id of lote) if (!vieram.has(id)) naoEncontrados.push(id);
+  }
+  return { anuncios, naoEncontrados };
+}
 /**
  * A parede que interrompeu a leitura, quando ela não leu tudo.
  *
@@ -1840,4 +2025,124 @@ export async function criarGuiaTamanhos(
   );
 
   return { gridId, rowIdPorTamanho };
+}
+
+// ---------------------------------------------------------------------------
+// O DIAGNÓSTICO de um anúncio — o que o ML sabe e nós não tínhamos
+// ---------------------------------------------------------------------------
+
+export interface RetratoDoItemML {
+  id: string;
+  status: string;
+  subStatus: string[];
+  preco: number | null;
+  /** Unidades vendidas ao longo da vida do anúncio, na palavra do ML. */
+  vendidos: number | null;
+  estoque: number | null;
+  /** A nota de saúde do ML (0..1). `null` quando ele não a informou. */
+  saude: number | null;
+  fotos: number;
+  titulo: string;
+  categoria: string | null;
+  tipoAnuncio: string | null;
+  permalink: string | null;
+}
+
+/**
+ * `GET /items/{id}` com os campos que o diagnóstico lê. `health` é a nota que
+ * decide exposição; `sold_quantity` é o que vendeu.
+ */
+export async function retratoDoItem(accessToken: string, itemId: string): Promise<RetratoDoItemML> {
+  const campos = "id,status,sub_status,price,sold_quantity,available_quantity,health,pictures,title,category_id,listing_type_id,permalink";
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}?attributes=${campos}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!r.ok) throw new Error(`ML recusou ler o anúncio ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return {
+    id: String(j.id ?? itemId),
+    status: String(j.status ?? ""),
+    subStatus: Array.isArray(j.sub_status) ? j.sub_status.map(String) : [],
+    preco: num(j.price),
+    vendidos: num(j.sold_quantity),
+    estoque: num(j.available_quantity),
+    saude: num(j.health),
+    fotos: Array.isArray(j.pictures) ? j.pictures.length : 0,
+    titulo: String(j.title ?? ""),
+    categoria: typeof j.category_id === "string" ? j.category_id : null,
+    tipoAnuncio: typeof j.listing_type_id === "string" ? j.listing_type_id : null,
+    permalink: typeof j.permalink === "string" ? j.permalink : null,
+  };
+}
+
+/**
+ * As VISITAS de um item nos últimos N dias — `GET /items/{id}/visits/time_window`.
+ * `null` quando o ML não responde: visita desconhecida não é zero visita.
+ */
+export async function visitasDoItem(accessToken: string, itemId: string, dias: number): Promise<number | null> {
+  const r = await fetch(
+    `${API}/items/${encodeURIComponent(itemId)}/visits/time_window?last=${dias}&unit=day`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!r.ok) return null;
+  const j = (await r.json()) as { total_visits?: unknown };
+  return typeof j.total_visits === "number" ? j.total_visits : null;
+}
+
+/**
+ * Troca o TÍTULO de um anúncio publicado — `PUT /items/{id}` com `{ title }`.
+ *
+ * ===========================================================================
+ * A PRIMEIRA ESCRITA DE CONTEÚDO EM ANÚNCIO NO AR
+ * ===========================================================================
+ *
+ * Até 24/08/2026 este cliente tinha seis escritas e NENHUMA delas mudava o
+ * conteúdo de um item publicado: dava para criar, encerrar, pausar, reativar e
+ * trocar as fotos, e mais nada. Corrigir um título errado exigia encerrar o
+ * anúncio e republicar — perdendo histórico, reputação e a relevância que ele
+ * tinha na busca.
+ *
+ * Título e não preço/estoque: é reversível (o título antigo volta), não move
+ * dinheiro, e é o campo que decide se o anúncio APARECE na busca.
+ *
+ * ===========================================================================
+ * ESTE CAMINHO NÃO FOI MEDIDO CONTRA A API REAL
+ * ===========================================================================
+ *
+ * O formato vem da documentação, não de uma chamada observada — e este
+ * repositório já pagou por essa diferença uma vez (a OpenAI passou um dia com
+ * "chave aceita e caminho inexistente", ver `provedorImagem`).
+ *
+ * Por isso quem chama é obrigado a RELER o item e comparar (ver
+ * `tituloNoAnuncio.ts`). Se o ML aceitar a requisição e não aplicar a mudança,
+ * a releitura pega — e a resposta diz "enviei, mas não consegui confirmar" em
+ * vez de "pronto". A verificação não é zelo: é o que torna seguro publicar um
+ * caminho que ninguém observou ainda.
+ *
+ * O ML também RECUSA a troca em alguns casos (item com vendas, certas
+ * categorias). A recusa dele sobe como está, porque ela diz o motivo e este
+ * arquivo não sabe reescrevê-lo sem inventar.
+ */
+export async function atualizarTituloDoItem(
+  accessToken: string,
+  itemId: string,
+  titulo: string
+): Promise<{ id: string; titulo: string }> {
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ title: titulo }),
+  });
+  if (!r.ok) {
+    throw new Error(`ML recusou trocar o título do anúncio ${itemId}: ${await extrairErro(r)}`);
+  }
+  const j = (await r.json()) as { id?: string; title?: string };
+  // O título que o ML CONFIRMOU na resposta, não o que pedimos — pelo mesmo
+  // motivo de `definirEstadoDoItem`: devolver o pedido faria a resposta
+  // afirmar uma mudança que pode não ter acontecido.
+  return { id: String(j.id ?? itemId), titulo: String(j.title ?? "") };
 }

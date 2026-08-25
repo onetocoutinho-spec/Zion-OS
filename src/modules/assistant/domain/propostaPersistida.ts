@@ -68,7 +68,24 @@ export type TipoDeProposta =
   // precisa distinguir "trocou a descrição" de "acrescentou palavras-chave",
   // e a função do banco decide a chave do jsonb por eles.
   | "descricao"
-  | "palavras_chave";
+  | "palavras_chave"
+  // PUBLICAÇÃO, desde 22/08/2026. A única ação que o comprador vê; era a única
+  // fora da Proposal. `texto` carrega o pedido congelado (ver
+  // `propostaDePublicacao.ts`) e `alvos[0]` é o anúncio.
+  | "publicacao"
+  // TÍTULO NO ANÚNCIO PUBLICADO, desde 24/08/2026. Separado de `titulo` de
+  // propósito: aquele muda o catálogo do Zion, este muda o que o COMPRADOR vê
+  // agora. A auditoria precisa distinguir os dois — e é justamente essa
+  // distinção que alguém vai procurar no dia em que um título aparecer errado
+  // na vitrine. `alvos[0]` é o registro do anúncio; `texto` é o título novo.
+  | "titulo_no_ml"
+  // TAREFAS DA LOJA, desde 22/08/2026. `texto` carrega a lista congelada (ver
+  // `propostaDeTarefas.ts`); `alvos` são os produtos citados, se houver.
+  | "tarefas"
+  // IMAGEM, desde 22/08/2026. `texto` carrega o pedido (slot, produto,
+  // instrução, a versão recusada e o feedback); a execução GERA e guarda a
+  // versão no bucket privado. Ver `propostaDeImagem.ts`.
+  | "imagem";
 
 /**
  * O estado do mundo no momento em que a proposta nasceu.
@@ -239,12 +256,28 @@ export const RISCO_POR_TIPO: Record<TipoDeProposta, NivelDeRisco> = {
   // Preço é o número de onde sai o faturamento. Um preço abaixo do piso vende
   // no prejuízo em silêncio, e o estrago só aparece no fechamento do mês.
   preco: "alto",
+  // Publicar é o que o COMPRADOR vê, e o Mercado Livre não tem "desfazer":
+  // um anúncio duplicado ou errado no ar é reputação, não só dado. Crítico.
+  publicacao: "critico",
+  // Trocar o título de um anúncio no ar é o que o comprador vê — mas é
+  // REVERSÍVEL (o texto antigo volta) e não move dinheiro. Alto, não crítico:
+  // a diferença entre isto e publicar é que publicar cria algo que o ML não
+  // desfaz. Alto já exige que quem confirma seja quem pediu.
+  titulo_no_ml: "alto",
+  // Criar uma lista de tarefas é reversível com um clique (descartar) e não
+  // toca catálogo, preço nem marketplace. Baixo — exige confirmação, não o
+  // cuidado de uma escrita irreversível.
+  tarefas: "baixo",
+  // Gerar imagem custa cota e tempo, e a imagem vira candidata a foto do
+  // produto — mas nada é publicado sem a aprovação seguinte. Médio.
+  imagem: "medio",
 };
 
 /** O que impede uma proposta de ser executada agora. */
 export type Impedimento =
   | { motivo: "nao_encontrada" }
   | { motivo: "outro_tenant" }
+  | { motivo: "outro_usuario" }
   | { motivo: "ja_executada" }
   | { motivo: "status_invalido"; status: StatusProposta }
   | { motivo: "expirada" }
@@ -276,7 +309,14 @@ export function podeExecutar(
   proposta: PropostaPersistida | null,
   clienteIdDaSessao: string,
   agoraISO: string,
-  estadoAtual: EstadoAtual
+  estadoAtual: EstadoAtual,
+  /**
+   * Quem está clicando. `undefined` = o chamador não informou (chamadas
+   * antigas e testes de outras regras); `null` = sessão sem usuário (demo).
+   * Nos dois casos a checagem de autoria não roda — e isso fica declarado
+   * aqui, não escondido num `??`.
+   */
+  usuarioIdDaSessao?: string | null
 ): VeredictoDaProposta {
   if (!proposta) return { pode: false, impedimento: { motivo: "nao_encontrada" } };
 
@@ -285,6 +325,22 @@ export function podeExecutar(
   // distinguimos internamente, para a auditoria registrar a tentativa.
   if (proposta.clienteId !== clienteIdDaSessao) {
     return { pode: false, impedimento: { motivo: "outro_tenant" } };
+  }
+
+  // QUEM VIU O DIFF É QUEM CONFIRMA — para o que mexe em dinheiro ou frete.
+  //
+  // `criadaPor` existia "para a auditoria" e nunca era conferido: numa loja
+  // com três operadores, B confirmava a proposta de preço montada na
+  // conversa privada de A, que B nunca leu. O portão virava "alguém do
+  // tenant clicou". Para `medio`/`baixo` (título, descrição) o custo de
+  // errar é reversível e a regra não se aplica. (Auditoria do Copilot, P2.)
+  if (
+    usuarioIdDaSessao &&
+    (proposta.risco === "alto" || proposta.risco === "critico") &&
+    proposta.criadaPor &&
+    proposta.criadaPor !== usuarioIdDaSessao
+  ) {
+    return { pode: false, impedimento: { motivo: "outro_usuario" } };
   }
 
   // `ja_executada` ANTES de `status_invalido`: é o caso do duplo clique, e
@@ -350,6 +406,8 @@ export function explicarImpedimento(i: Impedimento): string {
       // A MESMA frase de propósito: distinguir contaria a quem tentou que a
       // proposta existe em outro cliente.
       return "Não encontrei essa proposta. Peça de novo e eu monto outra.";
+    case "outro_usuario":
+      return "Essa proposta foi montada na conversa de outra pessoa. Peça de novo na sua conversa e eu monto outra para você confirmar.";
     case "ja_executada":
       return "Isso já foi feito — não repeti a gravação.";
     case "expirada":

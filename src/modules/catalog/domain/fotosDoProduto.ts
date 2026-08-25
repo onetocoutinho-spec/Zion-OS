@@ -44,7 +44,7 @@ export interface AnuncioParaDiagnostico {
 export interface FotoParaDiagnostico {
   largura: number | null;
   altura: number | null;
-  /** A cor da foto (migração 060). `null` = não sabemos de qual variação é. */
+  /** A cor da foto (migração 076). `null` = não sabemos de qual variação é. */
   cor: string | null;
 }
 

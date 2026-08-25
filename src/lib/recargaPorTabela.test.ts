@@ -150,25 +150,51 @@ test("toda tabela declarada existe de verdade — erro de digitação vira tela 
   const conhecidas = tabelasDoApp();
   assert.ok(conhecidas.size > 20, `só ${conhecidas.size} tabelas achadas — a varredura quebrou`);
 
-  const telas = [
-    "../components/client-portal/useEstadoDaLoja.ts",
-    "../components/client-portal/PendenciasDaConta.tsx",
-  ];
-  let declaradas = 0;
-  for (const rel of telas) {
-    const fonte = readFileSync(new URL(rel, import.meta.url), "utf8");
-    for (const bloco of fonte.matchAll(/tabelas:\s*\[([^\]]+)\]/g)) {
-      for (const m of bloco[1].matchAll(/"([a-z_]+)"/g)) {
-        declaradas++;
-        assert.ok(
-          conhecidas.has(m[1]),
-          `${rel} declara a tabela "${m[1]}", que nenhum serviço usa — ` +
-            `provavelmente erro de digitação, e o efeito é a consulta parar de recarregar em silêncio`
-        );
+  // A LISTA DE ARQUIVOS VIROU VARREDURA — 24/08/2026.
+  //
+  // Aqui havia dois caminhos escritos à mão. Um deles, `useEstadoDaLoja.ts`,
+  // foi refatorado: a conta desceu para o domínio e as anotações foram junto
+  // para outros arquivos. O teste continuou lendo o caminho antigo, achou duas
+  // anotações onde esperava seis, e reprovou dizendo que "as anotações
+  // sumiram" — quando o que tinha sumido era a atualidade da lista.
+  //
+  // É o MESMO defeito que este teste existe para pegar, cometido pelo próprio
+  // teste: uma referência escrita à mão que envelhece em silêncio. Varrer não
+  // envelhece — anotação nova entra sozinha, e arquivo que muda de lugar
+  // continua coberto.
+  const anotacoes = new Map<string, string[]>();
+  const varrerAnotacoes = (dir: string) => {
+    for (const entrada of readdirSync(dir, { withFileTypes: true })) {
+      const caminho = join(dir, entrada.name);
+      if (entrada.isDirectory()) {
+        if (entrada.name !== "node_modules") varrerAnotacoes(caminho);
+      } else if (/\.tsx?$/.test(entrada.name) && !entrada.name.includes(".test.")) {
+        const fonte = readFileSync(caminho, "utf8");
+        const achadas: string[] = [];
+        for (const bloco of fonte.matchAll(/tabelas:\s*\[([^\]]+)\]/g)) {
+          for (const m of bloco[1].matchAll(/"([a-z_]+)"/g)) achadas.push(m[1]);
+        }
+        if (achadas.length) anotacoes.set(caminho, achadas);
       }
     }
+  };
+  varrerAnotacoes(fileURLToPath(new URL("..", import.meta.url)));
+
+  let declaradas = 0;
+  for (const [arquivo, tabelas] of anotacoes) {
+    for (const tabela of tabelas) {
+      declaradas++;
+      assert.ok(
+        conhecidas.has(tabela),
+        `${arquivo} declara a tabela "${tabela}", que nenhum serviço usa — ` +
+          `provavelmente erro de digitação, e o efeito é a consulta parar de recarregar em silêncio`
+      );
+    }
   }
-  assert.ok(declaradas >= 6, `só ${declaradas} tabelas declaradas; as anotações sumiram`);
+  assert.ok(
+    declaradas >= 6,
+    `só ${declaradas} tabelas declaradas em ${anotacoes.size} arquivo(s); a varredura ou as anotações quebraram`
+  );
 });
 
 test("o hook estabiliza a lista de tabelas — senão recria o laço que acabou de morrer", () => {

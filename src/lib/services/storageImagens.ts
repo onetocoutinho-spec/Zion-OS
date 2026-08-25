@@ -62,7 +62,7 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
 
   // ANTES DE SUBIR, porque depois de subir a única referência é uma url — e
   // url do CDN do ML serve variante, não original. Medir aqui é o único
-  // momento em que a dimensão é a verdade sem ressalva. Ver migração 059.
+  // momento em que a dimensão é a verdade sem ressalva. Ver migração 075.
   const dimensao = await dimensaoParaGravar(file);
 
   const caminho = `${clienteId}/${produtoId}/${Date.now()}-${slugArquivo(file.name)}`;

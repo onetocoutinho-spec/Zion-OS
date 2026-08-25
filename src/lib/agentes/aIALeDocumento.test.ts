@@ -28,14 +28,17 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   blocosDaMensagem,
+  conteudoDaMensagemOpenAI,
+  FOLGA_DO_RACIOCINIO,
   provedorConfigurado,
   chamarIAEstruturada,
   type ChamadaIA,
 } from "./provedorIA.ts";
 
-const CHAVES = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "IA_PROVEDOR"] as const;
+const CHAVES = ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "IA_PROVEDOR"] as const;
 
 /** Roda `f` com um ambiente montado, e devolve o ambiente como estava. */
 function comAmbiente<T>(env: Partial<Record<(typeof CHAVES)[number], string>>, f: () => T): T {
@@ -58,6 +61,20 @@ const base: ChamadaIA = { system: "s", mensagem: "m", schema: SCHEMA };
 test("com as duas chaves, quem atende é o Claude — não o free tier", () => {
   comAmbiente({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: "a" }, () => {
     assert.equal(provedorConfigurado(), "anthropic");
+  });
+});
+
+test("com as TRÊS chaves, quem atende é a OpenAI — decisão do dono em 23/08/2026", () => {
+  // "quero utilizar somente o ChatGPT". A chave da OpenAI no servidor basta
+  // para tudo ir para ela; o Claude continua alcançável por nome.
+  comAmbiente({ GEMINI_API_KEY: "g", ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o" }, () => {
+    assert.equal(provedorConfigurado(), "openai");
+  });
+  comAmbiente({ ANTHROPIC_API_KEY: "a", OPENAI_API_KEY: "o", IA_PROVEDOR: "anthropic" }, () => {
+    assert.equal(provedorConfigurado(), "anthropic");
+  });
+  comAmbiente({ OPENAI_API_KEY: "o" }, () => {
+    assert.equal(provedorConfigurado(), "openai");
   });
 });
 
@@ -87,7 +104,7 @@ test("o Gemini RECUSA anexo — não responde sobre um documento que não viu", 
   await comAmbiente({ GEMINI_API_KEY: "g", IA_PROVEDOR: "gemini" }, async () => {
     await assert.rejects(
       () => chamarIAEstruturada({ ...base, anexos: [{ tipo: "pdf", base64: "JVBERi0=" }] }),
-      /Anexos.*só funcionam com o Claude/,
+      /Anexos.*só funcionam com a OpenAI ou o Claude/,
       "o caminho Gemini aceitou um anexo — ele seria descartado em silêncio"
     );
   });
@@ -140,4 +157,58 @@ test("formato de imagem desconhecido é recusado aqui, com o nome do formato", (
     /image\/heic/,
     "empurrar formato desconhecido faz a API recusar sem dizer qual anexo era"
   );
+});
+
+test("OpenAI: o teto de saída leva a folga de raciocínio — 400 tokens de JSON não podem morrer pensando", () => {
+  // Medido em produção em 24/08/2026: `maxTokens: 400` na classificação de
+  // intenção voltou `incomplete` com texto vazio, porque na Responses API o
+  // raciocínio conta dentro de `max_output_tokens`. A folga é teto, não gasto.
+  const fonte = readFileSync(new URL("./provedorIA.ts", import.meta.url), "utf8");
+  assert.match(fonte, /max_output_tokens: \(c\.maxTokens \?\? 16000\) \+ FOLGA_DO_RACIOCINIO/);
+  assert.ok(FOLGA_DO_RACIOCINIO >= 4000, "folga curta demais para o raciocínio do gpt-5");
+  // E o estouro é dito pelo nome, antes do erro genérico de texto vazio.
+  const aposFolga = fonte.slice(fonte.indexOf("chamarOpenAICom"));
+  assert.ok(
+    aposFolga.indexOf("estourou o teto de saída") < aposFolga.indexOf("não pôde completar esta solicitação"),
+    "o erro genérico voltou a esconder o estouro do teto"
+  );
+});
+
+test("OpenAI: o anexo vira input_file/input_image, e o texto vem DEPOIS do material", () => {
+  const itens = conteudoDaMensagemOpenAI({
+    system: "s",
+    mensagem: "leia isto",
+    schema: {},
+    anexos: [
+      { tipo: "pdf-arquivo", fileId: "file_123" },
+      { tipo: "imagem", base64: "AAA", mimeType: "image/png" },
+    ],
+  });
+  assert.deepEqual(itens[0], { type: "input_file", file_id: "file_123" });
+  assert.deepEqual(itens[1], { type: "input_image", image_url: "data:image/png;base64,AAA", detail: "auto" });
+  assert.deepEqual(itens[2], { type: "input_text", text: "leia isto" });
+  // Formato desconhecido é recusado, não empurrado como JPEG.
+  assert.throws(
+    () => conteudoDaMensagemOpenAI({ system: "s", mensagem: "m", schema: {}, anexos: [{ tipo: "imagem", base64: "A", mimeType: "image/bmp" }] }),
+    /não suportado/
+  );
+});
+
+test("a classificação pede a linha própria da tabela — 9,5s por frase era o preço do raciocínio", () => {
+  // A classificação que restou é o ROTEADOR DE ESPECIALISTA, dentro da rota da
+  // conversa: a de intenção foi aposentada em 24/08/2026 junto com o caminho
+  // barato. Ela roda em `minimal` porque errar ali cai no especialista
+  // `geral`, que tem o catálogo inteiro — o erro custa tokens, não a resposta.
+  const rota = readFileSync(
+    new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(rota, /esforco: "minimal"/);
+  assert.match(rota, /tarefa: "classificacao"/);
+  // E a tabela é consultada pela tarefa da chamada, não por um literal.
+  const fonte = readFileSync(new URL("./provedorIA.ts", import.meta.url), "utf8");
+  assert.match(fonte, /rotaDoModelo\(c\.tarefa \?\? "estruturada", process\.env, "openai"\)/);
+  assert.match(fonte, /rotaDoModelo\(c\.tarefa \?\? "estruturada"\)/);
+  // `minimal` é palavra da OpenAI: no caminho Anthropic ela vira `low`.
+  assert.match(fonte, /effort: c\.esforco === "minimal" \? "low" : c\.esforco/);
 });

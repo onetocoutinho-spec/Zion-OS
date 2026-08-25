@@ -6,6 +6,7 @@
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { lerPapel, type PapelPerfil } from "../auth/roteamentoPapel";
+import { argumentoDaLoja } from "../contexto/lojaEmOperacao";
 
 export interface Perfil {
   papel: PapelPerfil;
@@ -157,11 +158,23 @@ export interface QuotaEsteira {
  * Falha de leitura virava parede comercial. `null` é a única resposta honesta
  * quando não se leu, e quem consome decide — ver `estadoDaCota`, que é
  * fail-open de propósito.
+ *
+ * ===========================================================================
+ * O `clienteId` VEIO DA OUTRA PONTA, NA MESCLA DE 24/08/2026
+ * ===========================================================================
+ *
+ * Ele é a sobrecarga da 064: agência e equipe operam a cota de OUTRA loja, e
+ * `argumentoDaLoja` decide entre a chamada com loja e a de sempre.
+ *
+ * As duas convivem porque respondem a perguntas diferentes — uma é a ENTRADA
+ * (de qual loja é a cota), a outra é a honestidade da SAÍDA. Ficar com um lado
+ * só apagaria um conserto que tem teste vivo e domínio construído em cima.
  */
-export async function quotaEsteira(): Promise<QuotaEsteira | null> {
+export async function quotaEsteira(clienteId?: string | null): Promise<QuotaEsteira | null> {
   if (!supabaseConfigurado) return { limite: 30, usado: 0, restante: 30 };
   try {
-    const { data, error } = await getSupabase().rpc("quota_esteira");
+    // Com loja em operação (agência/equipe), a sobrecarga da 064; senão a de sempre.
+    const { data, error } = await getSupabase().rpc("quota_esteira", argumentoDaLoja(clienteId));
     // `error` sem exceção também é falha: o Supabase devolve o erro no objeto,
     // e ignorá-lo era a metade silenciosa do mesmo defeito.
     if (error) return null;

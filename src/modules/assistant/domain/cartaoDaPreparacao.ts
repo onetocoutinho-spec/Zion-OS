@@ -144,6 +144,15 @@ export function tomDaEtapa(situacao: string): "boa" | "atencao" | "neutra" {
 // ---------------------------------------------------------------------------
 
 export interface TituloNaTela {
+  /**
+   * A troca é no ANÚNCIO PUBLICADO, não no catálogo do Zion.
+   *
+   * Muda o que o COMPRADOR vê agora, e por isso a tela precisa dizer. Um botão
+   * idêntico para consequências diferentes é a armadilha que este campo evita.
+   */
+  noMarketplace?: boolean;
+  /** O anúncio no Mercado Livre, quando a troca é lá. */
+  mlb?: string;
   nome: string;
   tituloAtual: string;
   tituloProposto: string;

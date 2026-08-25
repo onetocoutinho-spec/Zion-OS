@@ -130,6 +130,13 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     parametros: {
       type: "object",
       properties: {
+        // `infracao` entrou em 24/08/2026, e a ausência dela era um defeito
+        // VIVO: o domínio sabe contar infração, o card POSSO_RESPONDER anuncia
+        // a pergunta à lojista, e o enum não deixava o modelo pedir. Com saída
+        // estruturada, valor fora do enum não é emitido — a pergunta era
+        // anunciada e impossível. É o mesmo defeito que a rota de classificação
+        // teve um dia; ele mudou de lugar quando ela foi aposentada, e o teste
+        // que o pegava veio junto.
         assunto: {
           type: "string",
           enum: [
@@ -399,6 +406,94 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
       required: ["produtoId", "campo"],
     },
   },
+  {
+    nome: "vendas_da_loja",
+    efeito: "le",
+    descricao:
+      "As vendas da loja no Mercado Livre num período (7, 14, 30, 60 ou 90 dias), COMPARADAS com o período anterior de mesmo tamanho: faturamento, pedidos, unidades, ticket médio, margem, quem mais caiu e quem mais subiu, e o que SUMIU das vendas. Use para \"como estão minhas vendas?\", \"quanto vendi?\", \"por que caíram?\" e \"o que está vendendo mais?\". Ela também devolve o que os dados NÃO cobrem (visitas, conversão) — repita isso quando a pergunta for \"por quê\".",
+    parametros: {
+      type: "object",
+      properties: {
+        dias: { type: "integer", enum: [7, 14, 30, 60, 90], description: "O tamanho da janela. Sem pista na pergunta, use 30." },
+      },
+      required: ["dias"],
+    },
+  },
+  {
+    nome: "comparar_lojas",
+    efeito: "le",
+    descricao:
+      "SÓ PARA QUEM OPERA VÁRIAS LOJAS (agência ou equipe). Mede todas as lojas no alcance da conta com a mesma régua — produtos, com custo, com peso, com foto, com anúncio, aguardando aprovação, conectada ao Mercado Livre, infrações — e devolve uma por linha, para comparar. Use para \"compara minhas lojas\", \"qual loja está mais atrasada?\", \"qual tem mais pendência?\". Não traz vendas: vendas se perguntam dentro de cada loja.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    nome: "anuncios_ativos",
+    efeito: "le",
+    descricao:
+      "OS ANÚNCIOS DA LOJA NO MERCADO LIVRE, por estado: quantos estão ATIVOS (no ar), quantos pausados, em revisão, encerrados ou inativos — na palavra do próprio ML — e quantos nunca tiveram o estado medido. Traz também POR QUE não estão no ar (out_of_stock, forbidden) e HÁ QUANTOS DIAS cada estado foi lido. Use para \"quais anúncios estão ativos?\", \"quantos anúncios tenho no ar?\", \"o que está pausado?\", \"tem anúncio em revisão?\". Para UM produto específico use diagnostico_do_anuncio.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    nome: "anuncios_a_corrigir",
+    efeito: "le",
+    descricao:
+      "A FILA DE CORREÇÃO: os anúncios que NÃO estão no ar, agrupados pelo MOTIVO que o Mercado Livre deu (waiting_for_patch = o ML pediu uma alteração; paused_by_seller = a loja pausou; out_of_stock = estoque zerou; forbidden = infração; picture_download_pending = fotos ainda baixando). Para cada motivo diz o que significa, em quais produtos se concentra, e O QUE O ZION CONSEGUE FAZER com ele hoje — inclusive quando a resposta é 'não consigo, e é por isto'. Use para \"o que está parado?\", \"por que meus anúncios não estão no ar?\", \"o que preciso corrigir?\", \"resolve o que der\".",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    nome: "saude_do_catalogo",
+    efeito: "le",
+    descricao:
+      "A SAÚDE DOS ANÚNCIOS NO MERCADO LIVRE, na nota do próprio ML: a saúde média e os piores anúncios (a nota decide a exposição — anúncio com saúde baixa aparece menos na busca), quantos disputam o catálogo do ML, quantos estão NO AR e nunca venderam nada, quantos não têm descrição, a divisão entre Clássico e Premium (que muda a comissão), e os dias em que muitos anúncios foram alterados de uma vez. Use para \"como estão meus anúncios?\", \"por que apareço pouco?\", \"o que está no ar sem vender?\", \"quais anúncios estão incompletos?\", \"meus anúncios são clássicos ou premium?\".",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    nome: "o_que_eu_consigo",
+    efeito: "le",
+    descricao:
+      "O QUE EU SEI E NÃO SEI FAZER. Use SEMPRE quando estiver prestes a dizer que não consegue algo, quando o lojista perguntar o que você faz, e antes de prometer qualquer coisa que você não tenha certeza de alcançar. Sem parâmetro, devolve o que eu faço. Com 'assunto', devolve por que aquilo não é possível hoje e o que faria falta — os assuntos são: editar_anuncio_publicado (mudar preço, título, descrição, estoque ou variação de um anúncio JÁ no ar), detalhe_da_moderacao (o que o ML quer que se mude), agrupar_anuncios, outros_marketplaces (TikTok, Shopee, Amazon), erp, perguntas_e_mensagens, anuncios_patrocinados, estado_ao_vivo, excluir. Passe também 'pedido' com a frase do lojista: é assim que a Zion descobre o que falta construir.",
+    parametros: {
+      type: "object",
+      properties: {
+        assunto: { type: "string", description: "O assunto da limitação, quando você já sabe qual é." },
+        pedido: { type: "string", description: "O que o lojista pediu, nas palavras dele." },
+      },
+    },
+  },
+  {
+    nome: "diagnostico_de_agrupamento",
+    efeito: "le",
+    descricao:
+      "A GRADE DE CADA PRODUTO NO MERCADO LIVRE: quantos anúncios ele tem, quantos estão no ar, e quanto da grade está comprável hoje. Em calçado o ML NÃO aceita um anúncio com variações — cada numeração é um anúncio próprio — então muitos anúncios para um produto é o formato certo; o defeito é quando só uma parte está no ar (ex.: 16 anúncios e 1 ativo significa que quem procura outro número não acha a loja). Também aponta produtos que compartilham a mesma referência de fabricante, para CONFERIR se é duplicidade de cadastro ou dois materiais do mesmo modelo. Use para \"as variações não estão agrupadas\", \"o que está errado nos meus anúncios?\", \"tem produto duplicado?\", \"por que só aparece um número?\". PASSANDO produtoId, ela também PERGUNTA AO MERCADO LIVRE se aqueles anúncios estão agrupados numa família — a única forma de saber, porque o Zion não guarda esse vínculo.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: {
+          type: "string",
+          description:
+            "Opcional. O id do produto (de achar_produto). Com ele a ferramenta lê no Mercado Livre se os anúncios desse produto estão na mesma família. Sem ele, o diagnóstico sai igual mas sem a resposta sobre agrupamento.",
+        },
+      },
+    },
+  },
+  {
+    nome: "diagnostico_do_anuncio",
+    efeito: "le",
+    descricao:
+      "POR QUE um anúncio não vende — lê no Mercado Livre as visitas dos últimos 30 dias, as unidades vendidas, a saúde, o estoque e o estado do anúncio publicado deste produto, e separa EXPOSIÇÃO (ninguém vê: título, categoria, saúde) de CONVERSÃO (veem e não compram: preço, fotos, descrição). Use para \"otimiza esse anúncio\", \"por que esse não vende?\", \"o que está errado com esse anúncio?\" — ANTES de propor título ou preço. Produto sem anúncio publicado não tem diagnóstico, e a ferramenta diz isso.",
+    parametros: {
+      type: "object",
+      properties: { produtoId: { type: "string" } },
+      required: ["produtoId"],
+    },
+  },
+  {
+    nome: "meu_perfil_de_conteudo",
+    efeito: "le",
+    descricao:
+      "Como ESTA loja gosta de vender, escrito por ela em Configurações: tom de voz, público, palavras preferidas e palavras proibidas. Use para \"como a gente escreve?\", \"qual é o nosso tom?\", \"que palavras eu proibi?\" e antes de explicar por que um título foi recusado por palavra proibida. Perfil vazio significa que a loja ainda não preencheu — diga isso e aponte Configurações; não invente um tom.",
+    parametros: { type: "object", properties: {} },
+  },
 ];
 
 /**
@@ -509,10 +604,15 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     descricao:
       "Monta uma proposta de MELHORAR A DESCRIÇÃO de um anúncio que já existe. Devolve a descrição ATUAL e a PROPOSTA, lado a lado. NÃO grava: a lojista lê as duas e confirma clicando. " +
       "Use quando ela pedir para melhorar, reescrever ou completar a descrição. Se o produto ainda não tem anúncio gerado, não há descrição para melhorar — a ferramenta diz isso. " +
-      "Não repita o texto proposto na sua resposta: o cartão já mostra os dois lados, e reescrevê-lo faria aparecer uma terceira versão.",
+      "Não repita o texto proposto na sua resposta: o cartão já mostra os dois lados, e reescrevê-lo faria aparecer uma terceira versão. " +
+      "Quando ela pedir um AJUSTE numa descrição já proposta (\"deixa mais curta\", \"tira esse exagero\", \"fala do conforto\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
+      properties: { produtoId: { type: "string" }, instrucao: {
+          type: "string",
+          description:
+            "O que o lojista pediu de diferente, nas palavras dele: \"deixa mais curto\", \"mais premium\", \"tira o exagero\", \"põe a cor\". Só quando ele disse algo. Quem recebe isto PRESERVA o que não foi questionado.",
+        }, },
       required: ["produtoId"],
     },
   },
@@ -533,11 +633,76 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio.",
+      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
+      properties: { produtoId: { type: "string" }, instrucao: {
+          type: "string",
+          description:
+            "O que o lojista pediu de diferente, nas palavras dele: \"deixa mais curto\", \"mais premium\", \"tira o exagero\", \"põe a cor\". Só quando ele disse algo. Quem recebe isto PRESERVA o que não foi questionado.",
+        }, },
       required: ["produtoId"],
+    },
+  },
+  {
+    nome: "propor_titulo_no_anuncio",
+    efeito: "propoe",
+    descricao:
+      "Monta a proposta de TROCAR O TÍTULO NO ANÚNCIO QUE JÁ ESTÁ NO AR no Mercado Livre — o texto que o COMPRADOR vê agora. Diferente de propor_titulo, que muda só o catálogo do Zion. Lê o título que está publicado neste momento e mostra ao lado do novo. NÃO grava: só o clique troca, e depois da troca eu releio o anúncio para confirmar. Use quando ele disser \"corrige o título do anúncio\", \"o título no Mercado Livre está errado\", \"aplica esse título no anúncio\" ou \"atualiza o anúncio com o título novo\". Precisa de um produtoId com anúncio publicado.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: { type: "string" },
+        titulo: {
+          type: "string",
+          description:
+            "O título que deve ficar no anúncio. Omitido, uso o título que a Zion já tem para este produto — o caso de \"o Zion está certo e o Mercado Livre está velho\".",
+        },
+      },
+      required: ["produtoId"],
+    },
+  },
+  {
+    nome: "propor_imagem",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de GERAR UMA IMAGEM do produto pela IA, a partir da FOTO REAL dele: capa (fundo branco, 1:1), infográfico, foto de detalhe, imagem de medidas, foto em uso ou imagem de benefícios. NÃO gera: o lojista confirma clicando, e a imagem gerada fica como rascunho até ele aprovar. Use para \"cria as imagens\", \"faz uma capa\", \"gera um infográfico\". Quando ele disser que NÃO GOSTOU de uma versão (\"quero fundo branco e o produto maior\"), chame de novo com `paiVersaoId` = o id da versão recusada (está no cartão) e `feedback` = o que ele disse — a próxima versão parte daquela e corrige exatamente isso. Produto sem foto real não gera: a IA melhora, não inventa.",
+    parametros: {
+      type: "object",
+      properties: {
+        produtoId: { type: "string" },
+        slot: { type: "string", enum: ["capa", "infografico", "detalhe", "medidas", "humanizada", "beneficios"] },
+        instrucao: { type: "string", description: "O que ele pediu para esta imagem, nas palavras dele. Opcional." },
+        paiVersaoId: { type: "string", description: "O id da versão recusada, quando é um ajuste." },
+        feedback: { type: "string", description: "O que ele disse da versão recusada." },
+        beneficios: { type: "string", description: "Só para infográfico/benefícios: os benefícios que ELE informou. Não invente." },
+      },
+      required: ["produtoId", "slot"],
+    },
+  },
+  {
+    nome: "propor_tarefas",
+    efeito: "propoe",
+    descricao:
+      "Monta uma proposta de CRIAR TAREFAS para a loja — a lista do que ela decidiu fazer a partir de um diagnóstico (\"conferir estoque da Sandália B\", \"revisar o preço dos que caíram\"). NÃO grava: o lojista vê a lista e confirma clicando. Use quando ele pedir \"cria as tarefas\", \"anota isso\", \"me lembra de\" ou aceitar um plano que você propôs. Cada tarefa leva o MOTIVO — o fato que a justifica, com o número que uma ferramenta devolveu. No máximo 10.",
+    parametros: {
+      type: "object",
+      properties: {
+        tarefas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              titulo: { type: "string", description: "O que fazer, em uma frase." },
+              motivo: { type: "string", description: "Por quê — o fato ou número que motivou." },
+              prioridade: { type: "string", enum: ["alta", "media", "baixa"] },
+              produtoId: { type: "string", description: "O id do produto, quando a tarefa é sobre um." },
+            },
+            required: ["titulo", "motivo", "prioridade"],
+          },
+        },
+      },
+      required: ["tarefas"],
     },
   },
   {
@@ -564,6 +729,20 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
  * a divisão que este sistema inteiro usa.
  */
 export const FERRAMENTAS_DE_RASCUNHO: readonly Ferramenta[] = [
+  {
+    nome: "investigar",
+    efeito: "rascunha",
+    descricao:
+      "ABRE UMA INVESTIGAÇÃO que atravessa turnos. Use quando o pedido for AMPLO ou PROFUNDO demais para caber numa resposta — \"descobre o que está errado na loja\", \"arruma os anúncios da Modare\", \"dá uma geral\", \"resolve o que der\" — e você perceber que vai precisar de muitas consultas. Chame no COMEÇO do turno, com a pergunta e o que pretende apurar; depois continue consultando normalmente. O que você descobrir fica guardado e volta no próximo turno, então não precisa terminar tudo agora. Chame de novo com concluida=true quando tiver a resposta. NÃO use para pergunta simples: uma consulta e uma resposta não são investigação.",
+    parametros: {
+      type: "object",
+      properties: {
+        pergunta: { type: "string", description: "O que se quer descobrir, em uma frase." },
+        proximoPasso: { type: "string", description: "O que ainda falta apurar depois desta rodada." },
+        concluida: { type: "boolean", description: "true quando a investigação chegou à resposta." },
+      },
+    },
+  },
   {
     nome: "gerenciar_cadastro",
     efeito: "rascunha",
@@ -786,3 +965,56 @@ export function todaExecucaoEReversivel(fs: readonly Ferramenta[] = FERRAMENTAS)
 export const PRIMEIRA_ACAO: readonly string[] = FERRAMENTAS.filter(
   (f) => f.efeito === "le"
 ).map((f) => f.nome);
+
+// ---------------------------------------------------------------------------
+// O CATÁLOGO POR PAPEL
+// ---------------------------------------------------------------------------
+//
+// Até 2026-08-22 a rota mandava `FERRAMENTAS` inteiro para todo mundo — e era
+// inócuo porque só o papel `cliente` passava do 403. No dia em que agência e
+// equipe entram no Copilot, "vê tudo" vira o padrão silencioso, e o poder de
+// reativar um anúncio no Mercado Livre (a única ação sem clique) chegaria a
+// quem opera a loja de terceiros sem ninguém ter decidido isso.
+//
+// A decisão, escrita à mão:
+//   - leitura, rascunho e proposta: os três papéis. Propor não grava; quem
+//     grava é o clique, e o clique passa pela Proposal com o tenant conferido.
+//   - `reativar_anuncio` (executa, sem clique): lojista e agência — os dois
+//     operam a loja no dia a dia, e a trava de posse + infração já vale para
+//     ambos. A EQUIPE fica de fora: ela audita e dá suporte; recolocar um
+//     anúncio de terceiro no ar sem o clique dele não é suporte.
+//
+// Uma ferramenta nova que não declare `papeis` vale para os três — é a regra
+// padrão para leitura e proposta, e `executa` é barrado pelo teste de fonte
+// que exige declaração explícita.
+
+export type PapelDoCopilot = "cliente" | "agencia" | "equipe";
+
+const PAPEIS_POR_EXECUCAO: Readonly<Record<string, readonly PapelDoCopilot[]>> = {
+  reativar_anuncio: ["cliente", "agencia"],
+};
+
+/**
+ * Leituras que só fazem sentido para quem opera VÁRIAS lojas. Para o lojista
+ * a ferramenta nem é declarada — oferecer "compare suas lojas" a quem tem uma
+ * seria convidar o modelo a responder o que não existe.
+ */
+const PAPEIS_POR_LEITURA: Readonly<Record<string, readonly PapelDoCopilot[]>> = {
+  comparar_lojas: ["agencia", "equipe"],
+};
+
+/** As ferramentas que ESTE papel enxerga. Pura. */
+export function ferramentasParaPapel(
+  papel: PapelDoCopilot,
+  fs: readonly Ferramenta[] = FERRAMENTAS
+): readonly Ferramenta[] {
+  return fs.filter((f) => {
+    const restricaoDeLeitura = PAPEIS_POR_LEITURA[f.nome];
+    if (restricaoDeLeitura) return restricaoDeLeitura.includes(papel);
+    if (f.efeito !== "executa") return true;
+    const permitidos = PAPEIS_POR_EXECUCAO[f.nome];
+    // Execução sem política declarada não chega a ninguém — melhor uma
+    // ferramenta ausente que um poder distribuído por omissão.
+    return Boolean(permitidos?.includes(papel));
+  });
+}

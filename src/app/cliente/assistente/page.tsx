@@ -15,6 +15,7 @@ import { Suspense } from "react";
 import { ChatDaOperacao } from "@/components/client-portal/ChatDaOperacao";
 import { useContextoDaPergunta } from "@/components/client-portal/useEstadoDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
+import { notificarMudanca } from "@/lib/store";
 
 export default function AssistentePage() {
   return (
@@ -39,6 +40,10 @@ function Conversa() {
         contexto={chat.contexto}
         produtos={chat.produtos}
         clienteId={clienteId}
+        // O contexto do chat (contagens, produtos) vem de `useLiveQuery`; sem
+        // este sinal, depois de gravar pelo cartão o próprio chat seguiria
+        // lendo o estado velho até o Realtime (ou um F5) avisar.
+        aoGravar={notificarMudanca}
         alturaCheia
         titulo="Assistente"
       />

@@ -75,7 +75,7 @@ export default function ClienteAjuda() {
         {PASSOS.map((p) => {
           const Icon = p.icon;
           return (
-            <div key={p.titulo} className="flex items-start gap-3 rounded-xl border border-white/5 bg-[#0e0e16] p-4">
+            <div key={p.titulo} className="flex items-start gap-3 rounded-xl border border-white/5 bg-surface-raised p-4">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-400">
                 <Icon size={18} />
               </div>

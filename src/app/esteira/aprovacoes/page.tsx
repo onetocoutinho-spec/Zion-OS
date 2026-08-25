@@ -11,16 +11,33 @@ import {
   Send,
   Rocket,
   ExternalLink,
-  X,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { StatCard } from "@/components/ui/StatCard";
-import { Table, Td, EmptyRow } from "@/components/ui/Table";
+import { Table, Td, TdSelecao, EmptyRow } from "@/components/ui/Table";
+import { estadoDaMarcaMestre, alternarTodos, alternarUm } from "@/modules/portal/domain/selecaoEmLote";
+import {
+  executarLote,
+  faixaDaNota,
+  fraseDoResultado,
+  motivosDaTrava,
+  passouATrava,
+  planejarLote,
+  podeAprovar as podeAprovarRegistro,
+  podeRejeitar as podeRejeitarRegistro,
+  type AcaoEmLote,
+} from "./loteDeAprovacao";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import { useLiveQuery } from "@/lib/hooks";
+import { EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { formatDateTime } from "@/lib/format";
 import {
   listarAnunciosGerados,
@@ -41,25 +58,34 @@ import type { AnuncioGeradoRegistro } from "@/lib/types";
 
 const HEADERS = [
   "Anúncio gerado",
-  "Nota",
-  "A10",
-  "Pend.",
+  // UMA coluna no lugar de Nota, A10 e Pend. As três respondiam a mesma
+  // pergunta — "dá para aprovar isto?" — sem nenhuma delas dar a resposta:
+  // quem operava lia "Reprovado" numa, "2" noutra, e concluía sozinho o que a
+  // trava já sabe. A regra é pura e testada, em ./loteDeAprovacao.ts.
+  "Trava",
   "Origem",
   "Tipo",
-  "Status",
+  "Situação",
   "Criado",
   "",
 ];
 
 export default function AprovacoesPage() {
-  const [cliente, setCliente] = useState("Todos");
-  const [status, setStatus] = useState("Todos");
-  const [busy, setBusy] = useState(false);
+  const { lojaId } = useLojaAtual();
+  // Filtro na URL (?status=): sobrevive ao F5 e vai no link.
+  const [status, setStatus] = useFiltroNaUrl("status", "Todos", Object.values(ROTULO_STATUS_ANUNCIO_GERADO));
+  // `busy` por ID, não global: um clique em "Aprovar" desabilitava Aprovar e
+  // Rejeitar de TODAS as linhas sem dizer qual estava em andamento.
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msgAcao, setMsgAcao] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  // A seleção para agir em massa. Regra em ./loteDeAprovacao.ts.
+  const [marcados, setMarcados] = useState<ReadonlySet<string>>(new Set());
+  const [loteRodando, setLoteRodando] = useState<AcaoEmLote | null>(null);
 
-  const { data } = useLiveQuery(listarAnunciosGerados);
+  const { data, carregando } = useLiveQuery(listarAnunciosGerados);
   const registros = data ?? [];
 
-  const clientes = useMemo(() => [...new Set(registros.map((r) => r.cliente))], [registros]);
+  const lojasComRegistro = useMemo(() => [...new Set(registros.map((r) => r.clienteId))], [registros]);
 
   const aguardando = registros.filter((r) => r.status === "aguardando_aprovacao").length;
   const rascunhos = registros.filter((r) => r.status === "rascunho").length;
@@ -68,26 +94,58 @@ export default function AprovacoesPage() {
 
   const filtrados = registros.filter(
     (r) =>
-      (cliente === "Todos" || r.cliente === cliente) &&
+      (!lojaId || r.clienteId === lojaId) &&
       (status === "Todos" || ROTULO_STATUS_ANUNCIO_GERADO[r.status] === status)
   );
 
-  async function aprovar(id: string) {
-    setBusy(true);
+  // Antes: try/finally sem catch. Falha → `busy` voltava a false e NADA
+  // aparecia; sucesso também não confirmava (dependia da lista revalidar).
+  async function executar(id: string, rotulo: string, acao: () => Promise<unknown>) {
+    setBusy(id);
+    setMsgAcao(null);
     try {
-      await aprovarAnuncioGerado(id);
+      await acao();
+      setMsgAcao({ tipo: "ok", texto: `${rotulo} — feito.` });
+    } catch (e) {
+      setMsgAcao({
+        tipo: "erro",
+        texto: `${rotulo} falhou: ${e instanceof Error ? e.message : "erro desconhecido"}. Tente de novo.`,
+      });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
-  async function rejeitar(id: string) {
-    setBusy(true);
-    try {
-      await rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.");
-    } finally {
-      setBusy(false);
-    }
+  function aprovar(id: string) {
+    return executar(id, "Aprovar", () => aprovarAnuncioGerado(id));
+  }
+
+  function rejeitar(id: string) {
+    return executar(id, "Rejeitar", () =>
+      rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.")
+    );
+  }
+
+  async function agirEmLote(acao: AcaoEmLote) {
+    if (loteRodando || busy) return;
+    const plano = planejarLote(acao, marcados, registros);
+    if (plano.entram.length === 0 && plano.pulados === 0) return;
+    setLoteRodando(acao);
+    setMsgAcao(null);
+    const r = await executarLote(plano, (id) =>
+      acao === "aprovar"
+        ? aprovarAnuncioGerado(id)
+        : rejeitarAnuncioGerado(id, "Rejeitado na revisão da equipe.")
+    );
+    setMsgAcao({ tipo: r.falhas > 0 ? "erro" : "ok", texto: fraseDoResultado(acao, r) });
+    // Quem foi feito sai da seleção; quem falhou ou foi pulado fica marcado
+    // para a pessoa ver o que sobrou e decidir.
+    setMarcados((m) => {
+      const novo = new Set(m);
+      for (const id of r.feitosIds) novo.delete(id);
+      return novo;
+    });
+    setLoteRodando(null);
   }
 
   return (
@@ -95,49 +153,110 @@ export default function AprovacoesPage() {
       <ConteudoAprovacoes
         registros={registros}
         filtrados={filtrados}
-        clientes={clientes}
-        cliente={cliente}
-        setCliente={setCliente}
+        lojasComRegistro={lojasComRegistro}
         status={status}
         setStatus={setStatus}
         busy={busy}
+        msgAcao={msgAcao}
+        selecao={{ marcados, setMarcados, loteRodando, agirEmLote }}
         aprovar={aprovar}
         rejeitar={rejeitar}
         stats={{ aguardando, rascunhos, aprovadosN, publicados }}
         data={data}
+        carregando={carregando}
       />
     </>
+  );
+}
+
+/**
+ * A célula "Trava" — dá para aprovar isto, e se não, por quê.
+ *
+ * A NOTA CONTINUA VISÍVEL nos dois casos, e não é redundância: ela não faz
+ * parte da trava (um anúncio passa com nota 58) mas é o sinal de qualidade que
+ * decide QUAL aprovar primeiro quando há trinta liberados. Juntar as colunas
+ * era para tirar a leitura de três lugares, não para jogar dado fora.
+ */
+function ATrava({ registro }: { registro: AnuncioGeradoRegistro }) {
+  const motivos = motivosDaTrava(registro);
+  const faixa = faixaDaNota(registro.notaDiagnostico);
+  const tomDaNota = faixa === "boa" ? "green" : faixa === "atenção" ? "yellow" : "red";
+
+  return (
+    <div className="flex flex-col gap-1">
+      {passouATrava(registro) ? (
+        <span
+          className="inline-flex w-fit items-center gap-1 whitespace-nowrap rounded border border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300"
+          title="Passou no A10 e não tem pendências — pode aprovar."
+        >
+          <ShieldCheck size={11} /> liberado
+        </span>
+      ) : (
+        <span className="flex flex-wrap gap-1">
+          {motivos.map((m) => (
+            // O ícone acompanha a cor porque cor sozinha não informa; o rótulo
+            // é texto, e o title diz o que resolve — as colunas antigas diziam
+            // "Reprovado" e "2", nunca o que fazer com isso.
+            <span
+              key={m.tipo}
+              title={m.explica}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-300"
+            >
+              <XCircle size={11} /> {m.rotulo}
+            </span>
+          ))}
+        </span>
+      )}
+      {/* A nota é o desempate, então vem discreta, debaixo da resposta. */}
+      <Badge tone={tomDaNota}>
+        {registro.notaDiagnostico}
+        <span className="ml-1 opacity-70">{faixa}</span>
+      </Badge>
+    </div>
   );
 }
 
 function ConteudoAprovacoes({
   registros,
   filtrados,
-  clientes,
-  cliente,
-  setCliente,
+  lojasComRegistro,
   status,
   setStatus,
   busy,
+  msgAcao,
+  selecao,
   aprovar,
   rejeitar,
   stats,
   data,
+  carregando,
 }: {
   registros: AnuncioGeradoRegistro[];
   filtrados: AnuncioGeradoRegistro[];
-  clientes: string[];
-  cliente: string;
-  setCliente: (v: string) => void;
+  lojasComRegistro: string[];
   status: string;
   setStatus: (v: string) => void;
-  busy: boolean;
+  /** ID do registro cuja ação está em andamento; null quando nenhuma. */
+  busy: string | null;
+  msgAcao: { tipo: "ok" | "erro"; texto: string } | null;
+  selecao: {
+    marcados: ReadonlySet<string>;
+    setMarcados: (f: (m: ReadonlySet<string>) => ReadonlySet<string>) => void;
+    loteRodando: AcaoEmLote | null;
+    agirEmLote: (acao: AcaoEmLote) => void;
+  };
   aprovar: (id: string) => void;
   rejeitar: (id: string) => void;
   stats: { aguardando: number; rascunhos: number; aprovadosN: number; publicados: number };
   data: AnuncioGeradoRegistro[] | null | undefined;
+  carregando: boolean;
 }) {
   const { aguardando, rascunhos, aprovadosN, publicados } = stats;
+  const { marcados, setMarcados, loteRodando, agirEmLote } = selecao;
+  const idsVisiveis = filtrados.map((r) => r.id);
+  const estadoDaMestre = estadoDaMarcaMestre(idsVisiveis, marcados);
+  const planoAprovar = planejarLote("aprovar", marcados, registros);
+  const planoRejeitar = planejarLote("rejeitar", marcados, registros);
   const [preview, setPreview] = useState<AnuncioGeradoRegistro | null>(null);
   const [publicando, setPublicando] = useState(false);
   const [msgPub, setMsgPub] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
@@ -218,7 +337,7 @@ function ConteudoAprovacoes({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-busy={carregando && !data ? "true" : undefined}>
         <StatCard label="Aguardando aprovação" value={aguardando} icon={Clock} tone="yellow" hint="Passaram no A10 — revisar e aprovar" />
         <StatCard label="Rascunhos" value={rascunhos} icon={ShieldCheck} tone="gray" hint="Com pendências ou A10 reprovado" />
         <StatCard label="Aprovados" value={aprovadosN} icon={CheckCircle2} tone="green" hint="Prontos para publicar (Fase 2)" />
@@ -226,7 +345,7 @@ function ConteudoAprovacoes({
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+        <FiltroDeLoja apenasIds={lojasComRegistro} />
         <FilterSelect
           label="Status"
           value={status}
@@ -235,35 +354,106 @@ function ConteudoAprovacoes({
         />
       </div>
 
-      {msgPub && (
+      {/* As mensagens nascem longe da linha que as gerou (a ação sai de um botão
+          da tabela ou do modal, que fecha antes). role="alert"/"status" faz o
+          leitor de tela anunciar em vez de esperar que a pessoa ache. */}
+      {[msgPub, msgAcao].filter(Boolean).map((m, i) => (
         <p
+          key={i}
+          role={m!.tipo === "ok" ? "status" : "alert"}
           className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
-            msgPub.tipo === "ok"
+            m!.tipo === "ok"
               ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
               : "border-red-500/20 bg-red-500/10 text-red-400"
           }`}
         >
-          {msgPub.tipo === "ok" ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
-          {msgPub.texto}
+          {m!.tipo === "ok" ? <CheckCircle2 size={15} className="mt-0.5 shrink-0" /> : <AlertTriangle size={15} className="mt-0.5 shrink-0" />}
+          {m!.texto}
         </p>
+      ))}
+
+      {carregando && !data && (
+        <div aria-busy="true" className="rounded-lg border border-white/5 p-4">
+          <EsqueletoDeTabela colunas={6} linhas={5} />
+        </div>
       )}
 
-      <Table headers={HEADERS}>
+      {/* A barra de ações em massa só existe com seleção: barra vazia permanente
+          é mais um elemento competindo com a fila. A trava é a MESMA da linha:
+          o botão já diz quantos entram e quantos a trava vai pular. */}
+      {marcados.size > 0 && (
+        <div
+          role="region"
+          aria-label="Ações para os anúncios selecionados"
+          className="sticky top-16 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-violet-500/25 bg-[#15121f]/95 px-4 py-3 backdrop-blur"
+        >
+          <p className="text-sm font-medium text-zinc-100">
+            {marcados.size} {marcados.size === 1 ? "anúncio selecionado" : "anúncios selecionados"}
+            {planoAprovar.pulados > 0 && (
+              <span className="ml-2 text-xs font-normal text-amber-400">
+                {planoAprovar.pulados} não {planoAprovar.pulados === 1 ? "passa" : "passam"} na trava A10
+              </span>
+            )}
+          </p>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              variant="success"
+              onClick={() => agirEmLote("aprovar")}
+              disabled={loteRodando !== null || busy !== null || planoAprovar.entram.length === 0}
+            >
+              {loteRodando === "aprovar" ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+              Aprovar {planoAprovar.entram.length}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => agirEmLote("rejeitar")}
+              disabled={loteRodando !== null || busy !== null || planoRejeitar.entram.length === 0}
+            >
+              {loteRodando === "rejeitar" ? <Loader2 size={14} className="animate-spin" /> : <XCircle size={14} />}
+              Rejeitar {planoRejeitar.entram.length}
+            </Button>
+            <Button variant="ghost" onClick={() => setMarcados(() => new Set())}>
+              Limpar seleção
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Table
+        headers={HEADERS}
+        // Ainda sobra: medido a 1280px com uma linha real, 1010px num container
+        // de 964. Juntar Nota/A10/Pend. tirou 71 dos 117px de excesso, não os
+        // 117 — então a ação continua grudada à direita para não ser o que a
+        // rolagem come.
+        acaoFixa
+        marcaMestre={{
+          estado: estadoDaMestre,
+          aoAlternar: () => setMarcados((m) => alternarTodos(idsVisiveis, m)),
+          rotulo:
+            estadoDaMestre === "todos"
+              ? `Desmarcar os ${idsVisiveis.length} anúncios desta lista`
+              : `Marcar os ${idsVisiveis.length} anúncios desta lista`,
+        }}
+      >
         {data && filtrados.length === 0 && (
           <EmptyRow
-            colSpan={HEADERS.length}
+            colSpan={HEADERS.length + 1}
             mensagem="Nada por aqui ainda. Rode a esteira (com um cliente selecionado) para popular a fila."
             acaoLabel="Ir para a Esteira"
             acaoHref="/esteira"
           />
         )}
         {filtrados.map((r) => {
-          const passouA10 = r.vereditoA10 === "aprovado" && r.qtdPendencias === 0;
-          const podeAprovar =
-            passouA10 && (r.status === "aguardando_aprovacao" || r.status === "rascunho");
-          const podeRejeitar = r.status !== "rejeitado" && r.status !== "publicado";
+          // A trava mora em ./loteDeAprovacao.ts — a mesma da ação em massa.
+          const podeAprovar = podeAprovarRegistro(r);
+          const podeRejeitar = podeRejeitarRegistro(r);
           return (
-            <tr key={r.id} className="hover:bg-white/[0.02]">
+            <tr key={r.id} className={marcados.has(r.id) ? "bg-violet-500/[0.06]" : "hover:bg-white/[0.02]"}>
+              <TdSelecao
+                marcado={marcados.has(r.id)}
+                aoAlternar={() => setMarcados((m) => alternarUm(r.id, m))}
+                rotulo={`Selecionar ${r.anuncio?.tituloOtimizado || "anúncio sem título"}`}
+              />
               <td className="px-4 py-3 align-top">
                 <p className="max-w-72 truncate font-medium text-zinc-200">
                   {r.anuncio?.tituloOtimizado || "(sem título)"}
@@ -273,7 +463,7 @@ function ConteudoAprovacoes({
                   {r.produto ? ` · ${r.produto}` : ""} · {r.marketplace}
                 </p>
                 <details className="mt-1">
-                  <summary className="cursor-pointer text-[11px] text-violet-400 hover:text-violet-300">
+                  <summary className="inline-flex items-center text-[11px] text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11">
                     ver detalhes
                   </summary>
                   <div className="mt-1.5 max-w-xl space-y-1 rounded-lg bg-black/20 p-2.5 text-xs text-zinc-400">
@@ -295,22 +485,19 @@ function ConteudoAprovacoes({
                 </details>
               </td>
               <Td>
-                <Badge tone={r.notaDiagnostico >= 75 ? "green" : r.notaDiagnostico >= 55 ? "yellow" : "red"}>
-                  {`${r.notaDiagnostico}`}
-                </Badge>
+                <ATrava registro={r} />
               </Td>
-              <Td>
-                <Badge tone={r.vereditoA10 === "aprovado" ? "green" : "red"}>
-                  {r.vereditoA10 === "aprovado" ? "OK" : "Reprovado"}
-                </Badge>
-              </Td>
-              <Td className="whitespace-nowrap text-zinc-300">{r.qtdPendencias}</Td>
               <Td>
                 <Badge tone="gray">{r.origem === "esteira_lote" ? "Lote" : "Esteira"}</Badge>
               </Td>
               <Td><Badge>{r.tipoExecucao}</Badge></Td>
               <Td><Badge>{ROTULO_STATUS_ANUNCIO_GERADO[r.status]}</Badge></Td>
-              <Td className="whitespace-nowrap text-xs">{formatDateTime(r.criadoEm)}</Td>
+              {/* Só a data: "23/08/2026 14:32" gastava 152px numa tabela que não
+                  cabia, e a hora quase nunca decide qual anúncio aprovar. Ela
+                  não se perde — vai no title, junto por extenso. */}
+              <Td className="whitespace-nowrap text-xs" title={formatDateTime(r.criadoEm)}>
+                {formatDateTime(r.criadoEm, { comHora: false })}
+              </Td>
               <Td>
                 <div className="flex flex-wrap gap-1.5">
                   {r.status === "aprovado" && (
@@ -327,7 +514,7 @@ function ConteudoAprovacoes({
                       href={r.mlPermalink}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20"
+                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/20 [@media(pointer:coarse)]:min-h-11"
                     >
                       <ExternalLink size={12} /> Ver no ML
                     </a>
@@ -336,18 +523,18 @@ function ConteudoAprovacoes({
                     variant="success"
                     className="px-2 py-1 text-xs"
                     onClick={() => aprovar(r.id)}
-                    disabled={busy || !podeAprovar}
+                    disabled={busy !== null || !podeAprovar}
                     title={podeAprovar ? "Aprovar para publicação" : "Trava: A10 + zero pendências"}
                   >
-                    <ShieldCheck size={13} /> Aprovar
+                    {busy === r.id ? <Loader2 size={13} className="animate-spin" /> : <ShieldCheck size={13} />} Aprovar
                   </Button>
                   <Button
                     variant="danger"
                     className="px-2 py-1 text-xs"
                     onClick={() => rejeitar(r.id)}
-                    disabled={busy || !podeRejeitar}
+                    disabled={busy !== null || !podeRejeitar}
                   >
-                    <XCircle size={13} /> Rejeitar
+                    {busy === r.id ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />} Rejeitar
                   </Button>
                 </div>
               </Td>
@@ -407,20 +594,10 @@ function ModalPublicar({
   const semFotos = !Array.isArray(payload.pictures) || payload.pictures.length === 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
-        <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
-          <div>
-            <p className="text-sm font-semibold text-white">Publicar no Mercado Livre</p>
-            <p className="text-xs text-zinc-500">{registro.anuncio?.tituloOtimizado}</p>
-          </div>
-          <button onClick={onFechar} className="text-zinc-500 hover:text-white">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+    // A moldura é a primitiva Dialog (foco preso, Esc, aria-modal) — antes
+    // era um fixed inset-0 escrito à mão, sem nada disso.
+    <Dialog aberto aoFechar={onFechar} titulo="Publicar no Mercado Livre" descricao={registro.anuncio?.tituloOtimizado}>
+        <div className="px-5 py-4">
           <p className="mb-2 text-xs text-zinc-400">
             Prévia do que será enviado ao ML (dry-run). Revise antes de publicar de verdade.
           </p>
@@ -454,7 +631,6 @@ function ModalPublicar({
             </Button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

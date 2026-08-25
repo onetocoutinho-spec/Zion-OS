@@ -14,8 +14,10 @@
 // produto dependendo de onde ele foi pedido, e ninguém saberia qual é o certo.
 
 import { agentePorFerramenta } from "../agentes/catalogo";
-import { chamarIAEstruturada, provedorConfigurado } from "../agentes/provedorIA";
+import { chamarIAEstruturada, provedorConfigurado, type RastroDaExecucao } from "../agentes/provedorIA";
 import { LIMITE_DE_TITULO } from "../../modules/publication/domain/preparacaoDoAnuncio";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
+import { blocoDoPerfil, type PerfilDeConteudo } from "@/modules/assistant/domain/perfilDeConteudo";
 
 const ESQUEMA_TITULO = {
   type: "object",
@@ -38,6 +40,20 @@ export interface EntradaDoTitulo {
   marca: string;
   modelo: string;
   tituloAtual: string;
+  /**
+   * O AJUSTE pedido pelo lojista sobre um título já proposto ("deixa mais
+   * curto", "tira a marca"). Com ela, o agente parte do `tituloAtual` e muda
+   * só o que foi pedido — em vez de regerar do zero e perder os 80% que já
+   * estavam aprovados. (Auditoria do Copilot, 2026-08-22, P1.)
+   */
+  instrucao?: string;
+  /**
+   * O MOTIVO de uma retentativa — a recusa do juiz na primeira tentativa
+   * ("68 caracteres; o limite é 60"). Uma vez só, decidida por quem chama.
+   */
+  retentativaPor?: string;
+  /** Como ESTA loja vende — o bloco entra no prompt quando existe. */
+  perfil?: PerfilDeConteudo | null;
 }
 
 /**
@@ -51,17 +67,32 @@ export interface EntradaDoTitulo {
  * isso que o modelo não tem como afirmá-los.
  */
 export async function gerarTituloOtimizado(
-  e: EntradaDoTitulo
+  e: EntradaDoTitulo,
+  /** Quem paga — para `ia_execucoes`. Opcional: sem sessão, sem rastro. */
+  rastro?: RastroDaExecucao
 ): Promise<{ titulo: string; justificativa: string } | null> {
   if (!provedorConfigurado()) return null;
   const agente = agentePorFerramenta("titulo");
   if (!agente) return null;
 
+  // Nome, marca, modelo e título atual vêm de fora (ML, CSV, PDF) — são DADO,
+  // não instrução, e entram cercados. Ver `dadoExterno.ts`.
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
-    e.tituloAtual ? `Título atual: ${e.tituloAtual}` : "Título atual: (vazio)",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
+    e.tituloAtual ? `Título atual: ${dadoExterno("anuncio-titulo", e.tituloAtual)}` : "Título atual: (vazio)",
+    ...(e.instrucao
+      ? [
+          "",
+          `AJUSTE PEDIDO PELO LOJISTA: ${dadoExterno("pedido-do-lojista", e.instrucao)}`,
+          "Parta do título atual e mude SÓ o que o ajuste pede. Tudo o que ele não questionou fica como está — palavra por palavra sempre que couber.",
+        ]
+      : []),
+    ...(e.retentativaPor ? ["", `A TENTATIVA ANTERIOR FOI RECUSADA: ${e.retentativaPor}. Corrija exatamente isso, cortando do fim (o menos importante) e mantendo a keyword principal na frente.`] : []),
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     // A trava contra fabricação, repetida junto dos dados porque é aqui que ela
     // vale: o que não está acima não existe para esta chamada.
@@ -74,6 +105,7 @@ export async function gerarTituloOtimizado(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_TITULO,
+      ...(rastro ? { rastro: { ...rastro, origem: "titulo" as const } } : {}),
       maxTokens: 400,
     });
     const r = JSON.parse(json) as { titulo?: string; justificativa?: string };

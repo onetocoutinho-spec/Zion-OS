@@ -40,6 +40,10 @@ const DIR = new URL("./", import.meta.url);
  *
  * O que a sentinela guarda é a coluna usada numa CONSULTA. Comentários saem
  * antes da varredura; strings de `.select(...)` continuam inteiras.
+ *
+ * E um arquivo pode CITAR o nome errado ao contar a história — foi o que
+ * aconteceu em 24/08/2026, quando este teste reprovou por causa de um
+ * comentário.
  */
 const semComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -53,8 +57,11 @@ const FONTES = readdirSync(DIR)
 
 test("`criado_em` NÃO aparece em nenhum arquivo que toca `anuncios_gerados`", () => {
   // O nome errado, agora conhecido. Se voltar, volta com o mesmo silêncio.
+  // A busca é sobre o CÓDIGO: em 24/08/2026 este teste reprovou por causa de um
+  // COMENTÁRIO que citava o defeito de 10/08 ao registrar um parente dele. Um
+  // guarda que proíbe contar a própria história ensina a apagá-la.
   const culpados = FONTES.filter(
-    (f) => f.texto.includes("anuncios_gerados") && /\bcriado_em\b/.test(f.texto)
+    (f) => f.texto.includes("anuncios_gerados") && /\bcriado_em\b/.test(semComentarios(f.texto))
   ).map((f) => f.nome);
   assert.deepEqual(
     culpados,
@@ -96,4 +103,102 @@ test("o `catch` que engoliu o erro continua DIZENDO que engoliu", () => {
   const prep = FONTES.find((f) => f.nome === "preparacaoDeAnuncio.ts")!.texto;
   const quantos = (prep.match(/console\.error\(/g) ?? []).length;
   assert.ok(quantos >= 2, `esperava logs nos catch de leitura, achei ${quantos}`);
+});
+
+// ===========================================================================
+// A TRAVA GERAL — porque a de cima só pegava o nome errado JÁ CONHECIDO
+// ===========================================================================
+//
+// Em 24/08/2026 o mesmo defeito voltou, no mesmo arquivo-alvo e com outro
+// nome: `anunciosNoArNoServidor.ts` pedia a coluna `produto` de
+// `anuncios_gerados`. Ela não existe — o nome do produto chega por EMBED
+// (`produtos(nome)`), e é o TIPO de aplicação que tem o campo `produto`.
+//
+// O PostgREST recusa a consulta inteira, `lerTudoPaginado` lança, e as três
+// ferramentas de anúncio (`anuncios_ativos`, `anuncios_a_corrigir`,
+// `diagnostico_de_agrupamento`) nasceram quebradas. Passaram por tsc, por
+// eslint e por 3.268 testes: nenhum deles fala com o banco, e o defeito só
+// apareceu quando a lojista perguntou.
+//
+// A trava de cima é uma LISTA NEGRA de um nome. Esta compara o que o código
+// PEDE com o que o tipo gerado DECLARA — pega o próximo nome errado, que
+// ninguém conhece ainda.
+//
+// Limite honesto: `database.types.ts` é escrito à mão neste projeto, então ele
+// pode divergir do banco. Ele é a melhor fonte disponível sem rede, e uma
+// divergência entre código e tipo já é defeito por si só.
+
+const TIPOS = readFileSync(new URL("../supabase/database.types.ts", DIR), "utf8");
+
+/** tabela → interface de linha. Só as que têm tipo declarado. */
+const ROW_DA_TABELA: Readonly<Record<string, string>> = {
+  anuncios_gerados: "AnuncioGeradoRow",
+  produtos: "ProdutoRow",
+  produto_variantes: "ProdutoVarianteRow",
+  produto_atributos: "ProdutoAtributoRow",
+  imagens_produto: "ImagemProdutoRow",
+  anuncio_variantes: "AnuncioVarianteRow",
+  tabelas_medidas: "TabelaMedidaRow",
+};
+
+/** Os campos declarados numa interface de linha. */
+function camposDe(nomeDaInterface: string): Set<string> {
+  const i = TIPOS.indexOf(`export interface ${nomeDaInterface} {`);
+  assert.ok(i >= 0, `não achei a interface ${nomeDaInterface}`);
+  const corpo = TIPOS.slice(i, TIPOS.indexOf("\n}", i));
+  return new Set([...corpo.matchAll(/^\s{2}([a-z_]+)\??:/gm)].map((m) => m[1]));
+}
+
+/** Os `.from("x").select("...")` de um arquivo, com a tabela junto. */
+function selecoesDe(texto: string): { tabela: string; colunas: string[] }[] {
+  const saida: { tabela: string; colunas: string[] }[] = [];
+  for (const m of texto.matchAll(/\.from\("([a-z_]+)"\)([\s\S]{0,400}?)\.select\("([^"]*)"\)/g)) {
+    // Só a MESMA cadeia: se houver outro `.from(` no meio, o par não é de verdade.
+    if (m[2].includes(".from(")) continue;
+    const colunas = m[3]
+      // Embeds primeiro: `produtos(nome, marca)` tem vírgulas DENTRO, e separar
+      // por vírgula antes de removê-los parte o embed ao meio — foi o que fez a
+      // primeira versão desta trava acusar `modelo)` de ser coluna.
+      // `produtos!inner(id, nome)` também é embed: o `!hint` faz parte do nome
+      // da relação, e sem ele na classe o resto do embed vaza como "coluna".
+      .replace(/[a-z_]+(?:![a-z_]+)?\([^)]*\)/g, "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter((c) => c && c !== "*")
+      .map((c) => c.split(":").pop()!.trim());
+    saida.push({ tabela: m[1], colunas });
+  }
+  return saida;
+}
+
+test("toda coluna pedida num `.select` existe no tipo da tabela", () => {
+  const erros: string[] = [];
+  for (const f of FONTES) {
+    for (const { tabela, colunas } of selecoesDe(f.texto)) {
+      const row = ROW_DA_TABELA[tabela];
+      if (!row) continue; // tabela sem tipo declarado — fora do alcance desta trava
+      const campos = camposDe(row);
+      for (const c of colunas) {
+        if (!campos.has(c)) erros.push(`${f.nome}: ${tabela}.${c} não existe em ${row}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    erros,
+    [],
+    "\n\nColuna pedida ao PostgREST que o tipo não declara. O PostgREST recusa a\n" +
+      "CONSULTA INTEIRA, e quem chama costuma ler isso como 'não há dados'.\n"
+  );
+});
+
+test("a varredura enxerga as consultas que deveria — senão ela passa vazia", () => {
+  // Uma trava que não encontra nada passa sempre. Este teste é o teste dela.
+  const encontradas = FONTES.flatMap((f) => selecoesDe(f.texto)).filter(
+    (s) => s.tabela in ROW_DA_TABELA
+  );
+  assert.ok(encontradas.length >= 10, `só ${encontradas.length} consultas cobertas — a regex parou de casar`);
+  assert.ok(
+    encontradas.some((s) => s.tabela === "anuncios_gerados" && s.colunas.includes("ml_item_id")),
+    "a consulta que quebrou em 24/08 não está sendo enxergada"
+  );
 });

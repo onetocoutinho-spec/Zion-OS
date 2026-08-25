@@ -16,32 +16,29 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarClientes } from "@/lib/services/clientes";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { listarProdutos } from "@/lib/services/produtos";
 import { buscarVendasDoCliente, calcularMetricas } from "@/lib/services/vendasML";
 import { formatBRL } from "@/lib/format";
 import type { PedidoML } from "@/lib/marketplaces/mercadolivre";
 
-const SELECT =
-  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 const PERIODOS = [7, 30, 90];
 
 export default function VendasEquipe() {
-  const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
-  const [clienteId, setClienteId] = useState("");
+  // A loja vem do contexto global. Antes esta tela auto-selecionava a PRIMEIRA
+  // loja da lista: um F5 na Loja B mostrava as vendas da Loja A sem avisar.
+  const { lojaId } = useLojaAtual();
+  const clienteId = lojaId ?? "";
   const [dias, setDias] = useState(30);
   const [pedidos, setPedidos] = useState<PedidoML[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
-
-  // Seleciona o primeiro cliente automaticamente.
-  useEffect(() => {
-    if (!clienteId && clientes && clientes.length > 0) setClienteId(clientes[0].id);
-  }, [clientes, clienteId]);
 
   async function carregar() {
     if (!clienteId || carregando) return;
@@ -76,11 +73,7 @@ export default function VendasEquipe() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader title="Vendas" description="Faturamento e lucro líquido por cliente, com dados reais do Mercado Livre." />
         <div className="flex flex-wrap items-center gap-2">
-          <select className={SELECT} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            {(clientes ?? []).map((c) => (
-              <option key={c.id} value={c.id}>{c.empresa}</option>
-            ))}
-          </select>
+          <FiltroDeLoja obrigatorio />
           <div className="inline-flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-xs">
             {PERIODOS.map((d) => (
               <button
@@ -100,7 +93,11 @@ export default function VendasEquipe() {
         </div>
       </div>
 
-      {aviso && (
+      {!clienteId && (
+        <EmptyState mensagem="Escolha a loja para ver o faturamento e o lucro dela no Mercado Livre." />
+      )}
+
+      {clienteId && aviso && (
         <p className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-400">
           <AlertTriangle size={15} /> {aviso}
         </p>

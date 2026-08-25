@@ -167,7 +167,7 @@ export function PublicarAnuncio({
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-        <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+        <div className="relative flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-white/10 bg-surface-raised">
           <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
             <div>
               <p className="text-sm font-semibold text-white">Publicar no {registro.marketplace}</p>

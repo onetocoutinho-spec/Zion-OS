@@ -27,8 +27,10 @@ import {
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import {
   corDoTitulo,
@@ -207,7 +209,14 @@ export async function POST(request: Request) {
     );
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+    // A CREDENCIAL SO PELO ADMIN — nao por `ctx.supabase`.
+    //
+    // Esta rota nasceu antes das migracoes 059/061, que tiraram
+    // `refresh_token` do alcance de `authenticated` e cifraram a coluna.
+    // Com o papel do usuario a leitura nao alcanca mais o dado — e, antes
+    // disso, ler credencial com o papel de quem pediu e o nivel de
+    // confianca errado. `credencialForaDoNavegador` guarda isso.
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -220,7 +229,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     // ---- A FOTO. Reusar quando ela JÁ vive no ML; subir só quando não vive.
@@ -235,7 +244,7 @@ export async function POST(request: Request) {
     // 1. `foto.url` é a variante `-O` do CDN do ML, que serve 500px. Subi uma
     //    cópia de 500x500 de uma imagem cujo original tem 1200x1200 — e as
     //    capas dela PIORARAM. É exatamente a armadilha que eu tinha escrito na
-    //    migração 059 e na qual entrei mesmo assim.
+    //    migração 075 e na qual entrei mesmo assim.
     //
     // 2. Todo upload cria um id NOVO no ML. Então `ja-e-a-capa` nunca dispara
     //    para a mesma imagem reenviada — e `612023-...`, que já era a capa dos
@@ -501,10 +510,7 @@ export async function POST(request: Request) {
         sobra,
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao aplicar a capa." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/aplicar-capa", e, "Falha ao aplicar a capa.", 422);
   }
 }
 

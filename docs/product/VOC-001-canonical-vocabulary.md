@@ -98,6 +98,14 @@ Ontologia de tokens → cadeia `system/`.
 - **C3 · "Cliente"** — a ambiguidade mais perigosa (lojista × comprador).
   **Norma: Cliente = quem contrata a Zion; Comprador = quem compra no canal.**
   Sem exceções.
+  - **Emenda E-UX-1 (2026-08-22, docs/product/ux):** na INTERFACE, a unidade
+    operacional chama-se **Loja** — nunca "Cliente", "Empresa" ou "Conta". Para
+    a agência, "cliente" seria a loja; para o lojista, "cliente" é o Comprador;
+    a mesma palavra em duas telas vizinhas significava duas coisas. "Cliente"
+    fica reservado à relação comercial Zion↔contratante, só em telas da equipe
+    (contratos, plano). O lojista nunca lê "Portal do Cliente": lê o nome da
+    loja dele. No banco a tabela continua `clientes` — vocabulário de interface
+    não justifica migração.
 
 ## Termos abolidos
 

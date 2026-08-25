@@ -11,7 +11,7 @@
 //     "não li as infrações" de "não há infrações"
 //   · `POSSO_RESPONDER`, que ANUNCIA a pergunta à lojista      ✔
 //     ("Quantas infrações o Mercado Livre registrou na sua conta")
-//   · o `enum` de `assunto` no schema de `/api/assistente`     ✘
+//   · o `enum` de `assunto` no schema da FERRAMENTA `contar`     ✘
 //
 // Com saída estruturada em json_schema, o modelo NÃO EMITE valor fora do enum.
 // O prompt pedia `infracao`, o card de recusa oferecia a pergunta, e ela era a
@@ -32,26 +32,32 @@ import assert from "node:assert/strict";
 import { lerFonte } from "../../../testing/lerFonte.ts";
 import { ASSUNTOS_CONTAVEIS_PARA_TESTE, POSSO_RESPONDER } from "./perguntaDaOperacao.ts";
 
-const ROTA = lerFonte(new URL("../../../app/api/assistente/route.ts", import.meta.url), "utf8");
+// A ROTA de classificação foi aposentada em 24/08/2026 (ver
+// `escaladaDaPergunta.test.ts`), e o mesmo enum vive hoje na FERRAMENTA
+// `contar` — que é por onde o Copilot conta desde então. O defeito que este
+// arquivo pega é o mesmo, um lugar adiante: a divergência entre o que o
+// domínio sabe contar e o que o modelo consegue pedir.
+const CATALOGO = lerFonte(new URL("./ferramentasDoAssistente.ts", import.meta.url), "utf8");
 
-/** Os valores do `enum` de `assunto` no schema da rota, lidos da fonte. */
+/** Os valores do `enum` de `assunto` no schema da ferramenta `contar`. */
 function assuntosDoSchema(): string[] {
-  const bloco = /assunto:\s*\{\s*type:\s*"string",\s*enum:\s*\[([\s\S]*?)\]/.exec(ROTA);
-  assert.ok(bloco, "não achei o enum de `assunto` no schema da rota");
+  const daFerramenta = CATALOGO.slice(CATALOGO.indexOf('nome: "contar"'));
+  const bloco = /assunto:\s*\{\s*type:\s*"string",\s*enum:\s*\[([\s\S]*?)\]/.exec(daFerramenta);
+  assert.ok(bloco, "não achei o enum de `assunto` na ferramenta contar");
   return [...bloco[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
 }
 
-test("todo assunto contável do domínio existe no enum da rota", () => {
+test("todo assunto contável do domínio existe no enum da ferramenta", () => {
   const doSchema = new Set(assuntosDoSchema());
   for (const assunto of ASSUNTOS_CONTAVEIS_PARA_TESTE) {
     assert.ok(
       doSchema.has(assunto),
-      `"${assunto}" é contável no domínio e NÃO está no enum da rota — o modelo não consegue pedir`
+      `"${assunto}" é contável no domínio e NÃO está no enum da ferramenta — o modelo não consegue pedir`
     );
   }
 });
 
-test("o enum da rota não tem assunto que o domínio não sabe contar", () => {
+test("o enum da ferramenta não tem assunto que o domínio não sabe contar", () => {
   // "nenhum" é o único valor que não é assunto: ele significa "não se aplica".
   const contaveis = new Set<string>([...ASSUNTOS_CONTAVEIS_PARA_TESTE, "nenhum"]);
   for (const a of assuntosDoSchema()) {
@@ -76,16 +82,10 @@ test("o que POSSO_RESPONDER anuncia sobre infração tem caminho", () => {
   }
 });
 
-test("o prompt da rota e o enum falam do mesmo assunto", () => {
-  // O prompt pedia `infracao` a um modelo que não podia emitir. Instrução sem
-  // enum é instrução que a API silenciosamente descarta.
-  const noPrompt = /"infracao"/.test(ROTA);
-  assert.equal(
-    noPrompt,
-    assuntosDoSchema().includes("infracao"),
-    "o prompt e o enum discordam sobre infração"
-  );
-});
+// O teste "o prompt da rota e o enum falam do mesmo assunto" saiu em
+// 24/08/2026 junto com a rota de classificação: não há mais prompt com lista
+// de assuntos para divergir do enum. A descrição da ferramenta `contar` não
+// enumera assuntos — ela manda usar a ferramenta, e o enum é a única lista.
 
 test("ambiguidade NÃO entrega id — impedir, não pedir", () => {
   // MEDIDO EM 17/08/2026, comparando os dois caminhos do chat.

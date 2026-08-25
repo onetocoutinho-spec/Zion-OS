@@ -1,147 +1,233 @@
 "use client";
 
+// A VISÃO GERAL DO PORTFÓLIO — "qual loja precisa de mim agora?"
+//
+// Esta tela era uma grade de 10 números (um repetido), sem comparação, sem
+// ação e sem estado de carga — carregando e erro renderizavam zeros. E ficava
+// fora do menu da agência, que não tinha home nenhuma.
+// (docs/product/ux/02-PROBLEMS.md, "home / da equipe/agência")
+//
+// Agora ela responde as quatro perguntas do dashboard, nesta ordem:
+//   1. o que está acontecendo        → KPIs clicáveis
+//   2. o que precisa da minha atenção → "Precisa de atenção", com a ação exata
+//   3. o que devo fazer agora         → a ação de cada linha
+//   4. como está cada loja            → tabela (comparar pede colunas), não cards
+//
+// Equipe e agência veem a MESMA tela com conteúdos diferentes: o RLS recorta
+// as lojas. A regra que transforma dados em linhas e alertas é pura e testada
+// em src/lib/contexto/portfolio.ts.
+
 import Link from "next/link";
-import {
-  Users,
-  Rocket,
-  Package,
-  Megaphone,
-  FileWarning,
-  ShieldAlert,
-} from "lucide-react";
+import { Store, Megaphone, AlertTriangle, Package, ShieldAlert, ArrowRight } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
+import { Table, Td, TdMain } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { EstadoDaLoja } from "@/components/ui/EstadoDaLoja";
+import { LinkButton, Button } from "@/components/ui/Button";
+import { EsqueletoDeBloco, EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { useLiveQuery } from "@/lib/hooks";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { resumoDoPortfolio, type ItemDeAtencao } from "@/lib/contexto/portfolio";
 import { listarClientes } from "@/lib/services/clientes";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarResumoDeAnuncios } from "@/lib/services/anunciosGerados";
-import { listarRelatorios } from "@/lib/services/relatorios";
+import { listarPendencias } from "@/lib/services/pendencias";
 
-export default function DashboardPage() {
-  const { data: clientesData } = useLiveQuery(listarClientes);
-  const { data: produtosData } = useLiveQuery(listarProdutos);
-  const { data: anunciosData } = useLiveQuery(listarResumoDeAnuncios);
-  const { data: relatoriosData } = useLiveQuery(listarRelatorios);
+const HEADERS = ["Loja", "Estado", "Marketplaces", "Produtos", "No ar", "Com problema", "Pendências", ""];
 
-  const clientes = clientesData ?? [];
-  const produtos = produtosData ?? [];
-  const anuncios = anunciosData ?? [];
-  const relatorios = relatoriosData ?? [];
+export default function VisaoGeralPage() {
+  const { definirLoja } = useLojaAtual();
+  const lojas = useLiveQuery(listarClientes);
+  const produtos = useLiveQuery(listarProdutos);
+  const anuncios = useLiveQuery(listarResumoDeAnuncios);
+  const pendencias = useLiveQuery(listarPendencias);
 
-  // Indicadores calculados em tempo real a partir do store.
-  //
-  // Tudo aqui se DERIVA do catálogo e dos anúncios. Nada depende de alguém da
-  // Zion ter lembrado de registrar uma tarefa, uma reunião ou uma mensalidade —
-  // as três telas que sustentavam esses números saíram em 07/08, com zero linhas
-  // no banco depois de meses. Número que só existe se um humano digitar é
-  // número que fica desatualizado em silêncio.
-  //
-  // OS ANÚNCIOS VÊM DE `anuncios_gerados`, e essa troca é o conserto de um
-  // defeito meu: quando reescrevi este painel algumas horas antes, apontei os
-  // cartões para `anuncios` — a tabela da era agência, com ZERO linhas. Dois
-  // cartões mostravam zero numa loja com 790 anúncios publicados. A tabela viva
-  // é a da esteira, e é ela que o resto do produto usa (18 arquivos contra um).
-  //
-  // `listarResumoDeAnuncios` não traz o JSONB do conteúdo: contar não pode
-  // custar 1 MB de anúncio que ninguém vai abrir nesta tela.
-  //
-  // O CUSTO QUE SOBRA, medido e aceito: mesmo sem o JSONB, são ~322 kB por
-  // carga (1.377 kB menos os 1.055 do JSONB, em 880 anúncios) para produzir
-  // DOIS inteiros. Aceito porque esta tela é só da equipe — a agência não tem
-  // "/" no menu (`navDoPapel`) e a lojista vive em /cliente. São dois usuários.
-  //
-  // O gatilho para trocar por um `count: "exact", head: true` é claro: no dia
-  // em que o painel abrir para a agência, ou em que os anúncios passarem de
-  // alguns milhares. Egress é a parede mais próxima do plano Free.
-  const clientesAtivos = clientes.filter((c) => c.status === "Ativo").length;
-  const emOnboarding = clientes.filter((c) => c.status === "Onboarding").length;
-  const produtosEmCadastro = produtos.filter(
-    (p) => p.statusCadastro === "Em cadastro" || p.statusCadastro === "Não iniciado"
-  ).length;
-  const anunciosEmOtimizacao = anuncios.filter((a) => a.status !== "publicado").length;
-  const relatoriosPendentes = relatorios.filter(
-    (r) => r.status === "Pendente" || r.status === "Em elaboração"
-  ).length;
-  const clientesEmRisco = clientes.filter(
-    (c) => c.status === "Em risco" || c.risco === "Alto"
-  ).length;
+  const consultas = [lojas, produtos, anuncios, pendencias];
+  const carregando = consultas.some((c) => c.carregando);
+  const erro = consultas.find((c) => c.erro)?.erro ?? null;
 
-  const clientesAtencao = clientes.filter(
-    (c) => c.risco !== "Baixo" || c.status === "Em risco"
-  );
+  function tentarDeNovo() {
+    consultas.forEach((c) => c.reload());
+  }
 
-  const anunciosPublicados = anuncios.filter((a) => a.status === "publicado").length;
+  if (erro) {
+    return (
+      <div className="space-y-6">
+        <Cabecalho />
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-300">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={16} /> Não consegui ler o portfólio agora. {erro.message}
+          </span>
+          <Button variant="ghost" onClick={tentarDeNovo}>
+            Tentar de novo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (carregando) {
+    return (
+      <div className="space-y-6" aria-busy="true">
+        <Cabecalho />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
+          {Array.from({ length: 5 }, (_, i) => (
+            <EsqueletoDeBloco key={i} altura="h-24" />
+          ))}
+        </div>
+        <EsqueletoDeBloco altura="h-32" />
+        <EsqueletoDeTabela linhas={6} colunas={7} />
+      </div>
+    );
+  }
+
+  const r = resumoDoPortfolio(lojas.data ?? [], anuncios.data ?? [], produtos.data ?? [], pendencias.data ?? []);
+
+  if (r.totais.lojas === 0) {
+    return (
+      <div className="space-y-6">
+        <Cabecalho />
+        <EmptyState
+          mensagem="Você ainda não opera nenhuma loja. Adicione a primeira para começar — ou peça à Zion para vincular lojas à sua agência."
+          acaoLabel="Adicionar loja"
+          acaoHref="/clientes/novo"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-white">
-          Visão geral da operação
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Resumo em tempo real dos clientes, produtos e anúncios da Zion Company.
-        </p>
+      <Cabecalho />
+
+      {/* 1. O que está acontecendo — cada número é uma porta. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
+        <StatCard label="Lojas" value={r.totais.lojas} hint={`${r.totais.lojasAtivas} ativas`} icon={Store} tone="violet" href="/clientes" />
+        <StatCard label="Anúncios no ar" value={r.totais.noAr} hint="na palavra do Mercado Livre" icon={Megaphone} tone="green" href="/esteira/aprovacoes" />
+        <StatCard
+          label="Anúncios com problema"
+          value={r.totais.comProblema}
+          hint="infração ou parados na esteira"
+          icon={AlertTriangle}
+          tone={r.totais.comProblema > 0 ? "yellow" : "gray"}
+          href="/esteira/aprovacoes"
+        />
+        <StatCard label="Produtos em cadastro" value={r.totais.produtosEmCadastro} hint="ainda não publicados" icon={Package} tone="blue" href="/produtos" />
+        <StatCard
+          label="Precisam de atenção"
+          value={r.totais.precisamDeAtencao}
+          hint={r.totais.precisamDeAtencao === 0 ? "nada exige ação agora" : "lojas com algo a resolver"}
+          icon={ShieldAlert}
+          tone={r.totais.precisamDeAtencao > 0 ? "orange" : "gray"}
+          href="#atencao"
+        />
       </div>
 
-      {/* Indicadores */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
-        <StatCard label="Clientes ativos" value={clientesAtivos} icon={Users} tone="green" hint="Contratos em operação" />
-        <StatCard label="Clientes em onboarding" value={emOnboarding} icon={Rocket} tone="violet" hint="Entrando na operação" />
-        <StatCard label="Produtos em cadastro" value={produtosEmCadastro} icon={Package} tone="blue" hint="Aguardando publicação" />
-        <StatCard label="Anúncios em produção" value={anunciosEmOtimizacao} icon={Megaphone} tone="cyan" hint="Na esteira, ainda não publicados" />
-        <StatCard label="Relatórios pendentes" value={relatoriosPendentes} icon={FileWarning} tone="yellow" hint="A elaborar ou enviar" />
-        <StatCard label="Clientes em risco" value={clientesEmRisco} icon={ShieldAlert} tone="orange" hint="Exigem atenção imediata" />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {/* Clientes que precisam de atenção */}
-        <Card title="Clientes que precisam de atenção">
-          <ul className="space-y-3">
-            {clientesAtencao.map((c) => (
-              <li key={c.id} className="flex items-start justify-between gap-3">
-                <Link href={`/clientes/${c.id}`} className="min-w-0">
-                  <p className="text-sm font-medium text-zinc-200 hover:text-violet-300">{c.empresa}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{c.proximaAcao}</p>
-                </Link>
-                <div className="flex shrink-0 gap-1.5">
-                  <Badge>{c.status}</Badge>
-                  <Badge>{c.risco}</Badge>
-                </div>
-              </li>
+      {/* 2–3. O que precisa de mim, e o que fazer — acima da tabela: urgência antes de panorama. */}
+      <Card title="Precisa de atenção">
+        <div id="atencao" />
+        {r.atencao.length === 0 ? (
+          <p className="flex items-center gap-2 text-sm text-emerald-400">
+            <span aria-hidden="true">●</span> Nada exige atenção agora. Todas as lojas estão saudáveis.
+          </p>
+        ) : (
+          <ul className="divide-y divide-white/5">
+            {r.atencao.slice(0, 6).map((item) => (
+              <LinhaDeAtencao key={item.lojaId} item={item} aoEntrar={() => definirLoja(item.lojaId, { soContexto: true })} />
             ))}
-            {clientesAtencao.length === 0 && (
-              <p className="text-sm text-zinc-500">Nenhum cliente em risco. ✓</p>
+            {r.atencao.length > 6 && (
+              <li className="pt-3 text-xs text-zinc-500">
+                + {r.atencao.length - 6} lojas na tabela abaixo, ordenadas por gravidade.
+              </li>
             )}
           </ul>
-        </Card>
+        )}
+      </Card>
 
-        {/* Resumo da semana */}
-        <Card title="Resumo da operação da semana">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg bg-white/[0.03] p-3">
-              <p className="text-lg font-semibold text-white">{anunciosPublicados}</p>
-              <p className="text-xs text-zinc-500">Anúncios no ar</p>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] p-3">
-              <p className="text-lg font-semibold text-white">{anunciosEmOtimizacao}</p>
-              <p className="text-xs text-zinc-500">Na esteira</p>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] p-3">
-              <p className="text-lg font-semibold text-white">{produtos.length}</p>
-              <p className="text-xs text-zinc-500">Produtos no catálogo</p>
-            </div>
-            <div className="rounded-lg bg-white/[0.03] p-3">
-              <p className="text-lg font-semibold text-white">{produtosEmCadastro}</p>
-              <p className="text-xs text-zinc-500">Produtos em cadastro</p>
-            </div>
+      {/* 4. Como está cada loja — tabela, porque a tarefa é comparar. */}
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Lojas</h2>
+            <p className="text-xs text-zinc-500">Clique na loja para operá-la — o contexto muda em todas as telas.</p>
           </div>
-          <p className="mt-4 text-xs leading-relaxed text-zinc-500">
-            Destrave os produtos parados no cadastro, feche os anúncios que ainda
-            estão na esteira e envie os relatórios do período.
-          </p>
-        </Card>
-      </div>
+          <LinkButton href="/clientes" variant="ghost" className="text-xs">
+            Todas as lojas <ArrowRight size={13} />
+          </LinkButton>
+        </div>
+        <Table headers={HEADERS}>
+          {r.linhas.map((l) => (
+            <tr key={l.loja.id} className="hover:bg-white/[0.02]">
+              {/* O status vai em `sub`, não num <p> próprio: TdMain já envolve
+                  os filhos num <p>, e <p> dentro de <p> é HTML inválido — o
+                  navegador fecha o primeiro sozinho e o React avisa que a
+                  hidratação vai divergir. */}
+              <TdMain sub={l.loja.status}>
+                <Link
+                  href={`/clientes/${l.loja.id}`}
+                  onClick={() => definirLoja(l.loja.id, { soContexto: true })}
+                  className="inline-flex items-center font-medium text-zinc-200 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
+                >
+                  {l.loja.empresa}
+                </Link>
+              </TdMain>
+              <Td>
+                <EstadoDaLoja saude={l.saude} comRotulo />
+              </Td>
+              <Td className="text-xs">{l.loja.marketplaces.length > 0 ? l.loja.marketplaces.join(", ") : <span className="text-amber-400">nenhum</span>}</Td>
+              <Td className="tabular-nums">{l.produtos}</Td>
+              <Td className="tabular-nums">{l.noAr}</Td>
+              <Td className={`tabular-nums ${l.comProblema + l.comInfracao > 0 ? "text-amber-400" : ""}`}>{l.comProblema + l.comInfracao}</Td>
+              <Td className="tabular-nums">{l.pendenciasAbertas}</Td>
+              <Td>
+                <Link
+                  href={`/clientes/${l.loja.id}`}
+                  onClick={() => definirLoja(l.loja.id, { soContexto: true })}
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
+                >
+                  Operar <ArrowRight size={12} />
+                </Link>
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      </section>
     </div>
+  );
+}
+
+function Cabecalho() {
+  return (
+    <div>
+      <h1 className="text-xl font-semibold tracking-tight text-white">Visão geral</h1>
+      <p className="mt-1 text-sm text-zinc-500">Qual loja precisa de você agora, e como está cada uma.</p>
+    </div>
+  );
+}
+
+const COR_DO_NIVEL: Record<ItemDeAtencao["nivel"], string> = {
+  ok: "text-emerald-400",
+  atencao: "text-amber-400",
+  risco: "text-red-400",
+};
+
+function LinhaDeAtencao({ item, aoEntrar }: { item: ItemDeAtencao; aoEntrar: () => void }) {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-start gap-3">
+        <span aria-hidden="true" className={`mt-0.5 text-xs ${COR_DO_NIVEL[item.nivel]}`}>
+          {item.nivel === "risco" ? "▲" : "⚠"}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-zinc-200">{item.loja}</p>
+          <p className="mt-0.5 text-xs text-zinc-500">{item.motivo}</p>
+        </div>
+      </div>
+      {/* A ação leva à tela onde se resolve, já com a loja no contexto. */}
+      <LinkButton href={item.href} variant="ghost" className="shrink-0 text-xs" onClick={aoEntrar}>
+        {item.acao} <ArrowRight size={12} />
+      </LinkButton>
+    </li>
   );
 }

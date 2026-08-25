@@ -651,6 +651,10 @@ export async function importarAnunciosDoCliente(
   });
   const dados = await lerJson<{
     anuncios?: AnuncioML[];
+    /** Os que a BUSCA não devolve, lidos por id. Só a conferida os usa. */
+    orfaos?: AnuncioML[];
+    /** Ids que o ML não reconheceu. Informação, não "encerrado". */
+    orfaosNaoEncontrados?: string[];
     /** O recorte da ficha, por categoria, vindo da API pública do ML. */
     foraDaFicha?: ForaDaFichaPorCategoria;
     obrigatorios?: Record<string, { id: string; nome: string }[]>;
@@ -722,9 +726,18 @@ export async function importarAnunciosDoCliente(
     // intocado: ausência não é encerramento.
     let gravados = 0;
     let gravadosQueFalharam = 0;
+    // OS ÓRFÃOS ENTRAM AQUI, e só aqui.
+    //
+    // `todos` alimenta o agrupamento em produtos nos modos destrutivos; os
+    // órfãos não podem entrar lá sem mudar como o catálogo é reconstruído. A
+    // conferida só ATUALIZA ESTADO, então juntá-los é seguro — e é o único
+    // jeito de os 15 pararem de ficar congelados.
+    const orfaos = (dados.orfaos ?? []).filter((a) => a.mlb);
+    const paraMedir = [...todos, ...orfaos];
+
     const mudaram = estadosDesatualizados(
       existentes,
-      todos.map((a) => ({
+      paraMedir.map((a) => ({
         mlb: a.mlb,
         status: a.status,
         subStatus: a.subStatus ?? [],
@@ -732,6 +745,20 @@ export async function importarAnunciosDoCliente(
         estoque: a.estoque,
         // 056: o `category_id` ja vinha em toda leitura e era descartado.
         categoriaMl: a.categoria,
+        // 074 — OS SETE ENTRAM NO CAMINHO SEGURO.
+        //
+        // `medir` é o "Conferir agora": não apaga nada, sai antes das cinco
+        // operações destrutivas. `substituir` apaga a importação anterior
+        // inteira. Deixar os sete só no destrutivo significaria que ter o tipo
+        // do anúncio — o que decide se a comissão é 14% ou 19% — custaria
+        // recriar o catálogo. E não há leitura nova: vêm do MESMO multiget.
+        tipoAnuncioMl: (a.tipoDeAnuncio || "").trim() || null,
+        criadoEmMl: (a.criadoEmML || "").trim() || null,
+        atualizadoEmMl: (a.atualizadoEmML || "").trim() || null,
+        vendidosMl: typeof a.vendidos === "number" ? a.vendidos : null,
+        saudeMl: typeof a.saude === "number" ? a.saude : null,
+        doCatalogoMl: typeof a.doCatalogo === "boolean" ? a.doCatalogo : null,
+        temDescricaoMl: typeof a.temDescricao === "boolean" ? a.temDescricao : null,
       })),
       new Date().toISOString()
     );
@@ -1040,6 +1067,19 @@ export async function importarAnunciosDoCliente(
       subStatusMarketplace: a.subStatus ?? [],
       fotoCapaMaxSize: (a.fotoCapaMaxSize || "").trim() || null,
       estoqueMarketplace: typeof a.estoque === "number" ? a.estoque : null,
+      // 074 — SETE CAMPOS QUE JÁ CHEGAVAM E MORRIAM AQUI.
+      //
+      // Nada de leitura nova: `mapearItem` já extraía os sete do mesmo
+      // multiget. Eles atravessavam a importação inteira e sumiam quando a
+      // requisição terminava. O caro é `tipoAnuncioMl`: sem ele a comissão da
+      // margem sai da configuração da loja inteira, e o ML diz por anúncio.
+      tipoAnuncioMl: (a.tipoDeAnuncio || "").trim() || null,
+      criadoEmMl: (a.criadoEmML || "").trim() || null,
+      atualizadoEmMl: (a.atualizadoEmML || "").trim() || null,
+      vendidosMl: typeof a.vendidos === "number" ? a.vendidos : null,
+      saudeMl: typeof a.saude === "number" ? a.saude : null,
+      doCatalogoMl: typeof a.doCatalogo === "boolean" ? a.doCatalogo : null,
+      temDescricaoMl: typeof a.temDescricao === "boolean" ? a.temDescricao : null,
       aprovadoPor: "Mercado Livre",
       aprovadoEm: agora,
       criadoEm: agora,

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
 import { useLiveQuery } from "@/lib/hooks";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
-import { listarClientes } from "@/lib/services/clientes";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { MARKETPLACES } from "@/lib/constantes";
 import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
 import type { Tone } from "@/lib/status";
@@ -32,16 +32,16 @@ const TONE_PRIORIDADE: Record<PrioridadeAuditoria, Tone> = {
 };
 
 const selectClasses =
-  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
-const HEADERS_PREVIEW = ["Título", "Categoria", "Preço", "Score", "ABC", "Prioridade", "Problemas"];
+const HEADERS_PREVIEW = ["Título", "Categoria", "Preço", "Nota", "ABC", "Prioridade", "Problemas"];
 
 export default function ImportarCsvPage() {
   const router = useRouter();
-  const { data: clientesData } = useLiveQuery(listarClientes);
-  const clientes = clientesData ?? [];
-
-  const [clienteId, setClienteId] = useState("");
+  // A loja vem do contexto global; o select abaixo só o escreve.
+  const { lojaId, lojas, definirLoja } = useLojaAtual();
+  const clientes = lojas ?? [];
+  const clienteId = lojaId ?? "";
   const [marketplace, setMarketplace] = useState<Marketplace>("Mercado Livre");
   const [nomeArquivo, setNomeArquivo] = useState("");
   const [analise, setAnalise] = useState<ResultadoAnalise | null>(null);
@@ -114,11 +114,11 @@ export default function ImportarCsvPage() {
         </p>
       </div>
 
-      <Card title="1. Cliente e arquivo">
+      <Card title="1. Loja e arquivo">
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1.5 text-xs text-zinc-500">
-            Cliente
-            <select className={selectClasses} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            Loja
+            <select className={selectClasses} value={clienteId} onChange={(e) => definirLoja(e.target.value || null)}>
               <option value="">Selecione…</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.id}>{c.empresa}</option>
@@ -236,7 +236,7 @@ export default function ImportarCsvPage() {
           <Button variant="primary" onClick={confirmar} disabled={!podeConfirmar}>
             <Upload size={14} /> Confirmar importação {analise.total > 0 ? `(${analise.total})` : ""}
           </Button>
-          {!clienteId && <span className="text-xs text-amber-400">Selecione o cliente para confirmar.</span>}
+          {!clienteId && <span className="text-xs text-amber-400">Selecione a loja para confirmar.</span>}
           {resultado && (
             <span className="flex items-center gap-1.5 text-sm text-emerald-400">
               <CheckCircle2 size={15} /> {resultado}

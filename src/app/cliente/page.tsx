@@ -15,6 +15,7 @@ import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
 import { Card } from "@/components/ui/Card";
 import { Section, Pill } from "@/components/client-portal/ui";
 import { OQueImportaAgora } from "@/components/client-portal/OQueImportaAgora";
+import { TarefasDaLoja } from "@/components/client-portal/TarefasDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
@@ -285,6 +286,9 @@ export default function ClienteHome() {
           }
         />
       )}
+
+      {/* O que a LOJA decidiu fazer — nasce do Copilot, some quando vazio. */}
+      <TarefasDaLoja />
 
       {/* Cards de visão geral — três estados, nunca um zero de mentira.
           O esqueleto reserva a geometria dos oito cartões, então quando os

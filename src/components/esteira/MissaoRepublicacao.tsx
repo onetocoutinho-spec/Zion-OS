@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
 import {
   DECLARACAO_DIFERENCA,
   escolhaPodeSeguir,
@@ -41,18 +42,22 @@ export function MissaoRepublicacao({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative flex max-h-[85vh] w-full max-w-xl flex-col rounded-xl border border-amber-500/30 bg-[#0e0e16]">
-        <div className="flex items-start gap-2.5 border-b border-white/5 px-5 py-4">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-400" />
-          <div>
-            <p className="text-sm font-semibold text-white">{missao.titulo}</p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-400">{missao.situacao}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+    // Decisão com consequência: a primitiva Dialog, com o fundo que NÃO fecha
+    // (fechar sem decidir seria uma decisão silenciosa). Esc = "Voltar".
+    <Dialog
+      aberto
+      aoFechar={onCancelar}
+      fundoNaoFecha
+      semBotaoFechar
+      tamanho="sm"
+      titulo={
+        <span className="flex items-start gap-2">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-400" /> {missao.titulo}
+        </span>
+      }
+      descricao={missao.situacao}
+    >
+        <div className="space-y-3 px-5 py-4">
           {missao.ativos.some((a) => a.mlPermalink) && (
             <div className="flex flex-wrap gap-2">
               {missao.ativos.map((a) =>
@@ -130,7 +135,6 @@ export function MissaoRepublicacao({
             {ocupado ? "Executando…" : "Confirmar"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

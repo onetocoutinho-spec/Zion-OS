@@ -110,12 +110,10 @@ export function provedorDeImagemConfigurado(): ProvedorDeImagem | null {
   const forcado = process.env.IA_IMAGEM_PROVEDOR?.toLowerCase();
   if (forcado === "openai" && temChave("openai")) return "openai";
   if (forcado === "gemini" && temChave("gemini")) return "gemini";
-  // ← PASSO 3 de 3: quando a OpenAI estiver escrita, ela vem antes desta linha.
-  if (temChave("gemini")) return "gemini";
-  // Chave da OpenAI sozinha ainda ESCOLHE a OpenAI, para que o erro seja
-  // específico ("o caminho não existe") em vez de genérico ("nada configurado").
-  // Quem pôs a chave merece saber por que não funcionou.
+  // PASSO 3 de 3, dado em 23/08/2026: a OpenAI está escrita e medida, e o dono
+  // decidiu usar só o ChatGPT — ela vem antes do Gemini.
   if (temChave("openai")) return "openai";
+  if (temChave("gemini")) return "gemini";
   return null;
 }
 

@@ -54,6 +54,8 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
       segmento: ouInfoNecessaria(form.segmento),
       proximaAcao: ouInfoNecessaria(form.proximaAcao),
       proximaReuniao: form.proximaReuniao || null,
+      // A agência é vinculada em Zion › Agências, não aqui; ao editar, preserva.
+      agenciaId: inicial?.agenciaId ?? null,
     };
 
     if (inicial) {

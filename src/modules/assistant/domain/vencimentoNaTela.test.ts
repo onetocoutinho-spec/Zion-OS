@@ -107,7 +107,8 @@ test("TODOS os cartões passam pelo desfecho computado — nenhum ficou de fora"
   // pelo menos um".
   const computados = (CHAT.match(/desfecho=\{desfechoNaTela\(t, agora\)\}/g) ?? []).length;
   // SETE desde 11/08/2026: o cartão de PUBLICAR entrou.
-  assert.equal(computados, 7, `esperava 7 cartões computando o desfecho, achei ${computados}`);
+  // 9 desde 22/08/2026: `CartaoDeTarefas` ("cria as tarefas") e `CartaoDeImagem`.
+  assert.equal(computados, 9, `esperava 9 cartões computando o desfecho, achei ${computados}`);
 });
 
 test("o desfecho REAL tem precedência sobre o vencimento", () => {
@@ -180,7 +181,17 @@ test("todo `propostaDe*Id` do Turno entra na resolução do `confirmar`", () => 
   // Sexta vez nesta sessão que uma fatia minha abrange mais do que devia.
   const fim = CHAT.indexOf("const ehCadastro");
   const resolucao = CHAT.slice(CHAT.lastIndexOf("const id =", fim), fim);
-  const foraDaLista = doTurno.filter((c) => !resolucao.includes(c));
+  // A PUBLICAÇÃO tem handler PRÓPRIO (`publicar`), não o `confirmar` genérico:
+  // pôr o id dela na lista acima confirmaria a publicação num turno que também
+  // tivesse um cartão de peso. O que a guarda exige é o mesmo — o id declarado
+  // no Turno é LIDO por quem clica —, só que do handler dedicado.
+  const publicar = CHAT.slice(
+    CHAT.indexOf("async function publicar(indice: number)"),
+    CHAT.indexOf("async function confirmarFoto(")
+  );
+  const foraDaLista = doTurno.filter(
+    (c) => !resolucao.includes(c) && !publicar.includes(`alvo?.${c}`)
+  );
   assert.deepEqual(
     foraDaLista,
     [],

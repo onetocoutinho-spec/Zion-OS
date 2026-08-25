@@ -1,30 +1,51 @@
 "use client";
 
-// Criação de usuário (agência ou cliente) — tela da EQUIPE.
-// Envia só { nome, email, papel, clienteId? } para /api/usuarios, que autoriza,
+// Criação de usuário (equipe, lojista ou agência) — tela da EQUIPE.
+// Envia só { nome, email, papel, clienteId? | agenciaId? } para /api/usuarios, que autoriza,
 // valida e cria de forma consistente (o navegador não decide privilégio nem
 // manipula service_role/token). Fluxo único do F-01.
 
-import { useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { UserPlus, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarClientes } from "@/lib/services/clientes";
+import { listarAgencias } from "@/lib/services/agencias";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 
 type Estado = "idle" | "enviando" | "ok" | "erro";
 const SELECT_CLASS =
   "w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-200 outline-none focus:border-violet-500";
 
+/** Pré-preenche papel e agência a partir de `?papel=agencia&agencia=<id>` (vindo de Zion › Agências). */
+function PreencherDaQuery({ aoLer }: { aoLer: (papel: string | null, agenciaId: string | null) => void }) {
+  const params = useSearchParams();
+  const papel = params.get("papel");
+  const agencia = params.get("agencia");
+  useEffect(() => {
+    aoLer(papel, agencia);
+  }, [papel, agencia, aoLer]);
+  return null;
+}
+
 export default function NovoUsuarioPage() {
   const { data: clientes } = useLiveQuery(listarClientes);
+  const { data: agencias } = useLiveQuery(listarAgencias);
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
-  const [papel, setPapel] = useState<"equipe" | "cliente">("equipe");
+  const [papel, setPapel] = useState<"equipe" | "cliente" | "agencia">("equipe");
   const [clienteId, setClienteId] = useState("");
+  const [agenciaId, setAgenciaId] = useState("");
   const [estado, setEstado] = useState<Estado>("idle");
+  const preencher = useCallback((p: string | null, a: string | null) => {
+    if (p === "agencia" && a) {
+      setPapel("agencia");
+      setAgenciaId(a);
+    }
+  }, []);
   const [msg, setMsg] = useState<string | null>(null);
 
   function limpar() {
@@ -32,6 +53,7 @@ export default function NovoUsuarioPage() {
     setEmail("");
     setPapel("equipe");
     setClienteId("");
+    setAgenciaId("");
   }
 
   async function enviar(e: React.FormEvent) {
@@ -42,6 +64,7 @@ export default function NovoUsuarioPage() {
 
     const corpo: Record<string, unknown> = { nome, email, papel };
     if (papel === "cliente") corpo.clienteId = clienteId;
+    if (papel === "agencia") corpo.agenciaId = agenciaId;
 
     try {
       const resp = await fetch("/api/usuarios", {
@@ -75,6 +98,9 @@ export default function NovoUsuarioPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
+      <Suspense fallback={null}>
+        <PreencherDaQuery aoLer={preencher} />
+      </Suspense>
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
           <UserPlus size={20} className="text-violet-400" /> Novo usuário
@@ -103,22 +129,41 @@ export default function NovoUsuarioPage() {
             <select
               className={SELECT_CLASS}
               value={papel}
-              onChange={(e) => setPapel(e.target.value as "equipe" | "cliente")}
+              onChange={(e) => setPapel(e.target.value as "equipe" | "cliente" | "agencia")}
             >
               <option value="equipe">Equipe (Zion)</option>
-              <option value="cliente">Cliente</option>
+              <option value="cliente">Lojista (uma loja)</option>
+              <option value="agencia">Agência (opera várias lojas)</option>
             </select>
           </Field>
 
+          {papel === "agencia" && (
+            <Field label="Agência" required>
+              <select className={SELECT_CLASS} value={agenciaId} onChange={(e) => setAgenciaId(e.target.value)} required>
+                <option value="">Selecione a agência…</option>
+                {(agencias ?? []).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.nome}
+                  </option>
+                ))}
+              </select>
+              {agencias && agencias.length === 0 && (
+                <p className="mt-1 text-xs text-zinc-500">
+                  Nenhuma agência cadastrada ainda — crie uma em Zion › Agências.
+                </p>
+              )}
+            </Field>
+          )}
+
           {papel === "cliente" && (
-            <Field label="Empresa (cliente)" required>
+            <Field label="Loja" required>
               <select
                 className={SELECT_CLASS}
                 value={clienteId}
                 onChange={(e) => setClienteId(e.target.value)}
                 required
               >
-                <option value="">Selecione a empresa…</option>
+                <option value="">Selecione a loja…</option>
                 {(clientes ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.empresa}

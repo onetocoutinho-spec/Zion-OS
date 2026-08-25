@@ -47,8 +47,10 @@ import {
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import {
   planejarOtimizacao,
@@ -113,7 +115,14 @@ async function contexto(request: Request, clienteId: string) {
   if (!ctx.supabase) {
     return { recusa: Response.json({ erro: "Supabase não configurado." }, { status: 503 }) };
   }
-  const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+  // A CREDENCIAL SO PELO ADMIN — nao por `ctx.supabase`.
+  //
+  // Esta rota nasceu antes das migracoes 059/061, que tiraram
+  // `refresh_token` do alcance de `authenticated` e cifraram a coluna.
+  // Com o papel do usuario a leitura nao alcanca mais o dado — e, antes
+  // disso, ler credencial com o papel de quem pediu e o nivel de
+  // confianca errado. `credencialForaDoNavegador` guarda isso.
+  const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
   if (!canal?.refreshToken) {
     return { recusa: Response.json({ erro: "Cliente não conectado ao ML." }, { status: 400 }) };
   }
@@ -126,7 +135,7 @@ async function contexto(request: Request, clienteId: string) {
   });
   if ("recusa" in renovacao) return { recusa: renovacao.recusa };
   await atualizarRefreshTokenServidor(
-    ctx.supabase,
+    clienteDaCredencial(),
     clienteId,
     renovacao.tokens.refreshToken,
     "Mercado Livre"
@@ -217,10 +226,9 @@ export async function POST(request: Request) {
         ],
       });
     } catch (e) {
-      return Response.json(
-        { aplicados: [], erro: e instanceof Error ? e.message : "Falha ao trocar o preço." },
-        { status: 422 }
-      );
+      return respostaDeErro("ml/otimizar-anuncio", e, "Falha ao trocar o preço.", 422, {
+        aplicados: [],
+      });
     }
   }
 
@@ -260,13 +268,12 @@ export async function POST(request: Request) {
     // 422 e não 5xx: a recusa do ML não é falha de gateway, e num 5xx o
     // Cloudflare descarta o corpo e serve a página dele — medido em 18/08/2026,
     // com o motivo real da recusa morrendo na borda.
-    return Response.json(
-      {
-        aplicados,
-        erro: e instanceof Error ? e.message : "Falha ao levar o texto ao Mercado Livre.",
-      },
-      { status: 422 }
-    );
+    return respostaDeErro(
+        "ml/otimizar-anuncio",
+        e,
+        "Falha ao levar o texto ao Mercado Livre.",
+        422
+      );
   }
 
   return Response.json({ aplicados, permissoes: plano.permissoes });

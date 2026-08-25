@@ -97,9 +97,12 @@ test("o catálogo não muda sem alguém decidir", () => {
   // `le`: não escreve, e não fala com o Mercado Livre. E não ganha poder de
   // apagar de propósito — em 18/08/2026 onze linhas que pareciam duplicatas do
   // banco carregavam, cada uma, o MLB de um anúncio VIVO diferente.
+  // 38 apos a mescla de 24/08/2026 — 22 da base, 13 da `master`, 3 da
+  // `feat/portal-da-lojista`, sem colisao de nome. O tipo `Efeito` e
+  // `EXECUCOES_REVERSIVEIS` atravessaram a mescla intocados.
   assert.equal(
     FERRAMENTAS.length,
-    25,
+    38,
     "o número de ferramentas mudou; isso é um ato, não um efeito colateral"
   );
 });

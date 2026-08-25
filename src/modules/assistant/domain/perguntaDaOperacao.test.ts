@@ -308,3 +308,27 @@ test("contagem ZERO não nomeia ninguém", () => {
   assert.doesNotMatch(r.frase, /Chinelo Azul/);
   assert.equal(r.tipo === "numero" && r.quais, undefined);
 });
+
+test("sem pendência de cadastro, a resposta NÃO afirma que a loja está em dia", () => {
+  // Medido em produção em 24/08/2026: a lojista leu "Nada travado. Sua loja
+  // está em dia." numa loja com 303 anúncios fora do ar, 148 esperando
+  // correção do Mercado Livre, e um produto com 16 anúncios e 1 ativo.
+  //
+  // A lista que este módulo enxerga é só a de PENDÊNCIA DE CADASTRO — peso,
+  // custo, foto, anúncio gerado. Ela não sabe nada sobre o que está no ar.
+  // Vazio ali é "não há pendência de cadastro", nunca "está tudo bem": é o
+  // mesmo `vazio ≠ negado ≠ desconhecido` do resto do projeto, que aqui tinha
+  // sido esquecido.
+  const r = responder(criterio({ intencao: "estado_geral" }), ctx(loja()));
+  assert.equal(r.tipo, "nada_travado");
+  assert.doesNotMatch(r.frase, /loja está em dia/i, "voltou a afirmar sobre a loja inteira");
+  assert.match(r.frase, /pendência de cadastro/i, "precisa dizer O QUE foi conferido");
+  assert.match(r.frase, /Mercado Livre/, "precisa dizer o que NÃO foi conferido");
+});
+
+test("'nada impede' é sobre o CADASTRO — o marketplace tem trava própria", () => {
+  const r = responder(criterio({ intencao: "por_que_travado", capacidade: "publicar" }), ctx(loja()));
+  assert.equal(r.tipo, "nada_travado");
+  assert.match(r.frase, /Pelo cadastro/);
+  assert.match(r.frase, /Mercado Livre pode ter trava própria/);
+});

@@ -49,11 +49,29 @@
    * #08080d e o `body` acima usa esse valor sem alternativa clara.
    */
   color-scheme: dark;
+
+  /*
+   * AS SUPERFÍCIES DO PRODUTO — três valores que estavam copiados à mão em
+   * 50+ arquivos (`bg-[#0e0e16]` em 24, `bg-[#12121c]` em 27, `bg-[#0b0b12]`
+   * em 2). Agora são tokens: `bg-surface-raised`, `bg-surface-input`,
+   * `bg-surface-sidebar`. Mudar a cor de "cartão" é mudar UMA linha.
+   *
+   * De propósito NÃO importa src/design/foundation: aquele é o sistema
+   * tokenizado da Vertical Slice Zero (/z), e o gerador dele diz "jamais no
+   * globals.css de produção". Consolidar é tokenizar o que a produção JÁ usa.
+   * (docs/product/ux/07-COMPONENT-IMPACT.md, "Tokens")
+   */
+  --surface-raised: #0e0e16;
+  --surface-input: #12121c;
+  --surface-sidebar: #0b0b12;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-input: var(--surface-input);
+  --color-surface-sidebar: var(--surface-sidebar);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -106,6 +124,72 @@ body {
     animation-iteration-count: infinite !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ===========================================================================
+   O QUE É CLICÁVEL MOSTRA A MÃO
+   ===========================================================================
+
+   O preflight do Tailwind 4 tirou o `cursor: pointer` de `button` (a v3 tinha).
+   Medido em 23/08/2026 com a régua `ui-ux-pro-max` ("cursor-pointer on all
+   clickable elements"): nenhum botão do produto mostrava a mão — "Aprovar",
+   "Rodar esteira", "Publicar" apareciam com a seta de texto parado.
+
+   UM lugar, como a regra do movimento reduzido acima: `Button.tsx` ganhar a
+   classe resolveria 1 de 3 formas de botão (há `<button>` cru e `<summary>`
+   em dezenas de telas) e exigiria que cada tela nova lembrasse.
+
+   Desabilitado mostra o "não": `disabled:pointer-events-none` do Button deixa
+   a seta passar, e quem vê a mão sobre um botão cinza clica e espera. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+label[for] {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* ===========================================================================
+   A COLUNA DE AÇÃO NÃO SAI DA TELA
+   ===========================================================================
+
+   Quando a tabela é larga demais, o `overflow-x-auto` deixa rolar — e o que
+   fica de fora é a ponta DIREITA, onde mora a ação. É o defeito que
+   `tabelaCabeNaTela.test.ts` narra com todas as letras: "nas telas de 7 colunas
+   isso escondia as três últimas — inclusive a de AÇÃO, que é onde a pessoa
+   clica".
+
+   Medido em /produtos a 1440px, em 23/08/2026: 12 colunas pedem 1201px num
+   container de 1134. Sobram 67px para fora, e 75 deles são a coluna "Abrir".
+   Cortar coluna resolveria melhor, mas quais colunas cortar é decisão do dono
+   do produto — este arquivo não a toma sozinho.
+
+   Só a partir de 640px: abaixo disso a linha vira cartão (regra abaixo) e não
+   há rolagem para escapar. Vale apenas para quem pede `acaoFixa` na <Table>.
+
+   O `background` é obrigatório e não é estético: sem ele as células que passam
+   por baixo aparecem através da coluna grudada. */
+@media (min-width: 640px) {
+  .tabela-cartao [data-acao] {
+    position: sticky;
+    right: 0;
+    background: var(--surface-raised);
+    /* A sombra à esquerda é o que diz "tem conteúdo passando por baixo" — sem
+       ela a coluna parece apenas a última, e a rolagem fica invisível. */
+    box-shadow: -10px 0 10px -10px rgb(0 0 0 / 0.7);
+  }
+
+  /* O realce da linha sob o cursor precisa alcançar a célula grudada também,
+     senão ela fica como um retalho apagado no fim de uma linha acesa. */
+  .tabela-cartao tbody tr:hover [data-acao] {
+    background-image: linear-gradient(rgb(255 255 255 / 0.02), rgb(255 255 255 / 0.02));
   }
 }
 

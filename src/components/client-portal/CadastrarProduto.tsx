@@ -117,7 +117,7 @@ export function CadastrarProduto({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onFechar} />
-      <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-[#0e0e16]">
+      <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-white/10 bg-surface-raised">
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-3">
           <div>
             <p className="text-sm font-semibold text-white">Cadastrar produto</p>
@@ -157,7 +157,7 @@ export function CadastrarProduto({
               <select
                 value={r.marketplace}
                 onChange={(e) => set("marketplace", e.target.value as Marketplace)}
-                className="mt-1 w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none focus:border-violet-500"
               >
                 {MARKETPLACES.map((m) => (
                   <option key={m} value={m}>
@@ -309,7 +309,7 @@ function Campo({
         value={valor}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`mt-1 w-full rounded-lg border bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 ${
+        className={`mt-1 w-full rounded-lg border bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none placeholder:text-zinc-600 ${
           erro ? "border-red-500/50" : "border-white/10 focus:border-violet-500"
         }`}
       />

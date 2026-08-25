@@ -17,6 +17,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
 import { useLiveQuery } from "@/lib/hooks";
 import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
@@ -103,14 +106,16 @@ const ICONE: Record<StatusItem, React.ReactNode> = {
 };
 
 export default function EsteiraLotePage() {
-  const [cliente, setCliente] = useState("Todos");
-  const [prioridade, setPrioridade] = useState("Todos");
-  const [quantidade, setQuantidade] = useState("5");
+  const { lojaId } = useLojaAtual();
+  // Filtros na URL (?prioridade=&quantidade=): sobrevivem ao F5 e vão no link.
+  const [prioridade, setPrioridade] = useFiltroNaUrl("prioridade", "Todos", Object.values(ROTULO_PRIORIDADE));
+  const [quantidade, setQuantidade] = useFiltroNaUrl("quantidade", "5", QUANTIDADES);
   const [rodando, setRodando] = useState(false);
   const [itens, setItens] = useState<ItemLote[]>([]);
   const [resumo, setResumo] = useState<string | null>(null);
+  const [erroRegistro, setErroRegistro] = useState<string | null>(null);
 
-  const { data: auditoriasData } = useLiveQuery(listarAuditorias);
+  const { data: auditoriasData, carregando: carregandoFila } = useLiveQuery(listarAuditorias);
   const auditorias = auditoriasData ?? [];
   const { data: produtosData } = useLiveQuery(listarProdutos);
   const { data: variantesData } = useLiveQuery(listarTodasVariantes);
@@ -132,25 +137,26 @@ export default function EsteiraLotePage() {
     return m;
   }, [variantesData]);
 
-  const clientes = useMemo(() => [...new Set(auditorias.map((a) => a.cliente))], [auditorias]);
+  const lojasAuditadas = useMemo(() => [...new Set(auditorias.map((a) => a.clienteId))], [auditorias]);
 
   const fila = useMemo(() => {
     return auditorias
       .filter(
         (a) =>
-          (cliente === "Todos" || a.cliente === cliente) &&
+          (!lojaId || a.clienteId === lojaId) &&
           (prioridade === "Todos" || ROTULO_PRIORIDADE[a.prioridade] === prioridade) &&
           a.statusAuditoria !== "otimizado" &&
           a.statusAuditoria !== "ignorado"
       )
       .sort((a, b) => PESO[a.prioridade] - PESO[b.prioridade] || a.scoreQualidade - b.scoreQualidade)
       .slice(0, Number(quantidade));
-  }, [auditorias, cliente, prioridade, quantidade]);
+  }, [auditorias, lojaId, prioridade, quantidade]);
 
   async function rodarLote() {
     if (fila.length === 0 || rodando) return;
     setRodando(true);
     setResumo(null);
+    setErroRegistro(null);
     setItens(
       fila.map((a) => ({ id: a.id, titulo: a.tituloAtual, prioridade: a.prioridade, status: "pendente" as StatusItem }))
     );
@@ -218,9 +224,13 @@ export default function EsteiraLotePage() {
     }
 
     // Registra a execução em lote (reaproveita a Execução em Lote da Auditoria em Massa)
+    // Dentro de try/catch e com `finally` liberando o botão: antes, se este
+    // registro falhasse (após o lote já ter rodado), `setRodando(false)` nunca
+    // executava e o botão ficava preso em "Rodando lote…" para sempre.
     const base = fila[0];
-    if (base) {
-      await criarExecucaoLote({
+    try {
+      if (base) {
+        await criarExecucaoLote({
         clienteId: base.clienteId,
         cliente: base.cliente,
         agenteId: "agt-22",
@@ -230,15 +240,20 @@ export default function EsteiraLotePage() {
         status: erros > 0 ? "erro" : "concluida",
         entradaResumo: `${fila.length} anúncios priorizados da auditoria`,
         saidaResumo: `${aprovados} aprovados (A10), ${reprovados} com pendências${erros ? `, ${erros} com erro` : ""} · esteira ${tipoFinal}`,
-        erros: "",
-        responsavel: "",
-      });
+          erros: "",
+          responsavel: "",
+        });
+      }
+    } catch (e) {
+      setErroRegistro(
+        `O lote rodou, mas não consegui registrar a execução: ${e instanceof Error ? e.message : "erro desconhecido"}.`
+      );
+    } finally {
+      setResumo(
+        `${fila.length} processados · ${aprovados} aprovados na trava A10 · ${reprovados} com pendências${erros ? ` · ${erros} com erro` : ""}.`
+      );
+      setRodando(false);
     }
-
-    setResumo(
-      `${fila.length} processados · ${aprovados} aprovados na trava A10 · ${reprovados} com pendências${erros ? ` · ${erros} com erro` : ""}.`
-    );
-    setRodando(false);
   }
 
   return (
@@ -255,37 +270,48 @@ export default function EsteiraLotePage() {
 
       <Card title="1. Selecionar a fila">
         <div className="flex flex-wrap items-end gap-4">
-          <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasAuditadas} />
           <FilterSelect label="Prioridade" value={prioridade} options={Object.values(ROTULO_PRIORIDADE)} onChange={setPrioridade} />
           <label className="flex items-center gap-2 text-xs text-zinc-500">
             Quantidade
             <select
               value={quantidade}
               onChange={(e) => setQuantidade(e.target.value)}
-              className="rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none hover:border-white/20 focus:border-violet-500"
+              className="rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none hover:border-white/20 focus:border-violet-500 focus-visible:ring-2 focus-visible:ring-violet-500/40 [@media(pointer:coarse)]:min-h-11"
             >
               {QUANTIDADES.map((q) => (
                 <option key={q} value={q}>{q}</option>
               ))}
             </select>
           </label>
-          <Button onClick={rodarLote} disabled={rodando || fila.length === 0}>
+          <Button onClick={rodarLote} disabled={rodando || carregandoFila || fila.length === 0}>
             {rodando ? (
               <><Sparkles size={14} className="animate-pulse" /> Rodando lote…</>
+            ) : carregandoFila ? (
+              <><Loader2 size={14} className="animate-spin" /> Montando a fila…</>
             ) : (
               <><Play size={14} /> Rodar esteira em lote ({fila.length})</>
             )}
           </Button>
         </div>
-        <p className="mt-3 text-xs text-zinc-500">
-          {fila.length} anúncios na fila com os filtros atuais. Cada um é uma execução da esteira — em modo simulado
-          é instantâneo; com a API Claude configurada, roda em sequência para respeitar limites.
+        {/* Enquanto a auditoria carrega, NÃO afirmar "0 anúncios na fila": é a
+            mesma falsa afirmação que a Table documenta — zero e "ainda não sei"
+            são respostas diferentes. */}
+        <p className="mt-3 text-xs text-zinc-500" aria-live="polite">
+          {carregandoFila
+            ? "Montando a fila com os filtros atuais…"
+            : `${fila.length} anúncios na fila com os filtros atuais. Cada um é uma execução da esteira — em modo simulado é instantâneo; com a API Claude configurada, roda em sequência para respeitar limites.`}
         </p>
       </Card>
 
       {resumo && (
-        <p className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
+        <p role="status" className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
           <CheckCircle2 size={15} /> {resumo}
+        </p>
+      )}
+      {erroRegistro && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-300">
+          <AlertTriangle size={15} /> {erroRegistro}
         </p>
       )}
 
@@ -323,7 +349,7 @@ export default function EsteiraLotePage() {
 
                   {it.anuncio && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-xs text-violet-400 hover:text-violet-300">
+                      <summary className="inline-flex items-center text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11">
                         Ver anúncio gerado
                       </summary>
                       <div className="mt-2 space-y-2 rounded-lg bg-black/20 p-3 text-xs text-zinc-300">

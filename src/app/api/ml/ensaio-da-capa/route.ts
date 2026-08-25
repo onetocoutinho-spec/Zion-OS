@@ -27,8 +27,10 @@
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { corDoTitulo, ensaiarTrocaDeCapa } from "@/modules/catalog/domain/ensaioDaCapa";
 import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
@@ -128,7 +130,14 @@ export async function GET(request: Request) {
   const naoLidos = daCor.length - lidos.length;
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+    // A CREDENCIAL SO PELO ADMIN — nao por `ctx.supabase`.
+    //
+    // Esta rota nasceu antes das migracoes 059/061, que tiraram
+    // `refresh_token` do alcance de `authenticated` e cifraram a coluna.
+    // Com o papel do usuario a leitura nao alcanca mais o dado — e, antes
+    // disso, ler credencial com o papel de quem pediu e o nivel de
+    // confianca errado. `credencialForaDoNavegador` guarda isso.
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -141,7 +150,7 @@ export async function GET(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     // SEQUENCIAL. Ver o cabeçalho: paralelo aqui derruba a conexão dela.
@@ -202,9 +211,6 @@ export async function GET(request: Request) {
         "Isto é um ENSAIO: nada foi enviado ao Mercado Livre. `novaOrdem` é a lista que seria gravada em cada anúncio, com a foto dela na frente e todas as antigas preservadas atrás.",
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao ensaiar a troca de capa." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/ensaio-da-capa", e, "Falha ao ensaiar a troca de capa.", 422);
   }
 }

@@ -42,7 +42,8 @@ export default function ClienteDetalhePage() {
     return <EmptyState mensagem="Cliente não encontrado." acaoLabel="Voltar para clientes" acaoHref="/clientes" />;
 
   const emRisco = cliente.status === "Em risco";
-  const qs = `?cliente=${encodeURIComponent(cliente.empresa)}`;
+  // A loja vai na URL pelo ID (não pelo nome): é a chave do contexto global.
+  const qs = `?loja=${encodeURIComponent(cliente.id)}`;
 
   async function excluir() {
     if (!window.confirm(`Excluir o cliente "${cliente!.empresa}"? Esta ação não pode ser desfeita.`)) return;

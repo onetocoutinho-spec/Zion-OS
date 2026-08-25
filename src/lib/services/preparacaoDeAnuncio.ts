@@ -346,6 +346,8 @@ export interface AnuncioParaTitulo {
   nome: string;
   tituloAtual: string;
   status: string;
+  /** O canal do anúncio — decide o limite do título (`regrasDoCanal`). */
+  marketplace: string;
 }
 
 /**
@@ -423,7 +425,7 @@ export async function textoDoAnuncio(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at, marketplace")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
       .order("created_at", { ascending: false })
@@ -458,7 +460,7 @@ export async function anuncioParaTitulo(
   try {
     const { data } = await getSupabaseAdmin()
       .from("anuncios_gerados")
-      .select("id, produto_id, produtos(nome), anuncio, status, created_at")
+      .select("id, produto_id, produtos(nome), anuncio, status, created_at, marketplace")
       .eq("cliente_id", clienteId)
       .eq("produto_id", produtoId)
       .order("created_at", { ascending: false })
@@ -472,6 +474,7 @@ export async function anuncioParaTitulo(
       nome: pai?.nome ?? "",
       tituloAtual: String(linha.anuncio?.tituloOtimizado ?? ""),
       status: linha.status,
+      marketplace: (linha as { marketplace?: string | null }).marketplace ?? "Mercado Livre",
     };
   } catch (e) {
     console.error("[preparacao] falha ao ler o anúncio para título:", e);
@@ -517,4 +520,40 @@ export async function aplicarTitulo(
     .eq("cliente_id", clienteId);
   if (error) throw new Error(error.message);
   return { antes, depois: titulo };
+}
+
+/**
+ * O registro de UM anúncio, pelo id — com o tenant. É o que a confirmação da
+ * publicação precisa: a Proposal aponta para o anúncio, não para o produto.
+ * Mesma forma de `registroDoProduto`.
+ */
+export async function registroPorId(
+  clienteId: string,
+  anuncioId: string
+): Promise<AnuncioGeradoRegistro | null> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from("anuncios_gerados")
+      .select("*, produtos(nome)")
+      .eq("cliente_id", clienteId)
+      .eq("id", anuncioId)
+      .limit(1);
+    const linha = ((data ?? []) as Record<string, unknown>[])[0];
+    if (!linha) return null;
+    const pai = Array.isArray(linha.produtos) ? linha.produtos[0] : linha.produtos;
+    return {
+      ...(linha as unknown as AnuncioGeradoRegistro),
+      id: String(linha.id),
+      clienteId: String(linha.cliente_id ?? clienteId),
+      produtoId: (linha.produto_id as string) ?? null,
+      produto: ((pai as { nome?: string } | null)?.nome ?? null) as string | null,
+      anuncio: (linha.anuncio ?? {}) as AnuncioGeradoRegistro["anuncio"],
+      status: linha.status as AnuncioGeradoRegistro["status"],
+      mlItemId: (linha.ml_item_id as string) ?? null,
+      mlPermalink: (linha.ml_permalink as string) ?? null,
+    };
+  } catch (e) {
+    console.error("[preparacao] falha ao ler o registro do anúncio:", e);
+    return null;
+  }
 }

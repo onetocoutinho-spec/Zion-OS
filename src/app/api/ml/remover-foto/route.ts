@@ -31,9 +31,11 @@
 //    saber quais é o pior desfecho.
 
 import { definirFotosDoItem } from "@/lib/marketplaces/mercadolivre";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
@@ -128,7 +130,14 @@ export async function POST(request: Request) {
     );
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+    // A CREDENCIAL SO PELO ADMIN — nao por `ctx.supabase`.
+    //
+    // Esta rota nasceu antes das migracoes 059/061, que tiraram
+    // `refresh_token` do alcance de `authenticated` e cifraram a coluna.
+    // Com o papel do usuario a leitura nao alcanca mais o dado — e, antes
+    // disso, ler credencial com o papel de quem pediu e o nivel de
+    // confianca errado. `credencialForaDoNavegador` guarda isso.
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -141,7 +150,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     for (const [i, a] of alvos.entries()) {
@@ -240,10 +249,7 @@ export async function POST(request: Request) {
           : `Tirei a foto de ${feitos.length} anúncio(s).`) + sobra,
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao tirar a foto." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/remover-foto", e, "Falha ao tirar a foto.", 422);
   }
 }
 

@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -15,7 +16,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/form";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarClientes } from "@/lib/services/clientes";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
@@ -36,7 +37,7 @@ const STATUS_PASSO: Record<PassoCadeia["status"], { rotulo: string; classe: stri
 };
 
 const SELECT =
-  "w-full rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "w-full rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-xs text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
@@ -48,7 +49,9 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 export default function EsteiraPage() {
-  const [clienteId, setClienteId] = useState("");
+  // A loja vem do contexto global (cookie + ?loja=); o select abaixo só o escreve.
+  const { lojaId, loja: cliente, lojas: clientes, definirLoja } = useLojaAtual();
+  const clienteId = lojaId ?? "";
   const [produtoId, setProdutoId] = useState("");
   const [briefing, setBriefing] = useState("");
   const [modo, setModo] = useState<"rapido" | "aprofundado">("rapido");
@@ -59,14 +62,14 @@ export default function EsteiraPage() {
   const [tipo, setTipo] = useState<"IA" | "Simulada" | null>(null);
   const [anuncio, setAnuncio] = useState<AnuncioGerado | null>(null);
   const [aprovado, setAprovado] = useState(false);
+  const [aprovando, setAprovando] = useState(false);
+  const [erroAprovacao, setErroAprovacao] = useState<string | null>(null);
   /** Id do registro persistido (fila de aprovação); null = não salvo (sem cliente). */
   const [registroId, setRegistroId] = useState<string | null>(null);
 
-  const { data: clientes } = useLiveQuery(listarClientes);
   const { data: produtos } = useLiveQuery(listarProdutos);
 
   const produtosFiltrados = (produtos ?? []).filter((p) => !clienteId || p.clienteId === clienteId);
-  const cliente = (clientes ?? []).find((c) => c.id === clienteId) ?? null;
   const produto = produtosFiltrados.find((p) => p.id === produtoId) ?? null;
 
   const contexto = useMemo(
@@ -80,13 +83,13 @@ export default function EsteiraPage() {
     !anuncio || anuncio.vereditoA10 === "reprovado" || anuncio.pendencias.length > 0;
 
   function selecionarCliente(id: string) {
-    setClienteId(id);
+    definirLoja(id || null);
     setProdutoId("");
   }
   function selecionarProduto(id: string) {
     setProdutoId(id);
     const p = (produtos ?? []).find((x) => x.id === id);
-    if (p && !clienteId) setClienteId(p.clienteId);
+    if (p && !clienteId) definirLoja(p.clienteId);
   }
 
   async function rodar() {
@@ -164,9 +167,20 @@ export default function EsteiraPage() {
   }
 
   async function aprovar() {
-    if (bloqueiaAprovacao || aprovado) return;
-    if (registroId) await aprovarAnuncioGerado(registroId);
-    setAprovado(true);
+    if (bloqueiaAprovacao || aprovado || aprovando) return;
+    // Antes não havia try/catch: se o Supabase recusasse, a promessa morria sem
+    // dono, `setAprovado(true)` nunca rodava e o botão simplesmente não mudava —
+    // a pessoa clicava de novo, achando que não tinha pegado.
+    setAprovando(true);
+    setErroAprovacao(null);
+    try {
+      if (registroId) await aprovarAnuncioGerado(registroId);
+      setAprovado(true);
+    } catch (e) {
+      setErroAprovacao(e instanceof Error ? e.message : "Não consegui aprovar agora.");
+    } finally {
+      setAprovando(false);
+    }
   }
 
   // "Aplicar no anuncio" saiu em 07/08. Ele escrevia o titulo em `anuncios` — a
@@ -191,9 +205,9 @@ export default function EsteiraPage() {
       <Card title="1. Produto e briefing">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-medium text-zinc-500">Cliente</span>
+            <span className="mb-1 block text-[11px] font-medium text-zinc-500">Loja</span>
             <select className={SELECT} value={clienteId} onChange={(e) => selecionarCliente(e.target.value)}>
-              <option value="">Nenhum</option>
+              <option value="">Todas as lojas</option>
               {(clientes ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.empresa}</option>
               ))}
@@ -212,7 +226,7 @@ export default function EsteiraPage() {
 
         {contexto && (
           <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-violet-400 hover:text-violet-300">
+            <summary className="inline-flex items-center text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11">
               Contexto: {resumo} — ver dados que a esteira vai usar
             </summary>
             <pre className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-black/30 p-3 font-mono text-[11px] leading-relaxed text-zinc-400">
@@ -237,9 +251,11 @@ export default function EsteiraPage() {
             {(["rapido", "aprofundado"] as const).map((m) => (
               <button
                 key={m}
+                type="button"
+                aria-pressed={modo === m}
                 onClick={() => setModo(m)}
                 disabled={rodando}
-                className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                className={`rounded-md px-3 py-1.5 font-medium transition-colors [@media(pointer:coarse)]:min-h-11 ${
                   modo === m ? "bg-violet-500/15 text-violet-300" : "text-zinc-500 hover:text-zinc-300"
                 }`}
               >
@@ -288,13 +304,14 @@ export default function EsteiraPage() {
         </div>
       </Card>
 
+      {/* role="alert": a falha é anunciada, não só pintada. */}
       {erro && (
-        <p className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+        <p role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" /> {erro}
         </p>
       )}
       {aviso && (
-        <p className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-400">
+        <p role="status" className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-400">
           <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {aviso}
         </p>
       )}
@@ -322,14 +339,21 @@ export default function EsteiraPage() {
                 <Button
                   variant={aprovado ? "success" : "primary"}
                   onClick={aprovar}
-                  disabled={bloqueiaAprovacao || aprovado}
+                  disabled={bloqueiaAprovacao || aprovado || aprovando}
                 >
                   {aprovado ? (
                     <><CheckCircle2 size={14} /> Aprovado — pronto p/ publicar</>
+                  ) : aprovando ? (
+                    <><Loader2 size={14} className="animate-spin" /> Aprovando…</>
                   ) : (
                     <><ShieldCheck size={14} /> Aprovar para publicação</>
                   )}
                 </Button>
+                {erroAprovacao && (
+                  <span role="alert" className="text-[11px] text-red-400">
+                    {erroAprovacao} — tente de novo.
+                  </span>
+                )}
                 {bloqueiaAprovacao && !aprovado && (
                   <span className="text-[11px] text-amber-400">
                     Trava: resolva as pendências e o veredito A10 antes de aprovar.

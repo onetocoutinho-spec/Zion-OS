@@ -210,3 +210,58 @@ test("TODO tool_result tem o tool_use dele numa mensagem anterior", () => {
     }
   }
 });
+
+// ===========================================================================
+// O MESMO HISTÓRICO NO DIALETO DA OPENAI (23/08/2026: só o ChatGPT)
+// ===========================================================================
+
+import { entradaDaConversaOpenAI, ferramentasDaOpenAI } from "./dialetoDaConversa.ts";
+
+test("OpenAI: a conversa atravessa inteira — função e resultado com o MESMO call_id", () => {
+  const itens = entradaDaConversaOpenAI(CONVERSA);
+  assert.deepEqual(itens[0], { role: "user", content: [{ type: "input_text", text: "quantos produtos sem peso?" }] });
+  assert.deepEqual(itens[1], { type: "function_call", call_id: "call_1_0", name: "achar_produto", arguments: '{"q":"sem peso"}' });
+  assert.deepEqual(itens[2], { type: "function_call_output", call_id: "call_1_0", output: '{"total":43}' });
+  assert.deepEqual(itens[3], { role: "assistant", content: [{ type: "output_text", text: "São 43." }] });
+});
+
+test("OpenAI: resposta ÓRFÃ some, e a conversa começa num turno do usuário", () => {
+  const itens = entradaDaConversaOpenAI([
+    { role: "user", parts: [{ functionResponse: { name: "x", response: 1 } }] },
+    { role: "model", parts: [{ text: "cabeça solta" }] },
+    { role: "user", parts: [{ text: "oi" }] },
+    { role: "model", parts: [{ text: "olá" }] },
+  ]);
+  assert.equal(itens.length, 2);
+  assert.deepEqual(itens[0], { role: "user", content: [{ type: "input_text", text: "oi" }] });
+});
+
+test("OpenAI: encadeamento pendurado no fim some — todo function_call precisa do output", () => {
+  const itens = entradaDaConversaOpenAI([
+    { role: "user", parts: [{ text: "vai" }] },
+    { role: "model", parts: [{ functionCall: { name: "a", args: {} } }] },
+    { role: "user", parts: [{ functionResponse: { name: "a", response: 1 } }] },
+    { role: "model", parts: [{ functionCall: { name: "b", args: {} } }] },
+  ]);
+  assert.equal(itens.length, 3);
+  const saidas = itens.filter((i) => "type" in i && i.type === "function_call_output");
+  const chamadas = itens.filter((i) => "type" in i && i.type === "function_call");
+  assert.equal(saidas.length, chamadas.length);
+});
+
+test("OpenAI: duas chamadas do MESMO nome casam em ordem", () => {
+  const itens = entradaDaConversaOpenAI([
+    { role: "user", parts: [{ text: "dois" }] },
+    { role: "model", parts: [{ functionCall: { name: "ler", args: { id: 1 } } }, { functionCall: { name: "ler", args: { id: 2 } } }] },
+    { role: "user", parts: [{ functionResponse: { name: "ler", response: "um" } }, { functionResponse: { name: "ler", response: "dois" } }] },
+  ]);
+  const ids = itens.filter((i) => "call_id" in i).map((i) => (i as { call_id: string }).call_id);
+  assert.deepEqual(ids, ["call_1_0", "call_1_1", "call_1_0", "call_1_1"]);
+});
+
+test("OpenAI: as ferramentas viram function tools sem perder o schema, e sem strict", () => {
+  const t = ferramentasDaOpenAI([{ nome: "f", descricao: "d", parametros: { type: "object", properties: { q: { type: "string" } } } }]);
+  assert.deepEqual(t, [
+    { type: "function", name: "f", description: "d", parameters: { type: "object", properties: { q: { type: "string" } } }, strict: false },
+  ]);
+});

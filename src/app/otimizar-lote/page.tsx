@@ -5,8 +5,9 @@ import { Sparkles, Play, CheckCircle2, AlertTriangle, Package } from "lucide-rea
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
 import { useLiveQuery } from "@/lib/hooks";
-import { listarClientes } from "@/lib/services/clientes";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { listarProdutosDoCliente } from "@/lib/services/produtos";
 import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import {
@@ -18,15 +19,14 @@ import {
 import type { Produto } from "@/lib/types";
 
 const SELECT =
-  "rounded-lg border border-white/10 bg-[#12121c] px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
+  "rounded-lg border border-white/10 bg-surface-input px-2.5 py-1.5 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500";
 
 export default function OtimizarLoteEquipe() {
-  const { data: clientes } = useLiveQuery(listarClientes);
-  const [clienteId, setClienteId] = useState("");
-
-  useEffect(() => {
-    if (!clienteId && clientes && clientes.length > 0) setClienteId(clientes[0].id);
-  }, [clientes, clienteId]);
+  // A loja vem do contexto global. Antes esta tela auto-selecionava a PRIMEIRA
+  // loja da lista — um F5 na Loja B passava a enfileirar a Loja A em silêncio.
+  // Agora, sem loja escolhida, a tela pede a escolha e não faz nada sozinha.
+  const { lojaId: lojaAtualId, loja } = useLojaAtual();
+  const clienteId = lojaAtualId ?? "";
 
   const { data: produtos } = useLiveQuery(
     () => (clienteId ? listarProdutosDoCliente(clienteId) : Promise.resolve<Produto[]>([])),
@@ -84,7 +84,7 @@ export default function OtimizarLoteEquipe() {
 
   async function enfileirar(lista: Produto[]) {
     if (enfileirando || !clienteId || lista.length === 0) return;
-    const cliente = clientes?.find((c) => c.id === clienteId)?.empresa ?? "o cliente";
+    const cliente = loja?.empresa ?? "a loja";
     if (
       !window.confirm(
         `Enfileirar ${lista.length} produto(s) de ${cliente} para a IA otimizar no servidor (roda sozinho, sem aba aberta)?`
@@ -126,14 +126,14 @@ export default function OtimizarLoteEquipe() {
         description="Enfileira a esteira completa (título, descrição, SEO, ficha, medidas, FAQ e plano) de um cliente. Roda no servidor, sem depender da aba aberta."
       />
 
-      <Card title="Cliente">
-        <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className={SELECT}>
-          {(clientes ?? []).map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.empresa}
-            </option>
-          ))}
-        </select>
+      <Card title="Loja">
+        <FiltroDeLoja obrigatorio />
+
+        {!clienteId && (
+          <p className="mt-4 flex items-center gap-2 rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">
+            <Package size={16} /> Escolha a loja para ver o que pode ser otimizado.
+          </p>
+        )}
 
         {clienteId && total === 0 && (
           <p className="mt-4 flex items-center gap-2 rounded-lg border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">

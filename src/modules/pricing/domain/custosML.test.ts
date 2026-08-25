@@ -7,6 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   pesoCobravelGramas,
@@ -14,7 +15,9 @@ import {
   comissaoDoAnuncio,
   COMISSAO_MODA,
   LIMIAR_FRETE_GRATIS,
+  nomeDoTipoDeAnuncio,
   reputacaoDoLevelId,
+  tipoUnicoDosAnuncios,
 } from "./custosML.ts";
 
 // ── Peso cobrável: o maior entre real e cubado ───────────────────────────────
@@ -152,4 +155,92 @@ test("sem reputação é VERDE — regra do próprio ML para quem está começan
 test("nível desconhecido cai na tabela MAIS CARA — nunca subestima o custo", () => {
   // Se o ML renomear os níveis, o piso não pode ficar abaixo do custo real.
   assert.equal(reputacaoDoLevelId("7_platinum_plus"), "laranja");
+});
+
+// ===========================================================================
+// O TIPO DO ANÚNCIO — medido em 24/08/2026
+// ===========================================================================
+//
+// A comissão da margem saía de `canais_marketplace.tipoAnuncio`: uma
+// configuração DA LOJA INTEIRA, com padrão "Premium". O Mercado Livre informa
+// o tipo ANÚNCIO POR ANÚNCIO no `listing_type_id`, e a importação descartava.
+// Em Moda são 14% contra 19% — cinco pontos sobre o número que decide preço.
+
+test("os DOIS dialetos chegam ao mesmo lugar: o do ML e o da configuração", () => {
+  // `canais_marketplace` guarda "Premium"/"Clássico"; o ML manda
+  // `gold_pro`/`gold_special`. Antes de hoje só o primeiro chegava aqui.
+  assert.equal(nomeDoTipoDeAnuncio("Premium"), "Premium");
+  assert.equal(nomeDoTipoDeAnuncio("gold_pro"), "Premium");
+  assert.equal(nomeDoTipoDeAnuncio("Clássico"), "Clássico");
+  assert.equal(nomeDoTipoDeAnuncio("classico"), "Clássico");
+  assert.equal(nomeDoTipoDeAnuncio("gold_special"), "Clássico");
+  assert.equal(nomeDoTipoDeAnuncio("GOLD_SPECIAL"), "Clássico");
+});
+
+test("TIPO NOVO DO ML NÃO VIRA CLÁSSICO EM SILÊNCIO", () => {
+  // O ML pode criar um tipo amanhã. Ele não pode cair num dos dois por
+  // omissão: quem lê a resposta decide preço com ela.
+  assert.equal(nomeDoTipoDeAnuncio("gold_platinum"), null);
+  assert.equal(nomeDoTipoDeAnuncio("free"), null);
+  assert.equal(nomeDoTipoDeAnuncio(""), null);
+  assert.equal(nomeDoTipoDeAnuncio(null), null);
+  assert.equal(nomeDoTipoDeAnuncio(undefined), null);
+});
+
+test("O CÓDIGO CRU DO ML passa a produzir a comissão certa", () => {
+  // ESTE era o defeito. `gold_special` não é a string "Clássico", então a
+  // comparação antiga caía no default e cobrava 19% de um anúncio que paga 14%.
+  assert.equal(comissaoDoAnuncio("gold_special"), 14);
+  assert.equal(comissaoDoAnuncio("gold_pro"), 19);
+  // E o comportamento antigo continua: sem tipo, Premium.
+  assert.equal(comissaoDoAnuncio(null), 19);
+  assert.equal(comissaoDoAnuncio("Clássico"), 14);
+});
+
+test("tipo NÃO RECONHECIDO cai em Premium — a direção que não infla a margem", () => {
+  // Premium é a comissão MAIOR: supô-la faz a margem parecer PIOR do que é.
+  // O contrário — inflar a margem — é o defeito que este modelo mais repetiu.
+  assert.equal(comissaoDoAnuncio("gold_platinum"), 19);
+});
+
+test("produto com anúncios de tipos DIFERENTES não tem UMA comissão", () => {
+  // Um produto de calçado tem um anúncio por numeração. Quando eles divergem,
+  // escolher um deles produziria um número com cara de exato sobre uma
+  // pergunta que não tem resposta única.
+  assert.equal(tipoUnicoDosAnuncios(["gold_pro", "gold_pro", "gold_pro"]), "Premium");
+  assert.equal(tipoUnicoDosAnuncios(["gold_special", "gold_pro"]), null);
+  // Anúncio sem tipo lido é IGNORADO — ausência não é divergência.
+  assert.equal(tipoUnicoDosAnuncios(["gold_pro", null, undefined, ""]), "Premium");
+  // Nada lido = não sei.
+  assert.equal(tipoUnicoDosAnuncios([null, null]), null);
+  assert.equal(tipoUnicoDosAnuncios([]), null);
+  // Os dois dialetos concordando NÃO são divergência.
+  assert.equal(tipoUnicoDosAnuncios(["gold_pro", "Premium"]), "Premium");
+});
+
+test("a PROCEDÊNCIA distingue 'do anúncio' de 'da tabela'", () => {
+  // "19%" sozinho não deixa a lojista conferir. E dizer "do anúncio" quando
+  // não se sabe o tipo daria uma garantia que não existe.
+  const svc = readFileSync(
+    new URL("../../../lib/services/precificacaoDoCopilot.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(svc, /comissao: tipoVeioDoAnuncio \? "anuncio" : "tabela"/);
+  assert.match(svc, /tipoUnicoDosAnuncios\(/, "o serviço parou de resolver o tipo pelos anúncios");
+  assert.match(svc, /\.eq\("cliente_id", clienteId\)/, "a leitura do tipo perdeu a fronteira de tenant");
+  // A lista inteira só é "do anúncio" quando TODOS os produtos têm tipo.
+  assert.match(svc, /linhas\.every\(\(p\) => \(tipoPorProduto\.get\(p\.id\) \?\? null\) !== null\)/);
+});
+
+test("a frase da comissão DIZ o tipo — sem ele a lojista não confere", () => {
+  const conv = readFileSync(
+    new URL("./conversaDePreco.ts", import.meta.url),
+    "utf8"
+  );
+  const fn = /export function escreverComissao\([\s\S]*?\n\}/.exec(conv);
+  assert.ok(fn, "não achei `escreverComissao`");
+  assert.match(fn[0], /case "anuncio":/);
+  assert.match(fn[0], /nomeDoTipoDeAnuncio\(e\.taxas\.tipoAnuncio\)/);
+  // A frase de "tabela" continua dizendo que é estimativa.
+  assert.match(fn[0], /estimativa da tabela de Moda/);
 });

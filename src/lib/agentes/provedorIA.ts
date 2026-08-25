@@ -1,17 +1,27 @@
 // Camada de provedor de IA (server-only).
 //
-// O Zion OS fala com Gemini (Google) OU Claude (Anthropic) por trás da mesma
-// interface. A escolha é por variável de ambiente:
-//   - GEMINI_API_KEY  → usa Gemini (tem plano gratuito no Google AI Studio)
+// O Zion OS fala com a OpenAI (ChatGPT), Claude (Anthropic) ou Gemini (Google)
+// por trás da mesma interface. A escolha é por variável de ambiente:
+//   - OPENAI_API_KEY    → usa a OpenAI (o padrão do projeto desde 23/08/2026)
 //   - ANTHROPIC_API_KEY → usa Claude
-//   - IA_PROVEDOR=gemini|anthropic força um deles (se a chave existir)
-// Preferência automática: Gemini (custo zero para começar).
+//   - GEMINI_API_KEY    → usa Gemini
+//   - IA_PROVEDOR=openai|anthropic|gemini força um deles (se a chave existir)
+// Preferência automática: OpenAI — decisão do dono: "quero utilizar somente o
+// ChatGPT". Os outros dois caminhos ficam para quem pedir por nome.
 //
 // Nunca importe este módulo no cliente — as chaves ficam só no servidor.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { cronometro, registrarExecucaoIA, type OrigemDaExecucao } from "@/lib/services/execucoesDeIA";
+import { cabeReserva, rotaDoModelo, type TarefaDeIA } from "./roteamentoDeModelo";
+import {
+  criarResposta,
+  enviarArquivo,
+  esforcoDaOpenAI,
+  type ConteudoDeEntrada,
+} from "./openai";
 
-export type Provedor = "gemini" | "anthropic";
+export type Provedor = "openai" | "gemini" | "anthropic";
 
 /**
  * Um documento ou imagem que o modelo vai LER.
@@ -82,8 +92,32 @@ export interface ChamadaIA {
    * Ou seja: esforço alto numa tarefa trivial não sai mais lento — sai QUEBRADO,
    * e quebrado de um jeito que não diz o que aconteceu.
    */
-  esforco?: "low" | "medium" | "high" | "xhigh" | "max";
+  esforco?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  /**
+   * QUE TIPO de trabalho é este — decide a linha da tabela de modelos.
+   *
+   * Omitido = `estruturada`, que é o trabalho pesado (esteira, catálogo).
+   * `classificacao` existe porque decidir "esta frase é sobre peso ou sobre
+   * preço?" não é o mesmo trabalho que ler 90 páginas de catálogo, e pagá-los
+   * no mesmo modelo é o que fazia a lojista esperar 9,5s por uma classificação.
+   */
+  tarefa?: TarefaDeIA;
   maxTokens?: number;
+  /**
+   * QUEM está pagando e POR QUÊ — para a linha em `ia_execucoes` (067).
+   *
+   * Opcional porque nem todo chamador tem sessão (o worker do cron, por
+   * exemplo). Quem tem, passa: sem rastro a chamada acontece, mas não entra
+   * na conta de "quanto custa um usuário por mês".
+   */
+  rastro?: RastroDaExecucao;
+}
+
+export interface RastroDaExecucao {
+  origem: OrigemDaExecucao;
+  clienteId: string | null;
+  usuarioId: string | null;
+  conversaId?: string | null;
 }
 
 export interface RespostaIA {
@@ -104,6 +138,8 @@ export interface RespostaIA {
    * a mesma classe de suposição-vestida-de-fato que a AUD-001 caçou.
    */
   uso: UsoDeTokens | null;
+  /** Rodou no modelo de RESERVA por sobrecarga do principal. Ausente = não. */
+  degradado?: boolean;
 }
 
 export interface UsoDeTokens {
@@ -116,8 +152,10 @@ export interface UsoDeTokens {
 
 export function provedorConfigurado(): Provedor | null {
   const forcado = process.env.IA_PROVEDOR?.toLowerCase();
+  const temOpenai = Boolean(process.env.OPENAI_API_KEY);
   const temGemini = Boolean(process.env.GEMINI_API_KEY);
   const temAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+  if (forcado === "openai" && temOpenai) return "openai";
   if (forcado === "gemini" && temGemini) return "gemini";
   if (forcado === "anthropic" && temAnthropic) return "anthropic";
   // A preferência era Gemini, com o comentário "free tier — custo zero para
@@ -133,6 +171,11 @@ export function provedorConfigurado(): Provedor | null {
   //
   // Só o Anthropic lê anexo (ver `chamarGemini`), então esta ordem também é o
   // que faz a fronteira do documento existir na prática.
+  //
+  // Decisão do dono em 23/08/2026: "quero utilizar somente o ChatGPT". A
+  // OpenAI passa na frente de todos quando a chave dela existe — texto, chat,
+  // PDF e imagem. O Claude continua alcançável por `IA_PROVEDOR=anthropic`.
+  if (temOpenai) return "openai";
   if (temAnthropic) return "anthropic";
   if (temGemini) return "gemini";
   return null;
@@ -185,7 +228,7 @@ async function chamarGemini(c: ChamadaIA): Promise<RespostaIA> {
   // repositório já perseguiu duas vezes (ver `escritasQueFalhamEmSilencio`).
   if (c.anexos?.length) {
     throw new Error(
-      "Anexos (PDF/imagem) só funcionam com o Claude. Configure ANTHROPIC_API_KEY " +
+      "Anexos (PDF/imagem) só funcionam com a OpenAI ou o Claude. Configure OPENAI_API_KEY " +
         "ou remova IA_PROVEDOR=gemini."
     );
   }
@@ -321,6 +364,7 @@ export function blocosDaMensagem(c: ChamadaIA): Anthropic.Beta.BetaContentBlockP
  * documento, o que importa quando a extração precisar de mais de uma passada.
  */
 export async function enviarPdfParaIA(arquivo: File): Promise<string> {
+  if (provedorConfigurado() === "openai") return enviarArquivo(arquivo);
   const chave = process.env.ANTHROPIC_API_KEY;
   if (!chave) throw new Error("ANTHROPIC_API_KEY não configurada no servidor.");
   const client = new Anthropic({ apiKey: chave });
@@ -343,9 +387,12 @@ export async function enviarPdfParaIA(arquivo: File): Promise<string> {
  * do mesmo corpo que a chamada real mandaria. É a medição antes da construção
  * que o plano pedia, e ela não depende de ninguém segurar o arquivo.
  *
- * Só Anthropic — é o único caminho que lê documento.
+ * Só o Anthropic tem endpoint de contagem. A OpenAI não mede antes de cobrar —
+ * e este módulo não ESTIMA: devolve `null`, e a tela diz que não há medição,
+ * em vez de mostrar um número que ninguém mediu.
  */
-export async function contarTokensDaChamada(c: ChamadaIA): Promise<number> {
+export async function contarTokensDaChamada(c: ChamadaIA): Promise<number | null> {
+  if (provedorConfigurado() === "openai") return null;
   const chave = process.env.ANTHROPIC_API_KEY;
   if (!chave) throw new Error("ANTHROPIC_API_KEY não configurada no servidor.");
   const client = new Anthropic({ apiKey: chave });
@@ -360,11 +407,25 @@ export async function contarTokensDaChamada(c: ChamadaIA): Promise<number> {
 }
 
 async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
-  // claude-opus-5 é o Opus atual. O padrão daqui estava em `claude-opus-4-8`,
-  // que é a geração anterior — padrão de modelo envelhece em silêncio, porque
-  // nada quebra: o modelo antigo responde normalmente e ninguém percebe que
-  // parou de ser o melhor disponível.
-  const modelo = process.env.ANTHROPIC_MODEL ?? "claude-opus-5";
+  // O modelo vem da TABELA (`roteamentoDeModelo.ts`), não de um `??` aqui —
+  // padrão de modelo envelhece em silêncio, porque nada quebra: o antigo
+  // responde normalmente e ninguém percebe que parou de ser o melhor.
+  //
+  // A RESERVA: se o principal estiver sobrecarregado, UMA tentativa no modelo
+  // de reserva, e a resposta sai marcada `degradado` — quem registra em
+  // ia_execucoes vê que aquela chamada não rodou onde devia.
+  const rota = rotaDoModelo(c.tarefa ?? "estruturada");
+  try {
+    return await chamarAnthropicCom(c, rota.principal);
+  } catch (e) {
+    if (!rota.reserva || rota.reserva === rota.principal || !cabeReserva(e)) throw e;
+    console.warn(`[provedorIA] ${rota.principal} sobrecarregado; tentando a reserva ${rota.reserva}`);
+    const r = await chamarAnthropicCom(c, rota.reserva);
+    return { ...r, degradado: true };
+  }
+}
+
+async function chamarAnthropicCom(c: ChamadaIA, modelo: string): Promise<RespostaIA> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY as string });
 
   // O header beta da Files API vai na chamada de mensagem também, não só no
@@ -384,7 +445,10 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
     system: c.system,
     output_config: {
       format: { type: "json_schema", schema: c.schema },
-      ...(c.esforco ? { effort: c.esforco } : {}),
+      // `minimal` é nível da OpenAI e a Anthropic recusa — vira `low`, o mais
+      // baixo que ela tem. Traduzir aqui é o que mantém `esforco` uma palavra
+      // do PROJETO, e não do provedor da vez.
+      ...(c.esforco ? { effort: c.esforco === "minimal" ? "low" : c.esforco } : {}),
     },
     messages: [{ role: "user", content: blocosDaMensagem(c) }],
     ...(usaFilesApi ? { betas: ["files-api-2025-04-14"] } : {}),
@@ -417,10 +481,121 @@ async function chamarAnthropic(c: ChamadaIA): Promise<RespostaIA> {
   };
 }
 
+// ---- OpenAI (ChatGPT) ----
+
+/**
+ * O conteúdo da mensagem para a Responses API: anexos primeiro, texto depois
+ * — a mesma ordem de `blocosDaMensagem`, pelo mesmo motivo.
+ */
+export function conteudoDaMensagemOpenAI(c: ChamadaIA): ConteudoDeEntrada[] {
+  const itens: ConteudoDeEntrada[] = [];
+  for (const a of c.anexos ?? []) {
+    if (a.tipo === "pdf") {
+      itens.push({ type: "input_file", filename: "documento.pdf", file_data: `data:application/pdf;base64,${a.base64}` });
+    } else if (a.tipo === "pdf-arquivo") {
+      itens.push({ type: "input_file", file_id: a.fileId });
+    } else {
+      if (!ehMimeDeImagem(a.mimeType)) {
+        throw new Error(
+          `Formato de imagem não suportado: ${a.mimeType}. Aceitos: ${MIMES_IMAGEM.join(", ")}.`
+        );
+      }
+      itens.push({ type: "input_image", image_url: `data:${a.mimeType};base64,${a.base64}`, detail: "auto" });
+    }
+  }
+  itens.push({ type: "input_text", text: c.mensagem });
+  return itens;
+}
+
+async function chamarOpenAI(c: ChamadaIA): Promise<RespostaIA> {
+  const rota = rotaDoModelo(c.tarefa ?? "estruturada", process.env, "openai");
+  try {
+    return await chamarOpenAICom(c, rota.principal);
+  } catch (e) {
+    if (!rota.reserva || rota.reserva === rota.principal || !cabeReserva(e)) throw e;
+    console.warn(`[provedorIA] ${rota.principal} sobrecarregado; tentando a reserva ${rota.reserva}`);
+    const r = await chamarOpenAICom(c, rota.reserva);
+    return { ...r, degradado: true };
+  }
+}
+
+/**
+ * A folga de RACIOCÍNIO somada ao teto de cada chamada.
+ *
+ * `maxTokens` foi escrito na era Claude, onde ele limitava o TEXTO visível.
+ * Na Responses API, `max_output_tokens` inclui os tokens de raciocínio — e o
+ * gpt-5 raciocina antes de escrever. Medido em produção em 24/08/2026, no
+ * primeiro dia do ChatGPT: a classificação de intenção (`maxTokens: 400`)
+ * voltou `incomplete` em 6,7s com texto VAZIO — o modelo gastou os 400
+ * pensando e não sobrou nada para o JSON. A lojista leu "Não consegui
+ * entender a pergunta agora".
+ *
+ * A folga é teto, não gasto: só é cobrada se o modelo a usar.
+ */
+export const FOLGA_DO_RACIOCINIO = 8000;
+
+async function chamarOpenAICom(c: ChamadaIA, modelo: string): Promise<RespostaIA> {
+  const esforco = esforcoDaOpenAI(c.esforco);
+  // `strict: false` de propósito: os schemas do projeto foram escritos para o
+  // Claude e nem todos marcam `additionalProperties: false` em cada nível, que
+  // o modo estrito exige. O JSON continua validado por quem chama.
+  const r = await criarResposta({
+    model: modelo,
+    instructions: c.system,
+    input: [{ role: "user", content: conteudoDaMensagemOpenAI(c) }],
+    text: { format: { type: "json_schema", name: "saida", schema: c.schema, strict: false } },
+    ...(esforco ? { reasoning: { effort: esforco } } : {}),
+    max_output_tokens: (c.maxTokens ?? 16000) + FOLGA_DO_RACIOCINIO,
+  });
+  // A ORDEM importa: `incomplete` costuma vir com texto vazio, e checar o
+  // vazio primeiro esconderia a causa atrás do erro genérico.
+  if (r.motivoIncompleta === "max_output_tokens") {
+    throw new Error("A resposta estourou o teto de saída e veio incompleta. Divida a entrada e tente novamente.");
+  }
+  if (r.recusa || !r.texto) {
+    throw new Error("O modelo não pôde completar esta solicitação. Ajuste a entrada e tente novamente.");
+  }
+  return {
+    json: r.texto,
+    provedor: "openai",
+    modelo: r.modelo || modelo,
+    uso: r.uso
+      ? { entrada: r.uso.entrada, saida: r.uso.saida, total: r.uso.total, modelo: r.modelo || modelo, provedor: "openai" }
+      : null,
+  };
+}
+
 /** Chama o provedor configurado e devolve a saída estruturada (JSON). */
 export async function chamarIAEstruturada(c: ChamadaIA): Promise<RespostaIA> {
   const p = provedorConfigurado();
-  if (p === "gemini") return chamarGemini(c);
-  if (p === "anthropic") return chamarAnthropic(c);
-  throw new Error("Nenhum provedor de IA configurado.");
+  if (p !== "openai" && p !== "gemini" && p !== "anthropic") throw new Error("Nenhum provedor de IA configurado.");
+  const relogio = cronometro();
+  try {
+    const r = p === "openai" ? await chamarOpenAI(c) : p === "gemini" ? await chamarGemini(c) : await chamarAnthropic(c);
+    if (c.rastro) {
+      await registrarExecucaoIA({
+        ...c.rastro,
+        provedor: r.provedor,
+        modelo: r.modelo,
+        tokens: r.uso ? { entrada: r.uso.entrada, saida: r.uso.saida, total: r.uso.total } : null,
+        ms: relogio.ms(),
+        status: "ok",
+        degradado: r.degradado === true,
+      });
+    }
+    return r;
+  } catch (e) {
+    // A chamada que FALHOU é a que mais importa na conta — e era a que sumia.
+    if (c.rastro) {
+      await registrarExecucaoIA({
+        ...c.rastro,
+        provedor: p,
+        modelo: null,
+        ms: relogio.ms(),
+        status: "erro",
+        erro: e instanceof Error ? e.message : "desconhecido",
+      });
+    }
+    throw e;
+  }
 }

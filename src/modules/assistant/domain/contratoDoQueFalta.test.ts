@@ -354,41 +354,21 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
-  // A 23ª entrou em 11/08/2026: `pendencias_da_conta`, leitura pura.
+  // AS CONTAGENS SAO A UNIAO DAS DUAS LINHAS DE TRABALHO — mescla de 24/08/2026.
   //
-  // A decisão: o Mercado Livre já tinha DITO o que está errado em 460 anúncios
-  // — 1.034 remédios escritos por ele, guardados na 052 — e o assistente
-  // respondia "não tenho acesso ao conteúdo delas". Das três portas fechadas
-  // que sobravam, era a única em que a informação já estava dentro de casa; as
-  // outras dependem de leitura nova.
+  // A `master` somou 13 ferramentas e a `feat/portal-da-lojista` somou 3.
+  // Nenhum nome colidiu, e NENHUM DOS DOIS LADOS mexeu no tipo `Efeito` nem em
+  // `EXECUCOES_REVERSIVEIS` — a fronteira de seguranca atravessou a mescla sem
+  // ser tocada, e continua com UMA execucao nomeada (`reativar_anuncio`).
   //
-  // E ela lê o DOMÍNIO: `pendenciasDaConta` já classificava gravidade, tipo e
-  // o que fazer para as duas telas, inclusive o ramo grave de propriedade
-  // intelectual. Nenhuma regra nasceu com a ferramenta — só a porta.
-  // De 23 para 24 em 14/08/2026: `fotos_do_produto`, LEITURA. Nenhuma das
-  // outras vinte e três mudou de efeito — continuam 1 rascunho, 8 propostas e
-  // 1 execução.
-  //
-  // A decisão: 310 anúncios ativos com capa fora do padrão, em 54 produtos, e
-  // o Mercado Livre cobrando "a foto de capa não cumpre os requisitos". O chat
-  // contava isso pela conta inteira e não respondia a pergunta que a lojista
-  // faz produto a produto — preciso fotografar este, ou já tenho foto boa aqui?
-  // A diferença entre as duas respostas é uma viagem ao fabricante.
-  //
-  // É `le` porque diz o ESTADO e não mexe em nada: a troca de capa continua
-  // sendo `/api/ml/aplicar-capa`, com o aviso antes do clique e o desfazer no
-  // turno. Um caminho próprio até o ML aqui seria uma segunda cópia daquelas
-  // guardas — e, além disso, cada chamada ao ML renova o refresh_token dela.
-  // De 24 para 25 em 19/08/2026: `duplicatas_e_faltantes`, LEITURA. Nenhuma
-  // das que agem mudou de classe — o poder de escrever é o mesmo de ontem.
-  //
-  // A decisão está em primeiraAcao.test.ts (T2). Em uma linha: o chat recusou
-  // uma varredura de SKUs repetidos que não sabia fazer, e a recusa era certa;
-  // o dado existia e faltava a ferramenta.
-  assert.equal(FERRAMENTAS.length, 25);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
-  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
+  // Cada acrescimo tem a decisao escrita no historico do lado que o trouxe;
+  // repetir as dezesseis aqui faria deste comentario um changelog. O que esta
+  // linha guarda e o TAMANHO: uma 39a ferramenta reprova aqui e obriga alguem
+  // a assinar.
+  assert.equal(FERRAMENTAS.length, 38);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 24);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
+  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
   // `o_que_falta_no_produto` mudou de SHAPE, não de EFEITO.
   assert.equal(FERRAMENTAS.find((f) => f.nome === "o_que_falta_no_produto")?.efeito, "le");
@@ -396,10 +376,11 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  // 15 desde 19/08/2026 (`duplicatas_e_faltantes`). O que o C1R garante NÃO mudou
-  // e é o que a linha seguinte prova: toda ferramenta da primeira ação tem
-  // efeito `le`. O número trava o tamanho; o laço trava a natureza.
-  assert.equal(PRIMEIRA_ACAO.length, 15);
+  // 24 apos a mescla de 24/08/2026, e o numero nao e escrito a mao:
+  // `PRIMEIRA_ACAO` DERIVA de `efeito === "le"`, entao ele e o total de
+  // leituras da uniao. O numero trava o tamanho; o laco abaixo trava a
+  // natureza.
+  assert.equal(PRIMEIRA_ACAO.length, 24);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

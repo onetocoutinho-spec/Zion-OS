@@ -47,19 +47,20 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 15 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 24 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 15);
+  // 24 apos a mescla de 24/08/2026 — e DERIVADO de `efeito === "le"`.
+  assert.equal(PRIMEIRA_ACAO.length, 24);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas vinte e quatro — a matriz que autorizou a decisão", () => {
   // A DÉCIMA QUINTA entrou em 19/08/2026: `duplicatas_e_faltantes`.
   //
   // A DECISÃO. A lojista pediu ao chat "analise os skus de cada anúncio, pois
@@ -128,13 +129,146 @@ test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", (
   // investigar o produto é o caminho curto — e obrigá-la a uma pergunta
   // preliminar para chegar neles seria esconder a causa mais provável atrás de
   // um passo.
+  //
+  // A DÉCIMA TERCEIRA entrou em 22/08/2026: `vendas_da_loja`.
+  //
+  // Ela lê os pedidos pagos no Mercado Livre com a credencial do SERVIDOR
+  // (o mesmo caminho de /api/ml/vendas, sem o navegador no meio) e compara a
+  // janela pedida com a anterior. O pior caso de um "obrigado" dispará-la é a
+  // lojista ver as próprias vendas sem ter pedido — e uma chamada ao ML paga
+  // em latência, não em dinheiro. Sem escrita, sem proposta.
+  //
+  // A decisão (auditoria do Copilot, NEXT item 6): "como estão minhas vendas?"
+  // e "por que caíram?" eram duas das seis frases do "pronto" sem caminho
+  // nenhum — o eixo de RESULTADO COMERCIAL inteiro estava fora do chat. E a
+  // ferramenta nasce com a lista do que NÃO sabe (visitas, conversão), para
+  // "por que caíram" não virar "refaça o título".
+  //
+  // A DÉCIMA QUARTA e a DÉCIMA QUINTA, também em 22/08/2026:
+  //
+  // `comparar_lojas` — só para agência e equipe (`ferramentasParaPapel` nem a
+  // declara para o lojista). Mede cada loja do alcance com a mesma conta do
+  // contexto. Pior caso de um "obrigado": a agência vê as lojas dela.
+  //
+  // `meu_perfil_de_conteudo` — lê o que a loja escreveu em Configurações
+  // (tom, público, palavras). Pior caso: a loja vê o próprio perfil.
+  //
+  // A DÉCIMA SEXTA, ainda em 22/08/2026: `diagnostico_do_anuncio` — lê no ML
+  // visitas, vendas, saúde e estado do anúncio publicado e separa exposição
+  // de conversão. Leitura pura com a credencial do servidor; pior caso de um
+  // "obrigado" é a loja ver o diagnóstico do próprio anúncio.
+  //
+  // A DÉCIMA SÉTIMA entrou em 24/08/2026: `anuncios_ativos`.
+  //
+  // Ela existe por uma pergunta que a lojista fez em produção — "quais são os
+  // anúncios ativos hoje?" — e que o Copilot respondeu, corretamente, não
+  // saber: nenhuma das dezesseis olhava a loja INTEIRA no marketplace, só
+  // produto a produto. O dado já estava no banco desde a 050/051.
+  //
+  // Por que pode ser a PRIMEIRA ação: lê a tabela `anuncios_gerados` com o
+  // tenant da sessão, paginada, sem escrita, sem chamada externa e sem custo
+  // de modelo. O pior caso de um "obrigado" dispará-la é a loja ver o estado
+  // dos próprios anúncios — o mesmo dano de `estado_da_loja`, ou seja, nenhum.
+  //
+  // E ela nasce com a distinção que a 050 pagou caro para aprender: ativo,
+  // outro estado e SEM LEITURA são três coisas, e a idade da medição vai
+  // junto. Em 24/08/2026 a loja real tinha 489 ativos medidos havia 10 dias —
+  // uma resposta que omitisse a data afirmaria sobre hoje o que se sabe sobre
+  // a semana passada.
+  // A DÉCIMA OITAVA entrou em 24/08/2026: `anuncios_a_corrigir`.
+  //
+  // Ela é a pergunta SEGUINTE à da décima sétima. `anuncios_ativos` responde
+  // "quantos estão no ar"; esta responde "e o que fazer com os 303 que não
+  // estão" — agrupados pelo motivo que o próprio ML deu.
+  //
+  // Por que pode ser a PRIMEIRA ação: mesma leitura, mesma tabela, mesmo
+  // tenant, mesmo porto memoizado — nenhuma linha nova é lida. O pior caso de
+  // um "obrigado" dispará-la é a loja ver a própria fila de correção.
+  //
+  // E ela nasce com uma coisa que nenhuma outra leitura tinha: o campo `acao`,
+  // que diz o que o Zion CONSEGUE fazer com cada motivo — inclusive
+  // `capacidade_ausente`. Dos 148 `waiting_for_patch` medidos em produção, o
+  // Zion sabe QUE o ML pediu alteração e não sabe QUAL campo; prometer conserto
+  // ali seria a invenção que o A0 cometia. A lacuna declarada é a resposta.
+  //
+  // De 30 para 31 em 24/08/2026: `diagnostico_de_agrupamento`, LEITURA — 31 / 19.
+  //
+  // A decisão nasceu de uma frase da lojista — "as variações da Papete Modare
+  // não estão agrupadas" — que aponta o lugar certo e nomeia a coisa errada.
+  // Medido: em calçado o ML NÃO aceita `variations[]`, então um anúncio por
+  // numeração é o formato dele. O defeito é a GRADE PARTIDA: 16 anúncios e 1
+  // no ar; 41 e 1 no Havaianas Slim. Quem procura outro número não acha a loja.
+  //
+  // Ela lê a MESMA varredura de `anuncios_ativos` e o catálogo do porto de
+  // análise, os dois memoizados por turno — nenhuma leitura nova. E declara o
+  // que não sabe: o vínculo de família do ML não é guardado em
+  // `anuncios_gerados` (conferido no banco), então ninguém aqui pode afirmar
+  // que o ML agrupou ou não. A conferência de referência repetida sai com a
+  // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
+  // cadastro legítimo.
+  //
+  // De 31 para 32 em 24/08/2026: `o_que_eu_consigo`, LEITURA — 32 / 20.
+  //
+  // Ela não lê a loja: lê o REGISTRO DE HABILIDADES (`habilidades.ts`), que
+  // declara o que o Copilot faz e, o que nenhuma outra peça sabia dizer, o que
+  // ele NÃO faz — com o motivo medido e o que faltaria. Existe porque o
+  // catálogo sabe o que existe e não sabe o que está ausente: sem isso, "você
+  // consegue mudar o preço no ML?" é respondido pelo prompt, e prompt não é
+  // dado.
+  //
+  // Por que pode ser a PRIMEIRA ação: não toca banco de loja nenhum, não chama
+  // rede e não custa modelo — lê uma tabela declarativa em memória. O pior caso
+  // de um "obrigado" dispará-la é a lojista ler o que o assistente faz.
+  //
+  // Ela também é o ÚNICO ponto do catálogo que grava um sinal: quando o assunto
+  // é uma lacuna, o pedido vai para o journal (contexto `copilot-lacuna`). A
+  // checagem e o sinal são o mesmo movimento — é assim que a Zion descobre o
+  // que os operadores tentam fazer e o Zion ainda não faz.
+  //
+  // De 32 para 33 em 24/08/2026: `saude_do_catalogo`, LEITURA — 33 / 21.
+  //
+  // A decisão saiu de uma pergunta do dono: "o que o ML diz mas o chat não
+  // lê?". A varredura do repositório respondeu com um caso que não era falta de
+  // dado, era falta de ALCANCE:
+  //
+  //   `retratarCatalogo` existe desde 02/08/2026 e sempre funcionou — saúde
+  //   média, os piores anúncios, quantos disputam o catálogo do ML, quantos
+  //   estão no ar sem NUNCA ter vendido, quantos não têm descrição, a divisão
+  //   entre Clássico e Premium, os dias de alteração em massa. Só que ele
+  //   rodava dentro da importação, sobre o que acabara de chegar do ML, e o
+  //   resultado ia embora com a requisição. E `importacoes_anuncios`, a tabela
+  //   da importação, é lida só por `importacoes.ts`, que serve uma tela:
+  //   NENHUMA ferramenta do Copilot toca nela.
+  //
+  // O Zion calculava um diagnóstico bom e o assistente não sabia que existia.
+  // A 074 passou a guardar os sete campos que o ML já mandava e a importação
+  // descartava, e esta ferramenta os transforma de volta em retrato.
+  //
+  // Por que pode ser a PRIMEIRA ação: reusa o porto `noAr` — a MESMA varredura
+  // de `anuncios_ativos`, memoizada por turno. Nenhuma linha nova é lida,
+  // nenhuma rede é chamada, nenhum modelo é pago. O pior caso de um "obrigado"
+  // dispará-la é a loja ver a saúde dos próprios anúncios: o mesmo dano de
+  // `estado_da_loja`, ou seja, nenhum.
+  //
+  // E ela nasce com a recusa que este projeto já pagou para aprender: um
+  // retrato calculado sobre ZERO medições sai com saúde média 0, zero no
+  // catálogo e zero sem descrição — e lido sem contexto parece um catálogo
+  // impecável. É o "nada travado, sua loja está em dia" de novo. Quando
+  // `medidos === 0` a saída nem monta o retrato: diz que ainda não leu.
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [
     "achar_produto",
+    "anuncios_a_corrigir",
+    "anuncios_ativos",
+    "comparar_lojas",
     "contar",
+    "diagnostico_de_agrupamento",
+    "diagnostico_do_anuncio",
     "duplicatas_e_faltantes",
     "estado_da_loja",
     "fotos_do_produto",
+    "meu_perfil_de_conteudo",
     "meus_custos",
+    "o_que_eu_consigo",
     "o_que_falta_no_produto",
     "o_que_impede",
     "pendencias",
@@ -143,7 +277,9 @@ test("T2: são exatamente estas quinze — a matriz que autorizou a decisão", (
     "pricing",
     "procedencia",
     "proximo_passo",
+    "saude_do_catalogo",
     "tabela_de_medidas",
+    "vendas_da_loja",
   ]);
 });
 
@@ -155,7 +291,10 @@ test("T3: NENHUMA das sete com efeito pode ser a primeira ação", () => {
   // o pior caso de um "obrigado" era um cartão indevido na tela de alguém. Agora
   // seria um ANÚNCIO NO AR sem ninguém ter pedido — reversível, sim, mas visível
   // para quem compra antes de ser visível para quem vende.
-  assert.equal(COM_EFEITO.length, 10);
+  // 12 desde 22/08/2026: `propor_tarefas` e `propor_imagem`, PROPOSTAS.
+  // 13 desde 24/08/2026: `investigar`, RASCUNHO — ver a decisão no T12.
+  // 14 no mesmo dia: `propor_titulo_no_anuncio`, PROPOSTA.
+  assert.equal(COM_EFEITO.length, 14);
   for (const nome of COM_EFEITO) {
     assert.ok(
       !PRIMEIRA_ACAO.includes(nome),
@@ -199,12 +338,22 @@ test("T1: `obrigado` FILTRA as ferramentas declaradas e obriga a chamar", () => 
   // A garantia fica mais forte: uma ferramenta de escrita não está sequer
   // declarada no primeiro passo, então não há configuração para "cair" e
   // deixá-la alcançável.
+  //
+  // 23/08/2026, ChatGPT: a OpenAI tem `required` (chame ALGUMA) e também não
+  // tem "uma DESTAS". A lista continua sendo a restrição, nos dois caminhos:
+  // `ferramentasDoPasso` filtra pelas permitidas, e a escolha só obriga.
   assert.match(CLIENTE, /permitidas\.has\(f\.nome\)/);
-  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"any"\s*\}/);
+  assert.match(CLIENTE, /tool_choice:\s*escolha\.modo === "obrigado" \? "required" : "auto"/, "OpenAI: obrigado = required");
+  assert.match(CLIENTE, /type:\s*escolha\.modo === "obrigado" \? "any" : "auto"/, "Anthropic: obrigado = any");
+  // E os dois caminhos montam a lista pela MESMA função filtrada.
+  assert.match(CLIENTE, /ferramentasDaOpenAI\(ferramentasDoPasso\(ferramentas, escolha\)\)/);
+  assert.match(CLIENTE, /ferramentasDaAnthropic\(ferramentasDoPasso\(ferramentas, escolha\)\)/);
 });
 
 test("T4: `livre` oferece todas e deixa o modelo decidir", () => {
-  assert.match(CLIENTE, /tool_choice:\s*\{\s*type:\s*"auto"\s*\}/);
+  const fn = /function ferramentasDoPasso[\s\S]*?\n\}/.exec(CLIENTE);
+  assert.ok(fn, "não achei `ferramentasDoPasso`");
+  assert.match(fn[0], /return \[\.\.\.ferramentas\];/, "no livre, a lista é a inteira");
 });
 
 test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo com `any`", () => {
@@ -213,7 +362,12 @@ test("T5: lista e escolha saem da MESMA função — não dá para mandar tudo c
   // mandar a lista inteira com `any` — que é escrita alcançável no passo 0.
   assert.match(CLIENTE, /function ofertaDoPasso\(/);
   assert.match(CLIENTE, /\{\s*tools,\s*tool_choice\s*\}\s*=\s*ofertaDoPasso\(/);
-  assert.match(ROTA, /FERRAMENTAS,/);
+  // A rota passa o catálogo DO PAPEL (`ferramentasParaPapel`), não a constante
+  // inteira — e continua sendo uma lista só, para `ofertaDoPasso`.
+  assert.match(ROTA, /ferramentasDoPapel,/);
+  assert.match(ROTA, /const catalogoDoPapel = ferramentasParaPapel\(papel\)/);
+  assert.match(ROTA, /const ferramentasDoPapel = ferramentasDoEspecialista\(especialista, catalogoDoPapel\)/);
+  assert.doesNotMatch(ROTA, /\bFERRAMENTAS,/, "a rota voltou a mandar o catálogo inteiro, sem papel");
 });
 
 // ---------------------------------------------------------------------------
@@ -360,15 +514,97 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // anúncio VIVO diferente. Apagá-las teria deixado 11 anúncios no ar sem
   // variante. O que parece linha repetida pode ser anúncio repetido, e o
   // remédio é oposto — então a ferramenta não ganha poder de apagar.
-  assert.equal(FERRAMENTAS.length, 25);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 15);
-  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 1);
-  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 8);
+  // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA. Só a leitura
+  // subiu — continuam 1 rascunho, 8 propostas e 1 ação. Ver a matriz do T2.
+  //
+  // De 23 para 26, no mesmo dia: `comparar_lojas` e `meu_perfil_de_conteudo`
+  // (LEITURA) e `propor_tarefas` (PROPOSTA — a lista que a loja decide fazer,
+  // na tabela própria `tarefas_da_loja`, 069; gravada só no clique). O poder
+  // de agir não mudou: continua 1 ação.
+  // E `propor_imagem` (PROPOSTA, risco médio): a imagem gerada fica no bucket
+  // privado como rascunho até a aprovação; nada sobe sozinho (070). 27 / 10.
+  // E `diagnostico_do_anuncio` (LEITURA): 28 / 16.
+  //
+  // De 28 para 29 em 24/08/2026: `anuncios_ativos`, LEITURA — 29 / 17. Só a
+  // leitura subiu; continuam 1 rascunho, 10 propostas e 1 ação.
+  //
+  // E de 29 para 30 no mesmo dia: `anuncios_a_corrigir`, LEITURA — 30 / 18.
+  // Mesma varredura, pergunta seguinte: o que fazer com os que não estão no ar.
+  // E de 30 para 31: `diagnostico_de_agrupamento`, LEITURA — 31 / 19, a grade
+  // de cada produto sobre a MESMA varredura. Ver a matriz do T2.
+  //
+  // A decisão veio de uma pergunta feita em produção — "quais são os anúncios
+  // ativos hoje?" — que o Copilot respondeu não saber, com razão: as 16
+  // leituras olhavam PRODUTO, nunca a loja inteira no marketplace, e o dado
+  // estava guardado desde a 050/051. Lê `anuncios_gerados` com o tenant da
+  // sessão, paginada, sem escrita e sem chamada externa. Ver a matriz do T2.
+  //
+  // De 32 para 33 em 24/08/2026: `investigar`, RASCUNHO — 33 / 20 / 2 / 10 / 1.
+  //
+  // É a etapa 5 do Operador Universal, e a única peça do catálogo que muda o
+  // TEMPO de um pedido: um turno tem seis passos e 45 s, e "descobre o que
+  // está errado nessa loja" tem dez a vinte operações. Em vez de um turno
+  // maior (a plataforma mata a função, e um turno que morre perde o que
+  // descobriu), a investigação vira rascunho que atravessa turnos — o mesmo
+  // movimento de `copilot_cadastros`, com teto de 4 rodadas.
+  //
+  // RASCUNHO e não proposta: ela não autoriza nada, não tem alvo e não tem
+  // valor. Só LÊ e ANOTA — toda escrita continua passando por
+  // `copilot_propostas` e pelo clique. O poder de agir não mudou: segue 1.
+  //
+  // De 33 para 34 em 24/08/2026: `propor_titulo_no_anuncio`, PROPOSTA —
+  // 34 / 20 / 2 / 11 / 1. Etapa 7 do Operador Universal.
+  //
+  // É a PRIMEIRA escrita de conteúdo do projeto num anúncio que já está no ar:
+  // até aqui dava para criar, encerrar, pausar, reativar e trocar fotos, e
+  // corrigir um título errado exigia encerrar e republicar — perdendo
+  // histórico e relevância na busca.
+  //
+  // PROPOSTA e não ação, apesar de reversível: o que ela muda é o que o
+  // COMPRADOR vê. A régua de `executa` é reversibilidade E dano baixo no pior
+  // caso; aqui o pior caso é um título errado na vitrine, e o clique humano é
+  // barato perto disso. Risco `alto` (migração 072), que já exige que quem
+  // confirma seja quem pediu.
+  //
+  // E ela nasce com a trava que nenhuma escrita anterior tinha: depois de
+  // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
+  // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
+  // a releitura é o que torna seguro publicá-lo.
+  // De 34 para 35 em 24/08/2026: `saude_do_catalogo`, LEITURA —
+  // 35 / 21 / 2 / 11 / 1.
+  //
+  // Ela não abre capacidade nova: `retratarCatalogo` já calculava tudo isto
+  // desde 02/08/2026. O que ela abre é ALCANCE — o retrato rodava dentro da
+  // importação e ia embora com a requisição, e `importacoes_anuncios` não é
+  // lida por ferramenta nenhuma. A matriz de T2 tem a decisão por extenso.
+  //
+  // O que mudou no banco para isto ser possível é a 074: sete campos que o ML
+  // já mandava no MESMO multiget e a importação descartava — o mais caro deles
+  // sendo `listing_type_id`, que decide se a comissão é 14% ou 19%.
+  // AS CONTAGENS SAO A UNIAO DAS DUAS LINHAS DE TRABALHO — mescla de 24/08/2026.
+  //
+  // A `master` somou 13 ferramentas e a `feat/portal-da-lojista` somou 3.
+  // Nenhum nome colidiu, e NENHUM DOS DOIS LADOS mexeu no tipo `Efeito` nem em
+  // `EXECUCOES_REVERSIVEIS` — a fronteira de seguranca atravessou a mescla sem
+  // ser tocada, e continua com UMA execucao nomeada (`reativar_anuncio`).
+  //
+  // Cada acrescimo tem a decisao escrita no historico do lado que o trouxe;
+  // repetir as dezesseis aqui faria deste comentario um changelog. O que esta
+  // linha guarda e o TAMANHO: uma 39a ferramenta reprova aqui e obriga alguem
+  // a assinar.
+  assert.equal(FERRAMENTAS.length, 38);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 24);
+  assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
+  assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
 });
 
 test("T12: o chat fala com o Claude", () => {
-  assert.match(CLIENTE, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
+  // O modelo vem da TABELA (`roteamentoDeModelo.ts`) desde 22/08/2026 — o
+  // padrão `claude-sonnet-5` e a env ANTHROPIC_MODELO_CONVERSA vivem lá.
+  assert.match(CLIENTE, /MODELO_DA_CONVERSA = rotaDoModelo\("conversa"\)\.principal/);
+  const TABELA = semComentarios(ler("lib/agentes/roteamentoDeModelo.ts"));
+  assert.match(TABELA, /ANTHROPIC_MODELO_CONVERSA\s*\?\?\s*"claude-sonnet-5"/);
   assert.doesNotMatch(CLIENTE, /GEMINI_API_KEY|generativelanguage/);
 });
 

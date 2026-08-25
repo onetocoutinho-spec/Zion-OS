@@ -100,7 +100,20 @@ test("o invólucro só rola horizontalmente a partir de sm", () => {
 
 test("o rótulo vem dos MESMOS headers do cabeçalho", () => {
   // Duas listas para a mesma coisa envelhecem em direções diferentes.
-  assert.match(TABELA, /comRotulos\(children,\s*headers\)/);
+  //
+  // O RECORTE NÃO FECHA MAIS O PARÊNTESE, e a diferença é a de sempre por
+  // aqui: `comRotulos\(children,\s*headers\)` exigia que a chamada tivesse
+  // EXATAMENTE dois argumentos. Quando `comRotulos` ganhou um terceiro
+  // (`acaoFixa`, que gruda a coluna de ação na borda direita), este teste
+  // reprovou uma mudança que não mexeu em nada do que ele protege — a lista
+  // continua sendo UMA, a mesma `headers` do cabeçalho.
+  //
+  // É a mesma armadilha que `tabelaCabeNaTela.test.ts` já narra três vezes:
+  // sentinela ancorada na FORMA envelhece com o layout. O que vale é que os
+  // dois primeiros argumentos sejam `children` e `headers`; quantos vêm
+  // depois é assunto de quem chama. Trocar `headers` por outra lista continua
+  // reprovando, que é o ponto.
+  assert.match(TABELA, /comRotulos\(children,\s*headers\b/);
   assert.match(TABELA, /"data-rotulo":\s*headers\[indice\]/);
 });
 

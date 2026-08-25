@@ -43,7 +43,19 @@ export interface Tentativa {
   /** A coluna real. `modelo` é a referência; não existe coluna `referencia`. */
   coluna: "sku" | "ean" | "modelo" | "nome";
   /** Igualdade textual para identificador; contém para descoberta. */
-  modo: "exato" | "contem";
+  /**
+   * `exato`: igualdade. `contem`: a coluna contém o termo INTEIRO, na ordem.
+   *
+   * `todas_as_palavras`: cada palavra do termo aparece na coluna, em QUALQUER
+   * ordem. Nasceu de uma medição em 24/08/2026: a lojista escreveu "Papete
+   * Modare Nobuck 7208.101" e o catálogo, que tem "Papete Slide Modare
+   * 7208.101 Nobuck", não devolveu nada. Ela trocou a ordem e esqueceu uma
+   * palavra — que é como uma pessoa escreve o nome de um produto.
+   *
+   * O `contem` continua vindo primeiro: quando a frase inteira casa, o achado
+   * é mais forte, e degradar antes da hora traria ruído para toda busca.
+   */
+  modo: "exato" | "contem" | "todas_as_palavras";
   termo: string;
   casamento: TipoDeCasamento;
 }
@@ -140,7 +152,10 @@ export function tentativasPara(termo: string, campo: CampoDeBusca): Tentativa[] 
     return [{ coluna: "modelo", modo: "exato", termo: t, casamento: "modelo_exato" }];
   }
   if (campo === "nome") {
-    return [{ coluna: "nome", modo: "contem", termo: t, casamento: "candidato_textual" }];
+    return [
+      { coluna: "nome", modo: "contem", termo: t, casamento: "candidato_textual" },
+      ...porPalavras(t),
+    ];
   }
 
   // ---- auto ----
@@ -163,7 +178,34 @@ export function tentativasPara(termo: string, campo: CampoDeBusca): Tentativa[] 
   }
   // Descoberta, sempre por último: é a mais fraca e a que nunca identifica.
   tentativas.push({ coluna: "nome", modo: "contem", termo: t, casamento: "candidato_textual" });
+  tentativas.push(...porPalavras(t));
   return tentativas;
+}
+
+/**
+ * O degrau mais fraco: cada palavra em qualquer ordem.
+ *
+ * Só existe para termo de 2+ palavras. Com uma palavra ele seria idêntico ao
+ * `contem` e faria uma consulta a mais para chegar no mesmo lugar.
+ *
+ * Palavra de 1 letra sai fora: "de", "e", "a" não estreitam nada e uma delas
+ * sozinha casaria com metade do catálogo.
+ */
+function porPalavras(termo: string): Tentativa[] {
+  const palavras = palavrasDaBusca(termo);
+  if (palavras.length < 2) return [];
+  return [{ coluna: "nome", modo: "todas_as_palavras", termo, casamento: "candidato_textual" }];
+}
+
+/** As palavras que valem estreitar a busca. Exportada porque quem consulta o
+ * banco precisa exatamente destas — se as duas listas divergirem, a decisão de
+ * tentar e o que é tentado deixam de ser a mesma coisa. */
+export function palavrasDaBusca(termo: string): string[] {
+  return termo
+    .trim()
+    .split(/\s+/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 1);
 }
 
 /** Uma linha vira `Achado`, com o tipo derivado de ONDE o casamento ocorreu. */

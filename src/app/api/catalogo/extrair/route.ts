@@ -36,6 +36,8 @@ import {
   type ProdutoLidoDoCatalogo,
 } from "@/modules/catalog/domain/produtosDoCatalogo";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { cobrarCota, reservaNoBanco, respostaCotaRecusada } from "@/lib/agentes/cotaDeIA";
+import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 
 // Ler 90 páginas e transcrever dezenas de produtos não cabe nos 30s das rotas
 // de conversa. Este é o teto da plataforma; se um catálogo não couber nele, a
@@ -45,18 +47,20 @@ export const maxDuration = 300;
 const TAMANHO_MAXIMO = 500 * 1024 * 1024; // o teto da Files API
 
 export async function POST(request: Request) {
+  let ctx;
   try {
-    await exigirAutenticado(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
 
-  if (provedorConfigurado() !== "anthropic") {
+  const provedor = provedorConfigurado();
+  if (provedor !== "openai" && provedor !== "anthropic") {
     // Específico de propósito: "nenhum provedor" e "o provedor configurado não
     // lê documento" são problemas diferentes, e mandam a pessoa a lugares
     // diferentes. Ver a recusa de anexo em `provedorIA`.
     return Response.json(
-      { erro: "Ler catálogo em PDF exige o Claude. Configure ANTHROPIC_API_KEY no servidor." },
+      { erro: "Ler catálogo em PDF exige a OpenAI (ou o Claude). Configure OPENAI_API_KEY no servidor." },
       { status: 503 }
     );
   }
@@ -95,6 +99,21 @@ export async function POST(request: Request) {
     }
   }
 
+  // ZION-COST-001: esta é "a chamada mais cara que este sistema faz" (ver
+  // abaixo), e estava atrás da barreira mais baixa — qualquer conta nova.
+  // O teto de 500 MB fica: ele é o tamanho de catálogo REAL que chegou
+  // (272,6 MB, provedorIA.ts), e baixá-lo quebraria quem o sistema atende.
+  // O controle de custo é a COTA, atômica, cobrada aqui antes de subir o
+  // arquivo. Só a extração de verdade custa crédito: `medir=1` não chama o
+  // modelo além da contagem de tokens, e continua livre.
+  if (!apenasMedir && ctx.perfil.clienteId) {
+    if (!adminConfigurado()) {
+      return Response.json({ erro: "Cota de IA indisponível no momento." }, { status: 503 });
+    }
+    const cota = await cobrarCota(ctx, "catalogo", reservaNoBanco(getSupabaseAdmin()));
+    if (!cota.ok) return respostaCotaRecusada(cota);
+  }
+
   try {
     const fileId = fileIdExistente || (await enviarPdfParaIA(arquivo as File));
     const chamada = chamadaDoCatalogo(fileId, instrucao);
@@ -104,17 +123,23 @@ export async function POST(request: Request) {
     // a ~3 MB cada são muita imagem. O `fileId` volta junto: o arquivo já está
     // no ar, então a extração de verdade não precisa subi-lo de novo.
     if (apenasMedir) {
+      // `null` quando o provedor não mede antes de cobrar (OpenAI). A tela
+      // diz isso em vez de mostrar um número que ninguém mediu.
       const tokensEntrada = await contarTokensDaChamada(chamada);
       return Response.json({ medicao: { tokensEntrada }, fileId });
     }
 
-    const { json, uso, modelo } = await chamarIAEstruturada(chamada);
+    const { json, uso, modelo } = await chamarIAEstruturada({
+      ...chamada,
+      rastro: { origem: "catalogo", clienteId: ctx.perfil.clienteId, usuarioId: ctx.usuario?.id ?? null },
+    });
 
     const lidos = (JSON.parse(json)?.produtos ?? []) as ProdutoLidoDoCatalogo[];
     // Um array só, e não `linhas` + `paginas` lado a lado: a página pertence ao
     // produto, e duas listas paralelas na rede é onde elas se desalinham.
     const itens = linhasComOrigem(lidos);
 
+    console.info("[catalogo/extrair] extracao", { clienteId: ctx.perfil.clienteId, bytes: arquivo?.size ?? null, tokensEntrada: uso?.entrada ?? null, modelo });
     return Response.json({
       itens,
       resumo: resumoDoCatalogo(lidos, itens.map((i) => i.linha)),

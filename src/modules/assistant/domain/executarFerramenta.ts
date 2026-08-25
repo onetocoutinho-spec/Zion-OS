@@ -114,6 +114,34 @@ const LIMITE_DE_GRUPOS = 20;
  * `mlbsOmitidos` viaja ao lado.
  */
 const MLBS_POR_GRUPO = 3;
+import type { PedidoCongelado } from "./propostaDePublicacao";
+import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
+import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
+import type { DiagnosticoNoServidor } from "@/lib/services/diagnosticoNoServidor";
+import { retratoDosAnuncios } from "@/modules/publication/domain/anunciosNoAr";
+import { filaDeCorrecao, type LinhaDaFila } from "@/modules/publication/domain/filaDeCorrecao";
+import { podeCorrigirTitulo } from "@/modules/publication/domain/correcaoNoAnuncio";
+import { limiteDoTituloNoCanal } from "@/modules/publication/domain/regrasDoCanal";
+import { habilidades, lacunaPorAssunto, lacunas } from "@/modules/assistant/domain/habilidades";
+import {
+  motivoDeParar,
+  podeContinuar,
+  type Investigacao,
+} from "@/modules/assistant/domain/investigacao";
+import { fraseDaFamilia, retratoDaFamilia } from "@/modules/publication/domain/familiaNoMarketplace";
+import { entradaDaSaude, NADA_MEDIDO } from "@/modules/publication/domain/saudeDoCatalogoDaLoja";
+import { retratarCatalogo } from "@/modules/integration/domain/saudeDoCatalogo";
+import { nomeDoTipoDeAnuncio } from "@/modules/pricing/domain/custosML";
+import type { LeituraDeFamilias } from "@/lib/marketplaces/mercadolivre";
+import {
+  gradesDosProdutos,
+  LACUNA_DA_FAMILIA,
+  referenciasRepetidas,
+} from "@/modules/publication/domain/gradeNoMarketplace";
+import { perfilEstaVazio, proibidasPresentes, type PerfilDeConteudo } from "./perfilDeConteudo";
+import { normalizarTarefas, type TarefaProposta } from "./propostaDeTarefas";
+import { lerSlot } from "./briefingDeImagem";
+import type { PedidoDeImagem } from "./propostaDeImagem";
 import {
   pendenciasDoCatalogo as calcularPendencias,
   pendenciasDoProduto,
@@ -196,6 +224,68 @@ export interface ContextoDasFerramentas {
    * corpo — que é a definição do problema que a Proposal existe para resolver.
    */
   cadastro?: ContextoDoCadastro;
+  /**
+   * AS VENDAS, em porto — a leitura vai ao Mercado Livre com a credencial do
+   * servidor, e só quem pergunta de venda paga por ela. Ausente = a rota não
+   * ofereceu (sem integração configurada), e a ferramenta diz isso.
+   */
+  vendas?: (dias: 7 | 14 | 30 | 60 | 90) => Promise<VendasNoServidor>;
+  /** A comparação entre as lojas do alcance — só agência/equipe recebem o porto. */
+  comparar?: () => Promise<ComparacaoDeLojas>;
+  /** O diagnóstico de um anúncio no ML — visitas, vendas, saúde. */
+  diagnostico?: (produtoId: string, precoMinimo: number | null) => Promise<DiagnosticoNoServidor>;
+  /**
+   * A INVESTIGAÇÃO em andamento nesta conversa — o trabalho que não coube num
+   * turno. Quem fecha a rodada é a ROTA, no fim do turno: o achado é a própria
+   * resposta que a lojista leu, e o modelo não deveria pagar um passo para
+   * repeti-la.
+   */
+  investigacao?: {
+    atual: Investigacao | null;
+    abrir: (pergunta: string, proximoPasso: string) => Promise<Investigacao | null>;
+    anotar: (proximoPasso: string) => void;
+    concluir: () => void;
+  };
+  /**
+   * O TÍTULO QUE ESTÁ NO AR — leitura viva no Mercado Livre.
+   *
+   * Existe porque o cartão precisa mostrar o que o COMPRADOR vê agora, e não o
+   * título do catálogo do Zion: os dois divergirem é justamente o caso que a
+   * correção conserta. `null` = produto sem anúncio publicado nesta loja.
+   */
+  tituloNoAr?: (produtoId: string) => Promise<{
+    anuncioId: string;
+    mlb: string;
+    titulo: string;
+    permalink: string | null;
+  } | null>;
+  /**
+   * A FAMÍLIA DOS ANÚNCIOS NO ML — leitura viva, e a lacuna que ela fecha.
+   *
+   * Até 24/08/2026 o Copilot respondia "não sei se estão agrupados", e estava
+   * certo: o vínculo de família chega na importação e não é guardado em lugar
+   * nenhum do banco. Mas "não guardo" não é "não dá para saber" — o ML devolve
+   * `family_name` e `user_product_id`, e 20 itens cabem numa chamada.
+   *
+   * Opcional: sem credencial no servidor o porto não é montado e a ferramenta
+   * volta a dizer a lacuna, em vez de inventar veredito.
+   */
+  familiaNoAr?: (produtoId: string) => Promise<LeituraDeFamilias | null>;
+  /**
+   * O SINAL de pedido sem capacidade — gravado quando a conferência encontra
+   * uma lacuna. Opcional: sem ele a resposta honesta continua saindo, só não
+   * fica registrada.
+   */
+  registrarLacuna?: (assunto: string, pedido: string) => Promise<void>;
+  /**
+   * As linhas de anúncio da loja — o INSUMO das duas leituras de marketplace.
+   *
+   * Um porto só, e não dois, porque "quantos estão no ar" e "o que fazer com os
+   * que não estão" leem exatamente as mesmas linhas. As contas são do domínio
+   * (`retratoDosAnuncios`, `filaDeCorrecao`); o porto só traz o dado, medido
+   * (050/051) e com a data — não o ML ao vivo, que não cabe no turno.
+   */
+  noAr?: () => Promise<LinhaDaFila[]>;
   /**
    * A ANÁLISE do catálogo — pendências, conflitos, procedência.
    *
@@ -308,12 +398,18 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     tituloAtual: string;
+    /** O ajuste pedido ("deixa mais curto"). Ver `EntradaDoTitulo`. */
+    instrucao?: string;
+    /** O motivo da retentativa única (a recusa do juiz). */
+    retentativaPor?: string;
   }) => Promise<{ titulo: string; justificativa: string } | null>;
   /** O anúncio cujo título se quer melhorar. `null` = não existe anúncio. */
   anuncioParaTitulo?: (produtoId: string) => Promise<{
     anuncioId: string;
     nome: string;
     tituloAtual: string;
+    /** O canal do anúncio — decide o limite do título. Omitido = ML. */
+    marketplace?: string;
   } | null>;
 
   /**
@@ -334,6 +430,8 @@ export interface ContextoDoAnuncio {
     marca: string;
     modelo: string;
     atual: string;
+    /** O ajuste pedido ("deixa mais curta"). Ver `EntradaDoTexto`. */
+    instrucao?: string;
   }) => Promise<{ descricao: string; justificativa: string } | null>;
   /**
    * O que subiria se ela publicasse AGORA — o ensaio, sem tocar no ML.
@@ -342,6 +440,8 @@ export interface ContextoDoAnuncio {
    * publicação real montaria (`montarPreviewML`), porque mostrar um resumo
    * feito à parte seria mostrar uma coisa e publicar outra.
    */
+  /** O perfil de conteúdo da loja — para o juiz recusar palavra proibida. */
+  perfil?: () => Promise<PerfilDeConteudo>;
   ensaioDaPublicacao?: (produtoId: string) => Promise<{
     anuncioId: string;
     nome: string;
@@ -353,6 +453,11 @@ export interface ContextoDoAnuncio {
     /** Já publicado? Então não há o que publicar. */
     jaPublicado: boolean;
     mlItemId: string | null;
+    /**
+     * O PEDIDO INTEIRO, como foi ensaiado — é o que a Proposal congela e a
+     * confirmação publica. Sem ele não há proposta, só resposta.
+     */
+    congelado?: PedidoCongelado;
   } | null>;
   /**
    * A tabela de medidas do produto, com a PROCEDÊNCIA dela.
@@ -569,7 +674,13 @@ export interface ResultadoDaFerramenta {
     estoque: number | null;
     fotos: number;
     categoria: string;
+    /** O pedido congelado — vai para a Proposal, não para a tela. */
+    congelado?: PedidoCongelado;
   };
+  /** A lista de tarefas a criar — a tela mostra; a Proposal congela. */
+  propostaDeTarefas?: { tarefas: TarefaProposta[]; cortadas: number };
+  /** O pedido de imagem — a tela mostra o que vai gerar; a Proposal congela. */
+  propostaDeImagem?: PedidoDeImagem;
   propostaDeTexto?: {
     campo: "descricao" | "palavras_chave";
     anuncioId: string;
@@ -583,6 +694,9 @@ export interface ResultadoDaFerramenta {
     autoridade: "nao_se_aplica";
   };
   propostaDeTitulo?: {
+    /** Muda o anúncio NO AR, não o catálogo. A tela precisa avisar. */
+    noMarketplace?: boolean;
+    mlb?: string;
     anuncioId: string;
     produtoId: string;
     nome: string;
@@ -1404,6 +1518,123 @@ export async function executarFerramenta(
     case "procedencia":
       return consultarProcedencia(args, ctx);
 
+    case "vendas_da_loja":
+      return consultarVendas(args, ctx);
+
+    case "comparar_lojas":
+      return compararAsLojas(ctx);
+
+    case "anuncios_ativos":
+      return listarAnunciosNoAr(ctx);
+
+    case "anuncios_a_corrigir":
+      return listarFilaDeCorrecao(ctx);
+
+    case "saude_do_catalogo":
+      return saudeDoCatalogo(ctx);
+
+    case "diagnostico_de_agrupamento":
+      return diagnosticarGrade(args, ctx);
+
+    case "o_que_eu_consigo":
+      return conferirHabilidade(args, ctx);
+
+    case "investigar":
+      return conduzirInvestigacao(args, ctx);
+
+    case "diagnostico_do_anuncio": {
+      const produtoId = texto(args, "produtoId");
+      if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+      if (!ctx.diagnostico) return { saida: { erro: "Não consigo ler o Mercado Livre por aqui agora." } };
+      // O preço mínimo do Zion, quando o motor consegue calcular — para a
+      // leitura dizer "vende no prejuízo" com base, não com palpite.
+      let precoMinimo: number | null = null;
+      try {
+        const pr = ctx.preco ? await ctx.preco.doProduto(produtoId) : null;
+        // O menor preço que ainda entrega a margem mínima — a mesma conta de
+        // `pricing`. Sem custo/peso, `null`, e a leitura não fala de prejuízo.
+        precoMinimo = pr ? situacaoDoPreco(pr.entradas).minimoNaMargem : null;
+      } catch {
+        precoMinimo = null;
+      }
+      const r = await ctx.diagnostico(produtoId, precoMinimo);
+      if (!r.ok) return { saida: { erro: r.mensagem, motivo: r.motivo, comoResponder: "Diga o motivo como está. Não estime visitas nem vendas." } };
+      return {
+        saida: {
+          mlb: r.mlb,
+          titulo: r.titulo,
+          permalink: r.permalink,
+          ...r.diagnostico,
+          comoResponder:
+            "Comece pela LEITURA (o eixo), depois os FATOS exatamente como estão, depois as recomendações em ordem — e feche com o que você não sabe. Se o eixo for exposição, ofereça propor_titulo; se for conversão, ofereça pricing e propor_imagem/propor_descricao. Nunca proponha título para um problema de conversão.",
+        },
+      };
+    }
+
+    case "propor_imagem": {
+      const produtoId = texto(args, "produtoId");
+      const slot = lerSlot(args.slot);
+      if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+      if (!slot) return { saida: { montada: false, motivo: "Preciso saber qual imagem: capa, infográfico, detalhe, medidas, humanizada ou benefícios." } };
+      const item = await ctx.anuncio?.doProduto(produtoId);
+      if (!item) return { saida: { montada: false, motivo: "Não achei esse produto." } };
+      if (item.produto.quantidadeImagens === 0) {
+        return { saida: { montada: false, motivo: "Esse produto ainda não tem foto. A IA melhora uma foto real — ela não inventa o produto. Peça para ele enviar a foto primeiro." } };
+      }
+      const paiVersaoId = texto(args, "paiVersaoId");
+      const feedback = texto(args, "feedback").slice(0, 400);
+      const pedido: PedidoDeImagem = {
+        versao: 1,
+        produtoId,
+        produtoNome: item.produto.nome,
+        slot,
+        instrucao: texto(args, "instrucao").slice(0, 400),
+        ...(paiVersaoId ? { paiId: paiVersaoId } : {}),
+        ...(feedback ? { feedback } : {}),
+        ...(texto(args, "beneficios") ? { beneficios: texto(args, "beneficios").slice(0, 600) } : {}),
+      };
+      return {
+        propostaDeImagem: pedido,
+        saida: {
+          montada: true,
+          slot,
+          ...(paiVersaoId ? { ajusteDaVersao: paiVersaoId } : {}),
+          comoResponder: "NADA foi gerado. Diga que o pedido está no cartão para ele confirmar, e que a imagem gerada fica como rascunho até ele aprovar. Não descreva a imagem que ainda não existe.",
+        },
+      };
+    }
+
+    case "propor_tarefas": {
+      const { tarefas, cortadas } = normalizarTarefas(args.tarefas);
+      if (tarefas.length === 0) {
+        return { saida: { montada: false, motivo: "Preciso de pelo menos uma tarefa com título." } };
+      }
+      return {
+        propostaDeTarefas: { tarefas, cortadas },
+        saida: {
+          montada: true,
+          quantas: tarefas.length,
+          ...(cortadas > 0 ? { aviso: `Só as 10 primeiras entraram; ${cortadas} ficaram de fora.` } : {}),
+          comoResponder: "NADA foi criado. Diga que a lista está no cartão para ele confirmar. Não repita a lista no texto — o cartão já mostra.",
+        },
+      };
+    }
+
+    case "meu_perfil_de_conteudo": {
+      const perfil = (await ctx.anuncio?.perfil?.()) ?? null;
+      const observado = perfil?.observado ?? [];
+      if (!perfil || (perfilEstaVazio(perfil) && observado.length === 0)) {
+        return { saida: { vazio: true, comoResponder: "Diga que a loja ainda não preencheu como gosta de vender, e que isso se faz em Configurações › Como a sua loja vende. Não sugira um tom." } };
+      }
+      return {
+        saida: {
+          ...(perfilEstaVazio(perfil) ? { perfilEscrito: "vazio" } : perfil),
+          observadoNasAprovacoes: observado,
+          comoResponder: "Mostre o que está ESCRITO como escrito. O que está em observadoNasAprovacoes é tendência vista nas aprovações — diga isso com essa palavra, e não como regra da loja. Não complete nem reinterprete.",
+        },
+      };
+    }
+
     case "preparar_resolucao":
       return prepararResolucao(args, ctx);
 
@@ -1412,6 +1643,9 @@ export async function executarFerramenta(
 
     case "propor_titulo":
       return proporTitulo(args, ctx);
+
+    case "propor_titulo_no_anuncio":
+      return proporTituloNoAnuncio(args, ctx);
 
     case "tabela_de_medidas": {
       const a = ctx.anuncio;
@@ -1955,6 +2189,7 @@ async function proporPublicacao(
       estoque: ensaio.estoque,
       fotos: ensaio.fotos,
       categoria: ensaio.categoria,
+      ...(ensaio.congelado ? { congelado: ensaio.congelado } : {}),
     },
     saida: {
       montada: true,
@@ -1997,9 +2232,19 @@ async function proporTexto(
   };
 
   if (campo === "descricao") {
-    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual });
+    const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+    const gerado = await a.gerarDescricao({ ...base, atual: alvo.descricaoAtual, ...(instrucao ? { instrucao } : {}) });
     const veredicto = avaliarDescricaoProposta(gerado?.descricao ?? "", alvo.descricaoAtual);
     if (!veredicto.ok) return { saida: { montada: false, motivo: veredicto.motivo } };
+    const proibidas = proibidasPresentes(veredicto.descricao, (await a.perfil?.()) ?? null);
+    if (proibidas.length > 0) {
+      return {
+        saida: {
+          montada: false,
+          motivo: `A descrição proposta usa palavra que a loja proibiu no perfil de conteúdo: ${proibidas.join(", ")}. Peça de novo dizendo para evitar.`,
+        },
+      };
+    }
     return {
       propostaDeTexto: {
         campo,
@@ -2051,6 +2296,100 @@ async function proporTexto(
   };
 }
 
+/**
+ * "Corrige o título do anúncio" — a troca no item QUE ESTÁ NO AR.
+ *
+ * Irmã de `proporTitulo`, e deliberadamente separada: aquela muda o catálogo
+ * do Zion e ninguém de fora vê; esta muda o que o comprador lê agora. O cartão
+ * carrega `noMarketplace` para a tela poder dizer isso — um botão idêntico
+ * para consequências diferentes seria a armadilha.
+ *
+ * O "atual" vem do Mercado Livre, não do Zion: os dois divergirem é o caso.
+ */
+async function proporTituloNoAnuncio(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const produtoId = texto(args, "produtoId");
+  if (!produtoId) return { saida: { montada: false, motivo: "Preciso saber de qual produto." } };
+  if (!ctx.tituloNoAr) {
+    return {
+      saida: {
+        erro: "Não consigo ler o anúncio no Mercado Livre por aqui agora.",
+        comoResponder: "Diga que não conseguiu alcançar o Mercado Livre e que por isso não vai propor troca nenhuma.",
+      },
+    };
+  }
+
+  let noAr: Awaited<ReturnType<NonNullable<ContextoDasFerramentas["tituloNoAr"]>>>;
+  try {
+    noAr = await ctx.tituloNoAr(produtoId);
+  } catch {
+    return {
+      saida: {
+        erro: "Não consegui ler o título que está no ar.",
+        comoResponder: "Diga que não conseguiu ler o anúncio no Mercado Livre agora. Não proponha troca sem saber o que está lá.",
+      },
+    };
+  }
+  if (!noAr) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Este produto não tem anúncio publicado no Mercado Livre — não há título no ar para corrigir.",
+        comoResponder: "Diga isso como está. Se ele quiser melhorar o título do CADASTRO, existe propor_titulo.",
+      },
+    };
+  }
+
+  // O título pedido, ou o que a Zion já tem — o caso "o Zion está certo e o ML
+  // está velho". Sem nenhum dos dois, não há o que propor.
+  let pedido = texto(args, "titulo");
+  if (!pedido && ctx.anuncio?.anuncioParaTitulo) {
+    // O título que a Zion já tem para este produto — o caso "o cadastro está
+    // certo e o Mercado Livre está velho".
+    pedido = (await ctx.anuncio.anuncioParaTitulo(produtoId))?.tituloAtual ?? "";
+  }
+  const pode = podeCorrigirTitulo(noAr.titulo, pedido, limiteDoTituloNoCanal("Mercado Livre"));
+  if (!pode.pode) {
+    return {
+      saida: {
+        montada: false,
+        motivo: pode.explicacao,
+        tituloNoAr: noAr.titulo,
+        comoResponder:
+          pode.motivo === "igual"
+            ? "Diga que o anúncio já está com esse título e que não há o que trocar."
+            : "Diga o motivo como está. Se for tamanho, ofereça gerar um título dentro do limite com propor_titulo.",
+      },
+    };
+  }
+
+  return {
+    propostaDeTitulo: {
+      noMarketplace: true,
+      mlb: noAr.mlb,
+      anuncioId: noAr.anuncioId,
+      produtoId,
+      nome: noAr.titulo,
+      tituloAtual: noAr.titulo,
+      tituloProposto: pedido,
+      justificativa: "",
+      autoridade: "nao_se_aplica",
+    },
+    saida: {
+      montada: true,
+      noMarketplace: true,
+      mlb: noAr.mlb,
+      tituloNoAr: noAr.titulo,
+      tituloProposto: pedido,
+      caracteres: pedido.length,
+      comoResponder:
+        "Deixe CLARO que isto muda o anúncio que está no ar, e não o cadastro: é o que o comprador vê. Mostre os dois títulos. NÃO diga que trocou — nada acontece até o clique, e depois do clique eu releio o anúncio para confirmar antes de afirmar qualquer coisa.",
+    },
+  };
+}
+
 async function proporTitulo(
   args: Record<string, unknown>,
   ctx: ContextoDasFerramentas
@@ -2076,17 +2415,39 @@ async function proporTitulo(
   }
 
   const item = await a.doProduto(produtoId);
-  const gerado = await a.gerarTitulo({
+  // O AJUSTE: "deixa mais curto" vai para o agente com a ordem de preservar o
+  // resto. Sem isto, pedir de novo regerava do zero e a lojista perdia o que
+  // já tinha aprovado a cada iteração.
+  const instrucao = texto(args, "instrucao").slice(0, 300) || undefined;
+  const entrada = {
     nome: item?.produto.nome ?? alvo.nome,
     marca: item?.produto.marca ?? "",
     modelo: item?.produto.modelo ?? "",
     tituloAtual: alvo.tituloAtual,
-  });
+    ...(instrucao ? { instrucao } : {}),
+  };
+  let gerado = await a.gerarTitulo(entrada);
   // O DOMÍNIO decide se o título proposto pode virar proposta — vazio, igual ao
   // atual ou acima dos 60 caracteres do ML são recusas, não opinião do modelo.
-  const veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual);
+  let veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual, alvo.marketplace ?? null);
+  // UMA retentativa, só quando o juiz recusou por TAMANHO. A cota já foi
+  // gasta; devolver "68 caracteres" para a lojista em vez de encurtar era
+  // entregar o trabalho pela metade. Teto de uma: a segunda recusa é resposta.
+  if (!veredicto.ok && /caracteres/i.test(veredicto.motivo) && gerado?.titulo) {
+    gerado = await a.gerarTitulo({ ...entrada, retentativaPor: veredicto.motivo });
+    veredicto = avaliarTituloProposto(gerado?.titulo ?? "", alvo.tituloAtual, alvo.marketplace ?? null);
+  }
   if (!veredicto.ok) {
     return { saida: { montada: false, motivo: veredicto.motivo } };
+  }
+  const proibidasNoTitulo = proibidasPresentes(veredicto.titulo, (await a.perfil?.()) ?? null);
+  if (proibidasNoTitulo.length > 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: `O título proposto usa palavra que a loja proibiu no perfil de conteúdo: ${proibidasNoTitulo.join(", ")}. Peça de novo dizendo para evitar.`,
+      },
+    };
   }
 
   return {
@@ -2736,4 +3097,512 @@ function mensagemDaRecusa(p: Proposta): string {
   if (p.tipo === "pronta") return "";
   if (p.tipo === "ambigua") return p.mensagem;
   return p.mensagem;
+}
+
+/**
+ * "Como estão minhas vendas?", "por que caíram?", "o que vende mais?".
+ *
+ * A leitura é DIFERENCIAL (esta janela contra a anterior) e vem com a lista do
+ * que os dados não cobrem. O `comoResponder` existe porque "por quê" é a
+ * pergunta em que o modelo mais inventa: ele recebe a variação por produto e a
+ * instrução de separar o que os números mostram do que seria hipótese.
+ */
+async function consultarVendas(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.vendas) {
+    return { saida: { erro: "Não consigo ler as vendas por aqui agora — a integração com o Mercado Livre não está disponível neste servidor." } };
+  }
+  const bruto = Number(args.dias);
+  const dias = ([7, 14, 30, 60, 90] as const).find((d) => d === bruto) ?? 30;
+  const r = await ctx.vendas(dias);
+  if (!r.ok) {
+    return {
+      saida: {
+        erro: r.mensagem,
+        motivo: r.motivo,
+        comoResponder:
+          r.motivo === "nao_conectado"
+            ? "Diga que a loja não está conectada ao Mercado Livre e que, conectando em Conexão com o Mercado Livre, você passa a ler as vendas. Não estime venda nenhuma."
+            : r.motivo === "reconectar"
+              ? "Diga que o Mercado Livre recusou a credencial e que é preciso reconectar. Não estime venda nenhuma."
+              : "Diga que não conseguiu ler as vendas agora e por quê. Não estime.",
+      },
+    };
+  }
+  const l = r.leitura;
+  return {
+    saida: {
+      periodoDias: l.periodoDias,
+      atual: l.atual,
+      anterior: l.anterior,
+      variacaoFaturamentoPct: l.variacaoFaturamento,
+      variacaoPedidosPct: l.variacaoPedidos,
+      quedas: l.quedas,
+      altas: l.altas,
+      sumiram: l.sumiram,
+      pedidosLidos: r.pedidosLidos,
+      ...(r.truncado ? { aviso: "A leitura parou no teto de pedidos; os números cobrem os mais recentes, não o período inteiro." } : {}),
+      oQueNaoSei: l.oQueNaoSei,
+      comoResponder: [
+        "Separe em três blocos, nesta ordem: O QUE OS NÚMEROS MOSTRAM (só o que está acima, com os valores exatos e a comparação com o período anterior), O QUE ISSO SUGERE (hipóteses, ditas como hipóteses, ligadas a um produto ou número específico), O QUE EU NÃO SEI (repita a lista oQueNaoSei quando a pergunta for 'por quê').",
+        "Se a pergunta for 'por que caíram', comece pelos produtos em 'quedas' e 'sumiram' — é neles que a queda está. Não atribua a queda a título, foto ou preço sem dado: isso é hipótese e precisa ser dita como hipótese.",
+        "Quando 'anterior' for zero, não há comparação: diga isso em vez de calcular porcentagem.",
+        "coberturaCusto abaixo de 100 significa que a margem está calculada sobre PARTE das unidades. Diga quantos por cento têm custo antes de falar de margem.",
+        "Se quiser propor algo, proponha o próximo passo concreto (conferir estoque dos que sumiram, revisar preço dos que caíram) e ofereça as ferramentas que existem — pendencias, pricing, preparacao_de_anuncio.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
+ * "Descobre o que está errado" — o trabalho que atravessa turnos.
+ *
+ * Esta ferramenta não consulta nada: ela ABRE (ou fecha) o rascunho onde os
+ * achados ficam. Quem descobre são as outras, no mesmo turno e nos seguintes.
+ */
+async function conduzirInvestigacao(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.investigacao) {
+    return {
+      saida: {
+        erro: "Não consigo abrir uma investigação por aqui agora.",
+        comoResponder: "Responda com o que der no turno de hoje, e diga o que ficou de fora. Não prometa continuar.",
+      },
+    };
+  }
+  const { atual } = ctx.investigacao;
+  const concluida = args.concluida === true;
+  const proximoPasso = texto(args, "proximoPasso");
+
+  if (concluida) {
+    if (!atual) {
+      return { saida: { montada: false, motivo: "Não há investigação aberta para concluir." } };
+    }
+    ctx.investigacao.concluir();
+    return {
+      saida: {
+        concluida: true,
+        pergunta: atual.pergunta,
+        rodadasGastas: atual.rodadas + 1,
+        comoResponder:
+          "Entregue a CONCLUSÃO da investigação: o que você descobriu, o que isso significa, e o que fazer. Diga também o que NÃO deu para apurar. Se houver ação possível, ofereça — mas nada é feito sem o clique.",
+      },
+    };
+  }
+
+  if (atual) {
+    // Já existe: não abre outra. Duas investigações no mesmo fio seriam duas
+    // memórias competindo, e o modelo não teria como escolher.
+    if (proximoPasso) ctx.investigacao.anotar(proximoPasso);
+    const parar = podeContinuar(atual) ? null : motivoDeParar(atual);
+    return {
+      saida: {
+        jaAberta: true,
+        pergunta: atual.pergunta,
+        rodada: atual.rodadas + 1,
+        achadosAteAqui: atual.achados.length,
+        ...(parar ? { naoPodeContinuar: parar } : {}),
+        comoResponder: parar
+          ? "Diga que esta investigação chegou ao limite e entregue a conclusão com o que já apurou, dizendo o que ficou sem resposta."
+          : "Continue de onde parou usando as ferramentas de leitura. Não repita as consultas que já constam dos achados.",
+      },
+    };
+  }
+
+  const pergunta = texto(args, "pergunta");
+  if (!pergunta) {
+    return { saida: { montada: false, motivo: "Preciso saber o que investigar." } };
+  }
+  const nova = await ctx.investigacao.abrir(pergunta, proximoPasso);
+  if (!nova) {
+    return {
+      saida: {
+        erro: "Não consegui abrir a investigação.",
+        comoResponder: "Siga respondendo com o que couber neste turno e diga o que ficou de fora. Não prometa continuar depois.",
+      },
+    };
+  }
+  return {
+    saida: {
+      aberta: true,
+      pergunta: nova.pergunta,
+      rodada: 1,
+      comoResponder:
+        "NÃO anuncie que abriu uma investigação — isso é detalhe interno. Continue trabalhando: use as ferramentas de leitura para apurar, e responda com o que descobriu. O que ficar faltando volta no próximo turno.",
+    },
+  };
+}
+
+/**
+ * "Você consegue fazer X?" — a conferência ANTES da promessa.
+ *
+ * É a peça que faltava para o Copilot dizer "isto eu não faço, e é por isto"
+ * em vez de improvisar. E a checagem É o sinal: quando o assunto é uma lacuna,
+ * o pedido fica registrado — é dele que sai a lista do que construir.
+ */
+async function conferirHabilidade(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  const assunto = texto(args, "assunto");
+  const pedido = texto(args, "pedido");
+  const lacuna = assunto ? lacunaPorAssunto(assunto) : null;
+
+  if (assunto && !lacuna) {
+    // Assunto que não existe no registro NÃO vira "não sei fazer": seria uma
+    // recusa inventada, que é o defeito que este arquivo existe para impedir.
+    return {
+      saida: {
+        assuntoDesconhecido: assunto,
+        habilidades: habilidades().map((h) => ({ ferramenta: h.ferramenta, oQueFaz: h.oQueFaz, nivel: h.nivel })),
+        comoResponder:
+          "O assunto que você passou não está na lista de limitações conhecidas — então NÃO afirme que não consegue. Procure a habilidade correspondente na lista e use a ferramenta certa; se nenhuma servir, diga o que você tentou e pergunte o que a pessoa quer alcançar.",
+      },
+    };
+  }
+
+  if (lacuna) {
+    // O sinal, gravado no momento honesto. Nunca derruba a resposta.
+    if (ctx.registrarLacuna) {
+      await ctx.registrarLacuna(lacuna.assunto, pedido).catch(() => {});
+    }
+    return {
+      saida: {
+        consigo: false,
+        assunto: lacuna.assunto,
+        codigo: lacuna.codigo,
+        porQue: lacuna.porQue,
+        oQueFaltaria: lacuna.oQueFaltaria,
+        comoResponder:
+          "Diga que NÃO consegue fazer isso, e diga o MOTIVO com as palavras de porQue — nunca 'não consigo' sozinho, nunca 'ainda não implementado'. Depois diga o que existe de caminho, usando oQueFaltaria: se houver uma saída pelas telas ou pelo próprio marketplace, aponte-a. Não prometa prazo e não diga que vai fazer depois. Se houver algo próximo que você CONSIGA fazer, ofereça — mas deixe claro que é outra coisa.",
+      },
+    };
+  }
+
+  return {
+    saida: {
+      habilidades: habilidades().map((h) => ({
+        ferramenta: h.ferramenta,
+        oQueFaz: h.oQueFaz,
+        nivel: h.nivel,
+        precisaDe: h.precisaDe,
+      })),
+      limitacoesConhecidas: lacunas().map((l) => ({ assunto: l.assunto, resumo: l.porQue })),
+      comoResponder:
+        "Responda com o que a pessoa consegue FAZER a partir daqui, agrupado por assunto (o que eu leio, o que eu proponho, o que eu executo), não com a lista crua de ferramentas. Não cite nomes técnicos de ferramenta. Se ela perguntou sobre algo específico que está em limitacoesConhecidas, chame esta ferramenta de novo passando o assunto.",
+    },
+  };
+}
+
+/**
+ * "As variações não estão agrupadas" — a grade de cada produto no ML.
+ *
+ * A frase da lojista aponta para o lugar certo e nomeia a coisa errada: em
+ * calçado, um anúncio por numeração É o formato do ML. O que dói é a grade
+ * PARTIDA — 16 anúncios e 1 no ar. Esta saída mede isso, e declara o que não
+ * sabe: sem o vínculo de família guardado, ninguém aqui pode afirmar que o ML
+ * agrupou ou deixou de agrupar.
+ */
+async function diagnosticarGrade(
+  args: Record<string, unknown>,
+  ctx: ContextoDasFerramentas
+): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const grades = gradesDosProdutos(await ctx.noAr());
+  if (grades.length === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está.",
+      },
+    };
+  }
+  // O catálogo já foi lido neste turno se alguém o pediu — é o mesmo porto
+  // memoizado da análise. Sem ele, a conferência de referência apenas não sai.
+  let referencias: ReturnType<typeof referenciasRepetidas> = [];
+  if (ctx.analise) {
+    try {
+      const c = await ctx.analise.catalogo();
+      referencias = referenciasRepetidas(
+        c.produtos.map((p) => ({ id: p.id, nome: p.nome, modelo: p.modelo }))
+      );
+    } catch {
+      // Falha ao ler o catálogo não derruba o diagnóstico da grade: some a
+      // conferência de referência, e a saída não afirma que não há repetida.
+      referencias = [];
+    }
+  }
+  const quebradas = grades.filter((g) => g.situacao === "so_um_no_ar" || g.situacao === "partida" || g.situacao === "fora_do_ar");
+
+  // ---- A FAMÍLIA, PERGUNTADA AO ML — só quando alguém aponta um produto.
+  //
+  // A leitura é por PRODUTO de propósito. Fazê-la para os dez piores seriam
+  // dez idas ao ML numa pergunta só, e ninguém perguntou sobre os dez. Quando
+  // a lojista diz "as variações da Papete não estão agrupadas", o modelo já
+  // achou o produto no passo anterior e passa o id aqui.
+  const alvo = texto(args, "produtoId").trim();
+  let agrupamentoNoML: unknown;
+  if (alvo && ctx.familiaNoAr) {
+    const leitura = await ctx.familiaNoAr(alvo);
+    if (leitura) {
+      const r = retratoDaFamilia(leitura);
+      agrupamentoNoML = {
+        situacao: r.situacao,
+        anunciosLidosNoML: r.lidos,
+        anunciosSemResposta: r.naoLidos,
+        familias: r.familias,
+        semFamilia: r.semFamilia,
+        // A FRASE VEM PRONTA. Deixar o modelo redigir a partir dos números
+        // abriria espaço para "estão agrupados" sair de uma leitura parcial —
+        // e é justamente essa a diferença que a lojista precisa ver.
+        frase: fraseDaFamilia(r),
+      };
+    }
+  }
+
+  return {
+    saida: {
+      produtosComAnuncio: grades.length,
+      produtosComGradeQuebrada: quebradas.length,
+      anunciosForaDoAr: grades.reduce((t, g) => t + g.fora, 0),
+      // A FRAÇÃO NÃO SAI DAQUI. `cobertura` é 0,0625; quem lê aquilo rotulado
+      // como percentual entende 0,06%, cem vezes menos que os 6% reais — e foi
+      // o que a tela mostrou em 24/08/2026. Só a porcentagem inteira atravessa.
+      piores: quebradas.slice(0, 10).map(({ cobertura: _fracao, ...g }) => g),
+      referenciasParaConferir: referencias.slice(0, 10),
+      conferenciaDeReferenciaDisponivel: Boolean(ctx.analise),
+      ...(agrupamentoNoML ? { agrupamentoNoML } : {}),
+      // A LACUNA SÓ APARECE QUANDO AINDA É VERDADE. Mandá-la junto com a
+      // leitura faria o modelo dizer as duas coisas — "estão agrupados" e "não
+      // sei se estão agrupados" — na mesma resposta.
+      ...(agrupamentoNoML ? {} : { oQueNaoSei: LACUNA_DA_FAMILIA }),
+      comoResponder: [
+        "COMECE PELO ACHADO, não pela aula. A primeira frase diz o que está errado neste produto (ou que nada está). SÓ ENTÃO, e em uma linha, o formato: em calçado o Mercado Livre não aceita um anúncio com variações, então um anúncio por numeração é o certo — muitos anúncios NÃO é o problema. Essa linha existe para impedir a conclusão errada, não para abrir a resposta.",
+        "O problema é a GRADE PARTIDA. Para cada produto em 'piores' diga: X anúncios, Y no ar, e o que está bloqueando o resto (campo motivos). 'so_um_no_ar' é o caso mais caro: quem procura outro número não encontra a loja.",
+        "'coberturaPercentual' JÁ ESTÁ EM PORCENTAGEM INTEIRA: escreva \"6%\", nunca \"0,06\" nem \"0.0625\". Não converta nada — o número sai pronto.",
+        "SOBRE AGRUPAMENTO: se veio 'agrupamentoNoML', diga o campo 'frase' dele UMA VEZ e siga em frente — não liste as famílias antes e repita a frase depois, é a mesma informação duas vezes. Não recalcule o veredito a partir dos números. Se NÃO veio, repita 'oQueNaoSei' e diga que para conferir a família você precisa saber de qual produto se trata (ache com achar_produto e chame de novo com produtoId).",
+        "Sobre 'referenciasParaConferir': diga 'confira se são o mesmo produto' e mostre os modelos lado a lado. NUNCA diga que são duplicados — dois materiais do mesmo modelo é cadastro legítimo, e quem decide é a lojista.",
+        "Se 'conferenciaDeReferenciaDisponivel' for falso, não diga que não há referência repetida: diga que não conferiu.",
+        "Para resolver, ofereça o caminho que existe: anuncios_a_corrigir mostra o motivo de cada um estar fora do ar, e diagnostico_do_anuncio olha um anúncio específico.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
+ * "O que está parado?" — os anúncios fora do ar, por motivo do ML.
+ *
+ * O que esta saída carrega e nenhuma outra carregava: para cada motivo, o que o
+ * Zion CONSEGUE fazer hoje. `capacidade_ausente` é uma resposta — prometer
+ * conserto sobre um motivo que ninguém sabe ler seria a invenção que o A0
+ * cometia.
+ */
+async function listarFilaDeCorrecao(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const f = filaDeCorrecao(await ctx.noAr());
+  if (f.foraDoAr === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Nenhum anúncio desta loja está fora do ar — ou o estado deles ainda não foi medido.",
+        comoResponder:
+          "Diga isso como está. Se quiser conferir o total, use anuncios_ativos, que separa os medidos dos não medidos.",
+      },
+    };
+  }
+  return {
+    saida: {
+      foraDoAr: f.foraDoAr,
+      comMotivo: f.comMotivo,
+      semMotivoDeclarado: f.semMotivo,
+      lidoHaDias: f.lidoHaDias,
+      grupos: f.grupos,
+      comoResponder: [
+        "Comece pelo MAIOR grupo — é onde está o trabalho. Para cada motivo diga: quantos, o que significa (o campo 'significa'), e o que fazer (o campo 'oQueFazer'), nesta ordem.",
+        "O campo 'acao' diz o que EU consigo fazer. 'capacidade_ausente' significa que eu NÃO resolvo isso hoje: diga isso com as palavras de 'oQueFazer', sem prometer conserto e sem sugerir que a lojista espere por mim.",
+        "'nunca_reativar' é infração: avise explicitamente para NÃO reativar, porque reincidência pune a conta.",
+        "'reativar' é a única que eu executo: ofereça reativar os anúncios pausados pela própria loja, um a um, e diga que confiro posse e infração antes.",
+        "SEMPRE diga há quantos dias esta leitura foi feita (campo lidoHaDias) — a fila é do que foi MEDIDO, não do Mercado Livre agora. Para atualizar, a lojista usa Importar do Mercado Livre na tela de Produtos.",
+        "Cite os produtos onde o motivo se concentra (campo 'produtos'): a loja resolve por produto, não por anúncio solto.",
+        "'semMotivoDeclarado' são anúncios fora do ar cujo motivo o ML não informou — não invente causa para eles.",
+      ].join(" "),
+    },
+  };
+}
+
+/**
+ * "Quais anúncios estão ativos?" — a loja inteira, por estado.
+ *
+ * A saída separa os TRÊS eixos que a 050 pagou caro para distinguir: no ar,
+ * em outro estado, e SEM LEITURA. E carrega a idade da medição, porque um
+ * `active` lido há três semanas não é uma afirmação sobre hoje.
+ */
+async function listarAnunciosNoAr(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const r = retratoDosAnuncios(await ctx.noAr());
+  if (r.comMlb === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem nenhum anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está. Não confunda com 'produto sem anúncio preparado' — para isso existe estado_da_loja.",
+      },
+    };
+  }
+  return {
+    saida: {
+      anunciosComMlb: r.comMlb,
+      ativos: r.totalAtivos,
+      listaDeAtivos: r.ativos,
+      listaRecortada: r.totalAtivos > r.ativos.length,
+      outrosEstados: r.outros,
+      semLeitura: r.semLeitura,
+      desatualizados: r.desatualizados,
+      leituraMaisAntigaEmDias: r.leituraMaisAntigaEmDias,
+      comoResponder: [
+        "Comece pelo número de ATIVOS e pelo total com anúncio no ML. Depois os outros estados, do maior para o menor, com a palavra do Mercado Livre e a tradução ao lado (paused = pausado, under_review = em revisão, closed = encerrado, inactive = inativo).",
+        "SEMPRE diga há quantos dias o estado foi lido quando 'desatualizados' for maior que zero — esta leitura é do que foi MEDIDO, não do Mercado Livre agora. Para atualizar, a lojista usa Importar do Mercado Livre na tela de Produtos.",
+        "'semLeitura' NÃO é 'inativo': são anúncios cujo estado nunca foi medido. Diga 'não sei o estado de N' — nunca os some aos ativos nem aos pausados.",
+        "Quando um estado tiver 'motivos', cite-os: eles dizem POR QUE o anúncio não está no ar (out_of_stock = sem estoque, forbidden = infração).",
+        "Não liste os ativos um a um se forem muitos: dê o número e ofereça olhar um produto específico com diagnostico_do_anuncio.",
+      ].join(" "),
+    },
+  };
+}
+
+/** "Compara minhas lojas" — uma linha por loja, a mesma régua. Só agência/equipe. */
+async function compararAsLojas(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.comparar) {
+    return { saida: { erro: "Esta conta opera uma loja só — não há o que comparar." } };
+  }
+  const r = await ctx.comparar();
+  if (!r.ok) return { saida: { erro: r.mensagem, motivo: r.motivo } };
+  return {
+    saida: {
+      lojas: r.lojas.map((l) => ({
+        nome: l.nome,
+        produtos: l.estado.produtos,
+        semCusto: l.estado.produtos - l.estado.comCusto,
+        semPeso: l.estado.produtos - l.estado.comPeso,
+        semFoto: l.estado.produtos - l.estado.comFoto,
+        semAnuncio: l.estado.produtos - l.estado.comAnuncio,
+        aguardandoAprovacao: l.estado.aguardandoAprovacao,
+        prontosParaPrecificar: l.estado.prontosParaPrecificar,
+        conectadaAoMercadoLivre: l.estado.conectadoAoMarketplace,
+        // `undefined` = não lido. Não vira zero.
+        ...(l.estado.infracoes !== undefined ? { infracoes: l.estado.infracoes } : {}),
+      })),
+      totalNoAlcance: r.totalNoAlcance,
+      ...(r.truncado ? { aviso: `Mostrei ${r.lojas.length} de ${r.totalNoAlcance} lojas (em ordem de nome).` } : {}),
+      comoResponder:
+        "Use uma TABELA, uma loja por linha, com as colunas que a pergunta pede. Os números são exatos — não some, não tire média. Aponte a loja mais atrasada pelo que está nas colunas (mais 'sem') e diga o que fazer primeiro nela. Loja sem 'infracoes' é loja cuja infração ainda não foi lida — não diga que não tem.",
+    },
+  };
+}
+
+/**
+ * A saúde dos anúncios na nota do próprio Mercado Livre.
+ *
+ * Reusa o porto `noAr` — a MESMA varredura que responde "quantos estão no ar",
+ * memoizada por turno. Uma leitura própria seria pagar duas vezes pelas mesmas
+ * 880 linhas, e uma segunda implementação do mapeamento divergiria da primeira
+ * em algum momento, que é o defeito que este repositório mais encontrou.
+ */
+async function saudeDoCatalogo(ctx: ContextoDasFerramentas): Promise<ResultadoDaFerramenta> {
+  if (!ctx.noAr) {
+    return { saida: { erro: "Não consigo ler os anúncios da loja por aqui agora." } };
+  }
+  const { anuncios, medidos, porEixo } = entradaDaSaude(await ctx.noAr());
+  if (anuncios.length === 0) {
+    return {
+      saida: {
+        montada: false,
+        motivo: "Esta loja não tem anúncio publicado no Mercado Livre por aqui.",
+        comoResponder: "Diga isso como está.",
+      },
+    };
+  }
+
+  // NADA MEDIDO NÃO É CATÁLOGO PERFEITO.
+  //
+  // Um retrato sobre zero medições sai com saúde média 0, zero no catálogo e
+  // zero sem descrição — e lido sem contexto parece impecável. É o mesmo erro
+  // do "nada travado, sua loja está em dia" que este projeto já cometeu. Aqui
+  // a saída nem monta o retrato: diz o que falta.
+  if (medidos === 0) {
+    return {
+      saida: {
+        montada: false,
+        anunciosConhecidos: anuncios.length,
+        motivo: NADA_MEDIDO,
+        comoResponder:
+          "Diga o campo 'motivo' como está e NÃO apresente número nenhum de saúde. Ofereça reimportar do Mercado Livre, que é o que traz essa leitura.",
+      },
+    };
+  }
+
+  const r = retratarCatalogo(anuncios);
+
+  // EIXO NÃO LIDO NÃO APARECE.
+  //
+  // Medido em 24/08/2026, na primeira leitura real: os sete campos NÃO chegam
+  // juntos. Tipo de anúncio, datas e vendas vieram em 649 de 649; saúde e
+  // descrição, em ZERO de 649. Mandar `saudeMedia: 0` e `semDescricao: 649` ao
+  // lado dos números verdadeiros os apresentaria com a mesma cara — e "649 sem
+  // descrição" mandaria a lojista reescrever 649 textos que provavelmente
+  // existem. Eixo que ninguém leu some da saída, e o que faltou é DITO.
+  const naoLidos: string[] = [];
+  const eixo = <T>(quantos: number, nome: string, valor: T): T | undefined => {
+    if (quantos > 0) return valor;
+    naoLidos.push(nome);
+    return undefined;
+  };
+
+  return {
+    saida: {
+      anunciosConhecidos: anuncios.length,
+      anunciosComLeitura: medidos,
+      saudeMedia: eixo(porEixo.saude, "saúde", r.comSaude > 0 ? Math.round(r.saudeMedia * 100) : null),
+      piores: eixo(
+        porEixo.saude,
+        "saúde",
+        r.piores.map((p) => ({ mlb: p.mlb, saudePercentual: Math.round(p.saude * 100) }))
+      ),
+      noArSemNenhumaVenda: eixo(porEixo.vendidos, "vendas por anúncio", r.noArSemVenda),
+      vendidosTotal: eixo(porEixo.vendidos, "vendas por anúncio", r.vendidosTotal),
+      semDescricao: eixo(porEixo.descricao, "descrição", r.semDescricao),
+      disputamCatalogoDoMl: eixo(porEixo.catalogo, "catálogo do ML", r.doCatalogo),
+      porTipoDeAnuncio: eixo(
+        porEixo.tipo,
+        "tipo de anúncio",
+        r.porTipo.map((t) => ({
+          tipo: nomeDoTipoDeAnuncio(t.tipo) ?? t.tipo,
+          anuncios: t.anuncios,
+        }))
+      ),
+      alteradosPorDia: eixo(porEixo.alteracao, "data de alteração", r.alteradosPorDia),
+      oQueNaoConsegiLer: naoLidos.length > 0 ? [...new Set(naoLidos)] : undefined,
+      comoResponder: [
+        "SAÚDE VEM EM PORCENTAGEM INTEIRA — escreva \"84%\", nunca \"0,84\". O número sai pronto; não converta nada.",
+        "A saúde é a nota do PRÓPRIO Mercado Livre e é ela que decide exposição: anúncio com nota baixa aparece menos na busca. Não é opinião do Zion.",
+        "Se 'anunciosComLeitura' for MENOR que 'anunciosConhecidos', diga sobre quantos você está falando. Um número sobre parte do catálogo apresentado como sobre o todo é falso.",
+        "'noArSemNenhumaVenda' é o achado mais acionável: estão visíveis, custam atenção e nunca venderam. Ofereça diagnostico_do_anuncio num deles para saber se é exposição ou conversão.",
+        "'porTipoDeAnuncio' muda a COMISSÃO — Clássico e Premium pagam percentuais diferentes. Se houver os dois, diga: o preço de um não serve de régua para o outro.",
+        "'alteradosPorDia' com um pico num único dia sugere edição em massa. É PISTA, não conclusão: diga como pista e pergunte se houve alguma alteração naquele dia.",
+        "NÃO diga que o catálogo está bem só porque um número veio zero. Zero em 'semDescricao' é boa notícia; zero em 'vendidosTotal' não é.",
+        "'oQueNaoConsegiLer' LISTA OS EIXOS QUE O MERCADO LIVRE NÃO INFORMOU nesta leitura. Diga quais são, e NUNCA responda sobre eles — nem para dizer que estão bem. Campo AUSENTE da saída é campo não lido; ausência nunca é zero.",
+      ].join(" "),
+    },
+  };
 }

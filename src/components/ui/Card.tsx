@@ -8,7 +8,7 @@ interface CardProps {
 export function Card({ title, action, children, className = "" }: CardProps) {
   return (
     <section
-      className={`rounded-xl border border-white/5 bg-[#0e0e16] ${className}`}
+      className={`rounded-xl border border-white/5 bg-surface-raised ${className}`}
     >
       {(title || action) && (
         <div className="flex items-center justify-between border-b border-white/5 px-5 py-3.5">

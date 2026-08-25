@@ -16,7 +16,6 @@
 import { useMemo } from "react";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosComPeso, type ProdutoComPeso } from "@/lib/services/pesoDeProduto";
-import { pesoPendente, situacaoDePeso } from "@/modules/catalog/domain/familiaDeProduto";
 import { buscarCanal } from "@/lib/services/canaisMarketplace";
 import { listarTodasImagens } from "@/lib/services/imagensProduto";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
@@ -26,127 +25,15 @@ import {
 } from "@/lib/services/infracoesMarketplace";
 import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
 import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
-import type { AnuncioGeradoRegistro } from "@/lib/types";
-import { amostraDeNomes, type EstadoDaLoja } from "@/modules/publication/domain/prontidaoDaLoja";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 
 /**
- * A CONTA, separada do carregamento.
- *
- * Existe separada porque a home já carrega estes quatro conjuntos para outras
- * coisas — usar o hook lá faria a mesma consulta duas vezes. Quem já tem os
- * dados chama esta função; quem não tem usa o hook abaixo. A conta é uma só,
- * e é isso que impede as duas telas de discordarem sobre a mesma loja.
+ * A CONTA vive no domínio (`modules/assistant/domain/estadoDaLoja`), porque o
+ * servidor agora faz a mesma conta com o tenant da sessão. Reexportada daqui
+ * para a home e as telas que já a importavam continuarem funcionando.
  */
-export function montarEstadoDaLoja(
-  produtos: readonly ProdutoComPeso[],
-  /**
-   * Só o que esta conta LÊ: o produto de cada anúncio e o status dele.
-   *
-   * O tipo era `AnuncioGeradoRegistro` — a linha inteira, com o JSONB da
-   * esteira. Estreitar aqui não é gosto: é o que permite ao chamador buscar a
-   * consulta leve, e o tipo passa a impedir que alguém volte a exigir o peso.
-   */
-  anuncios: readonly { produtoId?: string | null; status: string }[],
-  imagens: readonly { produtoId?: string | null }[],
-  conectado: boolean,
-  /**
-   * As infrações já lidas do Mercado Livre (migração 052).
-   *
-   * `null` = ainda não lemos, e é o padrão. Não vira `0`: dizer "nenhuma
-   * infração" sem ter olhado é a afirmação que a AUD-001 passou o dia
-   * arrancando das telas.
-   */
-  infracoes: { infracoes: number; anuncios: number } | null = null,
-  /**
-   * O MUNDO DEPOIS DA PUBLICAÇÃO — pendências do ML e anúncios no ar sem IA.
-   *
-   * CHEGAM PRONTOS, e isso é a decisão principal desta mudança. Contar aqui
-   * exigiria alargar o tipo de `anuncios` (que é estreito de propósito, para o
-   * chamador poder usar a consulta leve) e — pior — escreveria uma SEGUNDA
-   * regra para "sem otimização", que já existe em `estadoDeOtimizacao` e já
-   * discordou de si mesma em três telas no dia 03/08/2026.
-   *
-   * Então cada número continua com uma regra só, no módulo dela:
-   *   pendências + peças paradas → `pendenciasDaMemoria` → `pendenciasDaConta`
-   *   no ar sem otimização       → `estadoDeOtimizacao`
-   *
-   * `null` = não levantamos. Não vira zero: é a mesma regra de `infracoes`, e
-   * é ela que impede a tela de afirmar "nada travado" sem ter olhado.
-   */
-  noAr: {
-    pendenciasAbertas: number;
-    pecasParadas: number;
-    noArSemOtimizacao: number;
-  } | null = null
-): EstadoDaLoja {
-  const produtosComAnuncio = new Set(anuncios.map((a) => a.produtoId).filter(Boolean));
-  const comFoto = new Set(imagens.map((i) => i.produtoId).filter(Boolean));
-  /** id → nome, para o anúncio poder ser chamado pelo produto dele. */
-  const nomePorProduto = new Map(produtos.map((p) => [p.id, p.nome]));
-
-  return {
-      produtos: produtos.length,
-      // COMPLETUDE, não "tem algum peso" (INC-001). O máximo entre as variantes
-      // dizia que um produto com 1 de 39 preenchidas estava pronto.
-      comPeso: produtos.filter((p) => !pesoPendente(p)).length,
-      // Terceira condição, não meio-completo: para estes o frete SAI, e a frase
-      // de "sem peso" seria factualmente falsa.
-      comPesoIncompleto: produtos.filter((p) => situacaoDePeso(p) === "ausencia_parcial").length,
-      comCusto: produtos.filter((p) => p.custo > 0).length,
-      // CALCULABILIDADE, não completude: com uma variante pesada o frete já sai
-      // e o preço mínimo existe. Um produto pode estar com o cadastro de peso
-      // incompleto E pronto para precificar — perguntas diferentes.
-      prontosParaPrecificar: produtos.filter((p) => p.custo > 0 && p.pesoGramas > 0).length,
-      comFoto: produtos.filter((p) => comFoto.has(p.id)).length,
-      comAnuncio: produtos.filter((p) => produtosComAnuncio.has(p.id)).length,
-    aguardandoAprovacao: anuncios.filter((a) => a.status === "aguardando_aprovacao").length,
-    aprovadosNaoPublicados: anuncios.filter((a) => a.status === "aprovado").length,
-    // OS NOMES, no mesmo passo em que os números saem.
-    //
-    // A lista já está aqui, inteira, na memória desta tela. Contar sem guardar
-    // quem foi contado era jogar fora a resposta da pergunta seguinte — que é
-    // sempre "quais?" — e mandar a lojista caçar numa tabela de 80 linhas.
-    quaisSao: {
-      peso: amostraDeNomes(produtos.filter((p) => pesoPendente(p)).map((p) => p.nome)),
-      custo: amostraDeNomes(produtos.filter((p) => !(p.custo > 0)).map((p) => p.nome)),
-      foto: amostraDeNomes(produtos.filter((p) => !comFoto.has(p.id)).map((p) => p.nome)),
-      anuncio: amostraDeNomes(
-        produtos.filter((p) => !produtosComAnuncio.has(p.id)).map((p) => p.nome)
-      ),
-      precificacao: amostraDeNomes(
-        produtos.filter((p) => !(p.custo > 0 && p.pesoGramas > 0)).map((p) => p.nome)
-      ),
-      // Aqui a unidade é o anúncio, mas o NOME é o do produto: é assim que ela
-      // fala dos seus itens, e o título otimizado não chega a esta lista.
-      // Anúncio sem produtoId sai da amostra em vez de virar linha vazia.
-      aprovacao: amostraDeNomes(
-        anuncios
-          .filter((a) => a.status === "aguardando_aprovacao")
-          .map((a) => nomePorProduto.get(a.produtoId ?? "") ?? "")
-      ),
-      publicacao: amostraDeNomes(
-        anuncios
-          .filter((a) => a.status === "aprovado")
-          .map((a) => nomePorProduto.get(a.produtoId ?? "") ?? "")
-      ),
-    },
-    conectadoAoMarketplace: conectado,
-    ...(infracoes
-      ? { infracoes: infracoes.infracoes, anunciosComInfracao: infracoes.anuncios }
-      : {}),
-    // Espalhado, e não com `?? 0`: ausente tem que continuar ausente até o
-    // domínio, senão `lacunasDaLoja` lê zero e a tela volta a dizer "em dia"
-    // por não ter olhado — que é o defeito inteiro que esta mudança conserta.
-    ...(noAr
-      ? {
-          pendenciasAbertas: noAr.pendenciasAbertas,
-          pecasParadas: noAr.pecasParadas,
-          noArSemOtimizacao: noAr.noArSemOtimizacao,
-        }
-      : {}),
-  } satisfies EstadoDaLoja;
-}
+import { montarEstadoDaLoja } from "@/modules/assistant/domain/estadoDaLoja";
+export { montarEstadoDaLoja };
 
 /**
  * O CARREGAMENTO, para as telas que ainda não têm os dados.
@@ -174,11 +61,12 @@ export function useContextoDaPergunta(
   produtoEmFoco?: string | null
 ): ContextoDoChat {
   // AS TABELAS DE CADA CONSULTA — verificadas uma a uma no serviço, não
-  // deduzidas do nome. Esquecer uma aqui não dá erro: dá uma tela que para de
-  // atualizar quando aquele dado muda, em silencio.
+  // deduzidas do nome. Esquecer uma não dá erro: dá uma tela que para de
+  // atualizar quando aquele dado muda, em silêncio. E sem `tabelas`, o
+  // oposto — recarrega a cada linha de QUALQUER tabela.
   //
   // `listarProdutosComPeso` faz `Promise.all([listarProdutosDoCliente,
-  // listarTodasVariantes])` — o peso mora na variante, entao as duas contam.
+  // listarTodasVariantes])` — o peso mora na variante, então as duas contam.
   const { data: produtos } = useLiveQuery(
     () => listarProdutosComPeso(clienteId),
     [clienteId],
@@ -213,21 +101,20 @@ export function useContextoDaPergunta(
   const { data: infracoes } = useLiveQuery(
     () => retratoDasInfracoes(clienteId),
     [clienteId],
-    // Quem escreve aqui e a sincronizacao com o ML, nao a tela. E a tabela nem
-    // esta publicada no Realtime — entao nenhum evento a alcanca, e sem esta
-    // anotacao ela recarregava a cada linha de QUALQUER outra tabela.
+    // Quem escreve aqui é a sincronização com o ML, não a tela. E a tabela
+    // nem está publicada no Realtime — então nenhum evento a alcança, e sem
+    // esta anotação ela recarregava a cada linha de QUALQUER outra tabela.
     { tabelas: ["infracoes_marketplace"] }
   );
-  // AS INFRAÇÕES POR ANÚNCIO — a mesma leitura que a Visão geral faz.
+  // AS INFRACOES POR ANUNCIO — a mesma leitura que a Visao geral faz.
   //
-  // É uma SEGUNDA consulta à mesma tabela da linha acima, e isso é escolha, não
-  // descuido: `retratoDasInfracoes` conta linhas com `related_item_id` e esta
-  // agrupa por item. Derivar uma da outra parece economia e é suposição sobre
-  // filtro — e este arquivo inteiro existe porque deduzir o que dava para medir
-  // já gravou R$ 1,77 de piso nesta base.
+  // E uma SEGUNDA consulta a mesma tabela da linha acima, e isso e escolha:
+  // `retratoDasInfracoes` conta linhas com `related_item_id` e esta agrupa por
+  // item. Derivar uma da outra parece economia e e suposicao sobre filtro — e
+  // deduzir o que dava para medir ja gravou R$ 1,77 de piso nesta base.
   //
-  // `pendenciasDaConta` precisa do mapa, não da contagem: sem ele o chat volta
-  // a responder "nada travado" com 70 pendências abertas.
+  // `pendenciasDaConta` precisa do MAPA, nao da contagem: sem ele o chat volta
+  // a responder "nada travado" com 70 pendencias abertas.
   const { data: infracoesPorAnuncio } = useLiveQuery(
     () => infracoesPorAnuncioDoCliente(clienteId),
     [clienteId],
@@ -237,11 +124,11 @@ export function useContextoDaPergunta(
   return useMemo((): ContextoDoChat => {
     if (!produtos || !anuncios) return { contexto: null, produtos: [] };
 
-    // O MUNDO DEPOIS DA PUBLICAÇÃO, pelas funções que já são a verdade dele.
+    // O MUNDO DEPOIS DA PUBLICACAO, pelas funcoes que ja sao a verdade dele.
     //
-    // Só entra quando as infrações CHEGARAM: `pendenciasDaMemoria` sem o mapa
-    // devolveria menos pendências do que existem, e um número baixo é pior que
-    // número nenhum — ele parece medido.
+    // So entra quando as infracoes CHEGARAM: `pendenciasDaMemoria` sem o mapa
+    // devolveria menos pendencias do que existem, e um numero baixo e pior que
+    // numero nenhum — ele parece medido.
     const pend = infracoesPorAnuncio
       ? pendenciasDaMemoria(anuncios, infracoesPorAnuncio)
       : null;

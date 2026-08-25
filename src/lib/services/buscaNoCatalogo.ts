@@ -15,6 +15,7 @@
 // começam com zero, e `Number("01040533")` viraria `1040533`.
 
 import { getSupabaseAdmin } from "../supabase/admin";
+import { palavrasDaBusca } from "../../modules/assistant/domain/buscaDeCatalogo";
 import type { LinhaEncontrada, Tentativa } from "../../modules/assistant/domain/buscaDeCatalogo";
 
 /**
@@ -85,7 +86,19 @@ export async function rodarTentativa(
     .select("id, nome, marca, modelo")
     .eq("cliente_id", clienteId)
     .limit(LIMITE_DA_QUERY);
-  q = t.modo === "exato" ? q.eq(t.coluna, t.termo) : q.ilike(t.coluna, `%${semCuringas(t.termo)}%`);
+  if (t.modo === "exato") {
+    q = q.eq(t.coluna, t.termo);
+  } else if (t.modo === "todas_as_palavras") {
+    // Um `.ilike` por palavra. O PostgREST junta filtros repetidos com E, então
+    // todas precisam aparecer — em qualquer ordem, que é o ponto. "Papete
+    // Modare Nobuck 7208.101" passa a achar "Papete Slide Modare 7208.101
+    // Nobuck", que o `%termo inteiro%` não achava.
+    for (const p of palavrasDaBusca(t.termo)) {
+      q = q.ilike(t.coluna, `%${semCuringas(p)}%`);
+    }
+  } else {
+    q = q.ilike(t.coluna, `%${semCuringas(t.termo)}%`);
+  }
   const { data, error } = await q;
   if (error) throw new Error(`Busca por ${t.coluna} falhou: ${error.message}`);
   return ((data ?? []) as LinhaDeProduto[]).map((p) => ({

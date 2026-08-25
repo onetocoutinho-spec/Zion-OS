@@ -9,7 +9,7 @@
 // Livre continuava com a capa velha.
 //
 // Ela tem 341 anúncios com capa fora do padrão e as fotos boas no celular.
-// O caminho inteiro existia — upload, cor (migração 060), medida (059), e a
+// O caminho inteiro existia — upload, cor (migração 076), medida (075), e a
 // rota `/api/ml/aplicar-capa`, que já trocou 17 anúncios de verdade. Só que
 // ninguém ligava uma ponta na outra, e a frase afirmava a ponta que faltava.
 //

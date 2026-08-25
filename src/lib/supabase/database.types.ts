@@ -17,6 +17,8 @@ export interface ClienteRow {
   proxima_acao: string | null;
   risco: string;
   observacoes: string | null;
+  /** A agência que opera a loja (migração 054). NULL = loja sem agência, o padrão. */
+  agencia_id?: string | null;
 }
 
 export interface OnboardingRow {
@@ -69,6 +71,15 @@ export interface ProdutoRow {
   confianca_custo?: string | null;
   tabela_medidas?: string | null;
   componentes?: { produtoId?: string; nome: string; sku?: string; quantidade: number; brinde?: boolean }[] | null;
+  /**
+   * Migração 034. O frete é por conta da loja?
+   *
+   * Estava no banco e faltava aqui — o código já a lia em `avaliacaoDeAlvos` e
+   * em `contextoDoCopilot`, e o tipo não a declarava. Descoberta em 24/08/2026
+   * pela trava que compara `.select` com este arquivo. Divergência entre tipo e
+   * banco não quebra a consulta, mas apaga a garantia que o tipo deveria dar.
+   */
+  vendedor_paga_frete?: boolean | null;
   clientes?: { empresa: string } | null;
 }
 
@@ -422,6 +433,20 @@ export interface AnuncioGeradoRow {
   sub_status_marketplace?: string[] | null;
   foto_capa_max_size?: string | null;
   estoque_marketplace?: number | null;
+  /**
+   * Migração 074 — o que o ML já dizia e a importação descartava.
+   *
+   * `tipo_anuncio_ml` é o mais caro dos sete: sem ele a comissão sai da
+   * configuração da loja inteira (default "Premium"), e em Moda são 14% contra
+   * 19% sobre o número que decide preço.
+   */
+  tipo_anuncio_ml?: string | null;
+  criado_em_ml?: string | null;
+  atualizado_em_ml?: string | null;
+  vendidos_ml?: number | null;
+  saude_ml?: number | null;
+  do_catalogo_ml?: boolean | null;
+  tem_descricao_ml?: boolean | null;
   created_at?: string;
   clientes?: { empresa: string } | null;
   produtos?: { nome: string } | null;

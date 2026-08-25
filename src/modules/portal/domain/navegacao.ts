@@ -103,7 +103,10 @@ export const AREAS: readonly AreaDoPortal[] = [
   },
   {
     contexto: "zion",
-    titulo: "Zion",
+    // "Loja", não "Zion": a área fala da loja DELE (configurações, conexão,
+    // ajuda). O lojista não deve ler o nome da empresa de terceiros como uma
+    // área do próprio negócio (docs/product/ux/04, glossário).
+    titulo: "Loja",
     pergunta: "O que combinamos?",
     principal: "/cliente/configuracoes",
     telas: [

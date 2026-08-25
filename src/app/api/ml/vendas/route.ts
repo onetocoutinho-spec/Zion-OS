@@ -6,9 +6,10 @@
 // rotacionado e persistido SÓ no servidor; nunca é devolvido ao navegador.
 
 import { buscarPedidosML } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 export const maxDuration = 60;
 
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const sellerId = canal.sellerId || tokens.userId;
     if (!sellerId) {
@@ -75,9 +76,6 @@ export async function POST(request: Request) {
     const pedidos = await buscarPedidosML(tokens.accessToken, sellerId, { desde: corpo.desde });
     return Response.json({ pedidos, sellerId });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao buscar vendas do ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/vendas", e, "Falha ao buscar vendas do ML.", 502);
   }
 }

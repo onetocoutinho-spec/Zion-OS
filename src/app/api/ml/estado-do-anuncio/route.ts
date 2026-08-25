@@ -20,9 +20,10 @@
 // conexão do cliente continua íntegra.
 
 import { definirEstadoDoItem } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 interface Corpo {
   clienteId?: string;
@@ -80,7 +81,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const resultado = await definirEstadoDoItem(tokens.accessToken, itemId, estado);
     // `status` é o que o ML CONFIRMOU, não o que pedimos: uma reativação pode
@@ -104,21 +105,18 @@ export async function POST(request: Request) {
     // 422, NÃO 502 — a recusa do ML não é falha de gateway.
     //
     // MEDIDO EM 18/08/2026. Ao pausar `MLB7041100974` a tela recebeu
-    // "502 Bad gateway" em HTML do Cloudflare. A rota estava viva (a validação
-    // respondia 400 em 300ms) e o `catch` montava a mensagem CERTA — "ML
-    // recusou pausar o anúncio X: <motivo>". Só que num 5xx o Cloudflare
-    // descarta o corpo e serve a página dele.
-    //
-    // Ou seja: o motivo real da recusa era calculado e jogado fora na borda.
-    // É o mesmo defeito que este repo persegue o dia inteiro — o dado existe,
-    // o caminho não entrega, e sobra um erro genérico que manda procurar no
-    // lugar errado.
+    // "502 Bad gateway" em HTML do Cloudflare. A rota estava viva e o `catch`
+    // montava a mensagem CERTA — "ML recusou pausar o anúncio X: <motivo>".
+    // Só que num 5xx o Cloudflare descarta o corpo e serve a página dele: o
+    // motivo real da recusa era calculado e jogado fora na borda.
     //
     // 422 é o código honesto: a requisição chegou, foi entendida, e a operação
     // foi recusada pelo marketplace. E atravessa a borda com o corpo intacto.
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao mudar o estado do anúncio." },
-      { status: 422 }
-    );
+    //
+    // O ENVELOPE É O DA MASTER (`respostaDeErro`, que registra o erro inteiro
+    // onde alguém pode lê-lo e só devolve o que é público). As duas coisas
+    // convivem porque o status é parâmetro dele — centralização e código
+    // honesto não competiam, só nunca tinham se encontrado.
+    return respostaDeErro("ml/estado-do-anuncio", e, "Falha ao mudar o estado do anúncio.", 422);
   }
 }

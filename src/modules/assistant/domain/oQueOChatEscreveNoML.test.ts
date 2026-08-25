@@ -52,6 +52,22 @@ const VERBOS_QUE_ESCREVEM = [
   "encerrarItem",
   "criarItem",
   "criarGuiaTamanhos",
+  // ESCRITA POR DELEGAÇÃO, e ela conta igual — 24/08/2026.
+  //
+  // Em 22/08 a publicação saiu de dentro de `api/ml/publicar/route.ts` para
+  // `modules/integration/application/publicarNoMercadoLivre`, de propósito: o
+  // Copilot passou a publicar pelo MESMO caminho, com as mesmas guardas, sem
+  // um fetch do servidor para si mesmo.
+  //
+  // Só que este inventário lê o fonte da ROTA, e o verbo cru foi embora com a
+  // extração. A rota continuou escrevendo no Mercado Livre e o teste passou a
+  // dizer que a declaração dela "virou ficção" — a lista estava certa e o
+  // detector é que tinha ficado cego para um nível de indireção.
+  //
+  // Chamar esta função É escrever. Se um dia ela for extraída de novo, este
+  // nome muda junto — e é para mudar: um inventário que não acompanha o
+  // caminho da escrita não inventaria nada.
+  "publicarNoMercadoLivre",
 ] as const;
 
 /** Rota → por que ela pode escrever. Sem motivo escrito, não entra. */

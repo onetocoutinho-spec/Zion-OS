@@ -28,6 +28,7 @@ import { definirFotosDoItem } from "@/lib/marketplaces/mercadolivre";
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
@@ -118,7 +119,14 @@ async function planejar(
 async function comToken(request: Request, clienteId: string) {
   const ctx = await exigirAcessoAoCliente(request, clienteId);
   if (!ctx.supabase) throw new Error("Supabase não configurado no servidor.");
-  const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+  // A CREDENCIAL SO PELO ADMIN — nao por `ctx.supabase`.
+  //
+  // Esta rota nasceu antes das migracoes 059/061, que tiraram
+  // `refresh_token` do alcance de `authenticated` e cifraram a coluna.
+  // Com o papel do usuario a leitura nao alcanca mais o dado — e, antes
+  // disso, ler credencial com o papel de quem pediu e o nivel de
+  // confianca errado. `credencialForaDoNavegador` guarda isso.
+  const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
   if (!canal?.refreshToken) throw new Error("Cliente não conectado ao Mercado Livre.");
   const renovacao = await renovarTokenDaRota({
     clientId,
@@ -129,7 +137,7 @@ async function comToken(request: Request, clienteId: string) {
   });
   if ("recusa" in renovacao) return { recusa: renovacao.recusa } as const;
   await atualizarRefreshTokenServidor(
-    ctx.supabase,
+    clienteDaCredencial(),
     clienteId,
     renovacao.tokens.refreshToken,
     "Mercado Livre"

@@ -35,6 +35,8 @@ export interface Cliente {
   proximaAcao: string;
   risco: Risco;
   observacoes: string;
+  /** A agência que opera a loja; `null` = loja sem agência (self-service). */
+  agenciaId: string | null;
 }
 
 export type CadastroStatus = "Não iniciado" | "Em cadastro" | "Publicado" | "Com erro";
@@ -270,7 +272,7 @@ export interface ImagemProduto {
   status: ImagemStatus;
   observacoes: string;
   /**
-   * Dimensão em pixels, medida NO UPLOAD (migração 059).
+   * Dimensão em pixels, medida NO UPLOAD (migração 075).
    *
    * `null` = não medimos, nunca "não tem". As fotos anteriores a 11/08/2026
    * nasceram sem medida, e tratá-las como zero faria toda a base parecer
@@ -283,7 +285,7 @@ export interface ImagemProduto {
   largura: number | null;
   altura: number | null;
   /**
-   * A cor desta foto, na MESMA string de `produto_variantes.cor` (migração 060).
+   * A cor desta foto, na MESMA string de `produto_variantes.cor` (migração 076).
    *
    * `null` = não sabemos de que cor é — NUNCA "serve para todas". Os anúncios
    * desta base são um por cor e tamanho, e usar foto de cor desconhecida numa
@@ -623,4 +625,21 @@ export interface AnuncioGeradoRegistro {
    * do ERP não serve, porque o que interessa é o que está parado NA VITRINE.
    */
   estoqueMarketplace?: number | null;
+  /**
+   * 074 — o que o ML já dizia e a importação descartava.
+   *
+   * `tipoAnuncioMl` vem CRU (`gold_pro`/`gold_special`). A tradução para
+   * Premium/Clássico é decisão de domínio e mora em `custosML`: guardar já
+   * traduzido faria um tipo novo do ML virar "clássico" em silêncio.
+   *
+   * `null` em todos = não lido. Nunca zero, nunca false por omissão — a mesma
+   * regra de `statusMarketplace`.
+   */
+  tipoAnuncioMl?: string | null;
+  criadoEmMl?: string | null;
+  atualizadoEmMl?: string | null;
+  vendidosMl?: number | null;
+  saudeMl?: number | null;
+  doCatalogoMl?: boolean | null;
+  temDescricaoMl?: boolean | null;
 }

@@ -24,6 +24,7 @@
 import {
   lerCanalServidor,
   atualizarRefreshTokenServidor,
+  clienteDaCredencial,
 } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import {
@@ -34,6 +35,7 @@ import {
   referenciaDeModeracao,
 } from "@/modules/integration/domain/infracoesDaConta";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 300: o teto do Pro. A conta real declarou 1.060 infrações e o `limit` da rota
 // do ML é 20 — são 53 páginas. Com 60s isto não terminaria.
@@ -113,7 +115,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, clienteId, "Mercado Livre");
+    const canal = await lerCanalServidor(clienteDaCredencial(), clienteId, "Mercado Livre");
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -126,7 +128,7 @@ export async function GET(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, clienteId, tokens.refreshToken, "Mercado Livre");
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), clienteId, tokens.refreshToken, "Mercado Livre");
     const auth = { Authorization: `Bearer ${tokens.accessToken}` };
 
     const sellerId = canal.sellerId || tokens.userId;
@@ -243,9 +245,6 @@ export async function GET(request: Request) {
       })),
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao consultar as infrações no ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/diagnostico-infracoes", e, "Falha ao consultar as infrações no ML.", 502);
   }
 }

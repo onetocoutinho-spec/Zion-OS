@@ -30,13 +30,26 @@ export function isOverdue(iso: string): boolean {
   return iso < new Date().toISOString().slice(0, 10);
 }
 
-export function formatDateTime(iso: string | null): string {
+/**
+ * Um instante, no fuso de quem lê.
+ *
+ * `comHora: false` dá só o dia — para tabela larga, onde "23/08/2026 14:32"
+ * gasta 152px de coluna e a hora quase nunca decide nada. Quem precisa dela
+ * continua tendo: o chamador põe o texto completo no `title`.
+ *
+ * POR QUE NÃO USAR `formatDate` PARA ISSO. Ela existe para data pura
+ * (`2026-08-23`) e trabalha por `split("-")`; num timestamp o terceiro pedaço
+ * viria "23T14:32:00.000Z". E, mesmo consertada, ela não converte fuso — na
+ * mesma tela apareceria o dia em UTC ao lado de uma hora local, e perto da
+ * meia-noite os dois discordariam.
+ */
+export function formatDateTime(iso: string | null, opcoes?: { comHora?: boolean }): string {
   if (!iso) return "—";
+  const comHora = opcoes?.comHora ?? true;
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    ...(comHora ? { hour: "2-digit" as const, minute: "2-digit" as const } : {}),
   });
 }

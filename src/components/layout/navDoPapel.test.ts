@@ -51,7 +51,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NAV_ITEMS, navDoPapel } from "./nav.ts";
+import { NAV_ITEMS, navDoPapel, rotaPermitida, type NavItem } from "./nav.ts";
+
+/** Todos os hrefs de um menu, incluindo o 2º nível. */
+function hrefsDe(itens: NavItem[]): Set<string> {
+  return new Set(itens.flatMap((i) => [i.href, ...(i.filhos?.map((f) => f.href) ?? [])]));
+}
 
 test("equipe continua vendo tudo — nada mudou para quem já usava", () => {
   assert.deepEqual(navDoPapel("equipe"), NAV_ITEMS);
@@ -66,7 +71,8 @@ test("cliente também recebe a lista inteira — ele nunca chega nesta casca", (
 test("a agência vê MENOS, e o que ela vê é o que ela opera", () => {
   const itens = navDoPapel("agencia");
   assert.ok(itens.length < NAV_ITEMS.length, "o filtro não tirou nada");
-  assert.ok(itens.length >= 8, `só ${itens.length} itens — o painel ficou inútil`);
+  const n = hrefsDe(itens).size;
+  assert.ok(n >= 8, `só ${n} telas — o painel ficou inútil`);
 });
 
 test("as cinco telas apagadas não voltaram ao menu de NINGUÉM", () => {
@@ -76,16 +82,15 @@ test("as cinco telas apagadas não voltaram ao menu de NINGUÉM", () => {
   // O Financeiro é o caso com dente: `lucro_estimado` é a margem da Zion sobre
   // o cliente. Se a tela voltar um dia, que seja de propósito e com esta linha
   // vermelha no caminho.
-  const hrefs = new Set(NAV_ITEMS.map((i) => i.href));
+  const hrefs = hrefsDe(NAV_ITEMS);
   for (const apagada of ["/tarefas", "/reunioes", "/financeiro", "/onboarding", "/anuncios"]) {
     assert.ok(!hrefs.has(apagada), `${apagada} voltou ao produto — foi apagada em 07/08`);
   }
 });
 
 test("o que é operação da ZION fica fora", () => {
-  const hrefs = new Set(navDoPapel("agencia").map((i) => i.href));
+  const hrefs = hrefsDe(navDoPapel("agencia"));
   for (const proibido of [
-    "/", // o painel da Zion
     "/usuarios/novo",
     "/templates",
     "/agentes",
@@ -98,7 +103,7 @@ test("o que é operação da ZION fica fora", () => {
 });
 
 test("o que É operação de loja continua lá", () => {
-  const hrefs = new Set(navDoPapel("agencia").map((i) => i.href));
+  const hrefs = hrefsDe(navDoPapel("agencia"));
   for (const preciso of [
     "/clientes", // as lojas dela
     "/produtos",
@@ -116,9 +121,9 @@ test("a lista de permissão só contém rotas que EXISTEM no menu", () => {
   // Uma entrada com typo não daria erro: ela simplesmente não casaria, e o item
   // sumiria do menu da agência em silêncio. Este teste transforma o silêncio
   // num vermelho.
-  const doMenu = new Set(NAV_ITEMS.map((i) => i.href));
-  for (const i of navDoPapel("agencia")) {
-    assert.ok(doMenu.has(i.href), `${i.href} não está em NAV_ITEMS`);
+  const doMenu = hrefsDe(NAV_ITEMS);
+  for (const h of hrefsDe(navDoPapel("agencia"))) {
+    assert.ok(doMenu.has(h), `${h} não está em NAV_ITEMS`);
   }
 });
 
@@ -129,4 +134,16 @@ test("um papel novo NÃO ganha o menu completo por omissão", () => {
   // falha, e a decisão passa a ser tomada de propósito.
   const papeis = ["equipe", "cliente", "agencia"] as const;
   assert.equal(papeis.length, 3, "nasceu um papel novo — decida o menu dele aqui");
+});
+
+test("rotaPermitida usa a MESMA lista do menu — o que não aparece não abre", () => {
+  for (const h of hrefsDe(navDoPapel("agencia"))) {
+    assert.ok(rotaPermitida("agencia", h), `${h} está no menu mas não abre`);
+    assert.ok(rotaPermitida("agencia", h === "/" ? "/" : h + "/detalhe"), `${h}/detalhe não abre`);
+  }
+  for (const h of ["/agentes", "/ail/padroes", "/templates", "/configuracoes", "/usuarios/novo", "/z"]) {
+    assert.equal(rotaPermitida("agencia", h), false, `${h} abre para a agência`);
+  }
+  // prefixo não vaza: /clientes permite /clientes/x, mas /cliente (portal) é outra história
+  assert.equal(rotaPermitida("agencia", "/clientesx"), false);
 });

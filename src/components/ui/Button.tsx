@@ -34,6 +34,8 @@ interface LinkButtonProps {
   variant?: ButtonVariant;
   className?: string;
   children: React.ReactNode;
+  /** Efeito colateral ao clicar (ex.: fixar a loja no contexto) — a navegação segue normal. */
+  onClick?: () => void;
 }
 
 export function LinkButton({
@@ -41,9 +43,10 @@ export function LinkButton({
   variant = "primary",
   className = "",
   children,
+  onClick,
 }: LinkButtonProps) {
   return (
-    <Link href={href} className={`${BASE} ${VARIANTS[variant]} ${className}`}>
+    <Link href={href} onClick={onClick} className={`${BASE} ${VARIANTS[variant]} ${className}`}>
       {children}
     </Link>
   );

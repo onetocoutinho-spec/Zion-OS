@@ -123,7 +123,7 @@ test("sem nenhuma que sirva, a MAIOR assume — capa ruim é melhor que nenhuma"
 });
 
 test("foto sem dimensão não é promovida na frente de quem tem", () => {
-  // Importação antiga não media (migração 059 é de 13/08). Sem número, a foto
+  // Importação antiga não media (migração 075 é de 13/08). Sem número, a foto
   // não pode ganhar de uma que provou o tamanho.
   const acervo = [
     foto("capa", "Principal", 1200, 1200),

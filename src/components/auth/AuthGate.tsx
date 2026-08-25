@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import { Zap } from "lucide-react";
 import { getSupabase, supabaseConfigurado } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
@@ -116,7 +117,7 @@ function TelaLogin() {
 
         <form
           onSubmit={entrar}
-          className="rounded-xl border border-white/5 bg-[#0e0e16] p-6"
+          className="rounded-xl border border-white/5 bg-surface-raised p-6"
         >
           <div className="space-y-4">
             <Field label="E-mail" required>
@@ -235,7 +236,7 @@ function TelaMontarLoja() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08080d] px-4">
-      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6">
+      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-surface-raised p-6">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600">
           <Zap size={22} className="text-white" />
         </div>
@@ -289,7 +290,7 @@ function TelaAcessoDesativado() {
   const [saindo, setSaindo] = useState(false);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08080d] px-4">
-      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6 text-center">
+      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-surface-raised p-6 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600">
           <Zap size={22} className="text-white" />
         </div>
@@ -320,7 +321,7 @@ function TelaErroPerfil({ onTentar }: { onTentar: () => void }) {
   const [saindo, setSaindo] = useState(false);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#08080d] px-4">
-      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-[#0e0e16] p-6 text-center">
+      <div className="w-full max-w-sm rounded-xl border border-white/5 bg-surface-raised p-6 text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600">
           <Zap size={22} className="text-white" />
         </div>
@@ -509,6 +510,29 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
  *   - cliente sem empresa / inativo→ tela "Acesso não liberado".
  * Enquanto redireciona, mostra o carregamento (sem piscar a casca errada).
  */
+/**
+ * 403 explicativo: a rota existe, o perfil é válido, mas a área é da equipe
+ * Zion. Nunca tela em branco, nunca 404 para recurso que existe.
+ */
+function TelaForaDoAlcance() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#08080d] p-6 text-zinc-200">
+      <div className="w-full max-w-md rounded-xl border border-white/10 bg-surface-raised p-6 text-center">
+        <p className="text-sm font-semibold text-white">Esta área é da equipe Zion</p>
+        <p className="mt-2 text-sm text-zinc-400">
+          O endereço existe, mas não faz parte da operação da sua agência. Se precisar de algo daqui, fale com a Zion.
+        </p>
+        <Link
+          href="/clientes"
+          className="mt-5 inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-500 [@media(pointer:coarse)]:min-h-11"
+        >
+          Voltar para as lojas
+        </Link>
+      </div>
+    </main>
+  );
+}
+
 function RoteadorPapel({ perfil, children }: { perfil: Perfil; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -523,6 +547,7 @@ function RoteadorPapel({ perfil, children }: { perfil: Perfil; children: React.R
   // montar loja — quem já tem perfil receberia "já provisionado", recarregaria
   // e voltaria a esta mesma tela, em laço e sem explicação.
   if (decisao.tipo === "sem_acesso") return <TelaAcessoDesativado />;
+  if (decisao.tipo === "proibido") return <TelaForaDoAlcance />;
   if (alvo) return <TelaCarregando />;
   return <>{children}</>;
 }

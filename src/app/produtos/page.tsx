@@ -2,18 +2,23 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2 } from "lucide-react";
+import { Plus, Upload, ChevronDown, Users, ClipboardList, CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
-import { Table, Td } from "@/components/ui/Table";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
+import { useFiltroNaUrl } from "@/lib/contexto/useFiltroNaUrl";
+import { Table, Td, TdMain } from "@/components/ui/Table";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { EsqueletoDeTabela } from "@/components/ui/Skeleton";
 import { CADASTRO_STATUS, PRIORIDADES } from "@/lib/constantes";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutos } from "@/lib/services/produtos";
 import { gerarAuditoriasDaBase } from "@/lib/services/auditoriaDaBase";
 import { formatBRL } from "@/lib/format";
+import { oQueFaltaNoCadastro, estaNoAr } from "@/modules/catalog/domain/etapasDoCadastro";
 import type { Produto } from "@/lib/types";
 
 const HEADERS = [
@@ -22,27 +27,88 @@ const HEADERS = [
   "Custo",
   "Preço",
   "Estoque",
-  "Cadastro",
-  "SEO",
-  "Descrição",
-  "Imagens",
-  "Preço OK",
+  // UMA coluna no lugar de cinco (Cadastro, SEO, Descrição, Imagens, Preço OK).
+  // As cinco somavam 531px e quase sempre repetiam "Pendente" — cinco badges
+  // para responder uma pergunta que uma lista de faltas responde melhor.
+  // A regra é pura e testada: modules/catalog/domain/etapasDoCadastro.ts.
+  "O que falta",
   "Prioridade",
+  // A coluna de AÇÃO, sem rótulo — é o padrão das outras tabelas da agência
+  // (/agencias, /clientes): "Abrir" já se explica, e um cabeçalho "Ação" só
+  // gastaria a largura que esta tabela não tem de sobra.
+  "",
 ];
 
+/**
+ * A célula "O que falta" — chips do que resta, ou a confirmação de que não resta.
+ *
+ * Três estados, e os três precisam ser distinguíveis:
+ *   * faltas   → um chip por pendência, na ordem de quanto destrava;
+ *   * no ar    → publicado e sem pendência;
+ *   * pronto   → sem pendência, mas ainda não publicado (em cadastro).
+ *
+ * Sem essa última distinção, "completo" cobriria um produto que ninguém
+ * publicou — e a lista diria que o trabalho acabou quando não acabou.
+ */
+function OQueFalta({ produto }: { produto: Produto }) {
+  const faltas = oQueFaltaNoCadastro(produto);
+
+  if (faltas.length === 0) {
+    return estaNoAr(produto) ? (
+      <span className="whitespace-nowrap text-xs text-emerald-400">no ar</span>
+    ) : (
+      <span className="whitespace-nowrap text-xs text-zinc-400">pronto p/ publicar</span>
+    );
+  }
+
+  return (
+    <span className="flex flex-wrap gap-1">
+      {faltas.map((f) => (
+        // O `title` carrega o "por quê" que as cinco colunas não tinham: elas
+        // diziam "Pendente", nunca o que aquilo impede.
+        //
+        // TRÊS TONS, E CADA UM DIZ UMA COISA: vermelho é defeito (cadastro com
+        // erro), âmbar é trabalho não começado, violeta é trabalho em curso —
+        // a informação que as colunas de status davam e que uma lista de
+        // faltas perderia. O tom nunca vai sozinho: o rótulo é texto, e
+        // "em andamento" também está escrito no title.
+        <span
+          key={f.tipo}
+          title={f.emAndamento ? `${f.impede} (em andamento)` : f.impede}
+          className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] ${
+            f.comErro
+              ? "border-red-500/30 bg-red-500/10 text-red-300"
+              : f.emAndamento
+                ? "border-violet-500/25 bg-violet-500/10 text-violet-300"
+                : "border-amber-500/25 bg-amber-500/10 text-amber-300"
+          }`}
+        >
+          {f.rotulo}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export default function ProdutosPage() {
-  const [status, setStatus] = useState("Todos");
-  const [prioridade, setPrioridade] = useState("Todos");
-  const [cliente, setCliente] = useState("Todos");
+  // Filtros na URL (?cadastro=&prioridade=): sobrevivem ao F5 e vão no link.
+  const [status, setStatus] = useFiltroNaUrl("cadastro", "Todos", CADASTRO_STATUS);
+  const [prioridade, setPrioridade] = useFiltroNaUrl("prioridade", "Todos", PRIORIDADES);
+  // A loja vem do contexto global (cookie + ?loja=), não de um estado local.
+  const { lojaId } = useLojaAtual();
   const [colapsados, setColapsados] = useState<Set<string>>(new Set());
   const [auditando, setAuditando] = useState<string | null>(null);
+  // Sucesso e falha em estados SEPARADOS. Antes era uma string só, e "Falha ao
+  // auditar" aparecia em verde com o ícone de check — a pessoa lia "deu certo".
   const [msgAuditoria, setMsgAuditoria] = useState<string | null>(null);
-  const { data: produtos } = useLiveQuery(listarProdutos);
+  const [erroAuditoria, setErroAuditoria] = useState<string | null>(null);
+  const { data: produtos, carregando } = useLiveQuery(listarProdutos);
 
   async function auditarBase(nome: string, itens: Produto[]) {
     if (auditando || itens.length === 0) return;
     setAuditando(nome);
     setMsgAuditoria(null);
+    setErroAuditoria(null);
     try {
       const r = await gerarAuditoriasDaBase(itens[0].clienteId, nome);
       setMsgAuditoria(
@@ -51,21 +117,21 @@ export default function ProdutosPage() {
           : `${nome}: ${r.auditados} produtos auditados · ${r.criticas} críticos · ${r.altas} alta prioridade · ${r.problemas} problemas mapeados.`
       );
     } catch (e) {
-      setMsgAuditoria(
-        e instanceof Error ? `Falha ao auditar: ${e.message}` : "Falha ao auditar a base."
+      setErroAuditoria(
+        e instanceof Error ? `Falha ao auditar ${nome}: ${e.message}` : `Falha ao auditar ${nome}.`
       );
     } finally {
       setAuditando(null);
     }
   }
 
-  const clientesComProduto = [...new Set((produtos ?? []).map((p) => p.cliente))];
+  const lojasComProduto = [...new Set((produtos ?? []).map((p) => p.clienteId))];
 
   const filtrados = (produtos ?? []).filter(
     (p) =>
       (status === "Todos" || p.statusCadastro === status) &&
       (prioridade === "Todos" || p.prioridade === prioridade) &&
-      (cliente === "Todos" || p.cliente === cliente)
+      (!lojaId || p.clienteId === lojaId)
   );
 
   // Agrupa por cliente (ordem alfabética)
@@ -99,7 +165,7 @@ export default function ProdutosPage() {
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4">
-          <FilterSelect label="Cliente" value={cliente} options={clientesComProduto} onChange={setCliente} />
+          <FiltroDeLoja apenasIds={lojasComProduto} />
           <FilterSelect label="Cadastro" value={status} options={CADASTRO_STATUS} onChange={setStatus} />
           <FilterSelect label="Prioridade" value={prioridade} options={PRIORIDADES} onChange={setPrioridade} />
         </div>
@@ -113,14 +179,42 @@ export default function ProdutosPage() {
         </div>
       </div>
 
+      {/* role="alert"/"status": o resultado nasce longe do botão que o disparou
+          (o botão fica no cabeçalho de cada grupo, às vezes fora da tela), então
+          o leitor de tela precisa ANUNCIAR, não esperar que a pessoa ache. */}
+      {erroAuditoria && (
+        <div
+          role="alert"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200"
+        >
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={15} /> {erroAuditoria}
+          </span>
+          <span className="text-xs text-amber-200/60">
+            Tente de novo pelo botão &ldquo;Auditar base&rdquo; do grupo.
+          </span>
+        </div>
+      )}
+
       {msgAuditoria && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
+        <div
+          role="status"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400"
+        >
           <span className="flex items-center gap-2">
             <CheckCircle2 size={15} /> {msgAuditoria}
           </span>
           <LinkButton href="/auditoria-massa" variant="ghost" className="px-2 py-1 text-xs">
             Abrir Auditoria em Massa
           </LinkButton>
+        </div>
+      )}
+
+      {carregando && !produtos && (
+        // Esqueleto em vez de tela vazia: sem isto, cabeçalho e filtros apareciam
+        // e o resto ficava em branco até a lista chegar.
+        <div aria-busy="true" className="rounded-lg border border-white/5 p-4">
+          <EsqueletoDeTabela colunas={6} linhas={6} />
         </div>
       )}
 
@@ -140,8 +234,10 @@ export default function ProdutosPage() {
             <section key={nome}>
               <div className="mb-2 flex w-full items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.03] px-4 py-2 transition-colors hover:bg-white/[0.05]">
                 <button
+                  type="button"
+                  aria-expanded={aberto}
                   onClick={() => toggle(nome)}
-                  className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 py-0.5 text-left [@media(pointer:coarse)]:min-h-11"
                 >
                   <ChevronDown
                     size={16}
@@ -169,25 +265,41 @@ export default function ProdutosPage() {
               </div>
 
               {aberto && (
-                <Table headers={HEADERS}>
+                <Table headers={HEADERS} acaoFixa>
                   {itens.map((p) => (
                     <tr key={p.id} className="hover:bg-white/[0.02]">
-                      <td className="px-4 py-3 align-top">
-                        <Link href={`/produtos/${p.id}`}>
-                          <p className="whitespace-nowrap font-medium text-zinc-200 hover:text-violet-300">{p.nome}</p>
-                          <p className="mt-0.5 text-xs text-zinc-500">{p.marca} · {p.modelo}</p>
+                      {/* TdMain, não <td> cru: esta célula tinha `whitespace-nowrap` no
+                          nome — justamente o que TdMain removeu para a tabela parar
+                          de rolar na horizontal com nomes longos. */}
+                      <TdMain sub={`${p.marca} · ${p.modelo}`}>
+                        <Link
+                          href={`/produtos/${p.id}`}
+                          className="inline-flex items-center hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
+                        >
+                          {p.nome}
                         </Link>
-                      </td>
+                      </TdMain>
                       <Td className="whitespace-nowrap font-mono text-xs">{p.sku}</Td>
                       <Td className="whitespace-nowrap">{formatBRL(p.custo)}</Td>
                       <Td className="whitespace-nowrap text-zinc-200">{formatBRL(p.precoVenda)}</Td>
                       <Td>{p.estoque}</Td>
-                      <Td><Badge>{p.statusCadastro}</Badge></Td>
-                      <Td><Badge>{p.statusSeo}</Badge></Td>
-                      <Td><Badge>{p.statusDescricao}</Badge></Td>
-                      <Td><Badge>{p.statusImagens}</Badge></Td>
-                      <Td><Badge>{p.statusPrecificacao}</Badge></Td>
+                      <Td>
+                        <OQueFalta produto={p} />
+                      </Td>
                       <Td><Badge>{p.prioridade}</Badge></Td>
+                      {/* A AÇÃO EXPLÍCITA. O nome do produto já leva à mesma
+                          tela, mas texto sublinhado no meio de onze colunas não
+                          se anuncia como o lugar de clicar — e no celular, onde
+                          a linha vira cartão, o nome é o TÍTULO do cartão, que
+                          se lê como rótulo e não como botão. */}
+                      <Td>
+                        <Link
+                          href={`/produtos/${p.id}`}
+                          className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-violet-400 hover:text-violet-300 [@media(pointer:coarse)]:min-h-11"
+                        >
+                          Abrir <ArrowRight size={12} />
+                        </Link>
+                      </Td>
                     </tr>
                   ))}
                 </Table>

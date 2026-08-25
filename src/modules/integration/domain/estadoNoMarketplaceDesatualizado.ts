@@ -31,6 +31,14 @@ export interface AnuncioConhecido {
   fotoCapaMaxSize?: string | null;
   estoqueMarketplace?: number | null;
   categoriaMl?: string | null;
+  /** 074 — os sete que a importação descartava. */
+  tipoAnuncioMl?: string | null;
+  criadoEmMl?: string | null;
+  atualizadoEmMl?: string | null;
+  vendidosMl?: number | null;
+  saudeMl?: number | null;
+  doCatalogoMl?: boolean | null;
+  temDescricaoMl?: boolean | null;
 }
 
 export interface EstadoLidoNoMarketplace {
@@ -50,6 +58,22 @@ export interface EstadoLidoNoMarketplace {
    * bolsas dela são MLB7022, onde o ML cobra 15%.
    */
   categoriaMl?: string;
+  /**
+   * 074 — os sete campos que o ML manda no MESMO multiget.
+   *
+   * Eles entram AQUI, no caminho de `medir`, e não só no de `substituir`, e a
+   * diferença não é de gosto: `medir` é o "Conferir agora", que não apaga
+   * nada; `substituir` apaga a importação anterior inteira. Deixar os sete só
+   * no destrutivo significaria que ter o tipo do anúncio — o que decide se a
+   * comissão é 14% ou 19% — custaria recriar o catálogo.
+   */
+  tipoAnuncioMl?: string | null;
+  criadoEmMl?: string | null;
+  atualizadoEmMl?: string | null;
+  vendidosMl?: number | null;
+  saudeMl?: number | null;
+  doCatalogoMl?: boolean | null;
+  temDescricaoMl?: boolean | null;
 }
 
 export interface AtualizacaoDeEstado {
@@ -60,6 +84,25 @@ export interface AtualizacaoDeEstado {
   fotoCapaMaxSize: string | null;
   estoqueMarketplace: number | null;
   categoriaMl: string | null;
+  tipoAnuncioMl: string | null;
+  criadoEmMl: string | null;
+  atualizadoEmMl: string | null;
+  vendidosMl: number | null;
+  saudeMl: number | null;
+  doCatalogoMl: boolean | null;
+  temDescricaoMl: boolean | null;
+}
+
+/**
+ * O valor novo, ou o que já se sabia quando o ML não disse nada.
+ *
+ * A MESMA regra que `categoriaMl` já aplicava, agora com nome: leitura vazia
+ * não sobrescreve conhecimento. Um anúncio que veio sem `health` nesta leitura
+ * não perdeu a saúde — o ML só não a mandou desta vez, e trocar o número por
+ * `null` seria transformar "não perguntei" em "não sei mais".
+ */
+function preservando<T>(lido: T | null | undefined, conhecido: T | null | undefined): T | null {
+  return lido ?? conhecido ?? null;
 }
 
 /**
@@ -108,7 +151,26 @@ export function estadosDesatualizados(
     // leitura, e sobrescrever o que sabíamos com "não sabemos" é a mesma perda
     // que o `status` em branco já evita acima.
     const mesmaCategoria = !categoria || (a.categoriaMl ?? "").trim() === categoria;
-    if (mesmoStatus && mesmoSub && mesmaCapa && mesmoEstoque && mesmaCategoria) continue;
+
+    // 074 — os sete. Mesma regra da categoria: o que o ML NÃO mandou nesta
+    // leitura não conta como diferença e não sobrescreve o que já se sabia.
+    const tipoAnuncioMl = preservando(lido.tipoAnuncioMl, a.tipoAnuncioMl);
+    const criadoEmMl = preservando(lido.criadoEmMl, a.criadoEmMl);
+    const atualizadoEmMl = preservando(lido.atualizadoEmMl, a.atualizadoEmMl);
+    const vendidosMl = preservando(lido.vendidosMl, a.vendidosMl);
+    const saudeMl = preservando(lido.saudeMl, a.saudeMl);
+    const doCatalogoMl = preservando(lido.doCatalogoMl, a.doCatalogoMl);
+    const temDescricaoMl = preservando(lido.temDescricaoMl, a.temDescricaoMl);
+    const mesmos074 =
+      tipoAnuncioMl === (a.tipoAnuncioMl ?? null) &&
+      criadoEmMl === (a.criadoEmMl ?? null) &&
+      atualizadoEmMl === (a.atualizadoEmMl ?? null) &&
+      vendidosMl === (a.vendidosMl ?? null) &&
+      saudeMl === (a.saudeMl ?? null) &&
+      doCatalogoMl === (a.doCatalogoMl ?? null) &&
+      temDescricaoMl === (a.temDescricaoMl ?? null);
+
+    if (mesmoStatus && mesmoSub && mesmaCapa && mesmoEstoque && mesmaCategoria && mesmos074) continue;
 
     saida.push({
       id: a.id,
@@ -119,6 +181,13 @@ export function estadosDesatualizados(
       estoqueMarketplace: estoque,
       // Preserva o que já sabíamos quando a leitura veio sem categoria.
       categoriaMl: categoria || (a.categoriaMl ?? null),
+      tipoAnuncioMl,
+      criadoEmMl,
+      atualizadoEmMl,
+      vendidosMl,
+      saudeMl,
+      doCatalogoMl,
+      temDescricaoMl,
     });
   }
   return saida;

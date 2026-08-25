@@ -55,7 +55,19 @@ test("nenhuma tela manda 'falar com a Zion' sobre cota ou plano", () => {
     const semComentarios = fonte
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^\s*\/\/.*$/gm, "");
-    if (/(Fale|fale) com a Zion/.test(semComentarios)) {
+    // E SO SOBRE COTA OU PLANO — o que o nome deste teste promete.
+    //
+    // A regra e sobre a parede comercial: a tela que diz "voce usou todas as
+    // otimizacoes" e manda pedir ajuda. Sem este recorte, o `grep` alcancava
+    // `TelaForaDoAlcance` — o 403 que uma AGENCIA ve ao tocar area interna da
+    // Zion, onde "fale com a Zion" e a orientacao correta e nao existe
+    // caminho self-service para oferecer no lugar.
+    //
+    // Uma prova que reprova a tela certa ensina a desligar a prova.
+    const sobreCota = /(cota|plano|otimiza[cç][oõ]es do (seu )?plano|cr[eé]ditos)/i.test(
+      semComentarios
+    );
+    if (sobreCota && /(Fale|fale) com a Zion/.test(semComentarios)) {
       infratores.push(caminho.slice(caminho.indexOf("src")));
     }
   }

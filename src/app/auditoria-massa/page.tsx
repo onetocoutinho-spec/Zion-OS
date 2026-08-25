@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FilterSelect } from "@/components/ui/FilterSelect";
+import { FiltroDeLoja } from "@/components/ui/FiltroDeLoja";
+import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
 import { Table, Td, EmptyRow } from "@/components/ui/Table";
@@ -54,13 +56,13 @@ const PESO_PRIORIDADE: Record<PrioridadeAuditoria, number> = {
 };
 
 const HEADERS_IMP = [
-  "Cliente",
+  "Loja",
   "Marketplace",
   "Arquivo",
   "Origem",
   "Anúncios",
   "Processados",
-  "Status",
+  "Situação",
   "Data",
   "Responsável",
 ];
@@ -68,20 +70,20 @@ const HEADERS_IMP = [
 const HEADERS_AUD = [
   "Anúncio / Categoria",
   "Marketplace",
-  "Score",
+  "Nota",
   "ABC",
   "Prioridade",
   "Vendas",
   "Visitas",
   "Conversão",
   "Principais problemas",
-  "Status",
+  "Situação",
 ];
 
 const PAGINA = 20;
 
 export default function AuditoriaMassaPage() {
-  const [cliente, setCliente] = useState("Todos");
+  const { lojaId, loja } = useLojaAtual();
   const [marketplace, setMarketplace] = useState("Todos");
   const [prioridade, setPrioridade] = useState("Todos");
   const [abc, setAbc] = useState("Todos");
@@ -113,22 +115,16 @@ export default function AuditoriaMassaPage() {
     fila.filter((f) => f.status === "concluido").length;
 
   // ---- Filtros ----
-  const clientes = useMemo(
-    () => [...new Set(auditorias.map((a) => a.cliente))],
-    [auditorias]
+  const lojasAuditadas = useMemo(
+    () => [...new Set([...auditorias.map((a) => a.clienteId), ...importacoes.map((i) => i.clienteId)])],
+    [auditorias, importacoes]
   );
-  const clienteParaId = useMemo(() => {
-    const m = new Map<string, string>();
-    auditorias.forEach((a) => m.set(a.cliente, a.clienteId));
-    importacoes.forEach((i) => m.set(i.cliente, i.clienteId));
-    return m;
-  }, [auditorias, importacoes]);
 
   const filtradas = useMemo(() => {
     return auditorias
       .filter(
         (a) =>
-          (cliente === "Todos" || a.cliente === cliente) &&
+          (!lojaId || a.clienteId === lojaId) &&
           (marketplace === "Todos" || a.marketplace === marketplace) &&
           (prioridade === "Todos" || ROTULO_PRIORIDADE[a.prioridade] === prioridade) &&
           (abc === "Todos" || a.classificacaoAbc === abc) &&
@@ -139,17 +135,20 @@ export default function AuditoriaMassaPage() {
           PESO_PRIORIDADE[a.prioridade] - PESO_PRIORIDADE[b.prioridade] ||
           a.scoreQualidade - b.scoreQualidade
       );
-  }, [auditorias, cliente, marketplace, prioridade, abc, status]);
+  }, [auditorias, lojaId, marketplace, prioridade, abc, status]);
 
   const visiveis = filtradas.slice(0, limite);
 
   const filaAuditoriaIds = useMemo(() => new Set(fila.map((f) => f.auditoriaId)), [fila]);
 
-  // ---- Cliente base para ações (respeita o filtro de cliente) ----
+  // ---- Loja base para ações: a do contexto; em portfólio, a da primeira importação ----
   function resolverClienteBase(): { clienteId: string; cliente: string } | null {
-    if (cliente !== "Todos") {
-      const id = clienteParaId.get(cliente);
-      if (id) return { clienteId: id, cliente };
+    if (lojaId) {
+      const nome =
+        loja?.empresa ??
+        auditorias.find((a) => a.clienteId === lojaId)?.cliente ??
+        importacoes.find((i) => i.clienteId === lojaId)?.cliente;
+      if (nome) return { clienteId: lojaId, cliente: nome };
     }
     if (importacoes[0]) return { clienteId: importacoes[0].clienteId, cliente: importacoes[0].cliente };
     if (auditorias[0]) return { clienteId: auditorias[0].clienteId, cliente: auditorias[0].cliente };
@@ -261,7 +260,7 @@ export default function AuditoriaMassaPage() {
 
       {/* Filtros das auditorias */}
       <div className="flex flex-wrap gap-4">
-        <FilterSelect label="Cliente" value={cliente} options={clientes} onChange={setCliente} />
+        <FiltroDeLoja apenasIds={lojasAuditadas} />
         <FilterSelect label="Marketplace" value={marketplace} options={MARKETPLACES} onChange={setMarketplace} />
         <FilterSelect label="Prioridade" value={prioridade} options={Object.values(ROTULO_PRIORIDADE)} onChange={setPrioridade} />
         <FilterSelect label="ABC" value={abc} options={["A", "B", "C"]} onChange={setAbc} />

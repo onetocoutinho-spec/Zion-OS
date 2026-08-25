@@ -34,11 +34,11 @@ export function ExecutarComAgente({ clienteId, produtoId, anuncioId }: ExecutarC
       title="Executar um agente IA com os dados desta página"
       className="cursor-pointer rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-sm font-medium text-violet-300 outline-none transition-colors hover:bg-violet-500/20"
     >
-      <option value="" className="bg-[#12121c] text-zinc-400">
+      <option value="" className="bg-surface-input text-zinc-400">
         ✦ Executar agente IA…
       </option>
       {(agentes ?? []).map((a) => (
-        <option key={a.id} value={a.id} className="bg-[#12121c] text-zinc-200">
+        <option key={a.id} value={a.id} className="bg-surface-input text-zinc-200">
           {a.nome} — {a.area}
         </option>
       ))}

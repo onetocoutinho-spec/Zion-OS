@@ -22,11 +22,13 @@
 // ausente, agente ausente, chamada falhou.
 
 import { agentePorFerramenta } from "../agentes/catalogo";
-import { chamarIAEstruturada, provedorConfigurado } from "../agentes/provedorIA";
+import { chamarIAEstruturada, provedorConfigurado, type RastroDaExecucao } from "../agentes/provedorIA";
 import {
   LIMITE_DE_DESCRICAO,
   MAXIMO_DE_PALAVRAS_CHAVE,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
+import { dadoExterno, REGRA_DO_DADO_EXTERNO } from "@/lib/agentes/dadoExterno";
+import { blocoDoPerfil, type PerfilDeConteudo } from "@/modules/assistant/domain/perfilDeConteudo";
 
 /**
  * O único jeito de sair daqui sem resposta — e ele SEMPRE diz por quê.
@@ -76,20 +78,40 @@ export interface EntradaDoTexto {
   modelo: string;
   /** O que existe hoje. Vazio quando o anúncio ainda não tem. */
   atual: string;
+  /**
+   * O AJUSTE pedido pela lojista sobre uma descrição já proposta ("deixa mais
+   * curta", "fala do conforto"). Com ela, o agente parte da `atual` e muda só
+   * o que foi pedido, em vez de regerar do zero.
+   */
+  instrucao?: string;
+  /** Como ESTA loja vende — o bloco entra no prompt quando existe. */
+  perfil?: PerfilDeConteudo | null;
 }
 
 export async function gerarDescricaoOtimizada(
-  e: EntradaDoTexto
+  e: EntradaDoTexto,
+  rastro?: RastroDaExecucao
 ): Promise<{ descricao: string; justificativa: string } | null> {
   if (!provedorConfigurado()) return semResposta("provedor de IA não configurado");
   const agente = agentePorFerramenta("descricao");
   if (!agente) return semResposta('agente "descricao" ausente do catálogo');
 
+  // Dado de fora (ML, CSV, PDF) entra cercado — ver `dadoExterno.ts`.
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
-    e.atual ? `Descrição atual: ${e.atual}` : "Descrição atual: (vazia)",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
+    e.atual ? `Descrição atual: ${dadoExterno("anuncio-descricao", e.atual)}` : "Descrição atual: (vazia)",
+    ...(e.instrucao
+      ? [
+          "",
+          `AJUSTE PEDIDO PELA LOJISTA: ${dadoExterno("pedido-da-lojista", e.instrucao)}`,
+          "Parta da descrição atual e mude SÓ o que o ajuste pede. Os parágrafos que ela não questionou ficam como estão.",
+        ]
+      : []),
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     SEM_INVENTAR,
     "Responda com UMA descrição recomendada e uma linha de justificativa.",
@@ -100,6 +122,7 @@ export async function gerarDescricaoOtimizada(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_DESCRICAO,
+      ...(rastro ? { rastro: { ...rastro, origem: "descricao" as const } } : {}),
       // ===================================================================
       // O TETO É DO TAMANHO DA COISA GERADA, NÃO UM NÚMERO REDONDO
       // ===================================================================
@@ -153,10 +176,12 @@ export interface EntradaDasPalavras {
   modelo: string;
   /** As que o anúncio já tem — para o agente não repetir. */
   atuais: readonly string[];
+  perfil?: PerfilDeConteudo | null;
 }
 
 export async function gerarPalavrasChave(
-  e: EntradaDasPalavras
+  e: EntradaDasPalavras,
+  rastro?: RastroDaExecucao
 ): Promise<{ palavras: string[]; justificativa: string } | null> {
   if (!provedorConfigurado()) return semResposta("provedor de IA não configurado");
   // O agente de SEO é quem sabe de busca. Reusar o de descrição aqui daria
@@ -165,12 +190,15 @@ export async function gerarPalavrasChave(
   if (!agente) return semResposta('agente "seo" ausente do catálogo');
 
   const dados = [
-    `Produto: ${e.nome}`,
-    e.marca ? `Marca: ${e.marca}` : "Marca: não informada",
-    e.modelo ? `Modelo: ${e.modelo}` : "Modelo: não informado",
+    REGRA_DO_DADO_EXTERNO,
+    "",
+    `Produto: ${dadoExterno("cadastro-nome", e.nome)}`,
+    e.marca ? `Marca: ${dadoExterno("cadastro-marca", e.marca)}` : "Marca: não informada",
+    e.modelo ? `Modelo: ${dadoExterno("cadastro-modelo", e.modelo)}` : "Modelo: não informado",
     e.atuais.length > 0
-      ? `Palavras-chave que o anúncio já tem: ${e.atuais.join(", ")}`
+      ? `Palavras-chave que o anúncio já tem: ${dadoExterno("anuncio-palavras", e.atuais.join(", "))}`
       : "O anúncio ainda não tem palavras-chave.",
+    ...(blocoDoPerfil(e.perfil ?? null).length ? ["", ...blocoDoPerfil(e.perfil ?? null)] : []),
     "",
     SEM_INVENTAR,
     `Responda com no máximo ${MAXIMO_DE_PALAVRAS_CHAVE} termos de busca que ACRESCENTEM aos que já existem, e uma linha de justificativa.`,
@@ -181,6 +209,7 @@ export async function gerarPalavrasChave(
       system: agente.promptSistema,
       mensagem: dados,
       schema: ESQUEMA_PALAVRAS,
+      ...(rastro ? { rastro: { ...rastro, origem: "palavras_chave" as const } } : {}),
       maxTokens: 600,
     });
     const r = JSON.parse(json) as { palavras?: string[]; justificativa?: string };

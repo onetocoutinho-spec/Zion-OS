@@ -31,6 +31,15 @@ test("linha sem estado conhecido recebe o que o ML disse", () => {
       fotoCapaMaxSize: null,
       estoqueMarketplace: null,
       categoriaMl: null,
+      // 074 — os sete. Todos `null` aqui porque a leitura deste caso não os
+      // trouxe, e `null` é o valor honesto: o ML não disse.
+      tipoAnuncioMl: null,
+      criadoEmMl: null,
+      atualizadoEmMl: null,
+      vendidosMl: null,
+      saudeMl: null,
+      doCatalogoMl: null,
+      temDescricaoMl: null,
     },
   ]);
 });
@@ -126,14 +135,24 @@ test("o eixo da esteira não aparece na saída — esta função não toca em `s
     AGORA
   );
   assert.deepEqual(Object.keys(r[0]).sort(), [
+    "atualizadoEmMl",
     "categoriaMl",
+    "criadoEmMl",
+    "doCatalogoMl",
     "estoqueMarketplace",
     "fotoCapaMaxSize",
     "id",
+    "saudeMl",
     "statusMarketplace",
     "statusMarketplaceEm",
     "subStatusMarketplace",
+    "temDescricaoMl",
+    "tipoAnuncioMl",
+    "vendidosMl",
   ]);
+  // `status` — o eixo da esteira do Zion — continua ausente. Os sete da 074
+  // são todos do eixo do MARKETPLACE, que é o que esta função escreve.
+  assert.ok(!("status" in r[0]));
 });
 
 test("listas vazias não produzem escrita", () => {
@@ -268,4 +287,112 @@ test("a mesma categoria não vira escrita", () => {
     AGORA
   );
   assert.deepEqual(r, []);
+});
+
+// ===========================================================================
+// 074 — OS SETE NO CAMINHO SEGURO
+// ===========================================================================
+//
+// `medir` é o "Conferir agora": não apaga nada. `substituir` apaga a
+// importação anterior inteira. Deixar os sete só no destrutivo significaria
+// que ter o tipo do anúncio — o que decide se a comissão é 14% ou 19% —
+// custaria recriar o catálogo, com as variantes e o CUSTO que o ML não
+// devolve. Eles vêm do MESMO multiget, então não há leitura nova.
+
+test("os sete campos novos viram escrita quando o ML os informa", () => {
+  const r = estadosDesatualizados(
+    [{ id: "a1", mlItemId: "MLB1", statusMarketplace: "active" }],
+    [
+      {
+        mlb: "MLB1",
+        status: "active",
+        tipoAnuncioMl: "gold_special",
+        criadoEmMl: "2026-01-10T00:00:00Z",
+        atualizadoEmMl: "2026-08-20T00:00:00Z",
+        vendidosMl: 42,
+        saudeMl: 0.84,
+        doCatalogoMl: true,
+        temDescricaoMl: false,
+      },
+    ],
+    AGORA
+  );
+  // O STATUS NÃO MUDOU e mesmo assim há escrita: os sete são fato novo.
+  assert.equal(r.length, 1, "o estado igual mascarou os campos novos");
+  assert.equal(r[0].tipoAnuncioMl, "gold_special");
+  assert.equal(r[0].vendidosMl, 42);
+  assert.equal(r[0].saudeMl, 0.84);
+  assert.equal(r[0].doCatalogoMl, true);
+  assert.equal(r[0].temDescricaoMl, false);
+});
+
+test("LEITURA VAZIA NÃO APAGA O QUE JÁ SE SABIA", () => {
+  // A mesma regra que `categoriaMl` já aplicava. Um anúncio que veio sem
+  // `health` nesta leitura não perdeu a saúde: o ML só não a mandou desta vez,
+  // e trocar o número por `null` transformaria "não perguntei" em "não sei
+  // mais" — o mesmo dano que `status` em branco já evita.
+  const r = estadosDesatualizados(
+    [
+      {
+        id: "a1",
+        mlItemId: "MLB1",
+        statusMarketplace: "active",
+        tipoAnuncioMl: "gold_pro",
+        saudeMl: 0.9,
+        vendidosMl: 7,
+      },
+    ],
+    [{ mlb: "MLB1", status: "paused" }],
+    AGORA
+  );
+  assert.equal(r.length, 1, "o status mudou, então há escrita");
+  assert.equal(r[0].tipoAnuncioMl, "gold_pro", "o tipo conhecido foi apagado por uma leitura que não o trouxe");
+  assert.equal(r[0].saudeMl, 0.9);
+  assert.equal(r[0].vendidosMl, 7);
+});
+
+test("nada novo nos sete, e nada novo no resto, continua não escrevendo", () => {
+  // A trava contra escrita sem fato novo não pode ter sido afrouxada: 880
+  // regravações por conferida fariam `status_marketplace_em` mentir sobre
+  // quando aprendemos.
+  const conhecido = {
+    id: "a1",
+    mlItemId: "MLB1",
+    statusMarketplace: "active",
+    tipoAnuncioMl: "gold_pro",
+    vendidosMl: 3,
+    saudeMl: 0.8,
+    doCatalogoMl: false,
+    temDescricaoMl: true,
+  };
+  const r = estadosDesatualizados(
+    [conhecido],
+    [
+      {
+        mlb: "MLB1",
+        status: "active",
+        tipoAnuncioMl: "gold_pro",
+        vendidosMl: 3,
+        saudeMl: 0.8,
+        doCatalogoMl: false,
+        temDescricaoMl: true,
+      },
+    ],
+    AGORA
+  );
+  assert.deepEqual(r, [], "regravou sem fato novo");
+});
+
+test("VENDIDOS ZERO É FATO, não ausência", () => {
+  // `preservando` usa `??`, não `||`: um `0` em vendidos e um `false` em
+  // doCatalogo são leituras de verdade. Com `||` eles cairiam no conhecido e
+  // um anúncio que parou de vender continuaria mostrando a venda antiga.
+  const r = estadosDesatualizados(
+    [{ id: "a1", mlItemId: "MLB1", statusMarketplace: "active", vendidosMl: 9, doCatalogoMl: true }],
+    [{ mlb: "MLB1", status: "active", vendidosMl: 0, doCatalogoMl: false }],
+    AGORA
+  );
+  assert.equal(r.length, 1);
+  assert.equal(r[0].vendidosMl, 0);
+  assert.equal(r[0].doCatalogoMl, false);
 });

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// A dimensão da foto passou a ser gravada no upload (migração 059).
+// A dimensão da foto passou a ser gravada no upload (migração 075).
 //
 // ===========================================================================
 // O QUE ISTO GUARDA, e por que cada ponto importa

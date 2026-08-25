@@ -31,7 +31,7 @@ import { lerMaxSize, LADO_MINIMO_DA_CAPA } from "@/modules/integration/domain/ca
 
 // UMA IMPLEMENTAÇÃO SÓ. A medida nasceu aqui, para o cartão que confere a foto
 // no chat; desde 11/08/2026 o upload do portal também mede, para gravar a
-// dimensão (migração 059). Duas cópias divergiriam no dia em que uma ganhasse
+// dimensão (migração 075). Duas cópias divergiriam no dia em que uma ganhasse
 // tratamento de EXIF ou de HEIC e a outra não.
 export { medirFoto } from "@/lib/imagens/medirArquivo";
 import type { FotoMedida } from "@/lib/imagens/medirArquivo";

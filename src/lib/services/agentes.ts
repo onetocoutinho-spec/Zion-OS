@@ -113,7 +113,7 @@ export interface OpcoesExecucaoIA {
 
 /**
  * Executa o agente de verdade via API Claude (rota /api/agentes/executar).
- * Sem ANTHROPIC_API_KEY no servidor, registra uma execução simulada e avisa.
+ * Sem OPENAI_API_KEY no servidor, registra uma execução simulada e avisa.
  * Outros erros são lançados para a tela exibir.
  */
 export async function executarAgenteIA(
@@ -148,11 +148,11 @@ export async function executarAgenteIA(
         {
           tarefa: `[SIMULAÇÃO] Revisar a entrega do ${agente.nome}`,
           prioridade: "Média",
-          proximaAcao: "Configurar a ANTHROPIC_API_KEY para execuções reais",
+          proximaAcao: "Configurar a OPENAI_API_KEY para execuções reais",
         },
       ],
       aviso:
-        "ANTHROPIC_API_KEY não configurada — execução registrada como simulada (as ações abaixo são exemplos). Configure a chave no .env.local para execuções reais.",
+        "OPENAI_API_KEY não configurada — execução registrada como simulada (as ações abaixo são exemplos). Configure a chave no .env.local para execuções reais.",
     };
   }
 

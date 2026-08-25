@@ -7,11 +7,14 @@
 
 import {
   buscarAnunciosDoVendedor,
+  lerItensPorIds,
   recorteDaCategoria,
 } from "@/lib/marketplaces/mercadolivre";
-import { lerCanalServidor, atualizarRefreshTokenServidor } from "@/modules/integration/infrastructure/canalServidor";
+import { lerTudoPaginado } from "@/lib/supabase/paginado";
+import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
 import { renovarTokenDaRota } from "@/modules/integration/infrastructure/renovacaoDaRota";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { respostaDeErro } from "@/lib/http/respostaDeErro";
 
 // 300, não 60 — o teto do plano Pro, que o worker da esteira já usa desde
 // sempre (`/api/otimizar/worker`). Os 60 eram resíduo, não limite: em 02/08/2026
@@ -59,7 +62,7 @@ export async function POST(request: Request) {
   const marketplace = corpo.marketplace ?? "Mercado Livre";
 
   try {
-    const canal = await lerCanalServidor(ctx.supabase, corpo.clienteId, marketplace);
+    const canal = await lerCanalServidor(clienteDaCredencial(), corpo.clienteId, marketplace);
     if (!canal?.refreshToken) {
       return Response.json({ erro: "Cliente não conectado ao Mercado Livre." }, { status: 400 });
     }
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
     });
     if ("recusa" in renovacao) return renovacao.recusa;
     const tokens = renovacao.tokens;
-    await atualizarRefreshTokenServidor(ctx.supabase, corpo.clienteId, tokens.refreshToken, marketplace);
+    await atualizarRefreshTokenServidor(clienteDaCredencial(), corpo.clienteId, tokens.refreshToken, marketplace);
 
     const sellerId = canal.sellerId || tokens.userId;
     if (!sellerId) {
@@ -81,6 +84,56 @@ export async function POST(request: Request) {
     }
     const leitura = await buscarAnunciosDoVendedor(tokens.accessToken, sellerId);
     const anuncios = leitura.anuncios;
+
+    // ================================================================
+    // OS ÓRFÃOS — anúncios que a BUSCA não devolve e o Zion conhece
+    // ================================================================
+    //
+    // A conferida atualiza o que o `/users/{id}/items/search` lista. Item que
+    // sai do resultado da busca nunca mais é atualizado — e a regra que
+    // protege isso ("ausência não é encerramento") está certa, mas deixa o
+    // anúncio congelado para sempre no último estado conhecido, ou em `null`
+    // se nunca houve um.
+    //
+    // Medido em 24/08/2026: 15 de 792. Onze importados em 08/07 e nunca
+    // medidos — quatro conferidas passaram sem vê-los; quatro em
+    // `under_review`, três com `forbidden`, parados desde 01 e 10/08.
+    //
+    // O multiget lê POR ID e não depende da busca. Vão numa lista à parte:
+    // `substituir` reconstrói o catálogo a partir de `anuncios`, e enfiar os
+    // órfãos ali mudaria o agrupamento de produtos no caminho DESTRUTIVO. Quem
+    // usa `orfaos` é só a conferida, que apenas atualiza estado.
+    const orfaos: Awaited<ReturnType<typeof lerItensPorIds>> = { anuncios: [], naoEncontrados: [] };
+    try {
+      const vistos = new Set(anuncios.map((a) => a.mlb));
+      const conhecidos = await lerTudoPaginado<{ ml_item_id: string | null }>(
+        "MLBs conhecidos do cliente",
+        (de, ate) =>
+          ctx.supabase!
+            .from("anuncios_gerados")
+            .select("ml_item_id")
+            .eq("cliente_id", corpo.clienteId)
+            .not("ml_item_id", "is", null)
+            .order("id", { ascending: true })
+            .range(de, ate)
+      );
+      const faltando = [
+        ...new Set(
+          conhecidos
+            .map((l) => (l.ml_item_id ?? "").trim())
+            .filter((m) => m && !vistos.has(m))
+        ),
+      ];
+      if (faltando.length > 0) {
+        const r = await lerItensPorIds(tokens.accessToken, faltando);
+        orfaos.anuncios = r.anuncios;
+        orfaos.naoEncontrados = r.naoEncontrados;
+      }
+    } catch (e) {
+      // FALHA ABERTA: a conferida inteira não pode morrer por causa do
+      // complemento. Sem os órfãos ela volta a ser o que era — e o log diz.
+      console.error("[ml/importar-anuncios] não consegui ler os órfãos:", e);
+    }
 
     // O recorte da ficha vem do ML, por categoria — não de uma lista escrita
     // por nós. Vai junto porque é aqui que as categorias são conhecidas, e
@@ -99,6 +152,9 @@ export async function POST(request: Request) {
     // parava nos 500 e ninguém sabia — inclusive nós.
     return Response.json({
       anuncios,
+      // Separados de propósito — ver o bloco acima.
+      orfaos: orfaos.anuncios,
+      orfaosNaoEncontrados: orfaos.naoEncontrados,
       sellerId,
       foraDaFicha,
       obrigatorios,
@@ -123,9 +179,6 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    return Response.json(
-      { erro: e instanceof Error ? e.message : "Falha ao importar anúncios do ML." },
-      { status: 502 }
-    );
+    return respostaDeErro("ml/importar-anuncios", e, "Falha ao importar anúncios do ML.", 502);
   }
 }
