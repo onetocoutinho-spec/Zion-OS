@@ -26,10 +26,12 @@ loja que vende.
 
 Antes de percorrer:
 
-- [ ] Conferir a **deriva de migrações**: o repositório tem 77 arquivos em
-      `database/migrations/`, e o staging parou onde parou. `list_migrations` diz onde ele
-      está; [06-APLICACAO-DAS-MIGRACOES.md](../docs/staging-setup/06-APLICACAO-DAS-MIGRACOES.md)
-      diz a ordem (base legada → 001…015 → usuários → 016 → o resto)
+- [x] **Deriva medida em 25/08** — [11-ONDE-O-STAGING-PAROU.md](../docs/staging-setup/11-ONDE-O-STAGING-PAROU.md):
+      o staging parou na **016**, o repositório está na **076**, faltam **58 migrações**
+      (022–076; os números 017–021 não existem)
+- [ ] **Decidir antes de percorrer:** aplicar as 58 na ordem da
+      [06](../docs/staging-setup/06-APLICACAO-DAS-MIGRACOES.md), ou voltar a medir em
+      produção com as guardas. Religar o projeto não resolveu — ele voltou como estava em julho
 - [ ] Variáveis de ambiente do staging
       ([05-VARIAVEIS-DE-AMBIENTE.md](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md))
 - [ ] **App ML separado** para staging, com `ML_REDIRECT_URI` próprio
