@@ -46,9 +46,10 @@ import { montarContexto } from "@/lib/contexto";
 import {
   atributosPorId,
   briefingDosAtributos,
-  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
 } from "@/modules/publication/domain/atributosDoMarketplace";
+import { obrigatoriosDoProduto } from "@/modules/publication/domain/obrigatoriosDoProduto";
+import { obrigatoriosDaCategoria } from "@/lib/services/categoriaML";
 import { listarAtributosDoProduto } from "@/lib/services/produtoAtributos";
 import {
   listarAnunciosGeradosDoCliente,
@@ -378,6 +379,25 @@ function Jornada() {
       // campo no cadastro e antes só podiam ser adivinhados do NOME — agora há
       // valor medido, e medido vence adivinhado.
       const daFicha = await listarAtributosDoProduto(produto.id).catch(() => []);
+
+      // A CATEGORIA MEDIDA, quando ela existe (INC-011).
+      //
+      // `anuncios` já está em memória e cada linha traz `categoriaMl` — o
+      // `category_id` que o ML devolveu na importação. Não custa consulta
+      // nenhuma; o que custa uma requisição é a lista de obrigatórios daquela
+      // categoria, e ela é pública.
+      //
+      // Produto sem anúncio no ar não tem categoria medida e cai no palpite de
+      // calçado, que é exatamente o comportamento de antes. Falha de rede idem:
+      // `obrigatoriosDaCategoria` devolve null, não [].
+      const categoriaMedida = (anuncios ?? [])
+        .filter((a) => a.produtoId === produto.id)
+        .map((a) => (a.categoriaMl ?? "").trim())
+        .find(Boolean) ?? "";
+      const { exigencias } = obrigatoriosDoProduto(
+        categoriaMedida,
+        categoriaMedida ? await obrigatoriosDaCategoria(clienteId, categoriaMedida) : null
+      );
       const atributos = briefingDosAtributos(
         resolverObrigatorios(
           {
@@ -387,7 +407,7 @@ function Jornada() {
             cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
             tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
           },
-          OBRIGATORIOS_CALCADO,
+          exigencias,
           atributosPorId(daFicha)
         )
       );

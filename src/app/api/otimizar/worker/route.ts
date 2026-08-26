@@ -22,9 +22,11 @@ import {
 import {
   atributosPorId,
   briefingDosAtributos,
-  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
+  type ExigenciaDaCategoria,
 } from "@/modules/publication/domain/atributosDoMarketplace";
+import { obrigatoriosDoProduto } from "@/modules/publication/domain/obrigatoriosDoProduto";
+import { atributosObrigatorios } from "@/lib/marketplaces/mercadolivre";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
 import {
@@ -117,7 +119,13 @@ async function gerarAnuncio(
   produto: Produto,
   variantes: ProdutoVariante[],
   tabelasMedidas: TabelaMedida[],
-  atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[]
+  atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[],
+  /**
+   * O que a CATEGORIA deste produto exige. Ver INC-011: o retrato de calçado
+   * era cobrado de 118 anúncios que não são calçado, e em MLB23332 a exigência
+   * de tipo de calçado é uma pendência sobre um campo que não existe lá.
+   */
+  obrigatorios: readonly ExigenciaDaCategoria[]
 ): Promise<AnuncioGerado> {
   // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
   // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
@@ -141,7 +149,7 @@ async function gerarAnuncio(
         cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
         tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
       },
-      OBRIGATORIOS_CALCADO,
+      obrigatorios,
       atributosPorId(atributosDoProduto)
     )
   );
@@ -226,7 +234,28 @@ async function processarUm(
     const atributosDoProduto = ((atrRows ?? []) as { nome_atributo: string; valor_atributo: string | null }[])
       .map((r) => ({ nomeAtributo: r.nome_atributo, valorAtributo: r.valor_atributo ?? "" }));
 
-    const anuncio = await gerarAnuncio(produto, variantes, tabelas, atributosDoProduto);
+    // A CATEGORIA MEDIDA, quando ela existe (INC-011).
+    //
+    // `anuncios_gerados.categoria_ml` guarda o `category_id` que o ML devolveu
+    // na importação — é leitura de banco, sem rede, e cobre os produtos que já
+    // têm anúncio no ar. Produto novo não tem, e cai no palpite de calçado, que
+    // é exatamente o comportamento de antes.
+    //
+    // Falha do ML não derruba a esteira, pela mesma razão do enriquecimento
+    // acima: `atributosObrigatorios` devolve [] quando não responde, e
+    // `obrigatoriosDoProduto` trata [] como "não sei", não como "não exige".
+    const { data: catRow } = await admin
+      .from("anuncios_gerados")
+      .select("categoria_ml")
+      .eq("produto_id", fila.produto_id)
+      .not("categoria_ml", "is", null)
+      .limit(1)
+      .maybeSingle();
+    const categoria = (catRow?.categoria_ml ?? "").trim();
+    const daCategoria = categoria ? await atributosObrigatorios(categoria) : null;
+    const { exigencias } = obrigatoriosDoProduto(categoria, daCategoria);
+
+    const anuncio = await gerarAnuncio(produto, variantes, tabelas, atributosDoProduto, exigencias);
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({

@@ -128,22 +128,23 @@ Sai do caminho da loja que opera sozinha. Não é mais bloqueio do marco.
 > categorias onde o retrato `OBRIGATORIOS_CALCADO`, passado à mão por cinco caminhos,
 > está errado — e erra nas duas direções.
 
-- [ ] Cobra o que não é pedido: MLB23332 (94 anúncios) não exige `FOOTWEAR_TYPE`, e a
-      pendência falsa **trava a publicação** pelo veredito A10
-- [ ] Não cobra o que é pedido: MLB108791 exige `SOCKS_TYPE` e `LENGTH_TYPE`, que o
-      retrato não conhece — quem recusa é o ML, depois do clique
-- [ ] Ordem das fontes: `anuncios_gerados.categoria_ml` (medida, sem rede) →
-      `domain_discovery` pelo título (`api/ml/categoria`, já pronta) → retrato de calçado
-- [ ] **Categoria desconhecida não pode virar parede nova**: sem resposta, o retrato
-      continua valendo, dito como palpite e não como medição
-- [ ] Medição antes e depois: quantas pendências de atributo existem hoje por categoria
+- [x] Decisão pura de qual lista vale, com procedência: `obrigatoriosDoProduto.ts`
+- [x] **Categoria desconhecida não virou parede nova** — e lista vazia do ML cai no
+      palpite, não em "não exige nada"
+- [x] `api/otimizar/worker` lê `anuncios_gerados.categoria_ml` e busca a lista real
+- [x] `app/cliente/anunciar` usa a categoria que já tinha em memória + `/api/ml/categoria`
+- [ ] **Falta:** os 3 caminhos do assistente (`propostaDeAnuncio` ×2 e o padrão de
+      `preparacaoDoAnuncio`), que chegam em lote pelo porto `ctx.anuncio.catalogo()` —
+      exige mudar o porto para trazer as exigências junto
+- [ ] **Falta:** medição depois — quantas pendências de atributo sumiram por categoria
 
 Aceite:
 
 - [ ] Nenhum dos cinco caminhos passa `OBRIGATORIOS_CALCADO` sem antes tentar a categoria
-- [ ] Teste provando que MLB23332 não gera pendência de `FOOTWEAR_TYPE`
-- [ ] Teste provando que categoria desconhecida não bloqueia
-- [ ] `npm run typecheck` · `npm run lint` · `npm test` verdes
+      — **2 de 5 feitos**
+- [x] Teste provando que MLB23332 não gera pendência de `FOOTWEAR_TYPE`
+- [x] Teste provando que categoria desconhecida não bloqueia (sai idêntico ao de antes)
+- [x] `npm run typecheck` · `npm run lint` · `npm test` verdes (3.778 testes)
 
 
 ## FASE 4 · Cobrança — bloqueada pelo CHECKPOINT 1
