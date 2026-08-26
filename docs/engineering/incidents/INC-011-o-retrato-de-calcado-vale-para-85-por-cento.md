@@ -1,10 +1,10 @@
 # INC-011 — O retrato de calçado é passado à mão para 118 anúncios que não são calçado
 
 ```
-Status:      PARCIAL — 2 dos 5 caminhos consertados em 25/08 (T4)
+Status:      FECHADO nos 5 caminhos, em 25/08 (T4)
 Detectado:   2026-08-25, no CHECKPOINT 2 do plano (AUD-007)
 Severidade:  pendência falsa trava publicação; exigência real fica sem cobrança
-Aberto:      os 3 caminhos do assistente, que dependem de mudar o porto
+Falta:       a medição do DEPOIS — quantas pendências sumiram por categoria
 ```
 
 ## O defeito
@@ -70,13 +70,36 @@ MLB23332 e MLB273770 congeladas em fixture: o mesmo produto, com gênero legíve
 no nome, fica **pronto** pela lista de MLB23332 e **bloqueado** pelo palpite —
 por um campo que não existe naquela categoria.
 
+## Os três do assistente, e o porto que eles precisaram
+
+Ali os produtos chegam em LOTE, e pedir a categoria de cada um seriam 300
+requisições num turno de chat. O desenho que resolve isso está na leitura, não
+na decisão:
+
+- `CAMPOS_ANUNCIO` passou a trazer `categoria_ml`, e `categoriasPorProduto` pega
+  o **primeiro não vazio** por produto — não o mais recente. A distinção importa:
+  as linhas vêm por `created_at desc`, e um rascunho recém-gravado pela esteira
+  nasce sem categoria. O mais recente perderia justamente os produtos que já têm
+  anúncio vendendo.
+- `obrigatoriosPorProduto` resolve as categorias **distintas** numa passada
+  (`recorteDaCategoria`, em paralelo): seis, não trezentas. E `catalogo` já roda
+  uma vez por turno.
+- O item do catálogo ganhou `obrigatorios?`, e o tipo virou `ItemDoCatalogo`.
+  Ausente é "não sei" — os três consumidores caem no padrão de calçado, que é o
+  comportamento de antes. **Nunca chega vazio**: o `[]` de um ML mudo já virou
+  desconhecimento em `obrigatoriosDoProduto`.
+- `propostaDeAnuncio` passou a ler `p.obrigatorios ?? OBRIGATORIOS_CALCADO` nos
+  dois lugares, e `opcoesDaPreparacao` evita que os três chamadores de
+  `avaliarPreparacao` divirjam no dia em que um deles esquecer.
+
+Provado: `oQueFaltaParaAnunciar` do mesmo produto cobra "Tipo de calçado" sem
+categoria e **não cobra** com a lista de MLB23332.
+
 ## O que continua aberto
 
-Três caminhos do assistente: `propostaDeAnuncio` (dois lugares) e o padrão de
-`preparacaoDoAnuncio`, alcançados por `executarFerramenta` através do porto
-`ctx.anuncio.catalogo()`. Ali os produtos chegam em lote, e resolver a categoria
-de cada um exige mudar o porto para trazer as exigências junto — fatia própria,
-com o mesmo cuidado de não transformar desconhecido em parede.
+A medição do DEPOIS. `anuncios_gerados` guarda `qtd_pendencias` como número, não
+quais — saber o que sumiu exige rodar a esteira de novo nos produtos de MLB23332,
+o que consome cota e escreve. Não foi feito.
 
 ## Por que não foi tudo de uma vez
 

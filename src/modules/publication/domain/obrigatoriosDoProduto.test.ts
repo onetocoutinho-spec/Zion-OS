@@ -53,7 +53,7 @@ const SAPATILHA: ProdutoParaPreparar = {
   larguraCm: 20,
   comprimentoCm: 30,
   quantidadeImagens: 3,
-  variantes: [{ cor: "Nude", tamanho: "37" }],
+  variantes: [{ sku: "MOD-7016-NUDE-37", ean: "", cor: "Nude", tamanho: "37", estoque: 5, precoBase: 99 }],
 };
 
 /** A etapa que o INC-011 estraga: é ela que trava a preparação. */
@@ -148,4 +148,45 @@ test("calçado medido e calçado congelado cobram a mesma coisa", () => {
   const medido = identidade(SAPATILHA, obrigatoriosDoProduto("MLB273770", MLB273770).exigencias);
   const congelado = identidade(SAPATILHA, OBRIGATORIOS_CALCADO);
   assert.deepEqual(medido?.faltando, congelado?.faltando);
+});
+
+// ---------------------------------------------------------------------------
+// O CAMINHO DO ASSISTENTE — os três que faltavam no INC-011
+// ---------------------------------------------------------------------------
+
+test("o assistente não propõe pendência de Tipo de calçado em MLB23332", async () => {
+  // `oQueFaltaParaAnunciar` é a lista que o Copilot lê para dizer "não dá para
+  // gerar ainda". Ela vinha de `OBRIGATORIOS_CALCADO` fixo — e é por isso que
+  // 94 anúncios ouviam que faltava um campo que a categoria deles não tem.
+  const { oQueFaltaParaAnunciar } = await import("../../assistant/domain/propostaDeAnuncio.ts");
+
+  const base = {
+    id: "p1",
+    nome: "Modare Feminina 7016.461 Napa Floater Nature",
+    estado: { custo: 30, precoVenda: 99, pesoGramas: 300, temFoto: true },
+    dados: {
+      nome: "Modare Feminina 7016.461 Napa Floater Nature",
+      marca: "Modare",
+      modelo: "7016.461",
+      cores: ["Nude"],
+      tamanhos: ["37"],
+    },
+    jaTemAnuncio: false,
+  };
+
+  const semCategoria = oQueFaltaParaAnunciar(base);
+  const comCategoria = oQueFaltaParaAnunciar({
+    ...base,
+    obrigatorios: obrigatoriosDoProduto("MLB23332", MLB23332).exigencias,
+  });
+
+  assert.ok(
+    semCategoria.some((f) => f.includes("Tipo de calçado")),
+    "sem categoria, o palpite de calçado continua cobrando — comportamento de antes"
+  );
+  assert.equal(
+    comCategoria.some((f) => f.includes("Tipo de calçado")),
+    false,
+    "com a lista da categoria, o campo inexistente sai da conta"
+  );
 });

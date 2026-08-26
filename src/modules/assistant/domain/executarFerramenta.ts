@@ -190,6 +190,9 @@ import {
   type Preparacao,
   type ProdutoParaPreparar,
 } from "../../publication/domain/preparacaoDoAnuncio";
+// O TIPO, não a lista: quem monta os obrigatórios é a leitura do servidor, e
+// aqui eles só viajam de carona no item do catálogo. Ver INC-011.
+import type { ExigenciaDaCategoria } from "../../publication/domain/atributosDoMarketplace";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
@@ -353,6 +356,22 @@ export interface ContextoDoPreco {
   }>;
 }
 
+/**
+ * Um produto do catálogo, com o anúncio que já existe e o que a CATEGORIA dele
+ * exige.
+ *
+ * `obrigatorios` entrou em 25/08 pelo INC-011: até então estes caminhos
+ * passavam a lista de calçado à mão, e ela vale para uma das seis categorias da
+ * conta. Ausente é "não sei" — quem decide cai no padrão de calçado, que é o
+ * comportamento de antes. Nunca chega vazia: `obrigatoriosDoProduto` trata o
+ * `[]` de um ML mudo como desconhecimento, não como "não exige nada".
+ */
+export interface ItemDoCatalogo {
+  produto: ProdutoParaPreparar;
+  anuncio: AnuncioJaGerado | null;
+  obrigatorios?: readonly ExigenciaDaCategoria[];
+}
+
 export interface ContextoDoAnuncio {
   /**
    * O QUE O MERCADO LIVRE DISSE — infração, pausa, revisão, bloqueio.
@@ -377,12 +396,10 @@ export interface ContextoDoAnuncio {
     nome: string
   ) => Promise<DiagnosticoDasFotos>;
   /** Um produto, com o anúncio que já existir para ele. */
-  doProduto: (
-    produtoId: string
-  ) => Promise<{ produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null } | null>;
+  doProduto: (produtoId: string) => Promise<ItemDoCatalogo | null>;
   /** O catálogo, para o lote. Quem seleciona é o backend, nunca o modelo. */
   catalogo: () => Promise<{
-    itens: readonly { produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null }[];
+    itens: readonly ItemDoCatalogo[];
     totalNoCatalogo: number;
     truncado: boolean;
   }>;
@@ -1395,7 +1412,7 @@ export async function executarFerramenta(
         const margemMinima = await a.margem();
         const { itens, totalNoCatalogo } = await a.catalogo();
         const selecao = selecionarParaPreparar(
-          itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, { margemMinima })),
+          itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, opcoesDaPreparacao(i, margemMinima))),
           totalNoCatalogo
         );
         // Porto ausente cai em `null` — que é "não li", e não corta. Ver o
@@ -2081,7 +2098,7 @@ async function avaliarAnuncio(
     if (!item) {
       return { saida: { erro: "Não achei esse produto no seu catálogo. Use achar_produto antes." } };
     }
-    const p = avaliarPreparacao(item.produto, item.anuncio, { margemMinima });
+    const p = avaliarPreparacao(item.produto, item.anuncio, opcoesDaPreparacao(item, margemMinima));
     return {
       preparacao: { produto: p },
       saida: {
@@ -2112,7 +2129,9 @@ async function avaliarAnuncio(
 
   // ---- O CATÁLOGO ----
   const { itens, totalNoCatalogo, truncado } = await a.catalogo();
-  const preparacoes = itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, { margemMinima }));
+  const preparacoes = itens.map((i) =>
+    avaliarPreparacao(i.produto, i.anuncio, opcoesDaPreparacao(i, margemMinima))
+  );
   const selecao = selecionarParaPreparar(preparacoes, totalNoCatalogo);
 
   return {
@@ -3156,16 +3175,27 @@ function lista(args: Record<string, unknown>, chave: string): string[] {
 }
 
 /**
+ * As opções da preparação para ESTE item: a lista da categoria dele quando ela
+ * é conhecida, e nada quando não é — e aí `avaliarPreparacao` usa o padrão.
+ *
+ * Existe para os três chamadores não repetirem o mesmo `...(x ? {} : {})` e
+ * divergirem no dia em que um deles esquecer.
+ */
+function opcoesDaPreparacao(
+  item: { obrigatorios?: readonly ExigenciaDaCategoria[] },
+  margemMinima: number
+) {
+  return { margemMinima, ...(item.obrigatorios ? { obrigatorios: item.obrigatorios } : {}) };
+}
+
+/**
  * O produto do servidor, na forma que `montarPropostaDeAnuncio` espera.
  *
  * A conversão vive aqui e não no orquestrador porque é uma ponte entre dois
  * tipos que existem por razões diferentes — e `dadosDoProduto` já sabe extrair
  * cores e tamanhos da grade real.
  */
-function paraAnunciarDoServidor(item: {
-  produto: ProdutoParaPreparar;
-  anuncio: AnuncioJaGerado | null;
-}): ProdutoParaAnunciar {
+function paraAnunciarDoServidor(item: ItemDoCatalogo): ProdutoParaAnunciar {
   const { produto, anuncio } = item;
   return {
     id: produto.id,
@@ -3179,6 +3209,7 @@ function paraAnunciarDoServidor(item: {
     },
     dados: dadosDoProduto(produto),
     jaTemAnuncio: Boolean(anuncio),
+    ...(item.obrigatorios ? { obrigatorios: item.obrigatorios } : {}),
   };
 }
 

@@ -133,15 +133,13 @@ Sai do caminho da loja que opera sozinha. Não é mais bloqueio do marco.
       palpite, não em "não exige nada"
 - [x] `api/otimizar/worker` lê `anuncios_gerados.categoria_ml` e busca a lista real
 - [x] `app/cliente/anunciar` usa a categoria que já tinha em memória + `/api/ml/categoria`
-- [ ] **Falta:** os 3 caminhos do assistente (`propostaDeAnuncio` ×2 e o padrão de
-      `preparacaoDoAnuncio`), que chegam em lote pelo porto `ctx.anuncio.catalogo()` —
-      exige mudar o porto para trazer as exigências junto
+- [x] Os 3 caminhos do assistente: o porto passou a trazer `obrigatorios` no item, com
+      UMA ida ao ML por categoria distinta (seis, não trezentas)
 - [ ] **Falta:** medição depois — quantas pendências de atributo sumiram por categoria
 
 Aceite:
 
-- [ ] Nenhum dos cinco caminhos passa `OBRIGATORIOS_CALCADO` sem antes tentar a categoria
-      — **2 de 5 feitos**
+- [x] Nenhum dos cinco caminhos passa `OBRIGATORIOS_CALCADO` sem antes tentar a categoria
 - [x] Teste provando que MLB23332 não gera pendência de `FOOTWEAR_TYPE`
 - [x] Teste provando que categoria desconhecida não bloqueia (sai idêntico ao de antes)
 - [x] `npm run typecheck` · `npm run lint` · `npm test` verdes (3.778 testes)

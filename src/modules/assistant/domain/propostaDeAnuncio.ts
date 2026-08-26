@@ -23,6 +23,7 @@ import type { EstadoDoProduto } from "../../catalog/domain/lacunasDoProduto";
 import {
   OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
+  type ExigenciaDaCategoria,
   type AtributoResolvido,
   type DadosDoProduto,
 } from "../../publication/domain/atributosDoMarketplace";
@@ -39,6 +40,13 @@ export interface ProdutoParaAnunciar {
   dados: DadosDoProduto;
   /** Já existe anúncio gerado para ele? Refazer é legítimo, mas se diz. */
   jaTemAnuncio: boolean;
+  /**
+   * O que a CATEGORIA dele exige. Ausente = desconhecida, e vale calçado.
+   *
+   * INC-011: em MLB23332 a lista de calçado cobra tipo de calçado, atributo que
+   * não existe naquela categoria — e a pendência falsa impede propor o anúncio.
+   */
+  obrigatorios?: readonly ExigenciaDaCategoria[];
 }
 
 export type PropostaDeAnuncio =
@@ -123,7 +131,11 @@ export function oQueFaltaParaAnunciar(p: ProdutoParaAnunciar): string[] {
   // Duas cópias dela existiriam para divergir no dia em que uma mudasse — e a
   // divergência apareceria como o Copilot propondo geração para um produto que
   // o painel de preparação diz estar travado.
-  return calcularBloqueiosParaGerar(p.estado, p.id, resolverObrigatorios(p.dados, OBRIGATORIOS_CALCADO));
+  return calcularBloqueiosParaGerar(
+    p.estado,
+    p.id,
+    resolverObrigatorios(p.dados, p.obrigatorios ?? OBRIGATORIOS_CALCADO)
+  );
 }
 
 /**
@@ -176,7 +188,7 @@ export function montarPropostaDeAnuncio(p: ProdutoParaAnunciar | null): Proposta
     produtoId: p.id,
     nome: p.nome,
     refazendo: p.jaTemAnuncio,
-    atributos: resolverObrigatorios(p.dados, OBRIGATORIOS_CALCADO),
+    atributos: resolverObrigatorios(p.dados, p.obrigatorios ?? OBRIGATORIOS_CALCADO),
     // O custo aparece na frase porque é o que a pessoa deve pesar antes de
     // confirmar: minutos de espera e uma otimização da cota mensal.
     resumo: p.jaTemAnuncio
