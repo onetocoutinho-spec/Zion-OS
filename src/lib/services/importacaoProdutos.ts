@@ -18,6 +18,10 @@ import {
   avisoDeGradeAchatada,
   type AvisoDeGrade,
 } from "../../modules/catalog/domain/gradeAchatada.ts";
+import {
+  avisoDePesoImplausivel,
+  type AvisoDePeso,
+} from "../../modules/catalog/domain/pesoImplausivel.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -171,6 +175,14 @@ export interface AnaliseProdutos {
    * `modules/catalog/domain/gradeAchatada.ts`.
    */
   avisoDeGrade: AvisoDeGrade | null;
+  /**
+   * Pesos que o resto da planilha desmente. `null` quando não há o que dizer.
+   *
+   * NÃO impede a importação e NÃO corrige. Ver
+   * `modules/catalog/domain/pesoImplausivel.ts`: 800 kg num chinelo é grama em
+   * coluna de quilo, e dividir por mil seria inventar dado.
+   */
+  avisoDePeso: AvisoDePeso | null;
   erro?: string;
 }
 
@@ -526,6 +538,7 @@ export function analisarProdutosCsv(
     amostra: [],
     linhas: [],
     avisoDeGrade: null,
+    avisoDePeso: null,
   };
   const { headers, linhas: registros } = parseCsv(texto);
   if (headers.length === 0 || registros.length === 0) {
@@ -571,6 +584,9 @@ export function analisarProdutosCsv(
     amostra: linhas.slice(0, 8),
     linhas,
     avisoDeGrade,
+    // A régua é a mediana do PRÓPRIO arquivo, então ela é calculada sobre
+    // todas as variações — não sobre a amostra, que são oito.
+    avisoDePeso: avisoDePesoImplausivel(linhas.flatMap((l) => l.variacoes ?? [])),
   };
 }
 

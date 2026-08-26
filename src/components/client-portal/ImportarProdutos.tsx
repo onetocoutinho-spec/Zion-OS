@@ -278,6 +278,16 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                       Avisa, nunca bloqueia: nome repetido é legítimo. O botão
                       existe porque "SKU da variação" é vocabulário NOSSO, e
                       quem não o conhece não sabe que existe conserto. */}
+                  {/* PESO QUE O RESTO DA PLANILHA DESMENTE — INC do T1, 26/08.
+                      Avisa, nunca corrige: dividir por mil o que "parece grama"
+                      seria inventar dado, que é o que produziu 87 custos falsos
+                      e o estrago que a migração 031 desfez. */}
+                  {analise.avisoDePeso && (
+                    <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+                      <AlertTriangle size={14} className="mt-px shrink-0" />
+                      <span>{analise.avisoDePeso.texto}</span>
+                    </p>
+                  )}
                   {avisoDeGrade && (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
                       <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
