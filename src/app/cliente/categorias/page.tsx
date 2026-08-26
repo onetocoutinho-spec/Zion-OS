@@ -101,7 +101,44 @@ export default function CategoriasPage() {
       const alvo = semCategoria
         .filter((p) => tipoDoProduto(p.nome) === g.tipo)
         .map((p) => ({ id: p.id, categoriaMl: g.categoriaId }));
-      if (alvo.length > 0) await atualizarProdutosBulk(alvo);
+
+      // NADA A APLICAR NÃO É SUCESSO.
+      //
+      // A primeira versão gravava só `if (alvo.length > 0)` e removia a linha
+      // da lista DE QUALQUER JEITO. O resultado é o pior desfecho possível: a
+      // linha some, a pessoa entende que aprovou, e o banco continua vazio.
+      // Foi o que aconteceu em 26/08/2026 — "aprovei algumas" e zero de 1003
+      // produtos tinham categoria.
+      if (alvo.length === 0) {
+        setErro(
+          `Nenhum produto de "${g.tipo}" ficou para aplicar. A lista desta tela pode estar ` +
+            `desatualizada em relação à proposta — recarregue a página e clique em ` +
+            `"Descobrir categorias" de novo.`
+        );
+        return;
+      }
+
+      await atualizarProdutosBulk(alvo);
+
+      // CONFERE EM VEZ DE SUPOR.
+      //
+      // Um update que a RLS recusa NÃO devolve erro: ele atualiza zero linhas e
+      // volta calado. Sem esta releitura, a tela diria "aplicado" sobre um banco
+      // intocado — e é justamente esse silêncio que este produto passa o tempo
+      // todo caçando.
+      const conferencia = await listarProdutosDoCliente(clienteId);
+      const gravados = new Set(
+        conferencia.filter((p) => (p.categoriaMl ?? "").trim() === g.categoriaId).map((p) => p.id)
+      );
+      const faltaram = alvo.filter((a) => !gravados.has(a.id)).length;
+      if (faltaram > 0) {
+        setErro(
+          `Pedi para gravar ${alvo.length} produto(s) de "${g.tipo}", e ${faltaram} não ` +
+            `gravaram. O grupo continua na lista.`
+        );
+        return;
+      }
+
       setGrupos((atual) => (atual ?? []).filter((x) => x.tipo !== g.tipo));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não consegui gravar.");
