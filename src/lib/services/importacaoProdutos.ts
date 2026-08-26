@@ -33,7 +33,30 @@ const ALIASES: Record<string, string> = {
   preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", valor_unitario: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
   // Bling/Tiny usam "Descrição" como nome do produto na exportação.
   descricao: "nome", descrição: "nome",
-  estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", saldo: "estoque", saldo_estoque: "estoque", estoque_disponivel: "estoque",
+  estoque: "estoque", stock: "estoque", quantidade: "estoque", qtd: "estoque", saldo: "estoque", saldo_estoque: "estoque", estoque_disponivel: "estoque", qtde_estoque: "estoque",
+  // MEDIDO EM 26/08/2026, no T1, com uma exportação real do Magazord: o
+  // `autoMapear` resolvia 6 de 15 campos e falhava no OBRIGATÓRIO `nome` — era
+  // por isso que a tela pedia para escolher coluna a coluna. `produto_derivacao`
+  // é a única coluna daquela planilha que carrega o nome do produto.
+  //
+  // `nome_da_derivacao` NÃO entra: naquele formato ela é o nome da DERIVAÇÃO
+  // ("Preto / 38"), não do produto. Mapeá-la batizaria cada produto pela
+  // variação — o mesmo erro que rachou sete produtos em quatorze em 19/08.
+  produto_derivacao: "nome",
+  // ---- PESO: SÓ COM A UNIDADE NO CABEÇALHO ----
+  //
+  // A regra é do `importacaoPeso.ts` e está lá desde antes: ele "RECUSA coluna
+  // de peso sem unidade no cabeçalho — sem isso não dá para saber se 800 é 800
+  // gramas ou 800 quilos". Um `peso` pelado continua sem apelido de propósito.
+  //
+  // Dimensão é outra história e por isso aceita o nome pelado: o campo de
+  // destino é em centímetros e 0,25 ao lado de 25 aparece na amostra da
+  // revisão. 800 gramas e 800 quilos são a mesma string.
+  peso_kg: "pesoKg", peso_quilos: "pesoKg",
+  peso_g: "pesoGramas", peso_gramas: "pesoGramas",
+  largura_cm: "larguraCm", largura: "larguraCm",
+  altura_cm: "alturaCm", altura: "alturaCm",
+  comprimento_cm: "comprimentoCm", comprimento: "comprimentoCm",
   marketplace: "marketplace", canal: "marketplace", plataforma: "marketplace",
   confianca: "confianca", confiabilidade: "confianca", confianca_custo: "confianca",
   cod_erp: "codErp", sku_erp: "codErp", codigo_erp: "codErp",
@@ -215,6 +238,25 @@ export const CAMPOS_MAPEAVEIS: {
   { campo: "sku", rotulo: "SKU interno" },
   { campo: "marketplace", rotulo: "Marketplace (opcional)" },
   { campo: "confianca", rotulo: "Confiança do custo" },
+  // ---- PESO E DIMENSÃO: entraram em 26/08/2026, no T1 ----
+  //
+  // A exportação real do ERP trazia `Peso (kg)`, `Largura (cm)`, `Altura (cm)`
+  // e `Comprimento (cm)`, e o importador NÃO TINHA ONDE COLOCAR. Não era falha
+  // de mapeamento: o campo não existia.
+  //
+  // O custo disso está medido em `prontidaoDaLoja.ts`: "73 produtos, 0 com
+  // peso, e a precificação inteira muda — sem peso não há frete para produto
+  // nenhum". O dado vinha na planilha e era descartado, e a lojista precisava
+  // de uma SEGUNDA importação, por outro caminho, para trazer o que já tinha
+  // chegado.
+  //
+  // Os dois pesos são campos separados porque a unidade tem que ser declarada.
+  // Preencher os dois é erro de quem mapeia, e a revisão mostra o resultado.
+  { campo: "pesoKg", rotulo: "Peso (kg)", dica: "Só se o cabeçalho disser kg" },
+  { campo: "pesoGramas", rotulo: "Peso (gramas)", dica: "Só se o cabeçalho disser g" },
+  { campo: "larguraCm", rotulo: "Largura (cm)" },
+  { campo: "alturaCm", rotulo: "Altura (cm)" },
+  { campo: "comprimentoCm", rotulo: "Comprimento (cm)" },
 ];
 
 /** Lê só o cabeçalho + um valor de exemplo por coluna (para o assistente). */
@@ -327,7 +369,65 @@ function mapearLinha(
     confiancaCusto,
   };
 
-  return { base, margem };
+  // MODO FLAT E O PESO — uma linha, um produto, e nenhuma variação.
+  //
+  // O banco guarda peso e dimensão em `produto_variantes`, não em `produtos`.
+  // Num arquivo sem grade não há variação nenhuma, então o peso que veio na
+  // planilha não teria onde ficar — e sumiria em silêncio, que é o defeito que
+  // este importador passou o mês arrancando.
+  //
+  // Quando (e SÓ quando) a linha traz medida, nasce UMA variação para carregá-la.
+  // Arquivo sem peso continua saindo exatamente como antes: nenhuma variação,
+  // nenhum comportamento novo.
+  const medidas = medidasDaLinha(val);
+  if (Object.keys(medidas).length === 0) return { base, margem };
+
+  return {
+    base,
+    margem,
+    variacoes: [
+      {
+        sku: val("sku"),
+        cor: val("cor"),
+        tamanho: val("tamanho"),
+        ean: val("ean"),
+        custo,
+        precoBase: precoVenda,
+        estoque: parseInteiro(val("estoque")),
+        idExterno: val("idExterno"),
+        ...medidas,
+      },
+    ],
+  };
+}
+
+/**
+ * Peso e dimensão de UMA linha, na unidade que o banco guarda.
+ *
+ * `produto_variantes.peso` é em QUILOS — é o que `copilot_executar_peso` grava
+ * (`v_valor / 1000.0`, de gramas para quilos) e o que `confirmarImportacao`
+ * escreve direto. A coluna em gramas, quando é ela que veio, é convertida aqui
+ * e em nenhum outro lugar.
+ *
+ * Campo ausente vira `undefined`, não zero: zero é "pesa zero", e a diferença
+ * entre "não sei" e "zero" é a que faz `prontidaoDaLoja` saber o que cobrar.
+ */
+function medidasDaLinha(v: (c: string) => string) {
+  const numero = (bruto: string): number | undefined => {
+    if (!bruto.trim()) return undefined;
+    const n = parseNumero(bruto);
+    return n > 0 ? n : undefined;
+  };
+  const kg = numero(v("pesoKg"));
+  const gramas = numero(v("pesoGramas"));
+  return {
+    ...(kg !== undefined ? { pesoKg: kg } : gramas !== undefined ? { pesoKg: gramas / 1000 } : {}),
+    ...(numero(v("larguraCm")) !== undefined ? { larguraCm: numero(v("larguraCm")) } : {}),
+    ...(numero(v("alturaCm")) !== undefined ? { alturaCm: numero(v("alturaCm")) } : {}),
+    ...(numero(v("comprimentoCm")) !== undefined
+      ? { comprimentoCm: numero(v("comprimentoCm")) }
+      : {}),
+  };
 }
 
 /** Agrupa as linhas por SKU Pai (codErp), criando 1 produto pai + N variações. */
@@ -361,6 +461,9 @@ function construirAgrupado(
         precoBase: parseNumero(v("precoVenda")),
         estoque: parseInteiro(v("estoque")),
         idExterno: v("idExterno"),
+        // Peso e dimensão são POR VARIAÇÃO, e é onde o banco os guarda. Numa
+        // grade de calçado o 38 e o 42 não pesam o mesmo.
+        ...medidasDaLinha(v),
       };
     });
 
