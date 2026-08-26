@@ -1,9 +1,9 @@
 # Tarefas — uma loja assina e opera sozinha
 
-> **Estado em 25/08/2026:** T2, T3 e o **CHECKPOINT 2** feitos. A Fase 3 encolheu e saiu
-> do caminho crítico; no lugar dela entrou **T4**, que a medição do checkpoint descobriu.
-> **T1 continua aberta** e é a única que não sai daqui: exige navegador, e-mail, planilha
-> real e a decisão sobre qual conta ML conectar. CHECKPOINT 1 e Fase 4 dependem dela.
+> **Estado em 25/08/2026:** T2, T3, **CHECKPOINT 2** e **T4** feitos. A Fase 3 encolheu e
+> saiu do caminho crítico. **T1 continua aberta** e é a única que não sai daqui: exige
+> navegador, e-mail, planilha real e a decisão sobre qual conta ML conectar. O staging foi
+> religado em 25/08, então ela roda lá — não em produção. CHECKPOINT 1 e Fase 4 dependem dela.
 
 
 Plano completo, com o porquê de cada tarefa: [plan.md](plan.md).
@@ -14,22 +14,31 @@ mas o CHECKPOINT 1 pode reordená-la. **Fase 4** só abre depois do CHECKPOINT 1
 
 ---
 
-## T1 · Medir o caminho da loja nova — na conta real
+## T1 · Medir o caminho da loja nova — **no staging** (revisto em 25/08)
 
-> Tudo em AUD-005 foi lido, não executado. Sem isto, cobrança é palpite.
+> Tudo em AUD-005 foi lido, não executado. Sem isto, o CHECKPOINT 1 e a Fase 4 são palpite.
 
-Guardas (nenhuma é opcional):
+A decisão de medir na conta real caiu: o projeto `zion-os-staging`
+(`fivlziuvxvhpuibrjwlq`, us-east-1, criado em 10/07/2026) estava só **pausado**, e foi
+religado em 25/08. Com ele de pé, as cinco guardas de mexer em produção deixam de ser
+necessárias — e a mais séria delas some junto: nenhum anúncio de teste pode ir parar na
+loja que vende.
 
-- [ ] Loja de teste nomeada `ZZ-TESTE-<data>`, com e-mail de cadastro próprio
-- [ ] **Não** conectar a conta ML da lojista — só conta ML de teste ou controlada
-- [ ] Sem conta ML de teste: o passo 7 para no dry-run (`go:false`) e o documento diz isso
-- [ ] Nenhum anúncio comercial real encerrado, republicado ou corrigido
-- [ ] Limpeza no fim (precisa de `service_role`: `perfis`, `clientes`, usuário do Auth)
-- [ ] Reavaliar o "sem staging": o projeto `zion-os-staging` **existe** no Supabase, só
-      está `INACTIVE` (pausado). Religar é mais barato do que criar — e evita as cinco
-      guardas acima. Decidido em 25/08 medir na conta real sem saber disso.
+Antes de percorrer:
 
-Percurso:
+- [ ] Conferir a **deriva de migrações**: o repositório tem 77 arquivos em
+      `database/migrations/`, e o staging parou onde parou. `list_migrations` diz onde ele
+      está; [06-APLICACAO-DAS-MIGRACOES.md](../docs/staging-setup/06-APLICACAO-DAS-MIGRACOES.md)
+      diz a ordem (base legada → 001…015 → usuários → 016 → o resto)
+- [ ] Variáveis de ambiente do staging
+      ([05-VARIAVEIS-DE-AMBIENTE.md](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md))
+- [ ] **App ML separado** para staging, com `ML_REDIRECT_URI` próprio
+      ([04-MERCADO-LIVRE-STAGING.md](../docs/staging-setup/04-MERCADO-LIVRE-STAGING.md)) —
+      nunca o `client_secret` de produção
+- [ ] A conta ML conectada é de **teste ou controlada**. O ML não tem sandbox completo:
+      publicar por uma conta que vende coloca anúncio de teste numa loja real
+
+O percurso:
 
 - [ ] 1 · assinar — `signUp` no navegador
 - [ ] 2 · provisionar — tela "Vamos montar sua loja"
@@ -37,15 +46,15 @@ Percurso:
 - [ ] 4 · imagens
 - [ ] 5 · descrições
 - [ ] 6 · atributos
-- [ ] 7 · publicar (ou dry-run, ver guarda 3)
+- [ ] 7 · publicar (ou dry-run, se não houver conta ML de teste)
 - [ ] 8 · acompanhar
 
 Aceite:
 
-- [ ] `docs/engineering/AUD-006-a-loja-nova-medida.md` existe, uma linha por passo:
+- [ ] `docs/engineering/AUD-006-a-loja-nova-medida.md`, uma linha por passo:
       *passou sozinho* / *parou aqui, por isto*
 - [ ] Todo passo que parou registra a **mensagem exata** da tela
-- [ ] O documento diz o que foi criado na base real e se foi removido
+- [ ] Nada escrito na base de produção
 
 ---
 
