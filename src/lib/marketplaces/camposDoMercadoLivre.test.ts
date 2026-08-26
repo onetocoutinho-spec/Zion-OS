@@ -94,26 +94,53 @@ test("ele pede o item SEM filtro de attributes — senão não descobre nada nov
 // O DEFEITO QUE ESTE ARQUIVO ENCONTROU AO NASCER — 24/08/2026
 // ===========================================================================
 
-test("`shipping` é LIDO pelo mapeador e NUNCA PEDIDO ao ML", () => {
+test("`shipping` é pedido ao ML, e a MEDIÇÃO diz que ele é aceito no filtro", () => {
   // `medidasDoItem` trata `shipping.dimensions` como a fonte PRIMÁRIA de peso
   // e dimensões da embalagem — "30x20x10,1000", em cm e gramas. O fallback são
   // os atributos PACKAGE_*, e só ele nunca deixou de funcionar porque
   // `attributes` É pedido.
   //
-  // `shipping` não está em CAMPOS_PEDIDOS_AO_ML. O multiget filtra por campo,
-  // então o objeto nunca chega e aquele ramo nunca executou: produto cujo peso
-  // só existe em `shipping.dimensions` entra sem medida nenhuma, e a
-  // precificação responde `envio: "ausente"` — sem frete não há margem.
+  // =========================================================================
+  // ESTE TESTE PROIBIA `shipping`, E A PROIBIÇÃO NASCEU ERRADA — 25/08/2026
+  // =========================================================================
   //
-  // A CORREÇÃO NÃO FOI FEITA ÀS CEGAS, e é o próprio arquivo que explica por
-  // quê: "Chutar endpoint foi o que me custou uma tarde em 02/08, quando pedi
-  // 31 campos ao multiget sem confirmar". Se o ML recusar `shipping` no
-  // filtro, o pedido inteiro degrada para CAMPOS_MINIMOS_AO_ML — e junto se
-  // perdem health, sold_quantity e listing_type_id, que acabaram de entrar.
+  // A asserção original reprovava se `shipping` aparecesse em
+  // CAMPOS_PEDIDOS_AO_ML, e mandava confirmar antes com
+  // `scripts/medicoes/camposDoMercadoLivre.ts`. O medo era concreto e está
+  // registrado em `mercadolivre.ts`: "Chutar endpoint foi o que me custou uma
+  // tarde em 02/08, quando pedi 31 campos ao multiget sem confirmar". Se o ML
+  // recusar um campo no filtro, o pedido INTEIRO degrada para
+  // CAMPOS_MINIMOS_AO_ML e a importação perde health, sold_quantity e
+  // listing_type_id junto.
   //
-  // Confirmar com `scripts/medicoes/camposDoMercadoLivre.ts` contra a conta
-  // real é o passo que destrava. Este teste guarda o achado até lá: se alguém
-  // acrescentar `shipping` aos pedidos, ele reprova e manda ler isto.
+  // Só que `shipping` já tinha entrado dez dias antes, em 14/08/2026, pelo
+  // commit "o frete nunca chegou porque nunca foi pedido — e a mensagem
+  // culpava o ML", e com medição escrita. O teste nasceu em 24/08 de uma
+  // leitura desatualizada da constante: proibia o que já estava lá e verde
+  // nunca mais ficou.
+  //
+  // A CONFIRMAÇÃO QUE ELE PEDIA, medida em 25/08/2026 — e do banco de
+  // produção, que é mais forte que o script: ele lê UM item, isto é o
+  // resultado da importação inteira.
+  //
+  //   vendedor_paga_frete  72 de 72 produtos     (vem de `shipping.free_shipping`)
+  //   vendidos_ml         792 de 792 anúncios    (sold_quantity)
+  //   tipo_anuncio_ml     792 de 792 anúncios    (listing_type_id)
+  //
+  // A primeira linha prova que o ML ACEITA `shipping` no filtro: se recusasse,
+  // o objeto não chegaria e o campo seguiria nulo — que era o estado medido
+  // antes de 14/08, "80 de 80 produtos com vendedor_paga_frete nulo". As duas
+  // últimas provam que a degradação temida NÃO aconteceu: com os 14 campos
+  // mínimos elas estariam vazias.
+  //
+  // O QUE A MEDIÇÃO TAMBÉM ACHOU, e não se resolve aqui: `saude_ml` está em
+  // 0 de 792. `health` é pedido, mapeado (`mapearItem`) e gravado
+  // (`importarAnunciosML`) — a cadeia está inteira, então o ML devolve nulo
+  // para estes anúncios. Quem depende disso é `saude_do_catalogo`, e ela vai
+  // responder sem a nota de saúde até alguém medir por que o ML não a dá.
+  //
+  // A trava agora guarda o SENTIDO CONTRÁRIO: `shipping` é carga, e tirá-lo
+  // devolve a base ao estado de "nenhum anúncio informou o frete".
   const pedidos = new Set(CAMPOS_PEDIDOS_AO_ML.split(","));
   const fn = /^function mapearItem\([\s\S]*?\n\}/m.exec(ML);
   const leShipping = /medidasDoItem\(it\)/.test(fn![0]);
@@ -122,12 +149,11 @@ test("`shipping` é LIDO pelo mapeador e NUNCA PEDIDO ao ML", () => {
   assert.match(ML, /it\.shipping\?\.dimensions/, "a fonte primária de medidas mudou de lugar");
 
   assert.ok(
-    !pedidos.has("shipping"),
-    "\n\n`shipping` entrou nos campos pedidos. Isso pode ser a CORREÇÃO certa — mas\n" +
-      "só depois de rodar scripts/medicoes/camposDoMercadoLivre.ts contra a conta\n" +
-      "real e confirmar que o ML aceita o campo no filtro. Se ele recusar, o\n" +
-      "multiget inteiro degrada para os 14 campos mínimos e a importação perde\n" +
-      "health, sold_quantity e listing_type_id junto.\n\n" +
-      "Confirmado? Então apague esta asserção e escreva a medição no lugar dela.\n"
+    pedidos.has("shipping"),
+    "\n\n`shipping` saiu dos campos pedidos, e o multiget filtra por campo: o\n" +
+      "objeto para de chegar, `medidasDoItem` volta a cair sempre no fallback\n" +
+      "PACKAGE_*, e `vendedor_paga_frete` volta a ser nulo na base inteira —\n" +
+      "que é o defeito medido em 14/08/2026 (80 de 80 produtos).\n\n" +
+      "Se a saída for intencional, meça de novo e reescreva os números acima.\n"
   );
 });

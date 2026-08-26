@@ -1223,19 +1223,27 @@ const SEM_MEDIDAS: MedidasDaEmbalagem = {
  *   2. os atributos PACKAGE_HEIGHT / _WIDTH / _LENGTH / _WEIGHT, que alguns
  *      itens trazem no lugar.
  *
- * ⚠️ A FONTE (1) NUNCA EXECUTOU EM PRODUÇÃO. Descoberto em 24/08/2026: o
- * multiget filtra por campo e `shipping` NÃO está em `CAMPOS_PEDIDOS_AO_ML`,
- * então o objeto nunca chega. Todo peso que a importação conseguiu até hoje
- * veio da fonte (2). Produto cujas medidas só existem em `shipping.dimensions`
- * entra zerado — e zero aqui vira `envio: "ausente"` na precificação, ou seja,
- * margem sem frete.
+ * ⚠️ ESTE AVISO ESTAVA ERRADO, e o erro custou o CI vermelho — corrigido em
+ * 25/08/2026.
  *
- * Acrescentar "shipping" à lista é provavelmente a correção, e ela NÃO foi
- * feita porque o mesmo arquivo já ensinou o preço de chutar: se o ML recusar o
- * campo no filtro, o pedido inteiro degrada para `CAMPOS_MINIMOS_AO_ML` e a
- * importação perde de uma vez health, sold_quantity e listing_type_id. O
- * caminho é `scripts/medicoes/camposDoMercadoLivre.ts` contra a conta real —
- * e `camposDoMercadoLivre.test.ts` segura o achado até lá.
+ * Ele dizia que a fonte (1) nunca executou porque `shipping` não estava em
+ * `CAMPOS_PEDIDOS_AO_ML`. Estava: entrou em 14/08/2026, dez dias antes deste
+ * aviso ser escrito, pelo commit "o frete nunca chegou porque nunca foi
+ * pedido". O aviso de 24/08 nasceu de uma leitura desatualizada da constante,
+ * e `camposDoMercadoLivre.test.ts` foi escrito para PROIBIR o que já estava
+ * lá — então a suíte ficou vermelha desde então, por um achado que já tinha
+ * sido resolvido.
+ *
+ * A confirmação que faltava, medida no banco de produção em 25/08/2026:
+ * `vendedor_paga_frete` (que sai de `shipping.free_shipping`) está preenchido
+ * em 72 de 72 produtos, contra "80 de 80 nulos" antes de 14/08. O ML aceita o
+ * campo no filtro. E a degradação temida não aconteceu: `vendidos_ml` e
+ * `tipo_anuncio_ml` estão em 792 de 792 anúncios, o que os 14 campos mínimos
+ * não dariam.
+ *
+ * A fonte (1) EXECUTA. Produto cujas medidas só existem em
+ * `shipping.dimensions` já entra medido; o que sobra sem medida caiu para a
+ * fonte (2) e nem lá encontrou nada.
  *
  * Zero em tudo quando nenhuma fonte responde — e zero significa "não sei",
  * tratado como pendência pela precificação, nunca como "não pesa nada".
