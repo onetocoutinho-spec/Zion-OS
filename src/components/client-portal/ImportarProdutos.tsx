@@ -19,6 +19,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { lerPlanilhaComoCsv } from "@/lib/planilha";
+import { listarProdutosDoCliente } from "@/lib/services/produtos";
+import {
+  conferirImportacaoRepetida,
+  type ImportacaoRepetida,
+} from "@/modules/catalog/domain/importacaoRepetida";
 import { useClientPortal } from "./context";
 import {
   analisarProdutosCsv,
@@ -43,6 +48,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
   const [exemplos, setExemplos] = useState<Record<string, string>>({});
   const [mapeamento, setMapeamento] = useState<Record<string, string>>({});
   const [analise, setAnalise] = useState<AnaliseProdutos | null>(null);
+  const [repetida, setRepetida] = useState<ImportacaoRepetida | null>(null);
   const [importando, setImportando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
@@ -90,10 +96,33 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
     setAnalise(analisarProdutosCsv(texto, "Mercado Livre", novo));
   }
 
-  function analisar() {
+  async function analisar() {
     const a = analisarProdutosCsv(texto, "Mercado Livre", mapeamento);
     setAnalise(a);
+    setRepetida(null);
     setEtapa("revisar");
+
+    // A CONFERÊNCIA É AQUI, ANTES DO CLIQUE — e não depois, num relatório.
+    //
+    // `confirmarImportacaoProdutos` é `insert` puro: sem upsert, e sem índice
+    // único em (cliente_id, cod_erp) que segurasse. Subir a mesma planilha duas
+    // vezes DOBRA o catálogo em silêncio — 2006 produtos onde havia 1003, na
+    // base medida em 26/08/2026.
+    //
+    // Falha de rede não vira aviso falso nem trava a importação: sem a lista do
+    // catálogo, a tela fica como sempre foi. Um aviso que só às vezes aparece é
+    // pior que nenhum se ele também aparecer errado.
+    try {
+      const doCatalogo = await listarProdutosDoCliente(clienteId);
+      setRepetida(
+        conferirImportacaoRepetida(
+          a.linhas.map((l) => l.base.codErp ?? l.base.sku ?? ""),
+          doCatalogo.map((p) => p.codErp ?? p.sku ?? "")
+        )
+      );
+    } catch {
+      setRepetida(null);
+    }
   }
 
   async function importar() {
@@ -109,6 +138,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
       setEtapa("arquivo");
       setTexto("");
       setAnalise(null);
+      setRepetida(null);
       onImportado?.();
     } catch (e) {
       setMsg({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao importar." });
@@ -247,7 +277,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                 <Button variant="ghost" onClick={() => setEtapa("arquivo")}>
                   <ArrowLeft size={14} /> Trocar arquivo
                 </Button>
-                <Button onClick={analisar} disabled={faltaNome}>
+                <Button onClick={() => void analisar()} disabled={faltaNome}>
                   Revisar <ArrowRight size={14} />
                 </Button>
               </div>
@@ -282,6 +312,16 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                       Avisa, nunca corrige: dividir por mil o que "parece grama"
                       seria inventar dado, que é o que produziu 87 custos falsos
                       e o estrago que a migração 031 desfez. */}
+                  {/* JÁ IMPORTADA ANTES — modules/catalog/domain/importacaoRepetida.
+                      Conta e pergunta, nunca decide: reimportar de propósito é
+                      legítimo (é o que se faz depois de corrigir o mapeamento),
+                      e apagar por conta própria seria pior que duplicar. */}
+                  {repetida && repetida.repetidos > 0 && (
+                    <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+                      <AlertTriangle size={14} className="mt-px shrink-0" />
+                      <span>{repetida.texto}</span>
+                    </p>
+                  )}
                   {analise.avisoDePeso && (
                     <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
                       <AlertTriangle size={14} className="mt-px shrink-0" />
@@ -307,8 +347,17 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                     <Button variant="ghost" onClick={() => setEtapa("mapear")}>
                       <ArrowLeft size={14} /> Ajustar mapeamento
                     </Button>
+                    {/* O RÓTULO MUDA QUANDO HÁ REPETIÇÃO.
+                        "Importar 1003" e "Importar 1003 (1003 em duplicidade)"
+                        pedem confirmações diferentes, e o botão é a última coisa
+                        que a pessoa lê antes de clicar. */}
                     <Button onClick={importar} disabled={importando || analise.total === 0}>
-                      <Upload size={14} /> {importando ? "Importando…" : `Importar ${analise.total}`}
+                      <Upload size={14} />{" "}
+                      {importando
+                        ? "Importando…"
+                        : repetida && repetida.repetidos > 0
+                          ? `Importar ${analise.total} (${repetida.repetidos} em duplicidade)`
+                          : `Importar ${analise.total}`}
                     </Button>
                   </div>
                 </>

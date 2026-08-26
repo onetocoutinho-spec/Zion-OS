@@ -287,11 +287,17 @@ duas vezes — vai errar o mapeamento de coluna, vai querer refazer, vai achar q
 a primeira não pegou (foi exatamente o que aconteceu aqui, com o bundle velho do
 achado 1). O caminho de "assina e opera sozinha" tem que sobreviver a isso.
 
-**Não corrigido nesta passagem** — a limpeza foi feita à mão, com SQL, o que
-justamente uma lojista não tem. Vira tarefa: a importação precisa CONTAR quantos
-`cod_erp` da planilha já existem e perguntar antes — substituir, adicionar ou
-cancelar. Contar e perguntar, não decidir sozinha: apagar catálogo por conta
-própria é pior que duplicar.
+**Corrigido em 26/08**, na parte que era possível: a tela de importação agora
+CONTA, antes do clique, quantos códigos da planilha já existem no catálogo, e
+diz que reimportar vai duplicá-los — o botão passa a ler "Importar 1003 (1003 em
+duplicidade)". Ver `modules/catalog/domain/importacaoRepetida`.
+
+Conta e pergunta, não decide: reimportar de propósito é legítimo (é o que se faz
+depois de corrigir o mapeamento), e apagar catálogo por conta própria seria pior
+que duplicar — duplicata se resolve, catálogo apagado não.
+
+**Continua aberto:** não existe "substituir". Quem duplicar ainda depende de SQL
+para limpar, que é justamente o que uma lojista não tem.
 
 Estado depois da limpeza, para o passo 3 recomeçar do zero:
 
