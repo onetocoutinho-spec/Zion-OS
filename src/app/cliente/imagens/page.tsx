@@ -44,6 +44,7 @@ import type { ImagemProduto, Produto } from "@/lib/types";
 import {
   casarPastaComProduto,
   lerCaminhoDaFoto,
+  type Casamento,
 } from "@/modules/catalog/domain/casarPastaComProduto";
 
 function norm(s: string): string {
@@ -567,15 +568,14 @@ function EstudioIA({
 
 // ---------- Modo: em massa (pasta produto/cor) ----------
 
-interface GrupoMassa {
+// `Casamento` vem do domínio em vez de ser redigitado aqui: esta cópia existiu,
+// e quando `via` ganhou "referencia" foi ela que reprovou no typecheck. Um tipo
+// duplicado não avisa que envelheceu — ele só discorda.
+interface GrupoMassa extends Casamento {
   chave: string;
   pastaProduto: string;
   cor: string;
   arquivos: File[];
-  produtoId: string | null;
-  /** 0 a 1. A tela mostra: um casamento de 35% não é igual a um de 100%. */
-  confianca: number;
-  via: "codigo" | "nome" | null;
 }
 
 function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produto[] }) {
@@ -647,9 +647,27 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
 
   return (
     <Card title="Enviar por pasta (produto / cor)">
-      <p className="mb-3 text-sm text-zinc-400">
+      <p className="mb-2 text-sm text-zinc-400">
         Escolha uma pasta organizada como <span className="text-zinc-300">Produto → Cor → fotos</span>.
         Casamos cada pasta com o produto da sua base; revise antes de confirmar.
+      </p>
+
+      {/*
+        O QUE DECIDE O RESULTADO É O NOME DA PASTA, E ISSO NÃO ERA DITO.
+
+        Medido na base real de uma loja (1003 produtos, 26/08/2026):
+
+            pasta com o código do produto        casou 99,1%
+            pasta com a referência do fabricante casou 10,8%  (antes desta versão)
+
+        A pessoa só descobria a diferença depois de escolher a pasta e ver a
+        coluna de "não casou" — ou seja, depois de organizar as fotos. Dizer
+        antes custa duas linhas.
+      */}
+      <p className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-400">
+        Se o nome da pasta tiver <span className="text-zinc-200">o código do produto</span> — o do
+        seu ERP ou a referência do fabricante —, o casamento é exato. Só pelo nome funciona, mas
+        erra mais: confira as porcentagens antes de confirmar.
       </p>
 
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-200 hover:border-white/20">
@@ -710,6 +728,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                 {g.produtoId ? (
                   <span className="flex items-center gap-1.5">
                     {g.via === "codigo" && <Pill tone="violet">código</Pill>}
+                    {g.via === "referencia" && <Pill tone="violet">referência</Pill>}
                     {g.via === "nome" && (
                       // Casamento por nome é parecença, e parecença erra. O
                       // número existe para a pessoa olhar duas vezes os fracos

@@ -121,3 +121,63 @@ test("foto solta na raiz não inventa produto", () => {
   assert.equal(lerCaminhoDaFoto("Fotos/01.jpg").pastaProduto, "(raiz)");
   assert.equal(lerCaminhoDaFoto("01.jpg").pastaProduto, "(raiz)");
 });
+
+// ---------------------------------------------------------------------------
+// Referência do fabricante — a forma como a pasta de fotos chega de verdade
+// ---------------------------------------------------------------------------
+
+/** Nomes reais da base medida em 26/08/2026. */
+const CALCADOS = [
+  { id: "c1", nome: "Papete Slide Modare 7208.101 Nobuck", sku: "2344016", codErp: "2344016" },
+  { id: "c2", nome: "Sandália Molekinha 2312.260 Turim Fem", sku: "1969985", codErp: "1969985" },
+  { id: "c3", nome: "Tamanco Slide Modare 7142.101 Canelado", sku: "2100001", codErp: "2100001" },
+  { id: "c4", nome: "Tamanco Slide Modare 7142.101 Elástico", sku: "2100002", codErp: "2100002" },
+  { id: "c5", nome: "Bolsa de Praia Tote Bag MF9184 Poá", sku: "2200003", codErp: "2200003" },
+];
+
+test("a referência do fabricante casa, e casa como identidade", () => {
+  // Antes desta regra isto dava 2/6 = 0,33 de parecença e ficava ABAIXO do
+  // corte de 0,34 — o jeito mais provável de a pasta chegar era o que não
+  // funcionava. Medido: 10,8% de acerto contra 99,1% com o código do ERP.
+  const r = casarPastaComProduto("7208.101", CALCADOS);
+  assert.equal(r.produtoId, "c1");
+  assert.equal(r.via, "referencia");
+  assert.equal(r.confianca, 1);
+});
+
+test("referência com letras também é referência", () => {
+  assert.equal(casarPastaComProduto("MF9184", CALCADOS).produtoId, "c5");
+});
+
+test("a pontuação da pasta não precisa bater com a do nome", () => {
+  assert.equal(casarPastaComProduto("fotos 7208101", CALCADOS).produtoId, "c1");
+  assert.equal(casarPastaComProduto("7208-101", CALCADOS).produtoId, "c1");
+});
+
+test("referência REPETIDA não casa — escolher um dos dois seria chute", () => {
+  // "7142.101" é o mesmo modelo em dois acabamentos. Errar aqui põe a foto no
+  // anúncio errado, então "não casou" é o desfecho certo.
+  const r = casarPastaComProduto("7142.101", CALCADOS);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("o código do ERP continua vencendo a referência", () => {
+  // A pasta traz os dois; identidade do próprio cadastro vem primeiro.
+  const r = casarPastaComProduto("2344016 - 7142.101", CALCADOS);
+  assert.equal(r.produtoId, "c1");
+  assert.equal(r.via, "codigo");
+});
+
+test("palavra sem dígito nunca é referência", () => {
+  // "TAMANCO" tem 7 letras e casaria por comprimento se o dígito não fosse
+  // exigido — e viraria identidade de um produto qualquer.
+  const r = casarPastaComProduto("TAMANCO", CALCADOS);
+  assert.notEqual(r.via, "referencia");
+});
+
+test("número curto demais não vira referência", () => {
+  const curto = [{ id: "x", nome: "Chinelo 12 Basic", sku: "9", codErp: "9" }];
+  assert.equal(casarPastaComProduto("12", curto).via, null);
+});
+

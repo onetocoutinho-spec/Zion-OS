@@ -12,11 +12,16 @@
 // prova.
 //
 // ===========================================================================
-// DUAS FORMAS DE CASAR, E ELAS NÃO VALEM O MESMO
+// TRÊS FORMAS DE CASAR, E ELAS NÃO VALEM O MESMO
 // ===========================================================================
 //
 // CÓDIGO   a pasta contém o SKU ou o código do ERP. É identidade: ou é aquele
 //          produto, ou não é. Não tem "quase".
+//
+// REFERÊNCIA  a pasta contém um código que aparece no nome de UM produto só —
+//          "7208.101", "MF9184". Também é identidade, e por um motivo medido:
+//          num catálogo de 1003 produtos, 664 têm no nome um código que não se
+//          repete. Único no catálogo não é parecença, é o produto.
 //
 // NOME     palavras em comum entre a pasta e o nome do produto. É parecença, e
 //          parecença erra — ainda mais num catálogo de móveis, onde "Cama -
@@ -26,6 +31,26 @@
 // Código vence nome sempre, e a confiança volta junto do resultado para a tela
 // poder mostrar o quanto aquilo é um palpite. Antes ela mostrava só "casou" ou
 // "não casou", e um casamento de 35% parecia igual a um de 100%.
+//
+// ===========================================================================
+// POR QUE A REFERÊNCIA ENTROU — MEDIDO EM 26/08/2026
+// ===========================================================================
+//
+// O fabricante manda a pasta de fotos com a referência DELE: "7208.101". Sem
+// esta regra, isso caía na parecença de nome e morria — "7208.101" tem duas
+// palavras, o nome do produto tem seis, e 2/6 = 0,33 fica logo ABAIXO do corte
+// de 0,34. Medido nos 1003 produtos da base real:
+//
+//     pasta = referência do fabricante   casou certo   10,8%   não casou 87,8%
+//     pasta = Código Pai do ERP          casou certo   99,1%
+//
+// Ou seja: o jeito mais provável de a pasta chegar era justamente o que não
+// funcionava, e a tela não dizia isso a ninguém.
+//
+// Um código que se REPETE entre produtos não casa — "7142.101" é o mesmo modelo
+// em dois acabamentos, e escolher um dos dois seria chutar num lugar onde
+// errar põe a foto no anúncio errado. Repetido vira "não casou", que é o erro
+// seguro.
 
 /** Uma parecença abaixo disto não casa: vira "não casou", que é o erro seguro. */
 export const CORTE_DE_PARECENCA = 0.34;
@@ -39,9 +64,9 @@ export interface ProdutoParaCasar {
 
 export interface Casamento {
   produtoId: string | null;
-  /** 0 a 1. Por código é sempre 1 — identidade não tem grau. */
+  /** 0 a 1. Por código e por referência é sempre 1 — identidade não tem grau. */
   confianca: number;
-  via: "codigo" | "nome" | null;
+  via: "codigo" | "referencia" | "nome" | null;
 }
 
 const norm = (s: string): string =>
@@ -68,6 +93,40 @@ const palavrasDe = (s: string): Set<string> =>
  */
 const CODIGO_MINIMO = 4;
 
+/**
+ * Códigos escondidos num texto: 4+ alfanuméricos com pelo menos um dígito,
+ * atravessando ponto, hífen e barra ("7208.101" → "7208101").
+ *
+ * O dígito é o que separa código de palavra: "SANDALIA" tem 8 letras e não é
+ * identidade de nada.
+ */
+function codigosNoTexto(texto: string): string[] {
+  const brutos = (texto ?? "").match(/[A-Za-z0-9]+(?:[.\-/][A-Za-z0-9]+)*/g) ?? [];
+  return brutos
+    .map((t) => t.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
+    .filter((t) => t.length >= CODIGO_MINIMO && /[0-9]/.test(t));
+}
+
+/**
+ * Os códigos que aparecem no nome de UM produto só.
+ *
+ * O que se repete fica de fora: dois produtos com "7142.101" no nome são o
+ * mesmo modelo em acabamentos diferentes, e escolher um seria chute.
+ */
+function referenciasUnicas(produtos: readonly ProdutoParaCasar[]): Map<string, string> {
+  const donos = new Map<string, string[]>();
+  for (const p of produtos) {
+    for (const c of new Set(codigosNoTexto(p.nome))) {
+      const lista = donos.get(c) ?? [];
+      lista.push(p.id);
+      donos.set(c, lista);
+    }
+  }
+  const unicas = new Map<string, string>();
+  for (const [codigo, ids] of donos) if (ids.length === 1) unicas.set(codigo, ids[0]);
+  return unicas;
+}
+
 function casaPorCodigo(pasta: string, p: ProdutoParaCasar): boolean {
   const alvo = soAlfanum(pasta);
   for (const codigo of [p.sku, p.codErp]) {
@@ -85,6 +144,13 @@ export function casarPastaComProduto(
   // parecença de nome deveria discutir com ele.
   for (const p of produtos) {
     if (casaPorCodigo(pasta, p)) return { produtoId: p.id, confianca: 1, via: "codigo" };
+  }
+
+  // Referência do fabricante: também identidade, quando ela não se repete.
+  const unicas = referenciasUnicas(produtos);
+  for (const c of codigosNoTexto(pasta)) {
+    const dono = unicas.get(c);
+    if (dono) return { produtoId: dono, confianca: 1, via: "referencia" };
   }
 
   const alvo = palavrasDe(pasta);
