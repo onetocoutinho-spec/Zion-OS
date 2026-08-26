@@ -32,8 +32,14 @@ Antes de percorrer:
 - [x] **As 58 migrações aplicadas em 25/08** — staging e produção agora têm o mesmo
       esquema (52 tabelas, contagem de colunas idêntica). A comparação achou deriva entre
       repositório e produção nos dois sentidos: [INC-012](../docs/engineering/incidents/INC-012-o-repositorio-e-a-producao-derivaram-nos-dois-sentidos.md)
-- [ ] Variáveis de ambiente do staging
-      ([05-VARIAVEIS-DE-AMBIENTE.md](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md))
+- [x] **Variáveis do staging** — `.env.staging` criado em 25/08 com a URL e a chave
+      anônima do Supabase de staging PREENCHIDAS (são públicas por desenho)
+- [ ] **Preencher as credenciais** que sobraram no `.env.staging`, cada uma com o
+      lugar de onde se pega anotado ao lado: `SUPABASE_SERVICE_ROLE_KEY`, `APP_URL`,
+      `ML_CLIENT_ID`/`ML_CLIENT_SECRET`/`ML_REDIRECT_URI`, chave de IA, `CRON_SECRET`
+- [ ] Para rodar local contra o staging: `cp .env.staging .env.development.local`
+      (o Next NÃO carrega `.env.staging` — ver a ressalva na
+      [05](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md)). Para voltar, apague o arquivo
 - [ ] **App ML separado** para staging, com `ML_REDIRECT_URI` próprio
       ([04-MERCADO-LIVRE-STAGING.md](../docs/staging-setup/04-MERCADO-LIVRE-STAGING.md)) —
       nunca o `client_secret` de produção
