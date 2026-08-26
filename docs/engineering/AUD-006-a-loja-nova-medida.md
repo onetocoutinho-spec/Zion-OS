@@ -268,6 +268,37 @@ dos passos 4 a 8.
 
 ---
 
+#### Achado 5 — importar duas vezes dobra o catálogo, em silêncio (26/08)
+
+Apareceu ao responder uma pergunta sua antes de refazer o passo 3: *"excluiu os
+já existentes ou não?"*
+
+**Não.** `confirmarImportacaoProdutos` chama `criarProdutos` → `criarVarios`, que
+é `insert` puro — sem upsert, sem delete, sem conferir o que já existe. E o banco
+não segura: as únicas restrições únicas em `produtos` e `produto_variantes` são
+as chaves primárias, medido no staging. Não há índice único em
+`(cliente_id, cod_erp)`.
+
+Então a segunda importação da mesma planilha teria deixado **2006 produtos e
+14.448 variantes**, sem uma linha de aviso.
+
+Isto não é um defeito de laboratório. Uma lojista operando sozinha vai importar
+duas vezes — vai errar o mapeamento de coluna, vai querer refazer, vai achar que
+a primeira não pegou (foi exatamente o que aconteceu aqui, com o bundle velho do
+achado 1). O caminho de "assina e opera sozinha" tem que sobreviver a isso.
+
+**Não corrigido nesta passagem** — a limpeza foi feita à mão, com SQL, o que
+justamente uma lojista não tem. Vira tarefa: a importação precisa CONTAR quantos
+`cod_erp` da planilha já existem e perguntar antes — substituir, adicionar ou
+cancelar. Contar e perguntar, não decidir sozinha: apagar catálogo por conta
+própria é pior que duplicar.
+
+Estado depois da limpeza, para o passo 3 recomeçar do zero:
+
+    TESTE NETO · 0 produtos · 0 variantes · cliente intacto
+
+---
+
 ### Antes dos passos 4 a 6 — o ambiente da IA, confirmado
 
 `/api/saude/ia` (sem `?sondar`, que não toca a rede e não custa nada), lida na
