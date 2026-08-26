@@ -37,6 +37,8 @@ Antes de percorrer:
 - [ ] **Preencher as credenciais** que sobraram no `.env.staging`, cada uma com o
       lugar de onde se pega anotado ao lado: `SUPABASE_SERVICE_ROLE_KEY`, `APP_URL`,
       `ML_CLIENT_ID`/`ML_CLIENT_SECRET`/`ML_REDIRECT_URI`, chave de IA, `CRON_SECRET`
+- [ ] Conferir com `node scripts/conferirAmbienteDeStaging.mjs` — veredito por variável,
+      **sem imprimir valor**, e recusa apontar o staging para o banco de produção
 - [ ] Para rodar local contra o staging: `cp .env.staging .env.development.local`
       (o Next NÃO carrega `.env.staging` — ver a ressalva na
       [05](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md)). Para voltar, apague o arquivo

@@ -79,6 +79,35 @@ só a fonte de onde você copia.
 > Rodando local, o convite por e-mail fica desligado — e isso NÃO bloqueia o T1, cujo
 > caminho é `signUp` no navegador, que não passa por convite.
 
+## Conferir sem abrir o arquivo
+
+`.env.staging` guarda credenciais. Conferir "está tudo lá?" abrindo o arquivo
+espalha segredo por terminal, histórico e captura de tela. Use:
+
+```bash
+node scripts/conferirAmbienteDeStaging.mjs
+```
+
+Ele dá um veredito por variável — preenchida, ainda no marcador, ou com a forma
+errada — e **nenhum valor é impresso**. Sai com código 1 se houver erro, então
+serve em automação.
+
+O que ele recusa, e por quê:
+
+| Recusa | Motivo |
+|---|---|
+| URL do Supabase com o ref de **produção** | o erro mais caro e o mais fácil: copiou o `.env.local`, achou que trocou tudo. O sintoma é nenhum — a tela abre, o login funciona, e o percurso de teste escreve na conta que paga |
+| `ML_REDIRECT_URI` sem https | `api/ml/autorizar` barra, e o ML recusa na borda com um 403 branco da CloudFront |
+| `ML_REDIRECT_URI` que não termina em `/cliente/conectar-ml` | é a rota do callback |
+| `APP_URL` com barra no fim, ou sem https | `montarRedirectConvite` devolve null e o convite é recusado |
+| qualquer `NEXT_PUBLIC_*` com `SECRET`, `SERVICE_ROLE` ou `API_KEY` no nome | vai para o navegador em todo carregamento |
+
+Para conferir o arquivo que o Next realmente carrega:
+
+```bash
+node scripts/conferirAmbienteDeStaging.mjs .env.development.local
+```
+
 ## Regras
 - `service_role`, `client_secret`, chaves de IA e `CRON_SECRET` são **server-only** — **nunca** com prefixo `NEXT_PUBLIC_`.
 - Ao colar na Vercel, confira que não sobrou `< >` de placeholder, aspas ou barra no fim (o `NEXT_PUBLIC_SUPABASE_URL` é sensível a isso).
