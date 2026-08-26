@@ -23,6 +23,7 @@ import {
   type AvisoDePeso,
 } from "../../modules/catalog/domain/pesoImplausivel.ts";
 import { nomeSemDerivacao } from "../../modules/catalog/domain/nomeSemDerivacao.ts";
+import { tamanhoDaDerivacao } from "../../modules/catalog/domain/tamanhoDaDerivacao.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -54,6 +55,10 @@ const ALIASES: Record<string, string> = {
   // termina exatamente com o de `Nome da Derivação`, e é assim que o nome do
   // produto é recortado sem adivinhar onde cortar. Ver `nomeSemDerivacao`.
   nome_da_derivacao: "nomeDerivacao",
+  // `codigo_agrupador` junta produto + COR e não inclui o tamanho. É por isso
+  // que ele prova onde o tamanho começa dentro do nome da derivação — 7211
+  // de 7224 linhas, medido em 26/08. Ver `tamanhoDaDerivacao`.
+  codigo_agrupador: "agrupador", cod_agrupador: "agrupador",
   // ---- PESO: SÓ COM A UNIDADE NO CABEÇALHO ----
   //
   // A regra é do `importacaoPeso.ts` e está lá desde antes: ele "RECUSA coluna
@@ -261,6 +266,11 @@ export const CAMPOS_MAPEAVEIS: {
     campo: "nomeDerivacao",
     rotulo: "Nome da derivação",
     dica: "Não vira o nome do produto — serve para tirá-la do fim do nome",
+  },
+  {
+    campo: "agrupador",
+    rotulo: "Código agrupador",
+    dica: "Produto + cor, sem o tamanho — é o que separa o tamanho do resto",
   },
   // ---- PESO E DIMENSÃO: entraram em 26/08/2026, no T1 ----
   //
@@ -479,7 +489,9 @@ function construirAgrupado(
       return {
         sku: v("skuVariacao"),
         cor: v("cor"),
-        tamanho: v("tamanho"),
+        // Sem coluna de tamanho, ele sai do nome da derivação — mas SÓ quando o
+        // agrupador prova onde ele começa. Sem prova, vazio, que vira pergunta.
+        tamanho: v("tamanho") || tamanhoDaDerivacao(v("nomeDerivacao"), v("agrupador")),
         ean: v("ean"),
         custo: parseNumero(v("custo")),
         precoBase: parseNumero(v("precoVenda")),
