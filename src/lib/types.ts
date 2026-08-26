@@ -98,6 +98,14 @@ export interface Produto {
   // ---- v1.7: modelagem marketplace (produto pai) ----
   tipoProduto?: TipoProduto;
   categoriaMarketplaceSugerida?: string;
+  /**
+   * Id da categoria do Mercado Livre DECIDIDA para este produto ("MLB273770").
+   *
+   * Diferente de `categoriaMarketplaceSugerida`, que é rótulo em texto livre:
+   * uma publica, a outra explica. Vazio = ninguém decidiu, e aí os obrigatórios
+   * cobrados são um palpite — ver `obrigatoriosDoProduto`.
+   */
+  categoriaMl?: string;
   descricaoBase?: string;
   beneficios?: string;
   cuidados?: string;

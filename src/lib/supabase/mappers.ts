@@ -133,6 +133,7 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     observacoes: row.observacoes ?? "",
     tipoProduto: (row.tipo_produto ?? "simples") as Produto["tipoProduto"],
     categoriaMarketplaceSugerida: row.categoria_marketplace_sugerida ?? "",
+    categoriaMl: row.categoria_ml ?? "",
     descricaoBase: row.descricao_base ?? "",
     beneficios: row.beneficios ?? "",
     cuidados: row.cuidados ?? "",
@@ -176,6 +177,7 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.tipoProduto !== undefined) r.tipo_produto = d.tipoProduto;
   if (d.categoriaMarketplaceSugerida !== undefined)
     r.categoria_marketplace_sugerida = d.categoriaMarketplaceSugerida;
+  if (d.categoriaMl !== undefined) r.categoria_ml = d.categoriaMl;
   if (d.descricaoBase !== undefined) r.descricao_base = d.descricaoBase;
   if (d.beneficios !== undefined) r.beneficios = d.beneficios;
   if (d.cuidados !== undefined) r.cuidados = d.cuidados;

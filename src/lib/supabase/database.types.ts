@@ -61,6 +61,7 @@ export interface ProdutoRow {
   // v1.7 (ausentes em bancos anteriores — rodar a migração 001)
   tipo_produto?: string | null;
   categoria_marketplace_sugerida?: string | null;
+  categoria_ml?: string | null;
   descricao_base?: string | null;
   beneficios?: string | null;
   cuidados?: string | null;

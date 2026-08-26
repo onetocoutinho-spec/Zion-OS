@@ -390,10 +390,14 @@ function Jornada() {
       // Produto sem anúncio no ar não tem categoria medida e cai no palpite de
       // calçado, que é exatamente o comportamento de antes. Falha de rede idem:
       // `obrigatoriosDaCategoria` devolve null, não [].
-      const categoriaMedida = (anuncios ?? [])
-        .filter((a) => a.produtoId === produto.id)
-        .map((a) => (a.categoriaMl ?? "").trim())
-        .find(Boolean) ?? "";
+      // A decidida do produto vence a que veio do anúncio importado (079):
+      // produto de planilha nunca esteve no ar, e sem isto caía no palpite.
+      const categoriaMedida =
+        (produto.categoriaMl ?? "").trim() ||
+        ((anuncios ?? [])
+          .filter((a) => a.produtoId === produto.id)
+          .map((a) => (a.categoriaMl ?? "").trim())
+          .find(Boolean) ?? "");
       const { exigencias, procedencia } = obrigatoriosDoProduto(
         categoriaMedida,
         categoriaMedida ? await obrigatoriosDaCategoria(clienteId, categoriaMedida) : null

@@ -254,6 +254,12 @@ async function processarUm(
     // Falha do ML não derruba a esteira, pela mesma razão do enriquecimento
     // acima: `atributosObrigatorios` devolve [] quando não responde, e
     // `obrigatoriosDoProduto` trata [] como "não sei", não como "não exige".
+    // A DECIDIDA DO PRODUTO VEM PRIMEIRO (migração 079).
+    //
+    // `anuncios_gerados.categoria_ml` só existe para quem já esteve no ar, e
+    // produto vindo de planilha nunca esteve — era 100% do catálogo caindo no
+    // palpite de calçado. `produtos.categoria_ml` é onde a decisão da lojista
+    // mora, e decisão vence importação vence suposição.
     const { data: catRow } = await admin
       .from("anuncios_gerados")
       .select("categoria_ml")
@@ -261,7 +267,7 @@ async function processarUm(
       .not("categoria_ml", "is", null)
       .limit(1)
       .maybeSingle();
-    const categoria = (catRow?.categoria_ml ?? "").trim();
+    const categoria = (produto.categoriaMl ?? "").trim() || (catRow?.categoria_ml ?? "").trim();
     const daCategoria = categoria ? await atributosObrigatorios(categoria) : null;
     const { exigencias, procedencia } = obrigatoriosDoProduto(categoria, daCategoria);
 

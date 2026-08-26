@@ -75,6 +75,11 @@ export const AREAS: readonly AreaDoPortal[] = [
       // importacoes de 18/08/2026 por nao terem codigo.
       { href: "/cliente/codigos", label: "Códigos das variações" },
       { href: "/cliente/medidas", label: "Tabela de medidas" },
+      // A categoria do ML mora no Catalogo, e nao em Anuncios, porque ela e
+      // dado do PRODUTO: e ela que decide quais atributos o anuncio vai
+      // precisar. Sem ela o sistema cobra os obrigatorios de calcado por
+      // suposicao — 1003 de 1003 produtos numa base medida em 26/08/2026.
+      { href: "/cliente/categorias", label: "Categoria no Mercado Livre" },
       { href: "/cliente/precificacao", label: "Precificação" },
     ],
   },
