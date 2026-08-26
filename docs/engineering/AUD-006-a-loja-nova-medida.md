@@ -47,9 +47,9 @@ e publicar anúncio.
 | 1 | assinar | ✅ **passou sozinho** (com um tropeço, ver abaixo) | criar conta (e-mail + senha) |
 | 2 | provisionar | ✅ **passou sozinho** | — |
 | 3 | importar base | ✅ **passou sozinho** — ver abaixo | **uma planilha de ERP real** — não o modelo gerado, que passa por construção |
-| 4 | imagens | — | `OPENAI_API_KEY`/`GEMINI_API_KEY` no escopo Preview da Vercel |
-| 5 | descrições | — | idem |
-| 6 | atributos | — | idem |
+| 4 | imagens | — | ambiente ✅ confirmado |
+| 5 | descrições | — | ambiente ✅ confirmado |
+| 6 | atributos | — | ambiente ✅ confirmado |
 | 7 | publicar | — | OAuth na conta do ML **de teste ou controlada** — nunca a da lojista |
 | 8 | acompanhar | — | depende de 7 |
 
@@ -207,6 +207,24 @@ A gravação são 3 lotes de produtos e 37 de variações, sequenciais. A tela s
 troca o texto do botão para "Importando…". Numa loja que opera sozinha, é onde
 alguém fecha a aba achando que travou — e a importação não tem transação
 cobrindo o conjunto: cair no meio deixa produtos sem parte das variações.
+
+### Antes dos passos 4 a 6 — o ambiente da IA, confirmado
+
+`/api/saude/ia` (sem `?sondar`, que não toca a rede e não custa nada), lida na
+sessão do preview:
+
+```
+OpenAI (ChatGPT)   temChave: true   ativo: true   modelo: gpt-5
+```
+
+Isso importa para a leitura do resultado. Sem chave, os três passos parariam por
+AMBIENTE, e "o produto não faz" seria conclusão errada. Com chave, o que sair
+deles é resultado do produto.
+
+E vale saber antes de olhar: existe um caminho em que a otimização sai marcada
+como `[SIMULAÇÃO]` em vez de falhar. Texto plausível com essa marca **não é a IA
+trabalhando** — é o sistema dizendo que não pôde. Sem saber disso, parece que
+funcionou.
 
 ### O que anotar em cada passo
 
