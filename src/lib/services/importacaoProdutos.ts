@@ -22,6 +22,7 @@ import {
   avisoDePesoImplausivel,
   type AvisoDePeso,
 } from "../../modules/catalog/domain/pesoImplausivel.ts";
+import { nomeSemDerivacao } from "../../modules/catalog/domain/nomeSemDerivacao.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -43,10 +44,16 @@ const ALIASES: Record<string, string> = {
   // por isso que a tela pedia para escolher coluna a coluna. `produto_derivacao`
   // é a única coluna daquela planilha que carrega o nome do produto.
   //
-  // `nome_da_derivacao` NÃO entra: naquele formato ela é o nome da DERIVAÇÃO
-  // ("Preto / 38"), não do produto. Mapeá-la batizaria cada produto pela
-  // variação — o mesmo erro que rachou sete produtos em quatorze em 19/08.
   produto_derivacao: "nome",
+  // `nome_da_derivacao` NÃO vira o nome — vira a PROVA de onde o nome acaba.
+  //
+  // Mapeá-la como `nome` batizaria cada produto pela variação, que é o erro que
+  // rachou sete produtos em quatorze em 19/08. Mas descartá-la também custou:
+  // sem ela, o nome do produto saía com a derivação colada no fim.
+  // Medido em 26/08: em 7223 de 7224 linhas o valor de `Produto - Derivação`
+  // termina exatamente com o de `Nome da Derivação`, e é assim que o nome do
+  // produto é recortado sem adivinhar onde cortar. Ver `nomeSemDerivacao`.
+  nome_da_derivacao: "nomeDerivacao",
   // ---- PESO: SÓ COM A UNIDADE NO CABEÇALHO ----
   //
   // A regra é do `importacaoPeso.ts` e está lá desde antes: ele "RECUSA coluna
@@ -250,6 +257,11 @@ export const CAMPOS_MAPEAVEIS: {
   { campo: "sku", rotulo: "SKU interno" },
   { campo: "marketplace", rotulo: "Marketplace (opcional)" },
   { campo: "confianca", rotulo: "Confiança do custo" },
+  {
+    campo: "nomeDerivacao",
+    rotulo: "Nome da derivação",
+    dica: "Não vira o nome do produto — serve para tirá-la do fim do nome",
+  },
   // ---- PESO E DIMENSÃO: entraram em 26/08/2026, no T1 ----
   //
   // A exportação real do ERP trazia `Peso (kg)`, `Largura (cm)`, `Altura (cm)`
@@ -355,7 +367,7 @@ function mapearLinha(
   const codErp = val("codErp");
 
   const base: BaseProduto = {
-    nome: val("nome") || "Produto sem nome",
+    nome: nomeSemDerivacao(val("nome"), val("nomeDerivacao")) || "Produto sem nome",
     marca: val("marca"),
     modelo: val("modelo"),
     categoria: val("categoria"),
@@ -488,7 +500,11 @@ function construirAgrupado(
     const confiancaCusto = normalizarConfianca(val("confianca"));
 
     const base: BaseProduto = {
-      nome: val("nome") || "Produto sem nome",
+      // O nome sai da PRIMEIRA linha do grupo, e é por isso que tirar a
+      // derivação importa aqui mais do que no modo flat: sem o corte, uma
+      // família inteira ficava batizada pela primeira derivação — "avela ipe
+      // 39" virava o nome de um produto com dezenas de cores e tamanhos.
+      nome: nomeSemDerivacao(val("nome"), val("nomeDerivacao")) || "Produto sem nome",
       marca: val("marca"),
       modelo: val("modelo"),
       categoria: val("categoria"),
