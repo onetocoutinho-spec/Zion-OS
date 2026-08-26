@@ -44,8 +44,8 @@ e publicar anúncio.
 
 | # | Passo | Resultado | O que exige |
 |---|---|---|---|
-| 1 | assinar | **parou aqui** — ver abaixo | criar conta (e-mail + senha) |
-| 2 | provisionar | — | depende de 1 |
+| 1 | assinar | ✅ **passou sozinho** (com um tropeço, ver abaixo) | criar conta (e-mail + senha) |
+| 2 | provisionar | ✅ **passou sozinho** | — |
 | 3 | importar base | — | **uma planilha de ERP real** — não o modelo gerado, que passa por construção |
 | 4 | imagens | — | `OPENAI_API_KEY`/`GEMINI_API_KEY` no escopo Preview da Vercel |
 | 5 | descrições | — | idem |
@@ -90,6 +90,56 @@ atende.
 > **Fica em aberto:** se o e-mail de confirmação chega de forma confiável. O
 > serviço embutido do Supabase é limitado e cai em spam; um SMTP próprio é a
 > diferença entre "a loja assina sozinha" e "a loja assina e espera".
+
+### Passo 1, segunda parte — o tropeço não era do produto
+
+Depois de confirmar o e-mail, a tela mostrou "acesso não liberado". Parecia
+defeito grave: a conta nova não entrava.
+
+**Era o host errado.** Havia dois previews vivos, com o mesmo banco atrás:
+
+```
+zion-os-git-fix-multitenancy-security-…   "liberar o seu acesso"    presente
+                                          "Vamos montar sua loja"   NÃO existe
+
+zion-os-git-feat-portal-da-lojista-…      "Vamos montar sua loja"   presente
+                                          "liberar o seu acesso"    NÃO existe
+```
+
+O antigo é tão anterior que devolve **404 em `/api/versao`** — o build precede a
+própria rota de versão. Nele, conta sem perfil cai em *"Fale com a equipe da
+Zion para liberar o seu acesso"*, que é o produto de quando a Zion era agência.
+
+Não é defeito: é outra era do produto, ainda no ar. E foi suficiente para me
+fazer procurar erro onde não havia. **Dois previews servindo eras diferentes com
+o mesmo banco atrás é armadilha** — o `ML_REDIRECT_URI` apontava para o antigo
+até a manhã de 26/08.
+
+> Fica como tarefa: despublicar o preview antigo, ou tirá-lo de todo lugar onde
+> ainda esteja anotado.
+
+### Passo 2 — provisionar: passou sozinho
+
+No host certo, a mesma conta caiu em "Vamos montar sua loja", pedindo só o nome.
+O que o `/api/loja/provisionar` gravou, medido no banco logo depois:
+
+```
+empresa               TESTE NETO
+plano                 Essencial
+limite_esteira_mes    30
+status                Ativo
+marketplaces          ["Mercado Livre"]
+margem_minima         5.00
+perfil                papel=cliente, ativo=true, ligado à loja
+```
+
+Exatamente o desenho da rota: o `papel` decidido no servidor, o plano e a cota
+vindos do vocabulário do produto, e a loja nascendo Ativa.
+
+**E isto valida o conserto do plano fantasma no fluxo real.** A loja nasceu com
+`Essencial`, que até 25/08 não existia em `PLANOS` — abrir e salvar a ficha dela
+no painel da equipe reescreveria o plano em silêncio. Hoje o valor faz parte do
+vocabulário, e o `PLANO_INICIAL` sai do mesmo lugar que a lista.
 
 ### O que anotar em cada passo
 
