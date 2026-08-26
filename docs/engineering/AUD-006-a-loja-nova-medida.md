@@ -317,6 +317,73 @@ como `[SIMULAÇÃO]` em vez de falhar. Texto plausível com essa marca **não é
 trabalhando** — é o sistema dizendo que não pôde. Sem saber disso, parece que
 funcionou.
 
+### Passo 4 — imagens: o caminho em lote existe, e o nome da pasta decidia tudo
+
+O caminho existe e é bom: **"Enviar por pasta (produto → cor → fotos)"**, que
+casa cada pasta com um produto, mostra a confiança e exige revisão antes de
+gravar. Quase registrei aqui que ele não existia — conferi antes.
+
+O que não funcionava era o caso mais provável. Medido nos 1003 produtos:
+
+| nome da pasta | casou certo | não casou |
+|---|---|---|
+| Código Pai do ERP | 99,1% | 0% |
+| nome completo do produto | 98,0% | 0% |
+| **referência do fabricante** (`7208.101`) | **10,8%** | **87,8%** |
+
+A última é como o fabricante entrega. Ela morria por pouco: 2 palavras contra 6
+do nome dá 0,33, e o corte de parecença é 0,34.
+
+A correção não foi baixar o corte — isso poria foto no produto errado. **664 dos
+1003 produtos têm no nome um código que não se repete no catálogo**, e único é
+identidade. Depois: **79,5%**, com as referências repetidas dizendo "não casou"
+de propósito. E a tela passou a dizer, ANTES, que o nome da pasta decide.
+
+**Ainda aberto:** não há foto nenhuma na base (0 imagens), e o percurso do passo
+4 só termina quando a lojista subir uma pasta real.
+
+---
+
+### Passo 5 — descrições: o briefing afirmava uma medição que não houve
+
+Montei o briefing REAL de um produto, sem chamar a IA. O topo dizia
+"ATRIBUTOS OBRIGATÓRIOS DO MERCADO LIVRE (medidos na API da categoria)". Ninguém
+mediu: sem categoria, `obrigatoriosDoProduto` cai na lista de calçado com
+`procedencia: "palpite"` — e produto recém-importado nunca tem categoria.
+
+    1003 de 1003 entravam assim · 50 deles são bolsa, meia ou kit
+
+Forma exata do [INC-011](incidents/). O briefing passou a dizer de onde a lista
+veio, e a proibição de inventar virou teto em vez de fato.
+
+---
+
+### Passo 5b — a categoria, definida antes de gerar (decisão sua, 26/08)
+
+Medido no `domain_discovery` do ML, 201 produtos reais:
+
+    Sandálias e Chinelos 115 · Tênis 30 · Calçados 19 (genérica)
+    Águas Minerais 7 (lixo) · Sapatilhas 7
+
+"Papete Slide Modare 7208.101 Nobuck" devolve **Águas Minerais** toda vez. Com
+`limit=3`, MLB269718 aparece no top-3 até de uma consulta boa — é ruído do
+endpoint. E filtrar por "não é folha" não resolve: `MLB1400 Calçados` é folha e
+é publicável.
+
+**O catálogo desmente o erro:** 11 dos 15 papetes acertam. Agrupando pelo tipo e
+deixando a moda valer, Águas Minerais cai de 7 para 2 e a categoria genérica de
+19 para 5. Grupo com menos de 3 não vota; empate não manda em ninguém.
+
+Entregue: migração 079 (`produtos.categoria_ml`), o módulo do voto, a rota de
+lote (que usa só 15 votos por tipo, transformando ~1000 consultas em ~180, e
+funciona **sem** conexão ao ML) e a tela `/cliente/categorias`, onde a lojista
+aprova por grupo vendo "11 de 15 concordam".
+
+**Falta o percurso:** ninguém clicou ainda. O passo 5 propriamente dito — gerar
+as descrições — começa depois de as categorias estarem aprovadas.
+
+---
+
 ### O que anotar em cada passo
 
 Uma linha por passo, com uma de duas marcas: **passou sozinho** ou **parou aqui,
