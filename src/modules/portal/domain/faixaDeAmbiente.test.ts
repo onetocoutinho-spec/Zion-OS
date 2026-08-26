@@ -9,7 +9,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { faixaDeAmbiente, MARCA_DE_STAGING } from "./faixaDeAmbiente.ts";
+import {
+  MARCA_DE_PRODUCAO,
+  MARCA_DE_STAGING,
+  faixaDeAmbiente,
+} from "./faixaDeAmbiente.ts";
 
 test("staging mostra a faixa, e ela diz que os dados não são de loja real", () => {
   const f = faixaDeAmbiente(MARCA_DE_STAGING);
@@ -18,12 +22,10 @@ test("staging mostra a faixa, e ela diz que os dados não são de loja real", ()
   assert.match(f.texto, /não são de nenhuma loja real/i);
 });
 
-test("produção não tem a tabela: `null` não mostra nada", () => {
-  // Este é o caso da produção — a tabela nem existe lá. Ver o cabeçalho do
-  // módulo: em 26/08/2026 o lojista operou a conta que paga achando que era
-  // teste, e a tela não dizia nada nas duas direções.
+test("banco que não se identifica não vira faixa", () => {
+  // `null` é "não sei" — e não sei não vira afirmação, em nenhuma direção.
   assert.equal(faixaDeAmbiente(null).mostrar, false);
-  assert.equal(faixaDeAmbiente(null).texto, "");
+  assert.equal(faixaDeAmbiente(null, true).mostrar, false);
 });
 
 test("leitura vazia também se lê como produção", () => {
@@ -43,3 +45,41 @@ test("caixa e espaço não derrubam a prova — a marca é escrita à mão num S
   assert.equal(faixaDeAmbiente("Staging").mostrar, true);
   assert.equal(faixaDeAmbiente(" STAGING ").mostrar, true);
 });
+
+// ---------------------------------------------------------------------------
+// O terceiro caso: a máquina de quem desenvolve falando com a conta que paga
+// ---------------------------------------------------------------------------
+
+test("localhost + produção = faixa VERMELHA, e ela nomeia o engano", () => {
+  // Em 26/08/2026 `npm run dev` carregou `.env.local`, que aponta para a
+  // produção, e 16 produtos de uma loja real foram categorizados por engano.
+  const f = faixaDeAmbiente(MARCA_DE_PRODUCAO, true);
+  assert.equal(f.mostrar, true);
+  assert.equal(f.tom, "perigo");
+  assert.match(f.texto, /PRODUÇÃO/);
+  assert.match(f.texto, /contas reais/);
+  // A saída, no mesmo lugar do problema: quem lê o aviso precisa saber o que
+  // fazer, e "use o staging" sem o comando é conselho sem endereço.
+  assert.match(f.texto, /npm run dev:staging/);
+});
+
+test("produção FORA do localhost não diz nada — é a lojista no dia dela", () => {
+  // Dizer "você está na produção" para quem só tem produção é ruído, e ruído se
+  // aprende a ignorar — inclusive o que importa.
+  assert.equal(faixaDeAmbiente(MARCA_DE_PRODUCAO).mostrar, false);
+  assert.equal(faixaDeAmbiente(MARCA_DE_PRODUCAO, false).mostrar, false);
+});
+
+test("staging em localhost continua sendo staging, e não perigo", () => {
+  // É o desfecho que a gente QUER de quem desenvolve: amarelo, não vermelho.
+  const f = faixaDeAmbiente(MARCA_DE_STAGING, true);
+  assert.equal(f.tom, "teste");
+  assert.match(f.texto, /não são de nenhuma loja real/);
+});
+
+test("marca desconhecida em localhost também não vira perigo", () => {
+  // Só `producao` é prova de produção. Inventar perigo a partir de valor
+  // desconhecido seria o mesmo erro da faixa anterior, ao contrário.
+  assert.equal(faixaDeAmbiente("homologacao", true).mostrar, false);
+});
+

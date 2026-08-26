@@ -33,40 +33,77 @@
 // pergunta; a marca no banco responde a segunda.
 //
 // ===========================================================================
-// A AUSÊNCIA SIGNIFICA PRODUÇÃO, E ISSO É DE PROPÓSITO
+// A AUSÊNCIA CONTINUA SIGNIFICANDO PRODUÇÃO — MAS ELA NÃO BASTAVA
 // ===========================================================================
 //
-// Produção não tem a tabela. Leitura que falha, tabela que não existe, linha
-// que não veio: tudo isso vira "não é staging", e a faixa não aparece.
+// A primeira versão disto mostrava faixa SÓ com prova de staging, e a ausência
+// se lia como produção. A direção do erro estava certa: o perigo é operar na
+// produção achando que é teste.
 //
-// A direção do erro é escolhida. O perigo é operar na produção ACHANDO que é
-// teste; o contrário — ver produção onde é teste — só custa cautela a mais.
-// Então a faixa só aparece com prova, e a falta de prova se lê como produção.
+// No mesmo dia isso falhou, e falhou por um motivo que a regra não cobria:
+// **ausência não é mensagem**. Quem estava na produção pensando estar no teste
+// não tinha como ler o que não estava na tela. Rodou "Descobrir categorias" na
+// conta que paga e depois aplicou categoria em 16 produtos reais.
+//
+// A causa raiz não era nem host nem deploy: era `localhost:3000`. O `.env.local`
+// aponta para a produção, e `npm run dev` carrega `.env.local` — então a máquina
+// de quem desenvolve fala com o banco de quem vende, por padrão.
+//
+// Por isso a produção passou a se identificar também (migração 080), e existe
+// um terceiro desfecho: **localhost falando com a produção**, que é vermelho e
+// nomeia exatamente o engano.
+//
+// Quem NÃO está em localhost e está na produção continua sem faixa: é a lojista
+// no dia dela, e dizer "você está na produção" para quem só tem produção é
+// ruído — e ruído se aprende a ignorar, inclusive o que importa.
 
 /** O que o banco respondeu sobre si mesmo. `null` = não sabemos. */
 export type MarcaDeAmbiente = string | null;
 
 export interface FaixaDeAmbiente {
-  /** `false` = não há prova de staging, e a tela não diz nada. */
+  /** `false` = não há o que dizer, e a tela não diz nada. */
   mostrar: boolean;
   /** O que a faixa diz. Vazio quando não há faixa. */
   texto: string;
+  /**
+   * `teste` é aviso de contexto; `perigo` é a máquina de desenvolvimento
+   * falando com a conta que paga. A tela pinta os dois de cores diferentes
+   * porque eles pedem reações diferentes.
+   */
+  tom: "teste" | "perigo" | "nenhum";
 }
 
 /** O valor que a linha do banco tem quando é ambiente de teste. */
 export const MARCA_DE_STAGING = "staging";
 
-const TEXTO =
+/** E quando é o banco de verdade. */
+export const MARCA_DE_PRODUCAO = "producao";
+
+const NADA: FaixaDeAmbiente = { mostrar: false, texto: "", tom: "nenhum" };
+
+const TEXTO_TESTE =
   "AMBIENTE DE TESTE (staging) — os dados daqui não são de nenhuma loja real.";
 
+const TEXTO_PERIGO =
+  "ATENÇÃO: este servidor local está falando com o banco de PRODUÇÃO. " +
+  "O que você fizer aqui acontece nas contas reais. Para usar o staging: npm run dev:staging";
+
 /**
- * A faixa, a partir do que o banco disse.
+ * A faixa, a partir do que o banco disse e de onde a página está aberta.
  *
- * Compara sem caixa e sem espaço nas pontas: a marca é escrita à mão num script
- * SQL, e "Staging " não deveria valer menos que "staging".
+ * `emLocalhost` decide o terceiro caso, e é o navegador quem sabe disso — o
+ * banco não tem como saber quem está falando com ele.
  */
-export function faixaDeAmbiente(marca: MarcaDeAmbiente): FaixaDeAmbiente {
+export function faixaDeAmbiente(
+  marca: MarcaDeAmbiente,
+  emLocalhost = false
+): FaixaDeAmbiente {
   const limpa = (marca ?? "").trim().toLowerCase();
-  if (limpa !== MARCA_DE_STAGING) return { mostrar: false, texto: "" };
-  return { mostrar: true, texto: TEXTO };
+  if (limpa === MARCA_DE_STAGING) {
+    return { mostrar: true, texto: TEXTO_TESTE, tom: "teste" };
+  }
+  if (limpa === MARCA_DE_PRODUCAO && emLocalhost) {
+    return { mostrar: true, texto: TEXTO_PERIGO, tom: "perigo" };
+  }
+  return NADA;
 }
