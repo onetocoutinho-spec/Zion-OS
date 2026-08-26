@@ -1,7 +1,7 @@
 # INC-012 — O repositório e a produção derivaram, nos dois sentidos
 
 ```
-Status:      Aberto — registrado, NÃO corrigido
+Status:      PARCIAL — o `error` engolido foi corrigido; o resto é decisão sua
 Detectado:   2026-08-25, comparando o staging recém-migrado com a produção
 Severidade:  baixa hoje; o que preocupa é a classe, não o caso
 Correção:    exige decisão de quem manda no esquema — não é conserto mecânico
@@ -83,9 +83,23 @@ mais caro a cada mês em que alguém possa começar a gravar nela.
 chamá-las e `page.tsx` perde a seção de recados. A segunda parece a certa: o RPC
 lê uma tabela que ninguém preenche mais.
 
-**O `error` engolido** — é o defeito de classe, e o único que eu corrigiria sem
-perguntar: um wrapper de RPC que ignora `error` transforma "a função não existe"
-em "não há nada". Não é sobre estas três funções; é sobre a próxima.
+**O `error` engolido — CORRIGIDO em 25/08.** Era o defeito de classe, e o único
+que não dependia de decisão de ninguém. Os três wrappers passaram a usar
+`lerRpcDoPortal`, que lê `error`, registra no log o código do Postgres (42883 é
+"função não existe", e o remédio é migração, não dado) e devolve `null`.
+
+`null` e lista vazia deixaram de ser a mesma coisa: vazio é "não há recado",
+`null` é "não sei se há". É a mesma regra que `cotaDaEsteira` já sustentava para
+a cota, onde "não consegui ler" virava "acabou" e fechava uma parede comercial
+por um erro nosso.
+
+A tela não muda de comportamento — a seção continua escondida —, mas agora por
+saber que não sabe, e com uma linha no log dizendo o que consertar.
+
+E uma sentinela guarda a classe, não o caso: `rpcNaoEngoleErro.test.ts` varre
+todo o `src` e reprova qualquer `const { data } = ... .rpc(`. Os outros 17
+pontos de RPC do repositório já liam `error`; o teste é o que impede o número de
+voltar a ser três.
 
 **As catorze sem auto-registro** — decidir se a convenção da 024 vale ou não
 vale. Uma convenção que catorze arquivos ignoram não é convenção, é folclore.

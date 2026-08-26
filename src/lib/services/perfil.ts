@@ -119,19 +119,66 @@ export interface PortalAnuncio {
   criado_em: string;
 }
 
+/**
+ * As três leituras do Portal (migração 005), com a MESMA disciplina que
+ * `quotaEsteira` já aplica logo abaixo: `error` sem exceção também é falha.
+ *
+ * ===========================================================================
+ * O DEFEITO QUE ISTO FECHA — INC-012, medido em 25/08/2026
+ * ===========================================================================
+ *
+ * As três funções NÃO EXISTEM no banco de produção. A migração 005 as cria, o
+ * ledger a dá como aplicada, e alguém as removeu sem migração — só apareceu
+ * quando houve um segundo banco para comparar.
+ *
+ * Os wrappers desestruturavam só `data`. O Supabase devolve a falha em `error`,
+ * sem lançar; `data` vinha indefinido, `?? []` virava lista vazia, e "a função
+ * não existe" chegava à tela como "não há nada". A seção de recados do portal
+ * nunca aparecia — sem erro na tela e sem uma linha no log.
+ *
+ * ===========================================================================
+ * VAZIO E "NÃO SEI" DEIXAM DE SER A MESMA COISA
+ * ===========================================================================
+ *
+ * `null` é o desfecho de falha; lista vazia continua sendo "não há". São
+ * perguntas diferentes e agora têm respostas diferentes — a mesma regra que
+ * `cotaDaEsteira` já sustenta para a cota, onde "não consegui ler" virava
+ * "acabou" e fechava uma parede comercial por um erro nosso.
+ *
+ * E o log diz o que consertar: RPC ausente é falta de migração, não falta de
+ * dado, e o código do Postgres para isso (42883) é literal.
+ */
+async function lerRpcDoPortal<T>(nome: string): Promise<T | null> {
+  if (!supabaseConfigurado) return null;
+  try {
+    const { data, error } = await getSupabase().rpc(nome);
+    if (error) {
+      console.error(
+        `[portal] RPC \`${nome}\` falhou (${error.code ?? "sem código"}): ${error.message}. ` +
+          "Se o código for 42883, a função não existe neste banco — ver " +
+          "database/migrations/005-portal-cliente.sql e o INC-012."
+      );
+      return null;
+    }
+    return (data as T) ?? null;
+  } catch (e) {
+    console.error(`[portal] RPC \`${nome}\` lançou:`, e);
+    return null;
+  }
+}
+
 export async function portalResumo(): Promise<PortalResumo | null> {
-  const { data } = await getSupabase().rpc("portal_resumo");
-  return (data as PortalResumo) ?? null;
+  return lerRpcDoPortal<PortalResumo>("portal_resumo");
 }
 
-export async function portalProximasAcoes(): Promise<PortalAcao[]> {
-  const { data } = await getSupabase().rpc("portal_proximas_acoes");
-  return (data as PortalAcao[]) ?? [];
+/** `null` = não deu para ler. Lista vazia = leu, e não há recado. */
+export async function portalProximasAcoes(): Promise<PortalAcao[] | null> {
+  return lerRpcDoPortal<PortalAcao[]>("portal_proximas_acoes");
 }
 
-export async function portalAnuncios(): Promise<PortalAnuncio[]> {
-  const { data } = await getSupabase().rpc("portal_anuncios");
-  return (data as PortalAnuncio[]) ?? [];
+/** `null` = não deu para ler. Lista vazia = leu, e não há anúncio. */
+export async function portalAnuncios(): Promise<PortalAnuncio[] | null> {
+  return lerRpcDoPortal<PortalAnuncio[]>("portal_anuncios");
 }
 
 // ---- Cota mensal da esteira (self-service) ----
