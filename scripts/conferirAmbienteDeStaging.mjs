@@ -38,23 +38,39 @@ if (!existsSync(arquivo)) {
   process.exit(1);
 }
 
-/** Lê o arquivo de ambiente. O objeto NUNCA é impresso — só consultado. */
+/**
+ * Lê o arquivo de ambiente. O objeto NUNCA é impresso — só consultado.
+ *
+ * Devolve também as chaves REPETIDAS, e isso não é luxo: em arquivo `.env` a
+ * última linha vence, em silêncio. Em 25/08 uma chave real foi colada na linha
+ * 41 e o marcador antigo ficou na 48 — o marcador venceu, aqui E no app, e o
+ * sintoma foi "colei e não pegou". Chave repetida é defeito, não estilo.
+ */
 function lerEnv(caminho) {
   const env = {};
+  const vistas = new Map();
+  const repetidas = new Map();
+  let numero = 0;
   for (const linha of readFileSync(caminho, "utf8").split(/\r?\n/)) {
+    numero++;
     const limpa = linha.trim();
     if (!limpa || limpa.startsWith("#")) continue;
     const i = limpa.indexOf("=");
     if (i < 0) continue;
-    env[limpa.slice(0, i).trim()] = limpa.slice(i + 1).trim();
+    const chave = limpa.slice(0, i).trim();
+    env[chave] = limpa.slice(i + 1).trim();
+    if (vistas.has(chave)) {
+      repetidas.set(chave, [...(repetidas.get(chave) ?? [vistas.get(chave)]), numero]);
+    }
+    vistas.set(chave, numero);
   }
-  return env;
+  return { env, repetidas };
 }
 
 /** Marcador do modelo: `<ALGUMA_COISA>`. Vazio também conta como não preenchido. */
 const aindaMarcador = (v) => !v || /^<.*>$/.test(v);
 
-const env = lerEnv(arquivo);
+const { env, repetidas } = lerEnv(arquivo);
 const linhas = [];
 let erros = 0;
 let avisos = 0;
@@ -69,6 +85,17 @@ function falha(chave, motivo) {
 function pendente(chave, onde) {
   linhas.push(`  falta    ${chave}  — ainda no marcador; pegar em ${onde}`);
   avisos++;
+}
+
+// ---------------------------------------------------------------------------
+// Chave repetida — a última vence, e vence calada
+// ---------------------------------------------------------------------------
+for (const [chave, numeros] of repetidas) {
+  falha(
+    chave,
+    `aparece ${numeros.length} vezes (linhas ${numeros.join(", ")}). Em .env a ÚLTIMA vence, ` +
+      "e é assim que uma chave colada acima de um marcador não pega — nem aqui, nem no app"
+  );
 }
 
 // ---------------------------------------------------------------------------

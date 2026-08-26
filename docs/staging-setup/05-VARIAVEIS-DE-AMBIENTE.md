@@ -101,6 +101,7 @@ O que ele recusa, e por quê:
 | `ML_REDIRECT_URI` que não termina em `/cliente/conectar-ml` | é a rota do callback |
 | `APP_URL` com barra no fim, ou sem https | `montarRedirectConvite` devolve null e o convite é recusado |
 | qualquer `NEXT_PUBLIC_*` com `SECRET`, `SERVICE_ROLE` ou `API_KEY` no nome | vai para o navegador em todo carregamento |
+| **chave repetida no arquivo** | em `.env` a ÚLTIMA linha vence, calada. Colar a chave acima de um marcador que ficou embaixo faz o marcador ganhar — aqui e no app. Aconteceu em 25/08 |
 
 Para conferir o arquivo que o Next realmente carrega:
 
