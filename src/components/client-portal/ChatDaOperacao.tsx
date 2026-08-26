@@ -155,8 +155,16 @@ function ResultadoDaPlanilha({ r }: { r: ResultadoCustos }) {
   return (
     <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm">
       <p className="text-zinc-200">
-        Gravei o custo em <strong>{r.produtos}</strong> produto(s) e{" "}
-        <strong>{r.variantes}</strong> variação(ões), de {r.linhasCsv} linha(s) na planilha.
+        Gravei em <strong>{r.produtos}</strong> produto(s) e <strong>{r.variantes}</strong>{" "}
+        variação(ões), de {r.linhasCsv} linha(s) na planilha.
+        {/* O preço aparece SÓ quando veio: dizer "0 com preço de venda" numa
+            planilha que nunca teve essa coluna é ruído, não informação. */}
+        {r.precos > 0 && (
+          <>
+            {" "}
+            Destes, <strong>{r.precos}</strong> receberam preço de venda.
+          </>
+        )}
       </p>
       {r.naoEncontrados > 0 && (
         <p className="text-amber-300">

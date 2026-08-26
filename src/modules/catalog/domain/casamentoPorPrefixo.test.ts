@@ -215,7 +215,10 @@ test("SKU decide antes do NOME — o sinal forte na frente do fraco", () => {
   );
   const laco = imp.slice(imp.indexOf("for (const p of produtos) {"));
   const dasVariantes = laco.indexOf("custosPorProduto.get(p.id)");
-  const doNome = laco.indexOf("custoPorNome(p.nome, p.id)");
+  // RENOMEADA EM 26/08/2026: `custoPorNome` virou `valoresPorNome` quando a
+  // importação passou a trazer preço junto do custo. A ordem que este teste
+  // guarda — SKU antes de nome — não mudou.
+  const doNome = laco.indexOf("valoresPorNome(p.nome, p.id)");
   assert.ok(dasVariantes > 0 && doNome > 0, "um dos dois caminhos de custo sumiu do laço");
   assert.ok(
     dasVariantes < doNome,
