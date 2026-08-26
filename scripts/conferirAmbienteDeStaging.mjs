@@ -132,6 +132,29 @@ else ok("ML_CLIENT_ID");
 if (aindaMarcador(env.ML_CLIENT_SECRET)) pendente("ML_CLIENT_SECRET", "DevCenter do ML");
 else ok("ML_CLIENT_SECRET");
 
+/**
+ * O caminho do redirect é PÚBLICO — ele viaja na barra de endereço do vendedor
+ * durante o OAuth. Mostrá-lo não é vazamento, e mostrá-lo é o que resolve o
+ * erro numa rodada em vez de três.
+ *
+ * O host continua fora: ele não ajuda a corrigir o caminho, e é a única parte
+ * que alguém poderia não querer numa captura de tela.
+ */
+const CAMINHO_DO_CALLBACK = "/cliente/conectar-ml";
+
+/** Os enganos que já aconteceram, com o que cada um provoca. */
+const ENGANOS = new Map([
+  [
+    "/api/ml/conectar",
+    "é a ROTA DE API, e ela só responde POST. Quem recebe o `?code=` é a PÁGINA " +
+      "(conectar-ml/page.tsx:50), que depois chama a API por dentro",
+  ],
+  [
+    "/api/ml/webhooks",
+    "é a URL de NOTIFICAÇÕES, outro campo do DevCenter — e essa rota nem existe neste projeto",
+  ],
+]);
+
 const redirect = env.ML_REDIRECT_URI;
 if (aindaMarcador(redirect)) {
   pendente("ML_REDIRECT_URI", "o Redirect URI cadastrado no app");
@@ -140,10 +163,26 @@ if (aindaMarcador(redirect)) {
     "ML_REDIRECT_URI",
     "não é https. `api/ml/autorizar` barra, e o ML recusa na borda com um 403 branco"
   );
-} else if (!redirect.endsWith("/cliente/conectar-ml")) {
-  falha("ML_REDIRECT_URI", "tem que terminar em /cliente/conectar-ml");
 } else {
-  ok("ML_REDIRECT_URI");
+  let caminho = null;
+  try {
+    caminho = new URL(redirect).pathname;
+  } catch {
+    falha("ML_REDIRECT_URI", "não é uma URL válida");
+  }
+  if (caminho !== null) {
+    if (caminho === CAMINHO_DO_CALLBACK) {
+      ok("ML_REDIRECT_URI", `caminho ${caminho}`);
+    } else {
+      const conhecido = ENGANOS.get(caminho);
+      falha(
+        "ML_REDIRECT_URI",
+        `caminho é ${caminho}, e tem que ser ${CAMINHO_DO_CALLBACK}` +
+          (conhecido ? `. ${caminho} ${conhecido}` : "") +
+          ". O host está certo; troque só o caminho — aqui E no campo Redirect URI do app"
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,8 +229,13 @@ if (vazados.length > 0) {
 // ---------------------------------------------------------------------------
 console.log(`\n${arquivo}\n`);
 console.log(linhas.join("\n"));
+// A promessa tem que continuar verdadeira depois de cada mudança. O caminho do
+// redirect passou a ser impresso em 25/08 — ele é público (viaja na barra de
+// endereço do vendedor) e é o que resolve o erro numa rodada em vez de três.
+// Segredo nenhum sai daqui, e host nenhum também.
 console.log(
-  `\n  ${erros} erro(s), ${avisos} pendência(s). Nenhum valor foi impresso.\n`
+  `\n  ${erros} erro(s), ${avisos} pendência(s). ` +
+    "Nenhum segredo foi impresso — só o caminho do redirect, que é público.\n"
 );
 if (arquivo === ".env.staging") {
   console.log(
