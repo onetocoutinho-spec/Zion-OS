@@ -394,7 +394,7 @@ function Jornada() {
         .filter((a) => a.produtoId === produto.id)
         .map((a) => (a.categoriaMl ?? "").trim())
         .find(Boolean) ?? "";
-      const { exigencias } = obrigatoriosDoProduto(
+      const { exigencias, procedencia } = obrigatoriosDoProduto(
         categoriaMedida,
         categoriaMedida ? await obrigatoriosDaCategoria(clienteId, categoriaMedida) : null
       );
@@ -409,7 +409,8 @@ function Jornada() {
           },
           exigencias,
           atributosPorId(daFicha)
-        )
+        ),
+        procedencia
       );
       const contexto = montarContexto({
         produto,

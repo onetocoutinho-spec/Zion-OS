@@ -175,26 +175,27 @@ test("campo livre nunca é apontado — ali a lista é sugestão", () => {
 // ---------------------------------------------------------------------------
 
 test("o briefing entrega as opções em vez de mandar adivinhar", () => {
-  const texto = briefingDosAtributos(resolverObrigatorios(produtoMudo, exigencias));
+  const texto = briefingDosAtributos(resolverObrigatorios(produtoMudo, exigencias), "categoria");
   assert.match(texto, /Gênero: FALTA — o Mercado Livre aceita SÓ estes: Feminino, Masculino/);
   assert.match(texto, /escolha entre os valores listados acima/);
 });
 
 test("o briefing não promete fechamento em campo livre", () => {
   const semCor: DadosDoProduto = { ...produtoMudo, cores: [] };
-  const texto = briefingDosAtributos(resolverObrigatorios(semCor, exigencias));
+  const texto = briefingDosAtributos(resolverObrigatorios(semCor, exigencias), "categoria");
   assert.match(texto, /Cor: FALTA — valores que o Mercado Livre já conhece/);
 });
 
 test("o briefing corta a lista longa em vez de despejar 51 cores", () => {
   const semCor: DadosDoProduto = { ...produtoMudo, cores: [] };
-  const texto = briefingDosAtributos(resolverObrigatorios(semCor, exigencias));
+  const texto = briefingDosAtributos(resolverObrigatorios(semCor, exigencias), "categoria");
   assert.match(texto, /e mais 39/);
 });
 
 test("o briefing diz quando o valor não é aceito, em vez de chamá-lo de resolvido", () => {
   const texto = briefingDosAtributos(
-    resolverObrigatorios({ ...produtoMudo, nome: "Chinelo Havaianas Top" }, exigencias)
+    resolverObrigatorios({ ...produtoMudo, nome: "Chinelo Havaianas Top" }, exigencias),
+    "categoria"
   );
   assert.match(texto, /Tipo de calçado: Chinelos — VALOR NÃO ACEITO nesta categoria/);
 });

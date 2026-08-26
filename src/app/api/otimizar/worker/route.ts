@@ -25,7 +25,10 @@ import {
   resolverObrigatorios,
   type ExigenciaDaCategoria,
 } from "@/modules/publication/domain/atributosDoMarketplace";
-import { obrigatoriosDoProduto } from "@/modules/publication/domain/obrigatoriosDoProduto";
+import {
+  obrigatoriosDoProduto,
+  type ProcedenciaDosObrigatorios,
+} from "@/modules/publication/domain/obrigatoriosDoProduto";
 import { atributosObrigatorios } from "@/lib/marketplaces/mercadolivre";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
@@ -125,7 +128,13 @@ async function gerarAnuncio(
    * era cobrado de 118 anúncios que não são calçado, e em MLB23332 a exigência
    * de tipo de calçado é uma pendência sobre um campo que não existe lá.
    */
-  obrigatorios: readonly ExigenciaDaCategoria[]
+  obrigatorios: readonly ExigenciaDaCategoria[],
+  /**
+   * Se a lista acima foi MEDIDA na categoria ou é a suposição de calçado. O
+   * briefing afirma coisas diferentes nos dois casos — e afirmava a forte nos
+   * dois até 26/08/2026.
+   */
+  procedencia: ProcedenciaDosObrigatorios
 ): Promise<AnuncioGerado> {
   // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
   // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
@@ -151,7 +160,8 @@ async function gerarAnuncio(
       },
       obrigatorios,
       atributosPorId(atributosDoProduto)
-    )
+    ),
+    procedencia
   );
 
   const mensagem = montarMensagem(
@@ -253,9 +263,16 @@ async function processarUm(
       .maybeSingle();
     const categoria = (catRow?.categoria_ml ?? "").trim();
     const daCategoria = categoria ? await atributosObrigatorios(categoria) : null;
-    const { exigencias } = obrigatoriosDoProduto(categoria, daCategoria);
+    const { exigencias, procedencia } = obrigatoriosDoProduto(categoria, daCategoria);
 
-    const anuncio = await gerarAnuncio(produto, variantes, tabelas, atributosDoProduto, exigencias);
+    const anuncio = await gerarAnuncio(
+      produto,
+      variantes,
+      tabelas,
+      atributosDoProduto,
+      exigencias,
+      procedencia
+    );
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({

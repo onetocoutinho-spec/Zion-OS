@@ -34,6 +34,7 @@
 // "Arco Iris" num produto branco.
 
 import { idDoAtributoML } from "../../integration/domain/mlPayload";
+import type { ProcedenciaDosObrigatorios } from "./obrigatoriosDoProduto";
 
 /**
  * O que UMA categoria exige. Mesma forma que `atributosObrigatorios` devolve.
@@ -536,7 +537,32 @@ function opcoesEmTexto(a: AtributoResolvido): string {
     : ` — valores que o Mercado Livre já conhece (outro também é aceito): ${mostrados}${cauda}`;
 }
 
-export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): string {
+/**
+ * O briefing dos obrigatórios, dito com a PROCEDÊNCIA da lista.
+ *
+ * ===========================================================================
+ * O CABEÇALHO AFIRMAVA UMA MEDIÇÃO QUE PODE NÃO TER ACONTECIDO
+ * ===========================================================================
+ *
+ * Ele era fixo: "medidos na API da categoria — são estes e só estes". Mas
+ * `obrigatoriosDoProduto` cai em `OBRIGATORIOS_CALCADO` com
+ * `procedencia: "palpite"` sempre que o produto não tem categoria — e produto
+ * recém-importado NUNCA tem. Medido em 26/08/2026 numa base real: **1003 de
+ * 1003** produtos entrariam na esteira recebendo a lista de calçado anunciada
+ * como medida no Mercado Livre. Cinquenta deles são bolsa, meia ou kit.
+ *
+ * É a forma exata do INC-011 — "'o Mercado Livre exige' e 'a gente supõe que
+ * exige' não são a mesma frase, e a segunda foi cobrada como se fosse a
+ * primeira em 118 anúncios". `ProcedenciaDosObrigatorios` existe desde então
+ * para o chamador poder dizer a diferença; faltava o briefing dizê-la.
+ *
+ * Sem valor padrão, pelo mesmo motivo de `resolverObrigatorios`: um padrão aqui
+ * seria a afirmação forte voltando a ser silêncio.
+ */
+export function briefingDosAtributos(
+  resolvidos: readonly AtributoResolvido[],
+  procedencia: ProcedenciaDosObrigatorios
+): string {
   // A origem aparece no briefing porque ela muda o que o modelo deve fazer com
   // o valor: o que veio do Mercado Livre é o que a própria lojista informou lá,
   // e não se questiona; o que veio do nome é leitura nossa, e pode estar errado.
@@ -563,8 +589,11 @@ export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): 
     .filter((a) => estadoDoAtributo(a) === "escolha")
     .map((a) => a.nome);
 
+  const medida = procedencia === "categoria";
   return [
-    `ATRIBUTOS OBRIGATÓRIOS DO MERCADO LIVRE (medidos na API da categoria — são estes e só estes):`,
+    medida
+      ? `ATRIBUTOS OBRIGATÓRIOS DO MERCADO LIVRE (medidos na API da categoria — são estes e só estes):`
+      : `ATRIBUTOS QUE PROVAVELMENTE SERÃO EXIGIDOS (a categoria deste produto ainda não foi definida, então esta lista é a de CALÇADO, por suposição — não uma medição do Mercado Livre):`,
     ...linhas,
     "",
     faltam.length
@@ -575,6 +604,8 @@ export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): 
           `Para ${escolhiveis.join(" e ")}, escolha entre os valores listados acima — são os que o próprio Mercado Livre publica. NÃO invente valor fora do que está ali.`,
         ]
       : []),
-    `NÃO invente exigências fora desta lista: "antiderrapante", "vegano", "materiais reciclados", "altura do solado" e "forma do calçado" NÃO são atributos desta categoria no Mercado Livre.`,
+    medida
+      ? `NÃO invente exigências fora desta lista: "antiderrapante", "vegano", "materiais reciclados", "altura do solado" e "forma do calçado" NÃO são atributos desta categoria no Mercado Livre.`
+      : `Trate a lista como PROVÁVEL, não como certa: se este produto não for calçado, ela não se aplica. Em nenhum caso invente exigências fora dela — "antiderrapante", "vegano", "materiais reciclados", "altura do solado" e "forma do calçado" não são atributos do Mercado Livre.`,
   ].join("\n");
 }
