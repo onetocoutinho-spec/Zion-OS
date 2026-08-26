@@ -191,15 +191,36 @@ export async function contextoDoCopilotNoServidor(
       sub_status_marketplace: string[] | null;
       foto_capa_max_size: string | null;
       nota_diagnostico: number | null;
-      produto: string | null;
+      // `produto` NÃO É COLUNA — é o nome que vem do JOIN, e pedi-lo como
+      // coluna derrubava a rota inteira. Ver o bloco abaixo do `select`.
+      produtos: { nome: string | null } | null;
       created_at: string;
     }>("anúncios da loja", (de, ate) =>
       admin
         .from("anuncios_gerados")
+        // ---- `produtos(nome)` É EMBUTIMENTO, e a linha abaixo já foi `produto`.
+        //
+        // MEDIDO EM 25/08/2026, com a rota respondendo 500 em TODO turno:
+        //
+        //   column anuncios_gerados.produto does not exist
+        //
+        // `anuncios_gerados` não tem coluna `produto`. O nome do produto sempre
+        // veio do JOIN — `mappers.ts` escreve `row.produtos?.nome ?? null` — e
+        // aqui ele foi pedido como se fosse coluna da própria tabela. O
+        // PostgREST recusa a leitura inteira, `lerTudoPaginado` lança, e o
+        // assistente morre antes de montar o contexto: nenhuma ferramenta roda,
+        // nenhum turno é gravado.
+        //
+        // Entrou na mescla de 24/08/2026 ("96 commits de lá, 100 daqui, 15
+        // conflitos"), e é por isso que `copilot_mensagens` para naquele dia: o
+        // chat não ficou ruim, ficou MORTO, e o silêncio parecia desuso.
+        //
+        // O embutimento custa um texto curto por linha e não traz o JSONB da
+        // esteira, que continua fora — o motivo da lista enxuta segue valendo.
         .select(
           "produto_id, status, ml_item_id, ml_permalink, status_marketplace, " +
             "status_marketplace_em, estoque_marketplace, sub_status_marketplace, " +
-            "foto_capa_max_size, nota_diagnostico, produto, created_at"
+            "foto_capa_max_size, nota_diagnostico, produtos(nome), created_at"
         )
         .eq("cliente_id", clienteId)
         .order("id", { ascending: true })
@@ -244,7 +265,9 @@ export async function contextoDoCopilotNoServidor(
   // telas no dia 03/08/2026.
   const paraPendencia = anuncios.map((a) => ({
     mlItemId: a.ml_item_id,
-    produto: a.produto,
+    // Do JOIN, e com a MESMA expressão de `mappers.ts` — duas formas de ler o
+    // nome do produto divergiriam no dia em que uma mudasse.
+    produto: a.produtos?.nome ?? null,
     mlPermalink: a.ml_permalink,
     statusMarketplace: a.status_marketplace,
     statusMarketplaceEm: a.status_marketplace_em,
