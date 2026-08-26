@@ -96,7 +96,21 @@ A comparação achou outra coisa — deriva entre repositório e produção, nos
 sentidos. Está em
 [INC-012](../engineering/incidents/INC-012-o-repositorio-e-a-producao-derivaram-nos-dois-sentidos.md).
 
+### A segunda conferência, que o pre-commit exigiu
+
+O hook pediu a varredura de `database/verificacoes/alcance-da-agencia.sql` depois
+de aplicar migração. Ela não olha forma de tabela: compara, contra uma
+classificação escrita, **onde a política `agencia_escopo` está e onde não está** —
+sobra é vazamento, falta é a agência perder um pedaço do produto em silêncio.
+
+**Zero divergências nos dois bancos.** Vale como validação independente da
+reconstrução: as 58 migrações não só criaram as colunas certas, como deixaram o
+RLS exatamente onde a classificação manda. E o arquivo avisa por que isso não era
+garantido — o laço da 054 rodou UMA vez, então toda tabela criada depois dela
+depende da política escrita na própria migração.
+
 ### O que o staging ainda NÃO tem
+
 
 Esquema não é ambiente. Continuam faltando, e estão no
 [tasks/todo.md](../../tasks/todo.md): variáveis de ambiente, um app ML separado
