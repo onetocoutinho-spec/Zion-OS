@@ -208,6 +208,66 @@ troca o texto do botão para "Importando…". Numa loja que opera sozinha, é on
 alguém fecha a aba achando que travou — e a importação não tem transação
 cobrindo o conjunto: cair no meio deixa produtos sem parte das variações.
 
+#### Achado 4 — a grade chegou sem cor e sem tamanho (26/08)
+
+Você apontou um cartão de produto e disse que aquilo era **uma variação** — uma
+numeração de uma cor. O agrupamento estava certo: era o pai `2344016` com nove
+derivações. Medindo o produto no banco apareceu o problema de verdade:
+
+    9 variantes · 1 cor distinta · 1 tamanho distinto
+
+**Nove variações que ninguém consegue distinguir.** Para o Mercado Livre isso é
+fatal: `COLOR` e `SIZE` são 2 dos 6 obrigatórios da categoria de calçado, e
+[AUD-007](AUD-007-o-que-o-ml-exige-nas-categorias-reais.md) mediu que eles vêm
+**do cadastro**, não da resposta do ML.
+
+A causa é a exportação: **28 colunas, nenhuma chamada `Cor` ou `Tamanho`**. A
+informação existe grudada dentro de `Nome da Derivação`:
+
+    "SANDALIA MOLEKINHA 2312.260 TURIM FEM (9583 ROSA/SILVER 35)"
+
+Confirmado com você em 26/08: **o Magazord não tem relatório com essas colunas.**
+Sem exportação melhor, ou se tira do texto ou a grade não existe.
+
+**A prova do tamanho** é o `Código Agrupador`, que junta produto + cor e **não**
+inclui o tamanho. Comparando só letras e dígitos, o parêntese começa com a cauda
+do agrupador; o que sobra é o tamanho. Subtração, não palpite — e palpite erraria,
+porque há tamanho `37/38` e cor `PRETO 01/CAMEL 1`, com número no meio.
+
+**A prova da cor** é a repetição entre produtos: código de fornecedor é quase
+único, palavra de cor repete. Nos 1462 grupos de cor:
+
+    PRETO 394 · BRANCO 194 · ROSA 186 · AZUL 109 · MARINHO 65 · BEGE 64
+    ...e 1212 palavras num único produto
+
+O vocabulário sai do próprio arquivo, com três filtros — sem dígito (`15745`
+está em 62 produtos e é código), 3+ letras (`N`, `A`, `T` são iniciais de linha),
+2+ produtos. A cor é o sufixo que começa na primeira palavra reconhecida.
+
+**Medido pelo importador, no arquivo real:**
+
+| | |
+|---|---|
+| variações | 7224 |
+| com tamanho | 7211 (99,8%) |
+| com cor | 7140 (98,8%) |
+| produtos com 2+ variações | 900 |
+| ainda com variação indistinguível | **2** |
+
+Os 2 restantes são as 13 linhas em que o agrupador não prova nada. Saem com cor
+e tamanho **vazios** — e vazio vira pergunta, que é o desfecho certo.
+
+**O que continua aberto, e é decisão de produto:** a cor sai com o material
+junto (`"preto nobu"`) e **não** está traduzida para os valores que o ML aceita.
+A tradução é a T3, onde a lista vem do marketplace. Cortar o "nobuck" exigiria
+uma segunda lista de palavras sem evidência de que a loja não chama a cor assim.
+
+**Consequência para o percurso:** os 1003 produtos importados antes deste achado
+estão com nome, cor e tamanho antigos. O passo 3 precisa ser **refeito** antes
+dos passos 4 a 8.
+
+---
+
 ### Antes dos passos 4 a 6 — o ambiente da IA, confirmado
 
 `/api/saude/ia` (sem `?sondar`, que não toca a rede e não custa nada), lida na
