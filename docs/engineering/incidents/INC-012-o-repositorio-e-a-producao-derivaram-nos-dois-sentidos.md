@@ -4,7 +4,7 @@
 Status:      FECHADO em 25/08 — migração 077, nos dois bancos
 Detectado:   2026-08-25, comparando o staging recém-migrado com a produção
 Severidade:  baixa hoje; o que preocupava era a classe, não o caso
-Aberto:      a convenção de auto-registro da 024, que catorze migrações ignoram
+Aberto:      nada — a convenção da 024 foi reparada pela 078 e ganhou sentinela
 ```
 
 ## Como apareceu
@@ -117,5 +117,37 @@ todo o `src` e reprova qualquer `const { data } = ... .rpc(`. Os outros 17
 pontos de RPC do repositório já liam `error`; o teste é o que impede o número de
 voltar a ser três.
 
-**As catorze sem auto-registro** — decidir se a convenção da 024 vale ou não
-vale. Uma convenção que catorze arquivos ignoram não é convenção, é folclore.
+## As catorze sem auto-registro — reparadas pela 078
+
+Decidido que a convenção vale. A
+[078](../../../database/migrations/078-o-ledger-recupera-as-catorze.sql) registra
+035–042 e 071–076 por **baseline com evidência**: cada linha só entra se o
+artefato dela existir naquele banco, e onde não existe a ausência continua
+significando "não aplicada".
+
+Os catorze arquivos NÃO foram alterados. A regra é da própria 024, escrita
+quando ela registrou 001–016: *"migrações anteriores são DOCUMENTOS HISTÓRICOS —
+não são alteradas retroativamente"*. Editá-los faria os arquivos mentirem sobre
+o que rodou naquele dia, e não consertaria banco nenhum — arquivo não roda
+sozinho.
+
+Duas evidências (040 e 072) são CHECKs que migrações posteriores reescrevem
+mantendo o valor: provam que o EFEITO está presente, não que aquele arquivo
+específico rodou. Está dito na migração e aqui, para ninguém ler mais do que
+está escrito. É a mesma limitação do baseline da 024.
+
+Resultado nos dois bancos, medido depois de aplicar:
+
+```
+76 linhas no ledger · última 078 · nenhum número sem linha
+```
+
+(017–021 não existem como arquivo; 001b é seed de demonstração e a 024 decidiu
+não registrá-la.)
+
+**E a décima quinta não acontece.** `scripts/migracaoSeRegistra.test.ts` reprova
+qualquer migração ≥ 024 sem o próprio INSERT. A lista de históricas é congelada
+em catorze e só pode encolher — um terceiro teste prova que ela é EXATAMENTE o
+conjunto de arquivos que não se registram, então ela não pode isentar um arquivo
+novo em silêncio.
+
