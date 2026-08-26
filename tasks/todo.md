@@ -34,11 +34,14 @@ Antes de percorrer:
       repositório e produção nos dois sentidos: [INC-012](../docs/engineering/incidents/INC-012-o-repositorio-e-a-producao-derivaram-nos-dois-sentidos.md)
 - [x] **Variáveis do staging** — `.env.staging` criado em 25/08 com a URL e a chave
       anônima do Supabase de staging PREENCHIDAS (são públicas por desenho)
-- [ ] **Preencher as credenciais** que sobraram no `.env.staging`, cada uma com o
-      lugar de onde se pega anotado ao lado: `SUPABASE_SERVICE_ROLE_KEY`, `APP_URL`,
-      `ML_CLIENT_ID`/`ML_CLIENT_SECRET`/`ML_REDIRECT_URI`, chave de IA, `CRON_SECRET`
-- [ ] Conferir com `node scripts/conferirAmbienteDeStaging.mjs` — veredito por variável,
-      **sem imprimir valor**, e recusa apontar o staging para o banco de produção
+- [x] **Credenciais preenchidas e conferidas** em 25/08 — `node scripts/conferirAmbienteDeStaging.mjs`
+      dá **0 erros**: as duas do Supabase, o `service_role` e as três do Mercado Livre
+- [ ] `OPENAI_API_KEY` — não é opcional para o percurso inteiro: sem ela os passos 4, 5 e 6
+      (imagens, descrições, atributos) não rodam. `APP_URL` e `CRON_SECRET` seguem opcionais
+- [ ] **O host do redirect é um preview da branch `fix-multitenancy-security`**, não da
+      `feat/portal-da-lojista`. Medir ali é medir código antigo — sem a jornada, sem o
+      conserto da grade, sem os atributos. Apontar para o preview da branch atual, ou
+      aceitar conscientemente que a medição não cobre o que foi construído
 - [ ] Para rodar local contra o staging: `cp .env.staging .env.development.local`
       (o Next NÃO carrega `.env.staging` — ver a ressalva na
       [05](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md)). Para voltar, apague o arquivo
