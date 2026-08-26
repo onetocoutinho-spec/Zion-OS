@@ -40,9 +40,14 @@ Antes de percorrer:
 - [ ] Para rodar local contra o staging: `cp .env.staging .env.development.local`
       (o Next NÃO carrega `.env.staging` — ver a ressalva na
       [05](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md)). Para voltar, apague o arquivo
-- [ ] **App ML separado** para staging, com `ML_REDIRECT_URI` próprio
-      ([04-MERCADO-LIVRE-STAGING.md](../docs/staging-setup/04-MERCADO-LIVRE-STAGING.md)) —
-      nunca o `client_secret` de produção
+- [ ] **App ML separado** para staging — o que cadastrar está medido no código em
+      [12-O-QUE-CADASTRAR-NO-APP-ML.md](../docs/staging-setup/12-O-QUE-CADASTRAR-NO-APP-ML.md):
+      Redirect URI `https://<host>/cliente/conectar-ml`, scopes `offline_access read write`.
+      Nunca o `client_secret` de produção
+- [ ] **Um host https**, e isto não é detalhe: `api/ml/autorizar` recusa redirect que não
+      seja https, porque o ML recusa na borda com um 403 branco. NÃO dá para conectar o ML
+      de um `next dev` em localhost — precisa de deploy de preview ou túnel, com a URL
+      cadastrada no app. Sem isso o passo 7 para no dry-run, que já é a queda prevista
 - [ ] A conta ML conectada é de **teste ou controlada**. O ML não tem sandbox completo:
       publicar por uma conta que vende coloca anúncio de teste numa loja real
 
