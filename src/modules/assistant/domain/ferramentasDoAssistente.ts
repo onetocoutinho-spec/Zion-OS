@@ -326,10 +326,28 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    // ESTA FERRAMENTA NÃO ATENDE O VERBO "PREPARE" — e atendia, o que matou a
+    // ação central do produto.
+    //
+    // MEDIDO EM 25/08/2026, em `copilot_mensagens`: 93 turnos de assistente,
+    // 37 conversas, 31/07 a 24/08. `preparacao_de_anuncio` foi chamada 13
+    // vezes. `propor_anuncio` — a ferramenta que de fato prepara o anúncio, e
+    // que o prompt manda usar — foi chamada ZERO vezes. Ela está implementada
+    // e alcançável no executor; o modelo nunca a escolheu.
+    //
+    // A causa estava escrita aqui: a descrição dizia "use para 'quais produtos
+    // já podem virar anúncio?' E ANTES DE 'prepare todos que estiverem
+    // prontos'" — e o prompt de sistema repetia a mesma frase. O verbo de AÇÃO
+    // apontava para a ferramenta de LEITURA. O modelo obedecia, relatava o
+    // estado, e o turno acabava. A lojista pedia para preparar e recebia um
+    // relatório.
+    //
+    // Uma descrição de ferramenta de leitura não pode reivindicar um verbo de
+    // ação, nem "para depois" — o modelo não lê "antes de", lê o exemplo.
     nome: "preparacao_de_anuncio",
     efeito: "le",
     descricao:
-      "O estado REAL da preparação de anúncio. Sem produtoId: quantos produtos já podem virar anúncio, quantos estão travados e por quê — use para \"quais produtos já podem virar anúncio?\" e antes de \"prepare todos que estiverem prontos\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
+      "SÓ RELATA O ESTADO — não prepara nada. Sem produtoId: quantos produtos já podem virar anúncio e quantos estão travados, com o motivo — use para \"quais produtos já podem virar anúncio?\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. Quando o lojista mandar PREPARAR (\"prepara esse\", \"prepare os que estiverem prontos\", \"gera o anúncio\"), a ferramenta é propor_anuncio, não esta — se você só relatar o estado, ele pediu uma ação e recebeu um relatório. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
     parametros: {
       type: "object",
       properties: {
@@ -633,7 +651,7 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
+      "Monta uma proposta de MELHORAR O TÍTULO NO CATÁLOGO DO ZION. NÃO troca o título do anúncio que está no ar: o comprador continua vendo o antigo — para trocar no ar é propor_titulo_no_anuncio, e confundir as duas faz o lojista achar que corrigiu o que continua errado vendendo. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título e NÃO estiver falando do que está publicado. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
       properties: { produtoId: { type: "string" }, instrucao: {
@@ -706,14 +724,40 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    // A FERRAMENTA QUE NUNCA DISPAROU — ver o cabeçalho de
+    // `preparacao_de_anuncio`. Zero chamadas em 93 turnos, estando
+    // implementada, porque a ferramenta de leitura vizinha reivindicava o verbo
+    // "preparar". Esta descrição agora reivindica o verbo de volta, e diz as
+    // palavras que o lojista usa.
+    //
+    // FALTA AINDA O LOTE. "prepare todos que estiverem prontos" é a frase que o
+    // prompt anuncia e que esta ferramenta não executa: ela leva UM produtoId.
+    // `propor_gravacao` já resolveu o mesmo problema com `produtoIds` no
+    // plural; enquanto isto não existir aqui, o caminho honesto para o lote é
+    // um produto por vez, dito ao lojista como tal.
     nome: "propor_anuncio",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de GERAR O ANÚNCIO de um produto — título, descrição e ficha técnica. NÃO gera nada: quem dispara é o lojista, clicando, e leva alguns minutos. Antes de propor, ela confere se o produto tem tudo que o anúncio precisa; se faltar algo, devolve o que falta em vez de propor. Use com um produtoId que veio de achar_produto.",
+      "PREPARA O ANÚNCIO — título, descrição e ficha técnica. É esta a ferramenta quando o lojista MANDA fazer: \"prepara esse\", \"prepare todos que estiverem prontos\", \"gera o anúncio dele\", \"pode fazer\". Não confunda com preparacao_de_anuncio, que só relata o estado. NÃO gera na hora: monta o cartão, e quem dispara é o lojista clicando. Dois modos, e você escolhe pelo que ele disse: UM produto, com produtoId vindo de achar_produto; ou TODOS os que estiverem prontos, com todosOsProntos=true e SEM produtoId — aí eu mesmo seleciono no catálogo, com a mesma régua de preparacao_de_anuncio, e devolvo quantos entraram, quantos ficaram de fora e por quê. Nunca monte a lista você: passar ids que você juntou de uma leitura anterior deixaria o escopo desatualizado. Antes de propor, confiro se cada produto tem tudo que o anúncio precisa; se faltar, devolvo o que falta em vez de propor.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
-      required: ["produtoId"],
+      properties: {
+        produtoId: {
+          type: "string",
+          description: "UM produto — o id que veio de achar_produto. Vazio quando for todosOsProntos.",
+        },
+        // BOOLEANO EXPLÍCITO, e não "produtoId vazio = todos".
+        //
+        // `preparacao_de_anuncio` usa a ausência do id para significar "o
+        // catálogo", e ali isso é barato: ela só lê. Aqui a mesma convenção
+        // faria um `produtoId` esquecido virar um lote de dezenas de
+        // otimizações. O modo caro pede uma afirmação, não um esquecimento.
+        todosOsProntos: {
+          type: "boolean",
+          description:
+            "true para preparar TODOS os produtos prontos do catálogo. Use só quando ele pedir vários (\"prepare todos que estiverem prontos\", \"faz os que dá\"). Deixe produtoId vazio quando usar isto.",
+        },
+      },
     },
   },
 ];

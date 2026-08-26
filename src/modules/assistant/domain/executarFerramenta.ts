@@ -48,6 +48,7 @@ import {
 } from "./escopoDoLote";
 import {
   montarPropostaDeAnuncio,
+  montarPropostaDeAnuncioEmLote,
   type ProdutoParaAnunciar,
   type PropostaDeAnuncio,
 } from "./propostaDeAnuncio";
@@ -387,6 +388,19 @@ export interface ContextoDoAnuncio {
   }>;
   /** A margem do lojista, para o pricing saber contra o que calcular. */
   margem: () => Promise<number>;
+  /**
+   * Quantas otimizações ainda cabem no mês — para o LOTE não propor o que a
+   * cota não paga.
+   *
+   * `null` = não consegui ler. É a mesma resposta honesta de `quotaEsteira`, e
+   * quem consome decide: `montarPropostaDeAnuncioEmLote` NÃO corta nesse caso e
+   * diz que não leu (fail-open, como `estadoDaCota`). Zero é diferente de
+   * `null` — zero é "acabou", e aí o lote nem se propõe.
+   *
+   * Opcional porque as telas que montam este contexto à mão não a carregam;
+   * ausente, cai no mesmo caminho de `null`.
+   */
+  cotaRestante?: () => Promise<number | null>;
   /**
    * Roda o agente de TÍTULO — o mesmo A3 do catálogo de agentes.
    *
@@ -1362,6 +1376,78 @@ export async function executarFerramenta(
 
     case "propor_anuncio": {
       const id = texto(args, "produtoId");
+
+      // ---- O LOTE: "prepare todos que estiverem prontos" ----
+      //
+      // QUEM SELECIONA É O BACKEND, e a seleção é a MESMA que
+      // `preparacao_de_anuncio` relata — `avaliarPreparacao` +
+      // `selecionarParaPreparar`, sobre o catálogo lido com o tenant da sessão.
+      // Uma segunda régua aqui divergiria da primeira no dia em que uma
+      // mudasse, e a lojista veria "12 prontos" virar 9 na fila.
+      //
+      // O modelo não manda a lista. Ele diz que o pedido foi "todos"; os ids
+      // saem daqui.
+      if (args.todosOsProntos === true && !id) {
+        const a = ctx.anuncio;
+        if (!a) {
+          return { saida: { erro: "A preparação de anúncio não está disponível nesta tela." } };
+        }
+        const margemMinima = await a.margem();
+        const { itens, totalNoCatalogo } = await a.catalogo();
+        const selecao = selecionarParaPreparar(
+          itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, { margemMinima })),
+          totalNoCatalogo
+        );
+        // Porto ausente cai em `null` — que é "não li", e não corta. Ver o
+        // comentário do porto e `estadoDaCota`.
+        const cotaRestante = a.cotaRestante ? await a.cotaRestante() : null;
+        const proposta = montarPropostaDeAnuncioEmLote(selecao, { cotaRestante });
+        // Não há lote a propor — e o motivo vai inteiro, porque é a resposta.
+        if (proposta.tipo !== "lote") {
+          return {
+            propostaDeAnuncio: proposta,
+            saida: {
+              pronto: false,
+              frase: proposta.tipo === "sem_alvo" ? proposta.mensagem : "",
+            },
+          };
+        }
+        return {
+          propostaDeAnuncio: proposta,
+          // O modelo recebe as CONTAGENS e os motivos — nunca a lista de ids.
+          // Uma lista de 47 ids não ajuda ninguém a decidir, e é o tipo de coisa
+          // que ele acabaria escrevendo na resposta.
+          saida: {
+            vaiPreparar: proposta.alvos.length,
+            analisados: proposta.analisados,
+            jaTinhamAnuncio: proposta.jaPreparados,
+            foraPelaCota: proposta.foraPelaCota,
+            cotaDesconhecida: proposta.cotaDesconhecida,
+            travados: proposta.travados.map((t) => ({
+              motivo: t.motivo,
+              quantos: t.quantos,
+              exemplos: t.exemplos,
+            })),
+            frase: proposta.resumo,
+            aviso:
+              "Nada foi enfileirado ainda. O cartão tem o botão; quem dispara é o lojista. Repasse a frase inteira — as ressalvas são o conteúdo.",
+          },
+        };
+      }
+
+      // SEM ALVO NENHUM não é "produto não encontrado".
+      //
+      // O erro abaixo diz "use achar_produto antes", que manda o modelo buscar
+      // um produto que ele nunca nomeou. Quando não veio nem id nem o lote, o
+      // que falta é a ESCOLHA, e quem escolhe é o lojista.
+      if (!id) {
+        return {
+          saida: {
+            erro: "Não sei o que preparar. Pergunte ao lojista de qual produto se trata, ou use todosOsProntos=true se ele pediu todos.",
+          },
+        };
+      }
+
       // O SERVIDOR primeiro. `paraAnunciar` vinha do corpo da requisição — a
       // tela montava e mandava —, e quem manda o corpo escolhia o que a
       // proposta acreditava. Com o porto de anúncio, os dados vêm do banco com
@@ -2051,8 +2137,19 @@ async function avaliarAnuncio(
             aviso: `Analisei ${selecao.analisados} de ${totalNoCatalogo} produtos. Diga isso — não afirme que olhou o catálogo inteiro.`,
           }
         : {}),
-      comoPreparar:
-        "Para cada elegível, chame propor_anuncio com o produtoId. Isso monta o cartão; quem dispara a geração é o lojista, clicando.",
+      // ---- INSTRUÇÃO PARA O MODELO, e ela VAZOU PARA A TELA em 25/08/2026.
+      //
+      // Chamava-se `comoPreparar` e dizia "Para cada elegível, chame
+      // propor_anuncio com o produtoId". O modelo imprimiu o texto inteiro na
+      // resposta, para a lojista, como "Observação da ferramenta: ...". Nome de
+      // campo neutro num objeto de saída se lê como conteúdo — e o resto desta
+      // saída É conteúdo.
+      //
+      // Duas mudanças, e as duas por causa daquele vazamento: a chave diz o que
+      // é, e o valor começa avisando. O conteúdo também estava velho — mandava
+      // uma chamada por produto, e o lote passou a existir no mesmo dia.
+      instrucaoInterna:
+        "NÃO MOSTRE ESTE TEXTO AO LOJISTA — é instrução para você. Para preparar TODOS os elegíveis, chame propor_anuncio com todosOsProntos=true e sem produtoId. Para um só, com o produtoId dele. Em qualquer caso a ferramenta monta o cartão; quem dispara é o clique da lojista.",
     },
   };
 }

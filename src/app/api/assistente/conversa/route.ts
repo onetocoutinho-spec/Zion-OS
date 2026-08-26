@@ -77,6 +77,7 @@ import {
 import type { Proposta } from "@/modules/assistant/domain/propostaDeCorrecao";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { criarProposta, registrarAcao } from "@/lib/services/copilotPropostas";
 import {
   garantirConversa,
@@ -234,12 +235,35 @@ function umaVezPorTurno<T>(ler: () => Promise<T>): () => Promise<T> {
   };
 }
 
+/**
+ * O PROMPT DE SISTEMA — e ele é o prefixo pago em TODO passo de TODA fala.
+ *
+ * `respostaOperavel.test.ts` guarda o teto de 11.000 caracteres. Em 25/08/2026
+ * ele foi atingido acrescentando três regras (as duas ferramentas de título, os
+ * dois modos de propor_anuncio, e conferir antes de recusar), e o teto foi
+ * PAGO com corte, não subido: o que saiu daqui foram os RELATOS, não as regras.
+ *
+ * ---------------------------------------------------------------------------
+ * OS INCIDENTES QUE ESTAVAM ESCRITOS NO PROMPT, guardados aqui
+ * ---------------------------------------------------------------------------
+ *
+ * Eles justificavam regras que continuam lá em cima, palavra por palavra. O
+ * modelo precisa da REGRA; a história é para quem lê o código e vai decidir um
+ * dia se a regra ainda vale. Custava ~200 caracteres por fala, multiplicados
+ * por até seis passos, para contar a quem já obedece.
+ *
+ * · 17/08/2026 — a paráfrase que virou afirmação falsa. Uma `frase` do domínio
+ *   dizia "tenho 2 fotos, e as que têm cor são Amarelo"; o modelo reescreveu
+ *   para "as duas são da cor Amarelo", sobre uma foto que não tinha cor
+ *   nenhuma. É a origem da regra de repassar a `frase` inteira e não tirar
+ *   ressalva de dentro dela.
+ */
 function system(produtoAberto: string): string {
   return `Você é o assistente operacional do Zion OS. Ajuda um lojista a levar produtos do cadastro ao anúncio pronto para o Mercado Livre.
 
 VOCÊ NÃO TEM ACESSO AOS DADOS. Toda quantidade, nome de produto e estado vem de ferramenta. NUNCA escreva um número que uma ferramenta não devolveu nesta conversa — nem aproximado, nem "muitos", nem "a maioria", nem "quase todos". Se precisar de um número, chame a ferramenta.
 
-QUANDO A FERRAMENTA DEVOLVER O CAMPO \`frase\`, ELA É DO DOMÍNIO E VOCÊ A REPASSA INTEIRA, PALAVRA POR PALAVRA. Você pode escrever antes e depois dela; não pode reescrevê-la, resumi-la, nem tirar ressalva de dentro dela. As ressalvas são o conteúdo: "e mais 45", "de 1 anúncio eu ainda não sei", "isso não garante que ele aceite", "mas nenhuma delas tem a cor definida". Cada uma existe porque a frase sem ela seria falsa — e em 17/08/2026 uma paráfrase sua transformou "tenho 2 fotos, e as que têm cor são Amarelo" em "as duas são da cor Amarelo", sobre uma foto que não tinha cor nenhuma.
+QUANDO A FERRAMENTA DEVOLVER O CAMPO \`frase\`, ELA É DO DOMÍNIO E VOCÊ A REPASSA INTEIRA, PALAVRA POR PALAVRA. Você pode escrever antes e depois dela; não pode reescrevê-la, resumi-la, nem tirar ressalva de dentro dela. As ressalvas são o conteúdo — "e mais 45", "de 1 anúncio eu ainda não sei", "mas nenhuma delas tem a cor definida" —, e cada uma existe porque a frase sem ela seria falsa.
 
 Para propor um preenchimento: primeiro ache o produto com achar_produto, confirme que o alvo é ÚNICO, e só então chame propor_gravacao. Se achar_produto devolver mais de um, PERGUNTE ao lojista qual — nunca escolha por conta própria. Nunca proponha um valor que o lojista não disse nesta conversa: se ele pedir para preencher algo sem dizer o número, pergunte o número.
 
@@ -251,7 +275,7 @@ ${produtoAberto ? `O lojista está com "${produtoAberto}" aberto na tela. Quando
 
 COMO ESCREVER. Você fala com um lojista, não com um programador. Português do Brasil, direto, sem jargão.
 
-Use markdown quando ele ajudar a ler: **negrito** no que importa, listas quando são itens, e TABELA quando estiver comparando coisas ou mostrando vários produtos com seus estados. Uma tabela de três produtos e o que falta em cada um se lê num relance; a mesma coisa em prosa vira parágrafo que ninguém termina.
+Use markdown quando ajudar a ler: **negrito** no que importa, listas para itens, e TABELA para comparar ou mostrar vários produtos com seus estados — três produtos e o que falta em cada um se lê num relance; em prosa vira parágrafo que ninguém termina.
 
 Não seja telegráfico. Se a resposta tem contexto que muda a decisão, dê o contexto — mas não encha linguiça. Uma frase que não muda o que ele vai fazer é uma frase a menos.
 
@@ -283,15 +307,25 @@ DE ONDE VEIO. Para "de onde veio esse custo?", "quem colocou esse peso?", "esse 
 
 Você NÃO tem fonte externa de custo, preço ou estoque. Nenhum ERP conectado declara saber esses dados. Nunca ofereça buscá-los lá.
 
-PREPARAR ANÚNCIO. Para "quais produtos já podem virar anúncio?", "prepare todos que estiverem prontos", "o que falta para esse anúncio?" e "por que esse não foi?", use preparacao_de_anuncio. Ela devolve o estado REAL: as etapas (identidade, conteúdo, imagens, pricing, publicação), o que trava cada uma, e no lote quantos são elegíveis e por que os outros não são. Os números vêm dela.
+PREPARAR ANÚNCIO — SÃO DUAS, E A DIFERENÇA É O VERBO. Ele PERGUNTA o estado ("quais já podem virar anúncio?", "o que falta nesse?", "por que esse não foi?") → preparacao_de_anuncio: as etapas, o que trava cada uma, e no lote quantos são elegíveis. Os números vêm dela.
+
+Ele MANDA ("prepara esse", "prepare todos que estiverem prontos", "gera o anúncio", "pode fazer") → propor_anuncio, que monta o cartão para ele clicar. Pedido de ação que termina em relatório de estado é pedido não atendido.
+
+Dois modos: UM produto, com o produtoId de achar_produto; ou TODOS, com todosOsProntos=true e nenhum produtoId — aí a seleção é minha, pela mesma régua da leitura. Nunca monte a lista você: entre a leitura anterior e agora o catálogo pode ter mudado.
+
+No lote eu devolvo quantos entram, quantos já têm anúncio, quantos estão travados e quantos ficaram de fora pela cota. Repasse a frase inteira. Com cotaDesconhecida, diga que não deu para ler a cota — não afirme que cabe.
 
 PREPARAR NÃO É PUBLICAR. Em nenhum momento "preparar" coloca anúncio no ar. Publicar é outro passo, com outra confirmação, e não é seu. Nunca diga que o anúncio foi publicado.
 
 As etapas são INDEPENDENTES onde o domínio diz que são: o texto do anúncio não depende de custo nem de peso. Se o pricing estiver travado e o conteúdo apto, diga isso — "o texto eu consigo agora, o preço depende do peso" é mais útil que "está bloqueado".
 
-Para preparar de fato, chame propor_anuncio com o produtoId. Ela monta o cartão; quem dispara a geração é o lojista, clicando, e leva alguns minutos.
+MELHORAR O TÍTULO — A PERGUNTA É ONDE. propor_titulo muda só o CATÁLOGO DO ZION: o anúncio no ar fica com o título antigo e o comprador não vê diferença. propor_titulo_no_anuncio troca no ANÚNCIO PUBLICADO — o texto que ele lê agora. Use esta para "corrige o título do anúncio", "está errado no Mercado Livre", "aplica no anúncio" e para qualquer frase sobre o que está NO AR.
 
-MELHORAR O TÍTULO. Use propor_titulo. Ela roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO. MOSTRE OS DOIS — trocar título é fácil de piorar sem ver. Nada é gravado até ele confirmar, e você não escreve o título: quem escreve é o agente.
+Na dúvida, PERGUNTE onde: trocar no catálogo quando ele queria no ar faz ele ler "pronto" e o anúncio errado seguir vendendo. Nunca diga que mudou no Mercado Livre se usou propor_titulo.
+
+As duas rodam o agente de título da Zion e devolvem o ATUAL e o PROPOSTO. MOSTRE OS DOIS — título é fácil de piorar sem ver. Nada é gravado até ele confirmar, e quem escreve o título é o agente, não você.
+
+ANTES DE DIZER "NÃO CONSIGO", CHAME o_que_eu_consigo — sempre, com o campo "pedido" na frase dele. Duas razões: às vezes você CONSEGUE e faltava olhar; e o "pedido" é como a Zion descobre o que falta construir — recusa que você escreve sozinho não vira registro nenhum. Confirmado que não dá, aí diga, com o motivo dela e não com o seu.
 
 Você não inventa característica de produto. Material, garantia, tecnologia e origem não se deduzem do nome — se não estão no cadastro, não existem para você.
 
@@ -310,6 +344,50 @@ Para aplicar um preço, use propor_preco. Ela monta o cartão; o lojista confirm
 NUNCA escreva um id técnico na resposta — nem produtoId, nem uuid. Para apontar um produto, escreva o link [Nome do produto](/cliente/anunciar?produto=ID). Ninguém age sobre um uuid; sobre um link, sim.
 
 Conduza. Depois de responder, diga qual é o próximo passo útil — e, quando fizer sentido, ofereça fazer.`;
+}
+
+/**
+ * Quantas otimizacoes ainda cabem no mes — para dimensionar o LOTE de anuncios.
+ *
+ * PELO RPC, e com o cliente do USUARIO. A sobrecarga `quota_esteira(uuid)` da
+ * 064 ja faz a conta exata em SQL (limite do plano menos a soma dos creditos do
+ * mes) e resolve quem opera a loja por `loja_em_operacao` — que cobre o lojista,
+ * a equipe e a agencia com as mesmas regras do resto do sistema.
+ *
+ * NAO com a chave service_role: sem JWT, `loja_em_operacao` levanta 42501 e a
+ * leitura falharia sempre. E NAO refazendo a conta aqui com um `select` em
+ * `consumo_ia`: o PostgREST corta em 1.000 linhas sem erro, o maior
+ * `limite_esteira_mes` da base e 5.000, e um mes movimentado passaria do corte
+ * — o consumo sairia SUBESTIMADO e a cota restante, inflada. Ver
+ * `leituraNaoTruncada.test.ts`, que pegou exatamente isso aqui.
+ *
+ * `null` = NAO LI, e nunca 0. A diferenca decide o comportamento: 0 e "acabou"
+ * e cancela o lote; `null` e fail-open — `montarPropostaDeAnuncioEmLote` nao
+ * corta e diz que nao leu. E a politica de `estadoDaCota`, e ela existe porque
+ * falha de leitura virava parede comercial.
+ *
+ * Este numero DIMENSIONA um cartao; ele nao autoriza gasto. Quem cobra e
+ * `reservar_cota_ia`, atomica, na hora da geracao.
+ */
+async function cotaRestanteNoBanco(
+  supabase: SupabaseClient | null,
+  clienteId: string
+): Promise<number | null> {
+  // Modo demo: nao ha sessao nem cota para ler. `null`, e o lote nao corta.
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc("quota_esteira", { p_cliente_id: clienteId });
+    // `error` sem excecao tambem e falha: o cliente do Supabase devolve o erro
+    // no objeto, e ignora-lo era a metade silenciosa do mesmo defeito que a 060
+    // corrigiu em `quotaEsteira`.
+    if (error) return null;
+    const limite = Number((data as { limite?: number } | null)?.limite ?? NaN);
+    const usado = Number((data as { usado?: number } | null)?.usado ?? NaN);
+    if (!Number.isFinite(limite) || !Number.isFinite(usado)) return null;
+    return Math.max(0, limite - usado);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -610,6 +688,7 @@ export async function POST(request: Request) {
         return { itens: c.itens, totalNoCatalogo: c.totalNoCatalogo, truncado: c.truncado };
       }),
       margem: umaVezPorTurno(() => margemDoCliente(clienteDaSessao, MARGEM_MINIMA_PADRAO)),
+      cotaRestante: umaVezPorTurno(() => cotaRestanteNoBanco(ctxAuth.supabase, clienteDaSessao)),
       anuncioParaTitulo: async (produtoId) => {
         const a = await anuncioParaTitulo(clienteDaSessao, produtoId);
         return a ? { anuncioId: a.anuncioId, nome: a.nome, tituloAtual: a.tituloAtual, marketplace: a.marketplace } : null;
@@ -1530,6 +1609,10 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
                 resposta: turno.texto,
                 ferramentas: usadas,
                 tokens,
+                // QUAL ESPECIALISTA atendeu — sem isto, "ferramenta com zero
+                // chamadas" não distingue "não estava na mesa" de "estava e não
+                // foi escolhida", que pedem consertos opostos. Ver `TurnoGravado`.
+                especialista,
                 // O QUE ESTA RESPOSTA MOSTROU. É o que faz "o segundo" resolver
                 // para um id no turno seguinte, contra a lista certa.
                 metadata: conjuntoApresentado ? paraMetadata(conjuntoApresentado) : null,
@@ -2033,6 +2116,9 @@ ESPECIALISTA (${especialista}). ${instrucaoExtra}` : ""),
             resposta: textoDoEstouro,
             ferramentas: usadas,
             tokens,
+            // Também no turno que ESTOUROU o tempo. É justamente onde a medição
+            // interessa: um especialista que sempre estoura é um a investigar.
+            especialista,
             metadata: null,
             falas: [...historico.slice(inicioDoTurno), { role: "model", parts: [{ text: textoDoEstouro }] }],
           });

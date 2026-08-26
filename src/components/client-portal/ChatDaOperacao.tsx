@@ -30,6 +30,9 @@ import {
   Paperclip,
 } from "lucide-react";
 import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
+// A MESMA fila do "Otimizar tudo" da tela de otimização — não uma segunda.
+// Duas filas divergiriam no dia em que uma ganhasse retentativa e a outra não.
+import { enfileirarProdutos } from "@/lib/services/filaOtimizacaoProduto";
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
@@ -1806,7 +1809,9 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.propostaDeAnuncio && (
+                    <CartaoDeAnuncio p={t.propostaDeAnuncio} clienteId={clienteId} />
+                  )}
                   {t.escopo && t.propostaId && (
                     <CartaoDoLote
                       e={t.escopo}
@@ -3210,9 +3215,121 @@ function CartaoDoCadastro({
  * Quando falta dado, NÃO existe botão. A pessoa lê o que falta e resolve; um
  * botão ali gastaria três minutos para devolver um anúncio com pendência.
  */
-function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
+/**
+ * O cartão do LOTE de anúncios — o que a pessoa lê antes de gastar a cota do mês.
+ *
+ * TRÊS ESTADOS, e nenhum deixa o botão ativo por engano:
+ *   parado      → mostra o escopo e oferece enfileirar
+ *   enfileirando→ botão travado, sem chance de clicar duas vezes
+ *   na fila     → vira registro, sem botão; o worker do servidor assume
+ *
+ * OS IDS VÊM DO SERVIDOR, prontos. O cartão não filtra nem reordena: se ele
+ * decidisse aqui quem entra, o número que o assistente falou na conversa e o
+ * número que vai para a fila poderiam divergir — e quem leu "12" veria 9.
+ *
+ * Enfileirar NÃO é gerar. O worker (`/api/otimizar/worker`, no cron) consome a
+ * fila e roda a esteira; a aba pode fechar. Por isso o texto do desfecho fala
+ * em fila, e não em anúncio pronto: prometer o anúncio aqui seria a mesma
+ * mentira que "preparei 50" quando foram 47.
+ */
+function CartaoDeAnuncioEmLote({
+  p,
+  clienteId,
+}: {
+  p: Extract<PropostaDeAnuncio, { tipo: "lote" }>;
+  clienteId: string;
+}) {
+  const [estado, setEstado] = useState<"parado" | "enfileirando" | "na_fila">("parado");
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enfileirar() {
+    if (estado !== "parado") return;
+    setEstado("enfileirando");
+    setErro(null);
+    try {
+      await enfileirarProdutos(clienteId, p.alvos.map((a) => a.produtoId));
+      setEstado("na_fila");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui colocar na fila.");
+      setEstado("parado");
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-sm text-zinc-200">{p.resumo}</p>
+
+      {/* OS NOMES, não os ids. Ninguém confere um uuid; um nome, sim. */}
+      <ul className="flex flex-wrap gap-1.5">
+        {p.alvos.slice(0, 8).map((a) => (
+          <li
+            key={a.produtoId}
+            className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-zinc-400"
+          >
+            {a.nome}
+          </li>
+        ))}
+        {p.alvos.length > 8 && (
+          <li className="px-1.5 py-0.5 text-[11px] text-zinc-500">
+            e mais {p.alvos.length - 8}
+          </li>
+        )}
+      </ul>
+
+      {/* O QUE FICOU DE FORA, com o motivo. É a metade da resposta que diz à
+          pessoa o que resolver depois — esconder isso faria o lote parecer
+          completo quando não é. */}
+      {p.travados.length > 0 && (
+        <ul className="space-y-0.5 border-t border-white/5 pt-2">
+          {p.travados.slice(0, 4).map((t) => (
+            <li key={t.motivo} className="text-[11px] text-zinc-500">
+              <span className="text-zinc-400">{t.quantos}</span> {t.motivo.toLowerCase()}
+              {t.exemplos.length > 0 && ` — ${t.exemplos.slice(0, 2).join(", ")}`}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {erro && (
+        <p className="flex items-start gap-2 text-xs text-amber-300">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          {erro}
+        </p>
+      )}
+
+      {estado === "na_fila" ? (
+        <p className="flex items-center gap-1.5 text-xs text-emerald-300">
+          <CheckCircle2 size={13} />
+          {p.alvos.length} na fila. A IA processa no servidor — pode fechar a aba.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void enfileirar()}
+          disabled={estado === "enfileirando"}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
+        >
+          {estado === "enfileirando" ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Sparkles size={13} />
+          )}
+          {estado === "enfileirando"
+            ? "Colocando na fila…"
+            : `Preparar ${p.alvos.length} ${p.alvos.length === 1 ? "anúncio" : "anúncios"}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CartaoDeAnuncio({ p, clienteId }: { p: PropostaDeAnuncio; clienteId: string }) {
   if (p.tipo === "sem_alvo") {
     return <p className="text-sm text-zinc-300">{p.mensagem}</p>;
+  }
+
+  if (p.tipo === "lote") {
+    return <CartaoDeAnuncioEmLote p={p} clienteId={clienteId} />;
   }
 
   if (p.tipo === "falta_dado") {
