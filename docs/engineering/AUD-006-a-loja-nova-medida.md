@@ -44,7 +44,7 @@ e publicar anúncio.
 
 | # | Passo | Resultado | O que exige |
 |---|---|---|---|
-| 1 | assinar | — | criar conta (e-mail + senha) |
+| 1 | assinar | **parou aqui** — ver abaixo | criar conta (e-mail + senha) |
 | 2 | provisionar | — | depende de 1 |
 | 3 | importar base | — | **uma planilha de ERP real** — não o modelo gerado, que passa por construção |
 | 4 | imagens | — | `OPENAI_API_KEY`/`GEMINI_API_KEY` no escopo Preview da Vercel |
@@ -52,6 +52,44 @@ e publicar anúncio.
 | 6 | atributos | — | idem |
 | 7 | publicar | — | OAuth na conta do ML **de teste ou controlada** — nunca a da lojista |
 | 8 | acompanhar | — | depende de 7 |
+
+### Passo 1 — parou na confirmação de e-mail (26/08)
+
+A conta foi criada. O `signUp` funcionou e o app disse a coisa certa na hora:
+*"Conta criada. Confirme o e-mail que enviamos para entrar."*
+
+O que parou foi a volta. Tentando entrar antes de confirmar, a tela mostrou:
+
+```
+Não foi possível entrar: Email not confirmed
+```
+
+Em inglês, sem instrução e sem saída. `AuthGate` traduzia apenas
+`Invalid login credentials`; todo o resto caía no `${error.message}` cru.
+
+**E não era hipótese.** Medido na base de PRODUÇÃO no mesmo dia: um cadastro
+parado exatamente nesse ponto havia **27 dias** — nunca entrou, nunca virou
+perfil, e ninguém percebeu. (O e-mail começa com `zio`, então provavelmente é
+teste interno e não cliente perdido. O mecanismo é o mesmo para os dois.)
+
+O e-mail de confirmação some no spam, ou o serviço embutido do Supabase segura
+pelo limite, e a pessoa fica olhando uma frase em inglês.
+
+**Consertado no mesmo dia:** a mensagem virou português com instrução, e ganhou
+um botão de **reenviar a confirmação** ao lado. Frase sem botão continuaria
+sendo parede, só que traduzida. O reenvio responde igual com e sem conta — um
+reenvio que dissesse "esse e-mail não tem conta" viraria verificador de cadastro
+para quem quisesse descobrir quem usa o produto.
+
+**Destravado no staging para o percurso seguir:** a confirmação pendente foi
+marcada direto em `auth.users`, escopada ao único usuário pendente (9 usuários,
+0 pendentes depois). Isso é conserto de AMBIENTE, não comportamento de produto —
+em produção a confirmação continua exigida, e é ela que o botão de reenvio
+atende.
+
+> **Fica em aberto:** se o e-mail de confirmação chega de forma confiável. O
+> serviço embutido do Supabase é limitado e cai em spam; um SMTP próprio é a
+> diferença entre "a loja assina sozinha" e "a loja assina e espera".
 
 ### O que anotar em cada passo
 
