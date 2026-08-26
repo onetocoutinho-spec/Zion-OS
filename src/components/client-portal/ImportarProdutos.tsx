@@ -76,6 +76,20 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
     });
   }
 
+  /**
+   * O conserto de um clique para a grade achatada.
+   *
+   * Reanalisa com o mapeamento NOVO em mãos, e não com o do estado:
+   * `setMapeamento` só vale no próximo render, então reanalisar depois dele
+   * leria o mapeamento velho — e o aviso continuaria na tela depois do clique
+   * que o resolve.
+   */
+  function usarComoVariacao(coluna: string) {
+    const novo = { ...mapeamento, skuVariacao: coluna };
+    setMapeamento(novo);
+    setAnalise(analisarProdutosCsv(texto, "Mercado Livre", novo));
+  }
+
   function analisar() {
     const a = analisarProdutosCsv(texto, "Mercado Livre", mapeamento);
     setAnalise(a);
@@ -116,6 +130,10 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
   }
 
   const faltaNome = !mapeamento.nome;
+  // O aviso do alçapão sai do JSX para o TypeScript estreitar `colunaSugerida`
+  // uma vez só, em vez de uma asserção a cada uso.
+  const avisoDeGrade = analise?.avisoDeGrade ?? null;
+  const colunaDaGrade = avisoDeGrade?.colunaSugerida;
   const naoUsadas = headers.filter((h) => !Object.values(mapeamento).includes(h));
 
   return (
@@ -256,6 +274,25 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                       </span>
                     )}
                   </div>
+                  {/* O ALÇAPÃO DA GRADE — modules/catalog/domain/gradeAchatada.
+                      Avisa, nunca bloqueia: nome repetido é legítimo. O botão
+                      existe porque "SKU da variação" é vocabulário NOSSO, e
+                      quem não o conhece não sabe que existe conserto. */}
+                  {avisoDeGrade && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
+                        <AlertTriangle size={14} className="mt-px shrink-0" />
+                        <span>{avisoDeGrade.texto}</span>
+                      </p>
+                      {colunaDaGrade && (
+                        <div className="mt-2">
+                          <Button variant="ghost" onClick={() => usarComoVariacao(colunaDaGrade)}>
+                            <Wand2 size={14} /> Usar “{colunaDaGrade}” como SKU da variação
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" onClick={() => setEtapa("mapear")}>
                       <ArrowLeft size={14} /> Ajustar mapeamento

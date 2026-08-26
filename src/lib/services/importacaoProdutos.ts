@@ -14,6 +14,10 @@ import {
   precoMinimoOuNull,
   MARGEM_MINIMA_PADRAO,
 } from "../../modules/pricing/domain/modeloPreco.ts";
+import {
+  avisoDeGradeAchatada,
+  type AvisoDeGrade,
+} from "../../modules/catalog/domain/gradeAchatada.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -134,6 +138,16 @@ export interface AnaliseProdutos {
   faltandoObrigatorias: string[];
   amostra: LinhaProduto[];
   linhas: LinhaProduto[];
+  /**
+   * O arquivo parece ter grade e vai entrar ACHATADO? `null` quando não há
+   * o que avisar.
+   *
+   * NÃO impede a importação — nome repetido em linhas diferentes é legítimo.
+   * Existe porque o modo flat errado não falha: termina em verde e o estrago
+   * só aparece semanas depois, com os anúncios já no ar. Ver
+   * `modules/catalog/domain/gradeAchatada.ts`.
+   */
+  avisoDeGrade: AvisoDeGrade | null;
   erro?: string;
 }
 
@@ -408,6 +422,7 @@ export function analisarProdutosCsv(
     faltandoObrigatorias: ["nome"],
     amostra: [],
     linhas: [],
+    avisoDeGrade: null,
   };
   const { headers, linhas: registros } = parseCsv(texto);
   if (headers.length === 0 || registros.length === 0) {
@@ -429,6 +444,20 @@ export function analisarProdutosCsv(
     ? construirAgrupado(registros, cols, marketplacePadrao)
     : registros.map((r) => mapearLinha(r, cols, marketplacePadrao));
 
+  // O olhar que faltava: o arquivo tinha derivação e o modo caiu em flat?
+  //
+  // As colunas USADAS entram na busca porque o LINX chama a derivação de
+  // `Código`, que os apelidos entregam ao SKU — procurar só nas ignoradas
+  // deixaria passar justamente o caso que originou o módulo.
+
+  const avisoDeGrade = avisoDeGradeAchatada({
+    agrupado,
+    registros,
+    ...(cols["nome"] ? { colunaNome: cols["nome"] } : {}),
+    colunasIgnoradas,
+    colunasUsadas: Object.values(cols),
+  });
+
   return {
     modo: agrupado ? "agrupado" : "flat",
     total: linhas.length,
@@ -438,6 +467,7 @@ export function analisarProdutosCsv(
     faltandoObrigatorias,
     amostra: linhas.slice(0, 8),
     linhas,
+    avisoDeGrade,
   };
 }
 
