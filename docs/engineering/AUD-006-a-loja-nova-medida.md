@@ -46,7 +46,7 @@ e publicar anúncio.
 |---|---|---|---|
 | 1 | assinar | ✅ **passou sozinho** (com um tropeço, ver abaixo) | criar conta (e-mail + senha) |
 | 2 | provisionar | ✅ **passou sozinho** | — |
-| 3 | importar base | — | **uma planilha de ERP real** — não o modelo gerado, que passa por construção |
+| 3 | importar base | ✅ **passou sozinho** — ver abaixo | **uma planilha de ERP real** — não o modelo gerado, que passa por construção |
 | 4 | imagens | — | `OPENAI_API_KEY`/`GEMINI_API_KEY` no escopo Preview da Vercel |
 | 5 | descrições | — | idem |
 | 6 | atributos | — | idem |
@@ -140,6 +140,73 @@ vindos do vocabulário do produto, e a loja nascendo Ativa.
 `Essencial`, que até 25/08 não existia em `PLANOS` — abrir e salvar a ficha dela
 no painel da equipe reescreveria o plano em silêncio. Hoje o valor faz parte do
 vocabulário, e o `PLANO_INICIAL` sai do mesmo lugar que a lista.
+
+### Passo 3 — importar a base: passou, com três achados
+
+Exportação real de ERP: 7,5 MB, 28 colunas, separador `;`, acentos em
+Windows-1252. Resultado no banco:
+
+```
+1003 produtos · 7224 variações
+6973 variações com peso · 6972 com as três dimensões
+```
+
+**Duas suspeitas minhas caíram na medição.** Achei que o separador `;` e o
+Latin-1 quebrariam a leitura. Não quebram: `detectarDelimitador` e
+`decodificarTexto` já tratam os dois, e os acentos chegam corretos. Vale
+registrar porque foi a minha primeira hipótese e estava errada.
+
+**A grade foi reconhecida sozinha.** 1003 pais para 7224 derivações, agrupadas
+por `Código Pai`. O aviso de alçapão não disparou porque não havia alçapão — o
+modo agrupado ligou sozinho pela assinatura `Código` + `Código Pai`.
+
+#### Achado 1 — o produto não avisa que a aba está velha
+
+A primeira importação gravou os 1003 produtos com **peso zero**. O código
+publicado estava certo; a ABA é que estava com o pacote antigo, aberta desde
+antes do deploy. Três sintomas de uma causa: o `nome` não mapeava sozinho, a
+grade funcionava (regra velha) e o peso sumia (campo novo).
+
+O `/api/versao` que eu consultei é o SERVIDOR — e ele estava novo. O JavaScript
+da aba vem do cache e é outra coisa.
+
+Isso é o defeito que a própria rota `/api/versao` foi criada para pegar. O
+comentário dela diz: *"o autor abriu a tela, não achou um botão que já estava no
+ar e não tinha como saber por quê"*. Aconteceu de novo, e desta vez com dado
+indo para o banco no meio.
+
+Refeito com `Ctrl+Shift+R`, o peso entrou. Mas ninguém deveria precisar saber
+disso.
+
+#### Achado 2 — peso importado ≠ peso confiável
+
+Distribuição dos 6973:
+
+```
+6944  entre 50g e 5kg      mediana 450g — coerente com calçado
+  18  abaixo de 50g
+   1  entre 5 e 30kg
+  10  acima de 100kg       máximo exatamente 800,000
+```
+
+99,6% plausível. **28 fora** — e o máximo ser exatamente `800.000` num campo
+declarado em kg é a assinatura de grama digitada em coluna de quilo.
+
+O importador está certo: ele gravou o que a planilha disse. Mas 800 kg num
+chinelo produz frete absurdo e preço mínimo absurdo, e a precificação inteira
+depende do peso.
+
+Corrigir dividindo por mil seria INVENTAR dado. O caminho é o que esta base já
+usa para custo desde o estrago de R$ 30 milhões: `ehReferenciaDisfarcada`
+sinaliza o custo que parece código de modelo, e a pessoa decide. Peso implausível
+merece o mesmo — aviso na revisão, antes de gravar, sem bloquear e sem corrigir.
+
+#### Achado 3 — 40 requisições sem indicador de progresso
+
+A gravação são 3 lotes de produtos e 37 de variações, sequenciais. A tela só
+troca o texto do botão para "Importando…". Numa loja que opera sozinha, é onde
+alguém fecha a aba achando que travou — e a importação não tem transação
+cobrindo o conjunto: cair no meio deixa produtos sem parte das variações.
 
 ### O que anotar em cada passo
 
