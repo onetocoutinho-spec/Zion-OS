@@ -40,40 +40,66 @@ artefato:
 | `canais_marketplace.refresh_token_cifrado` | 061 | ❌ | ✅ |
 | tabelas `copilot_*`, `agencias`, `imagens_versoes` | 025+ | ❌ | ✅ |
 
-## O achado de passagem: o registro de produção está seis atrás
+## O achado de passagem: o registro de produção não parou por descuido
 
-`migracoes_aplicadas` existe em produção e tem **68 linhas**, indo até a **070**. Mas os
-artefatos de `071`–`076` estão todos lá:
+`migracoes_aplicadas` existe em produção, tem **68 linhas** e vai até a **070**.
+Os artefatos de `071`–`076` estão todos lá — `copilot_investigacoes`, o CHECK com
+`titulo_no_ml`, `ia_execucoes.ms_ferramentas`, `anuncios_gerados.saude_ml`,
+`imagens_produto.altura` e `.cor`. Produção está na 076.
 
-```
-071  tabela copilot_investigacoes          presente
-072  CHECK de copilot_propostas com 'titulo_no_ml'   presente
-073  ia_execucoes.ms_ferramentas           presente
-074  anuncios_gerados.saude_ml             presente
-075  imagens_produto.altura                presente
-076  imagens_produto.cor                   presente
-```
+A primeira leitura disto foi "seis aplicadas sem linha", como se alguém tivesse
+esquecido. **Está errada.** Nenhuma das migrações 071–076 tem auto-registro — nem
+as 035–042. São catorze arquivos que não registram a si mesmos, contra a
+convenção que a própria 024 declarou obrigatória: *"toda migração DEVE terminar
+com o próprio INSERT em migracoes_aplicadas"*.
 
-**Produção está na 076; o registro dela diz 070.** Seis migrações aplicadas sem linha. O
-registro existe justamente para responder "onde este banco está" — e responde errado. Quem
-confiar nele para preparar o staging vai aplicar seis vezes o que já está aplicado, ou
-deixar de aplicar o que falta.
+O ledger não falhou. A convenção foi abandonada duas vezes, e o ledger contou
+fielmente o que lhe deram. Uma convenção que catorze arquivos ignoram não é
+convenção — é folclore, e o instrumento que depende dela mede o folclore.
 
-Não é urgente e não quebra nada: as migrações usam `if not exists`. Mas o registro é o
-instrumento, e um instrumento descalibrado é pior que nenhum, porque ninguém desconfia dele.
+## O que isso significou para o T1
 
-## O que isso significa para o T1
-
-Percorrer o caminho da loja nova no staging exige aplicar **58 migrações** antes — e a
+Percorrer o caminho da loja nova no staging exigia aplicar **58 migrações** antes — e a
 `06` avisa que elas não são idempotentes na ordem errada, porque dependem da base legada e
 de `set_updated_at()`.
 
-Não é trabalho de minutos, e é honesto dizer isso antes de alguém abrir o navegador
-esperando testar. As duas saídas:
+Foram aplicadas em 25/08. O adendo abaixo diz como, com as ressalvas de método e o
+resultado da conferência.
 
-1. **Aplicar as 58** e ter um ambiente que serve para este e para os próximos percursos;
-2. **Voltar a medir em produção** com as cinco guardas escritas em
-   [tasks/todo.md](../../tasks/todo.md) — mais rápido hoje, e a conta é a única que paga.
+---
 
-A escolha é de quem vai pagar o tempo. O que não dá é achar que religar o projeto já
-resolveu: ele voltou como estava em julho.
+## Adendo — as 58 aplicadas, 2026-08-25
+
+As 58 migrações foram aplicadas ao staging na ordem, em treze lotes, com
+`apply_migration`. As que se autoverificam passaram — 041, 042, 043, 044, 045,
+046, 047, 048, 052, 059, 060, 061, 062, 063 e 064 levantam exceção se o efeito
+não se confirmar, e nenhuma levantou.
+
+Duas ressalvas de método, ditas porque mudam o que a aplicação significa:
+
+1. **Os comentários `--` dos arquivos não foram transcritos.** Eles são
+   documentação para quem lê o repositório e não chegam ao banco. Todo
+   `comment on table/column/function/index` — que É metadado de esquema — foi
+   preservado.
+2. **Duas linhas de ledger foram inventadas e desfeitas.** No começo registrei
+   `035` e `036`, que os arquivos não registram. Removidas assim que percebi:
+   staging tem que reproduzir o que os arquivos fazem, inclusive onde eles não
+   fazem nada — se o ledger do staging ficasse mais completo que o de produção,
+   ele esconderia exatamente o defeito descrito acima.
+
+### A conferência
+
+Esquema do staging comparado com o de produção, tabela a tabela: **52 tabelas com
+contagem de colunas idêntica**. Nenhum erro de transcrição.
+
+A comparação achou outra coisa — deriva entre repositório e produção, nos dois
+sentidos. Está em
+[INC-012](../engineering/incidents/INC-012-o-repositorio-e-a-producao-derivaram-nos-dois-sentidos.md).
+
+### O que o staging ainda NÃO tem
+
+Esquema não é ambiente. Continuam faltando, e estão no
+[tasks/todo.md](../../tasks/todo.md): variáveis de ambiente, um app ML separado
+com `ML_REDIRECT_URI` próprio, e a decisão sobre qual conta do Mercado Livre
+conectar — que staging não resolve, porque o banco é outro mas a conta do
+marketplace pode ser a mesma.

@@ -29,9 +29,9 @@ Antes de percorrer:
 - [x] **Deriva medida em 25/08** — [11-ONDE-O-STAGING-PAROU.md](../docs/staging-setup/11-ONDE-O-STAGING-PAROU.md):
       o staging parou na **016**, o repositório está na **076**, faltam **58 migrações**
       (022–076; os números 017–021 não existem)
-- [ ] **Decidir antes de percorrer:** aplicar as 58 na ordem da
-      [06](../docs/staging-setup/06-APLICACAO-DAS-MIGRACOES.md), ou voltar a medir em
-      produção com as guardas. Religar o projeto não resolveu — ele voltou como estava em julho
+- [x] **As 58 migrações aplicadas em 25/08** — staging e produção agora têm o mesmo
+      esquema (52 tabelas, contagem de colunas idêntica). A comparação achou deriva entre
+      repositório e produção nos dois sentidos: [INC-012](../docs/engineering/incidents/INC-012-o-repositorio-e-a-producao-derivaram-nos-dois-sentidos.md)
 - [ ] Variáveis de ambiente do staging
       ([05-VARIAVEIS-DE-AMBIENTE.md](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md))
 - [ ] **App ML separado** para staging, com `ML_REDIRECT_URI` próprio
