@@ -95,91 +95,22 @@ export async function carregarPerfil(): Promise<CargaPerfil> {
   };
 }
 
-// ---- Leituras do Portal (via funções portal_* do banco) ----
-
-export interface PortalResumo {
-  cliente: string | null;
-  proximaAcao: string | null;
-  totalProdutos: number;
-  emProducao: number;
-  aprovados: number;
-  publicados: number;
-}
-
-export interface PortalAcao {
-  tarefa: string;
-  proxima_acao: string;
-  status: string;
-  prazo: string | null;
-}
-
-export interface PortalAnuncio {
-  titulo: string;
-  status: string;
-  criado_em: string;
-}
-
-/**
- * As três leituras do Portal (migração 005), com a MESMA disciplina que
- * `quotaEsteira` já aplica logo abaixo: `error` sem exceção também é falha.
- *
- * ===========================================================================
- * O DEFEITO QUE ISTO FECHA — INC-012, medido em 25/08/2026
- * ===========================================================================
- *
- * As três funções NÃO EXISTEM no banco de produção. A migração 005 as cria, o
- * ledger a dá como aplicada, e alguém as removeu sem migração — só apareceu
- * quando houve um segundo banco para comparar.
- *
- * Os wrappers desestruturavam só `data`. O Supabase devolve a falha em `error`,
- * sem lançar; `data` vinha indefinido, `?? []` virava lista vazia, e "a função
- * não existe" chegava à tela como "não há nada". A seção de recados do portal
- * nunca aparecia — sem erro na tela e sem uma linha no log.
- *
- * ===========================================================================
- * VAZIO E "NÃO SEI" DEIXAM DE SER A MESMA COISA
- * ===========================================================================
- *
- * `null` é o desfecho de falha; lista vazia continua sendo "não há". São
- * perguntas diferentes e agora têm respostas diferentes — a mesma regra que
- * `cotaDaEsteira` já sustenta para a cota, onde "não consegui ler" virava
- * "acabou" e fechava uma parede comercial por um erro nosso.
- *
- * E o log diz o que consertar: RPC ausente é falta de migração, não falta de
- * dado, e o código do Postgres para isso (42883) é literal.
- */
-async function lerRpcDoPortal<T>(nome: string): Promise<T | null> {
-  if (!supabaseConfigurado) return null;
-  try {
-    const { data, error } = await getSupabase().rpc(nome);
-    if (error) {
-      console.error(
-        `[portal] RPC \`${nome}\` falhou (${error.code ?? "sem código"}): ${error.message}. ` +
-          "Se o código for 42883, a função não existe neste banco — ver " +
-          "database/migrations/005-portal-cliente.sql e o INC-012."
-      );
-      return null;
-    }
-    return (data as T) ?? null;
-  } catch (e) {
-    console.error(`[portal] RPC \`${nome}\` lançou:`, e);
-    return null;
-  }
-}
-
-export async function portalResumo(): Promise<PortalResumo | null> {
-  return lerRpcDoPortal<PortalResumo>("portal_resumo");
-}
-
-/** `null` = não deu para ler. Lista vazia = leu, e não há recado. */
-export async function portalProximasAcoes(): Promise<PortalAcao[] | null> {
-  return lerRpcDoPortal<PortalAcao[]>("portal_proximas_acoes");
-}
-
-/** `null` = não deu para ler. Lista vazia = leu, e não há anúncio. */
-export async function portalAnuncios(): Promise<PortalAnuncio[] | null> {
-  return lerRpcDoPortal<PortalAnuncio[]>("portal_anuncios");
-}
+// ---- AS TRÊS LEITURAS DO PORTAL SAÍRAM DAQUI — migração 077, INC-012 ----
+//
+// `portalResumo`, `portalProximasAcoes` e `portalAnuncios` liam as funções
+// `portal_*` da migração 005. Duas nunca tiveram chamador; a terceira
+// alimentava a seção "Recados" da home do portal, que lê `tarefas` — tabela
+// que SÓ a equipe da Zion preenchia, e a agência não existe mais.
+//
+// Em produção as três funções já tinham sido removidas SEM MIGRAÇÃO, e os
+// wrappers desestruturavam só `data`: a falha virava lista vazia, e a seção
+// nunca aparecia. Sem erro na tela, sem uma linha no log. Só apareceu quando o
+// staging foi reconstruído do repositório e os dois bancos puderam ser
+// comparados.
+//
+// O conserto do `error` engolido continua valendo e tem sentinela viva
+// (`rpcNaoEngoleErro.test.ts`): ele nunca foi sobre estas três funções, e sim
+// sobre a próxima que sumir. O que sai aqui é só o que lia uma tabela morta.
 
 // ---- Cota mensal da esteira (self-service) ----
 

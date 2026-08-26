@@ -1,10 +1,10 @@
 # INC-012 — O repositório e a produção derivaram, nos dois sentidos
 
 ```
-Status:      PARCIAL — o `error` engolido foi corrigido; o resto é decisão sua
+Status:      FECHADO em 25/08 — migração 077, nos dois bancos
 Detectado:   2026-08-25, comparando o staging recém-migrado com a produção
-Severidade:  baixa hoje; o que preocupa é a classe, não o caso
-Correção:    exige decisão de quem manda no esquema — não é conserto mecânico
+Severidade:  baixa hoje; o que preocupava era a classe, não o caso
+Aberto:      a convenção de auto-registro da 024, que catorze migrações ignoram
 ```
 
 ## Como apareceu
@@ -73,15 +73,31 @@ catorze arquivos que não registram a si mesmos, contra a convenção que a pró
 O ledger não falhou. A convenção foi abandonada, duas vezes, e o ledger contou a
 verdade sobre o que lhe deram.
 
-## O que fazer com cada um
+## O desfecho — migração 077, 25/08/2026
 
-**`cod_magazord`** — ou vira migração que a documenta (se alguém souber para que
-serve), ou vira migração que a remove. Está vazia; remover é barato hoje e fica
-mais caro a cada mês em que alguém possa começar a gravar nela.
+Decidido remover os dois. A [077](../../../database/migrations/077-a-coluna-sem-migracao-e-as-funcoes-sem-tabela.sql)
+apaga `produtos.cod_magazord` e as três funções, e foi aplicada **nos dois
+bancos**. Ela recusa se a coluna tiver ganhado valor desde a medição, confere o
+próprio efeito, e confere também que o resto do portal continuou de pé —
+`portal_margem_minima` sumir junto seria a loja perder margem e custos.
 
-**As três funções** — ou a 005 volta a valer em produção, ou `perfil.ts` para de
-chamá-las e `page.tsx` perde a seção de recados. A segunda parece a certa: o RPC
-lê uma tabela que ninguém preenche mais.
+O código saiu no mesmo commit: `perfil.ts` perdeu os três wrappers e os três
+tipos, `cliente/page.tsx` perdeu a seção "Recados". Ela não estava condicional;
+estava morta e *parecia* condicional.
+
+**A prova de que os dois bancos convergiram:** o md5 do esquema — nome de cada
+coluna por tabela, mais assinatura de cada função — é **idêntico** nos dois, com
+52 tabelas cada (fora o `environment_metadata`, que é o marcador do staging).
+
+```
+colunas   b8acf288b759bfc8814a4508bdd03c88
+funcoes   f0437304ed3d01f98ed54c16a5b1d84f
+```
+
+E a 077 honra a convenção da 024: registra a si mesma.
+
+## O que sobrou aberto
+
 
 **O `error` engolido — CORRIGIDO em 25/08.** Era o defeito de classe, e o único
 que não dependia de decisão de ninguém. Os três wrappers passaram a usar

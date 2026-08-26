@@ -12,8 +12,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
-import { Card } from "@/components/ui/Card";
-import { Section, Pill } from "@/components/client-portal/ui";
+import { Pill } from "@/components/client-portal/ui";
 import { OQueImportaAgora } from "@/components/client-portal/OQueImportaAgora";
 import { TarefasDaLoja } from "@/components/client-portal/TarefasDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
@@ -30,7 +29,7 @@ import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
-import { portalProximasAcoes, quotaEsteira } from "@/lib/services/perfil";
+import { quotaEsteira } from "@/lib/services/perfil";
 
 export default function ClienteHome() {
   const { clienteId, nome } = useClientPortal();
@@ -78,7 +77,6 @@ export default function ClienteHome() {
     () => infracoesPorAnuncioDoCliente(clienteId),
     [clienteId]
   );
-  const { data: proximas } = useLiveQuery(portalProximasAcoes);
   const { data: quota } = useLiveQuery(quotaEsteira);
 
   // ==========================================================================
@@ -432,35 +430,21 @@ export default function ClienteHome() {
         * frase que a resume, dentro de . Mantê-la nos dois
         * lugares seria dizer a mesma coisa duas vezes na mesma tela. */}
 
-        {/* Recados.
-            Esta seção vinha de um RPC que SÓ a equipe preenche. Num produto sem
-            equipe no caminho crítico ela ficava vazia para sempre, dizendo "o
-            que a equipe planejou para você" — uma promessa que ninguém ia
-            cumprir. Agora ela só existe quando existe recado; quem diz o que
-            fazer é "O que falta", que se deriva dos dados. */}
-        {(proximas ?? []).length > 0 && (
-        <Section titulo="Recados" descricao="Avisos deixados para a sua loja.">
-          <Card>
-            {(
-              <ul className="space-y-3">
-                {(proximas ?? []).slice(0, 6).map((a, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-zinc-300">{a.proxima_acao || a.tarefa}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {a.tarefa}
-                        {a.prazo ? ` · prazo ${a.prazo}` : ""}
-                      </p>
-                    </div>
-                    <Pill tone="gray">{a.status}</Pill>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </Section>
-      )}
+      {/* "RECADOS" SAIU DAQUI — migração 077, INC-012.
+        *
+        * A seção lia `portal_proximas_acoes`, um RPC sobre a tabela `tarefas`,
+        * que SÓ a equipe da Zion preenchia. A agência não existe mais, e o
+        * comentário que ficou aqui em 24/08 já dizia metade disso: ela "só
+        * existe quando existe recado". Em produção nunca existia — a função
+        * tinha sido removida do banco sem migração, e o wrapper transformava a
+        * falha em lista vazia.
+        *
+        * Então a seção não estava condicional. Estava morta, e parecia
+        * condicional. As duas coisas somem juntas: a função (077) e o que a
+        * chamava.
+        *
+        * Quem diz o que fazer na loja é "O que falta", que se deriva dos
+        * dados — e "Pontos a resolver", acima, é o mesmo número. */}
     </>
   );
 }
