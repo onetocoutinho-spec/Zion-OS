@@ -23,7 +23,12 @@ import {
   type AvisoDePeso,
 } from "../../modules/catalog/domain/pesoImplausivel.ts";
 import { nomeSemDerivacao } from "../../modules/catalog/domain/nomeSemDerivacao.ts";
-import { tamanhoDaDerivacao } from "../../modules/catalog/domain/tamanhoDaDerivacao.ts";
+import { partesDaDerivacao } from "../../modules/catalog/domain/tamanhoDaDerivacao.ts";
+import {
+  corDaDerivacao,
+  vocabularioDeCores,
+  type AmostraDeCor,
+} from "../../modules/catalog/domain/corDaDerivacao.ts";
 
 // ---- Colunas canônicas e aliases ----
 
@@ -471,13 +476,27 @@ function construirAgrupado(
   marketplacePadrao: Marketplace
 ): LinhaProduto[] {
   const grupos = new Map<string, Record<string, string>[]>();
+  const amostrasDeCor: AmostraDeCor[] = [];
   registros.forEach((rec) => {
     const val = (c: string) => (cols[c] ? (rec[cols[c]] ?? "").trim() : "");
     const chave = val("codErp") || val("nome") || val("skuVariacao");
     const arr = grupos.get(chave) ?? [];
     arr.push(rec);
     grupos.set(chave, arr);
+
+    amostrasDeCor.push({
+      corECodigo: partesDaDerivacao(val("nomeDerivacao"), val("agrupador")).corECodigo,
+      produto: chave,
+    });
   });
+
+  // O VOCABULÁRIO DE CORES SAI DO ARQUIVO, E POR ISSO VEM ANTES
+  //
+  // Uma palavra é cor quando REPETE entre produtos diferentes — "PRETO" em 394,
+  // contra um código de fornecedor que aparece uma vez. Isso não dá para saber
+  // olhando uma linha, então o arquivo inteiro é lido primeiro. Arquivo que já
+  // traz coluna de cor não paga por isto: o valor da coluna vence logo abaixo.
+  const vocabularioDeCor = vocabularioDeCores(amostrasDeCor);
 
   const linhas: LinhaProduto[] = [];
   for (const [chave, linhasGrupo] of grupos) {
@@ -486,12 +505,14 @@ function construirAgrupado(
 
     const variacoes: VariacaoImportada[] = linhasGrupo.map((rec) => {
       const v = (c: string) => (cols[c] ? (rec[cols[c]] ?? "").trim() : "");
+      // Sem colunas de cor e tamanho, os dois saem do nome da derivação — mas SÓ
+      // quando o agrupador prova onde um termina e o outro começa. Sem prova,
+      // vazio, que vira pergunta.
+      const partes = partesDaDerivacao(v("nomeDerivacao"), v("agrupador"));
       return {
         sku: v("skuVariacao"),
-        cor: v("cor"),
-        // Sem coluna de tamanho, ele sai do nome da derivação — mas SÓ quando o
-        // agrupador prova onde ele começa. Sem prova, vazio, que vira pergunta.
-        tamanho: v("tamanho") || tamanhoDaDerivacao(v("nomeDerivacao"), v("agrupador")),
+        cor: v("cor") || corDaDerivacao(partes.corECodigo, vocabularioDeCor),
+        tamanho: v("tamanho") || partes.tamanho,
         ean: v("ean"),
         custo: parseNumero(v("custo")),
         precoBase: parseNumero(v("precoVenda")),

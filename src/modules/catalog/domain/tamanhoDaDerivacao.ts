@@ -69,26 +69,53 @@ function caudaDoAgrupador(agrupador: string): string {
   return i < 0 ? "" : agrupador.slice(i + 1).trim();
 }
 
+/** As duas metades do parêntese, separadas pela prova do agrupador. */
+export type PartesDaDerivacao = {
+  /** O que o agrupador cobre: código do fornecedor + cor, ainda grudados. */
+  corECodigo: string;
+  /** O que sobra depois dele. */
+  tamanho: string;
+};
+
 /**
- * O tamanho, ou "" quando não há prova.
+ * Parte o parêntese no ponto que o agrupador prova, ou devolve as duas metades
+ * vazias quando a prova falta.
  *
- * Devolve o trecho ORIGINAL, não o normalizado: um tamanho `37/38` tem barra, e
+ * Os trechos voltam ORIGINAIS, não normalizados: um tamanho `37/38` tem barra, e
  * comparar sem pontuação não pode significar devolver sem pontuação.
  */
-export function tamanhoDaDerivacao(nomeDerivacao?: string, codigoAgrupador?: string): string {
+export function partesDaDerivacao(
+  nomeDerivacao?: string,
+  codigoAgrupador?: string
+): PartesDaDerivacao {
+  const nada: PartesDaDerivacao = { corECodigo: "", tamanho: "" };
+
   const dentro = entreParenteses((nomeDerivacao ?? "").trim());
   const cauda = caudaDoAgrupador((codigoAgrupador ?? "").trim());
-  if (!dentro || !cauda) return "";
+  if (!dentro || !cauda) return nada;
 
   const chave = soAlnum(cauda);
-  if (!chave || !soAlnum(dentro).startsWith(chave)) return "";
+  if (!chave || !soAlnum(dentro).startsWith(chave)) return nada;
 
   // Anda no ORIGINAL consumindo tantos alfanuméricos quantos a chave tem. O que
-  // vier depois é o tamanho, com a pontuação que ele tiver.
+  // vier antes é código+cor; o que vier depois é o tamanho.
   let consumidos = 0;
   let i = 0;
   for (; i < dentro.length && consumidos < chave.length; i++) {
     if (/[A-Za-z0-9]/.test(dentro[i])) consumidos++;
   }
-  return dentro.slice(i).trim().replace(/^[-–—/\\,;.]+/, "").trim();
+
+  return {
+    corECodigo: dentro.slice(0, i).trim(),
+    tamanho: dentro
+      .slice(i)
+      .trim()
+      .replace(/^[-–—/\,;.]+/, "")
+      .trim(),
+  };
+}
+
+/** O tamanho, ou "" quando não há prova. */
+export function tamanhoDaDerivacao(nomeDerivacao?: string, codigoAgrupador?: string): string {
+  return partesDaDerivacao(nomeDerivacao, codigoAgrupador).tamanho;
 }
