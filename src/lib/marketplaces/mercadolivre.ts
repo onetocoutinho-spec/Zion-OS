@@ -7,6 +7,16 @@
 // app ML (ML_CLIENT_SECRET), que vive só no .env do servidor. É consumido
 // apenas pela rota /api/ml/publicar.
 
+// A leitura de `/categories/{id}/attributes` é PURA e mora no domínio
+// (`exigenciasDaResposta`). Aqui fica só a rede: as duas funções que liam esse
+// endpoint montavam `{id, nome}` cada uma por conta própria, e as duas
+// descartavam `values`, `value_type` e `hint` — o vocabulário que o ML publica.
+import {
+  exigenciasDaResposta,
+  type AtributoCruDoML,
+  type ExigenciaDaCategoria,
+} from "../../modules/publication/domain/atributosDoMarketplace.ts";
+
 const API = "https://api.mercadolibre.com";
 const TOKEN_URL = `${API}/oauth/token`;
 
@@ -240,8 +250,11 @@ function texto(v: unknown): string {
 export interface RecorteDaCategoria {
   /** ids `hidden` ou `variation_attribute` — não são ficha do lojista. */
   foraDaFicha: Record<string, string[]>;
-  /** ids `required` — o que a categoria EXIGE, por categoria. */
-  obrigatorios: Record<string, { id: string; nome: string }[]>;
+  /**
+   * O que a categoria EXIGE, por categoria — com o que o ML publica sobre
+   * cada exigência: tipo, valores aceitos e dica.
+   */
+  obrigatorios: Record<string, ExigenciaDaCategoria[]>;
 }
 
 /**
@@ -264,7 +277,7 @@ export async function recorteDaCategoria(
 ): Promise<RecorteDaCategoria> {
   const unicas = [...new Set(categorias.filter(Boolean))];
   const foraDaFicha: Record<string, string[]> = {};
-  const obrigatorios: Record<string, { id: string; nome: string }[]> = {};
+  const obrigatorios: Record<string, ExigenciaDaCategoria[]> = {};
   await Promise.all(
     unicas.map(async (categoria) => {
       foraDaFicha[categoria] = [];
@@ -272,19 +285,13 @@ export async function recorteDaCategoria(
       try {
         const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
         if (!r.ok) return;
-        const lista = (await r.json()) as {
-          id?: string;
-          name?: string;
-          tags?: Record<string, unknown>;
-        }[];
+        const lista = (await r.json()) as AtributoCruDoML[];
         if (!Array.isArray(lista)) return;
         foraDaFicha[categoria] = lista
           .filter((a) => a.tags && ("hidden" in a.tags || "variation_attribute" in a.tags))
           .map((a) => a.id ?? "")
           .filter(Boolean);
-        obrigatorios[categoria] = lista
-          .filter((a) => a.tags && "required" in a.tags && a.id)
-          .map((a) => ({ id: a.id as string, nome: (a.name ?? a.id) as string }));
+        obrigatorios[categoria] = exigenciasDaResposta(lista);
       } catch {
         // Rede/ML fora: nada escondido, nada exigido.
       }
@@ -302,16 +309,12 @@ export async function recorteDaCategoria(
  */
 export async function atributosObrigatorios(
   categoria: string
-): Promise<{ id: string; nome: string }[]> {
+): Promise<ExigenciaDaCategoria[]> {
   if (!categoria) return [];
   try {
     const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
     if (!r.ok) return [];
-    const lista = (await r.json()) as { id?: string; name?: string; tags?: Record<string, unknown> }[];
-    if (!Array.isArray(lista)) return [];
-    return lista
-      .filter((a) => a.tags && "required" in a.tags && a.id)
-      .map((a) => ({ id: a.id as string, nome: a.name || (a.id as string) }));
+    return exigenciasDaResposta((await r.json()) as AtributoCruDoML[]);
   } catch {
     return [];
   }

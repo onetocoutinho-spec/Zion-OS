@@ -45,6 +45,92 @@ import { idDoAtributoML } from "../../integration/domain/mlPayload";
 export interface ExigenciaDaCategoria {
   id: string;
   nome: string;
+  /**
+   * Como o ML classifica o campo: `list`, `string`, `number_unit`…
+   *
+   * A diferença NÃO é decorativa. Em `list` os valores publicados são a lista
+   * inteira do que ele aceita; em `string` eles são sugestão, e outro valor
+   * passa. Dizer "escolha um destes" num campo `string` seria afirmar um
+   * fechamento que o ML não declarou.
+   */
+  tipo?: string;
+  /** O que o ML publica como valor aceito. Ausente = ele não publicou nenhum. */
+  valoresAceitos?: readonly ValorAceito[];
+  /** O texto de ajuda que o PRÓPRIO ML escreve para o atributo. */
+  dica?: string;
+  /** Limite de caracteres, quando o ML declara um. */
+  tamanhoMaximo?: number;
+}
+
+/** Um valor aceito: `id` é o que o payload leva, `nome` é o que a pessoa lê. */
+export interface ValorAceito {
+  id: string;
+  nome: string;
+}
+
+/**
+ * A forma crua de um atributo em `/categories/{id}/attributes` — só os campos
+ * que este repositório lê.
+ */
+export interface AtributoCruDoML {
+  id?: string;
+  name?: string;
+  tags?: Record<string, unknown>;
+  value_type?: string;
+  values?: { id?: string; name?: string }[];
+  hint?: string;
+  value_max_length?: number;
+}
+
+/**
+ * O que a categoria exige, lido da resposta do ML. PURO: sem rede, testável.
+ *
+ * ===========================================================================
+ * O QUE ESTE REPOSITÓRIO JOGAVA FORA — MEDIDO EM 25/08/2026
+ * ===========================================================================
+ *
+ * `atributosObrigatorios` e `recorteDaCategoria` liam o endpoint e guardavam
+ * `{id, nome}`. O resto da resposta ia para o lixo. Medido em MLB273770:
+ *
+ *     78 atributos · 6 obrigatórios
+ *     BRAND 11 valores · GENDER 6 · COLOR 51 · SIZE 44 · FOOTWEAR_TYPE 4
+ *     MODEL 0 (livre)
+ *     49 dos 78 atributos da categoria trazem lista de valores
+ *
+ * Cinco dos seis obrigatórios já vinham com o vocabulário que o ML aceita — e
+ * o software descartava, para depois perguntar à lojista o que o marketplace
+ * já tinha respondido. "Pesquisar nos concorrentes" era, em boa parte, ler
+ * esta resposta.
+ *
+ * Continua devolvendo `[]` para lista inválida: sem confirmação do ML, não se
+ * afirma exigência nenhuma.
+ */
+export function exigenciasDaResposta(
+  lista: readonly AtributoCruDoML[]
+): ExigenciaDaCategoria[] {
+  // A guarda é de RUNTIME: esta função recebe o que o ML devolveu, e o ML já
+  // devolveu coisa que não era lista. `Array.isArray` estreita para `any[]` —
+  // daí a variável tipada logo abaixo, para o resto da função continuar com
+  // tipo em vez de `any`.
+  if (!Array.isArray(lista)) return [];
+  const atributos: readonly AtributoCruDoML[] = lista;
+  return atributos
+    .filter((a) => a.tags && "required" in a.tags && a.id)
+    .map((a) => {
+      const valores = (a.values ?? [])
+        // Valor sem nome nem id não identifica nada; entrar como vazio seria
+        // oferecer à lojista uma opção em branco.
+        .map((v) => ({ id: (v.id ?? v.name ?? "").trim(), nome: (v.name ?? v.id ?? "").trim() }))
+        .filter((v) => v.id && v.nome);
+      return {
+        id: a.id as string,
+        nome: a.name || (a.id as string),
+        ...(a.value_type ? { tipo: a.value_type } : {}),
+        ...(valores.length ? { valoresAceitos: valores } : {}),
+        ...(a.hint?.trim() ? { dica: a.hint.trim() } : {}),
+        ...(typeof a.value_max_length === "number" ? { tamanhoMaximo: a.value_max_length } : {}),
+      };
+    });
 }
 
 /**
@@ -60,13 +146,56 @@ export interface ExigenciaDaCategoria {
  * essa a diferença que importa: a suposição não sumiu, ela saiu de dentro do
  * módulo e virou visível em cada chamada.
  */
+/**
+ * O RETRATO GANHOU O VOCABULÁRIO — remedido em 25/08/2026, mesma API pública.
+ *
+ * Até aqui a lista guardava `{id, nome}`: o que o ML EXIGE, sem o que ele
+ * ACEITA. Cinco dos cinco caminhos que resolvem atributos passam esta lista à
+ * mão (o comentário de `api/ml/categoria` explica por quê: ninguém sabe a
+ * categoria), então enquanto ela não trouxesse os valores, o trabalho de
+ * `exigenciasDaResposta` não chegava a lugar nenhum.
+ *
+ * Só os dois `list` trazem valores, e é decisão: em `list` a lista é fechada —
+ * é o que o ML aceita e mais nada. `BRAND`, `MODEL`, `COLOR` e `SIZE` são
+ * `string`, com valores apenas SUGERIDOS (COLOR tem 51, SIZE 44), e os quatro
+ * já se resolvem pelo cadastro. Congelar 95 sugestões aqui seria peso sem
+ * resposta.
+ */
 export const OBRIGATORIOS_CALCADO: readonly ExigenciaDaCategoria[] = [
-  { id: "BRAND", nome: "Marca" },
-  { id: "MODEL", nome: "Modelo" },
-  { id: "GENDER", nome: "Gênero" },
-  { id: "COLOR", nome: "Cor" },
-  { id: "SIZE", nome: "Tamanho" },
-  { id: "FOOTWEAR_TYPE", nome: "Tipo de calçado" },
+  {
+    id: "BRAND",
+    nome: "Marca",
+    tipo: "string",
+    tamanhoMaximo: 255,
+    dica: "Informe a marca verdadeira do produto ou 'Genérica' se não tiver marca.",
+  },
+  { id: "MODEL", nome: "Modelo", tipo: "string", tamanhoMaximo: 255 },
+  {
+    id: "GENDER",
+    nome: "Gênero",
+    tipo: "list",
+    valoresAceitos: [
+      { id: "339665", nome: "Feminino" },
+      { id: "339666", nome: "Masculino" },
+      { id: "339668", nome: "Meninas" },
+      { id: "339667", nome: "Meninos" },
+      { id: "19159491", nome: "Sem gênero infantil" },
+      { id: "110461", nome: "Sem gênero" },
+    ],
+  },
+  { id: "COLOR", nome: "Cor", tipo: "string", tamanhoMaximo: 255 },
+  { id: "SIZE", nome: "Tamanho", tipo: "string", tamanhoMaximo: 255 },
+  {
+    id: "FOOTWEAR_TYPE",
+    nome: "Tipo de calçado",
+    tipo: "list",
+    valoresAceitos: [
+      { id: "517585", nome: "Sandália" },
+      { id: "517586", nome: "Chinelo" },
+      { id: "3630523", nome: "Tamanco" },
+      { id: "3630524", nome: "Mule" },
+    ],
+  },
 ] as const;
 
 /**
@@ -183,6 +312,77 @@ export interface AtributoResolvido {
    * vêm de `produto_atributos`, que é o que a lojista informou ao ML.
    */
   origem: "cadastro" | "marketplace" | "nome" | "ausente";
+  /**
+   * O que o ML publica como valores aceitos deste atributo, quando publica.
+   *
+   * Viaja junto do resolvido de propósito: sem isso, "falta Gênero" é pergunta
+   * aberta mesmo quando o ML já disse que são seis valores e quais.
+   */
+  opcoes?: readonly ValorAceito[];
+  /** `list` (fechado) ou `string` (sugestão) — ver `ExigenciaDaCategoria.tipo`. */
+  tipo?: string;
+}
+
+/**
+ * Os três estados de um obrigatório — e antes só existiam dois.
+ *
+ * `ausente` respondia por duas situações muito diferentes: o atributo que
+ * ninguém sabe e ninguém tem como saber, e o atributo cuja resposta o próprio
+ * marketplace publica. Tratar os dois como a mesma pergunta aberta era o que
+ * mandava alguém pesquisar concorrente para descobrir um valor que estava a
+ * uma requisição de distância.
+ */
+export type EstadoDoAtributo = "resolvido" | "escolha" | "pergunta";
+
+export function estadoDoAtributo(a: AtributoResolvido): EstadoDoAtributo {
+  if (a.valor) return "resolvido";
+  return a.opcoes && a.opcoes.length > 0 ? "escolha" : "pergunta";
+}
+
+/**
+ * O valor resolvido está FORA da lista fechada do marketplace?
+ *
+ * Só existe para `tipo: "list"`. Ali a lista é o que o ML aceita e mais nada —
+ * valor fora dela é recusa na publicação, não questão de estilo. Em `string` a
+ * lista é sugestão, e responder algo fora dela é legítimo.
+ *
+ * ===========================================================================
+ * MEDIDO EM 25/08/2026, E É POR ISTO QUE ESTA FUNÇÃO EXISTE
+ * ===========================================================================
+ *
+ * MLB273770 aceita QUATRO tipos de calçado, no singular:
+ *
+ *     Sandália · Chinelo · Tamanco · Mule
+ *
+ * `tipoDeCalcadoDoNome` devolve dez valores, no plural — "Chinelos",
+ * "Sandálias", "Tamancos" —, e seis deles ("Papetes", "Rasteiras", "Tênis",
+ * "Sapatilhas", "Botas", "Meias", "Babuches") não são valores desta categoria.
+ * Em `GENDER`, "Meninas e Meninos" também não está na lista do ML.
+ *
+ * A leitura pelo nome NÃO foi mexida junto, de propósito: trocá-la é decisão
+ * que precisa de medição nas categorias reais da conta, não só nesta. O que
+ * muda aqui é que a divergência para de ser invisível.
+ */
+export function valorForaDaLista(a: AtributoResolvido): boolean {
+  if (a.tipo !== "list" || !a.valor) return false;
+  // O QUE VEIO DO MARKETPLACE NÃO SE QUESTIONA.
+  //
+  // `origem: "marketplace"` é o valor que a própria lojista informou ao ML e
+  // que ele devolveu em `produto_atributos`. Apontar esse valor como não aceito
+  // seria o software discordar do marketplace sobre o que o marketplace
+  // aceitou — e a precedência deste módulo ("medido vence adivinhado") existe
+  // justamente para isso não acontecer.
+  //
+  // A primeira versão desta função não tinha esta linha, e um teste de 2026 que
+  // guarda a doutrina reprovou na hora: `Tipo de calçado: Papetes` vindo do ML.
+  // "Papetes" não está na lista de MLB273770 — mas quem sabe em que categoria o
+  // item dela está é o ML, não este retrato.
+  if (a.origem === "marketplace") return false;
+
+  const ops = a.opcoes ?? [];
+  if (!ops.length) return false;
+  const alvo = norm(a.valor);
+  return !ops.some((v) => norm(v.nome) === alvo || v.id === a.valor);
 }
 
 /**
@@ -264,9 +464,17 @@ export function resolverObrigatorios(
   // nenhum leitor conhece cai em `ausente` sozinho — e `ausente` já quer dizer
   // "vira pergunta, nunca chute", que é a resposta certa para um obrigatório de
   // móvel que ninguém mediu ainda.
-  return obrigatorios.map(({ id, nome }) =>
-    resolver(id, nome, DO_CADASTRO[id]?.(p) ?? null, DO_NOME[id]?.(p) ?? null)
-  );
+  return obrigatorios.map((exigencia) => {
+    const { id, nome } = exigencia;
+    const base = resolver(id, nome, DO_CADASTRO[id]?.(p) ?? null, DO_NOME[id]?.(p) ?? null);
+    // O que o ML publica sobre o atributo viaja com o resolvido. Não muda o
+    // valor nem a origem: muda o que dá para fazer quando não há valor.
+    return {
+      ...base,
+      ...(exigencia.tipo ? { tipo: exigencia.tipo } : {}),
+      ...(exigencia.valoresAceitos?.length ? { opcoes: exigencia.valoresAceitos } : {}),
+    };
+  });
 }
 
 /**
@@ -300,6 +508,34 @@ export function atributosPorId(
   return mapa;
 }
 
+/**
+ * Quantos valores do ML cabem no briefing antes de virarem ruído.
+ *
+ * COLOR tem 51 e SIZE tem 44 nesta categoria. Despejar 95 palavras num prompt
+ * que roda a cada produto é caro e não ajuda o modelo a escolher melhor — o
+ * que ele precisa é saber que a lista EXISTE e como ela é.
+ */
+const VALORES_NO_BRIEFING = 12;
+
+/**
+ * As opções, em texto, quando o ML publica alguma.
+ *
+ * `list` e `string` recebem frases diferentes de propósito: em `list` a lista é
+ * o que o ML aceita; em `string` ela é o que ele já viu. Prometer fechamento
+ * onde não há seria inventar regra do marketplace — o defeito que o DES-001
+ * arrancou do A10.
+ */
+function opcoesEmTexto(a: AtributoResolvido): string {
+  const ops = a.opcoes ?? [];
+  if (!ops.length) return "";
+  const mostrados = ops.slice(0, VALORES_NO_BRIEFING).map((v) => v.nome).join(", ");
+  const resto = ops.length - VALORES_NO_BRIEFING;
+  const cauda = resto > 0 ? `, e mais ${resto}` : "";
+  return a.tipo === "list"
+    ? ` — o Mercado Livre aceita SÓ estes: ${mostrados}${cauda}`
+    : ` — valores que o Mercado Livre já conhece (outro também é aceito): ${mostrados}${cauda}`;
+}
+
 export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): string {
   // A origem aparece no briefing porque ela muda o que o modelo deve fazer com
   // o valor: o que veio do Mercado Livre é o que a própria lojista informou lá,
@@ -310,10 +546,22 @@ export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): 
     nome: "nome do produto",
     ausente: "",
   };
-  const linhas = resolvidos.map((a) =>
-    a.valor ? `- ${a.nome}: ${a.valor} (já resolvido pelo ${deOnde[a.origem]})` : `- ${a.nome}: FALTA`
-  );
+  const linhas = resolvidos.map((a) => {
+    if (!a.valor) return `- ${a.nome}: FALTA${opcoesEmTexto(a)}`;
+    // Valor fora de lista fechada não é "resolvido": é recusa esperando
+    // acontecer na publicação. Chamá-lo de resolvido é o silêncio que este
+    // módulo passou a quebrar.
+    if (valorForaDaLista(a)) {
+      return `- ${a.nome}: ${a.valor} — VALOR NÃO ACEITO nesta categoria${opcoesEmTexto(a)}`;
+    }
+    return `- ${a.nome}: ${a.valor} (já resolvido pelo ${deOnde[a.origem]})`;
+  });
   const faltam = resolvidos.filter((a) => !a.valor).map((a) => a.nome);
+  // O que falta MAS tem lista não é a mesma pergunta: a resposta já está na
+  // tela, e o modelo não precisa (nem deve) inventar uma.
+  const escolhiveis = resolvidos
+    .filter((a) => estadoDoAtributo(a) === "escolha")
+    .map((a) => a.nome);
 
   return [
     `ATRIBUTOS OBRIGATÓRIOS DO MERCADO LIVRE (medidos na API da categoria — são estes e só estes):`,
@@ -322,6 +570,11 @@ export function briefingDosAtributos(resolvidos: readonly AtributoResolvido[]): 
     faltam.length
       ? `Só ${faltam.join(" e ")} pode(m) virar pendência. NÃO repita os já resolvidos.`
       : `Todos resolvidos. NÃO liste pendência de atributo obrigatório.`,
+    ...(escolhiveis.length
+      ? [
+          `Para ${escolhiveis.join(" e ")}, escolha entre os valores listados acima — são os que o próprio Mercado Livre publica. NÃO invente valor fora do que está ali.`,
+        ]
+      : []),
     `NÃO invente exigências fora desta lista: "antiderrapante", "vegano", "materiais reciclados", "altura do solado" e "forma do calçado" NÃO são atributos desta categoria no Mercado Livre.`,
   ].join("\n");
 }
