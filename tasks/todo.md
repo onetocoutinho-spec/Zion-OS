@@ -38,10 +38,13 @@ Antes de percorrer:
       dá **0 erros**: as duas do Supabase, o `service_role` e as três do Mercado Livre
 - [ ] `OPENAI_API_KEY` — não é opcional para o percurso inteiro: sem ela os passos 4, 5 e 6
       (imagens, descrições, atributos) não rodam. `APP_URL` e `CRON_SECRET` seguem opcionais
-- [ ] **O host do redirect é um preview da branch `fix-multitenancy-security`**, não da
-      `feat/portal-da-lojista`. Medir ali é medir código antigo — sem a jornada, sem o
-      conserto da grade, sem os atributos. Apontar para o preview da branch atual, ou
-      aceitar conscientemente que a medição não cobre o que foi construído
+- [x] **Redirect apontado para o preview da branch certa**, e os 22 commits empurrados —
+      `/api/versao` do preview devolve o mesmo commit do HEAD
+- [x] **O preview fala com o STAGING**, não com produção — confirmado no bundle do
+      navegador: só o ref `fivlziuvxvhpuibrjwlq` aparece nos 18 scripts
+- [x] Passo 1 verificado até onde dá sem criar conta: a tela de login traz
+      "Ainda não tenho conta — criar a minha loja", o clique troca para "Criar minha
+      conta", e o console sobe sem erro
 - [ ] Para rodar local contra o staging: `cp .env.staging .env.development.local`
       (o Next NÃO carrega `.env.staging` — ver a ressalva na
       [05](../docs/staging-setup/05-VARIAVEIS-DE-AMBIENTE.md)). Para voltar, apague o arquivo
