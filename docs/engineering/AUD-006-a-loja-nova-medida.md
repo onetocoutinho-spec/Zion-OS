@@ -305,6 +305,42 @@ Estado depois da limpeza, para o passo 3 recomeçar do zero:
 
 ---
 
+#### Achado 7 — a máquina de quem desenvolve fala com o banco de quem vende (26/08)
+
+Duas vezes no mesmo dia a conta real foi operada por engano. Na segunda, 16
+produtos da Chinelaria receberam categoria `MLB273770`.
+
+A causa não era host antigo nem preview: era **`localhost:3000`**.
+
+    .env.local     -> producao   (o que `next dev` carrega)
+    .env.staging   -> staging    (nunca carregado)
+
+A documentação do Next explica: `NODE_ENV` só aceita `production`, `development`
+e `test`. Não existe `NODE_ENV=staging`, então `.env.staging` nunca entra na
+ordem de carga. Todo `npm run dev` desta máquina falava com a produção.
+
+**Consequência medida:** nenhuma. `produtos.categoria_ml` só decide quais
+atributos a esteira cobra — não toca anúncio no ar, não publica, não muda preço.
+E `MLB273770` é a categoria certa para chinelo. Decidido em 26/08: **os 16
+ficam.**
+
+**O que mudou:**
+
+- `npm run dev:staging` — `node --env-file=.env.staging`, que funciona porque
+  `process.env` é o primeiro da ordem de busca do Next.
+- Migração 080: a produção também se identifica, para a tela distinguir
+  "produção" de "não sei".
+- A faixa ganhou o terceiro caso: **localhost + produção = vermelho**, com o
+  comando certo no texto. Produção fora de localhost continua sem faixa — é a
+  lojista no dia dela.
+
+**A lição, e ela é sobre a faixa anterior:** eu tinha escrito que "a ausência
+significa produção". A direção estava certa e a regra era insuficiente, porque
+**ausência não é mensagem**. Quem está no lugar errado não consegue ler o que
+não está na tela.
+
+---
+
 ### Antes dos passos 4 a 6 — o ambiente da IA, confirmado
 
 `/api/saude/ia` (sem `?sondar`, que não toca a rede e não custa nada), lida na
