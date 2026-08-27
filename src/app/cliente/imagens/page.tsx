@@ -47,6 +47,8 @@ import {
   pastasDoCaminho,
   type Casamento,
 } from "@/modules/catalog/domain/casarPastaComProduto";
+import { conferirEnvioRepetido } from "@/modules/catalog/domain/envioDeFotoRepetido";
+import { fotosPorProdutoECor } from "@/lib/services/imagensProduto";
 
 function norm(s: string): string {
   return s
@@ -590,6 +592,14 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
    * desfecho comum, não a exceção.
    */
   const [pastaEscolhida, setPastaEscolhida] = useState("");
+  /**
+   * Quantas fotos cada par produto+cor JÁ tem. Vazio até a primeira seleção.
+   *
+   * Sem isto a tela não tem como avisar que o envio duplica — e reenviar é o
+   * caso comum: a primeira tentativa falhou, a aba fechou no meio, a pessoa não
+   * teve certeza.
+   */
+  const [jaExistem, setJaExistem] = useState<Map<string, number>>(new Map());
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -614,6 +624,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
 
     // O primeiro segmento do caminho relativo É a pasta escolhida.
     setPastaEscolhida((caminhos[0] ?? "").split("/")[0] ?? "");
+    void fotosPorProdutoECor(clienteId).then(setJaExistem);
 
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
@@ -640,6 +651,19 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
   }
 
   const totalArquivos = grupos.reduce((s, g) => s + g.arquivos.length, 0);
+
+  // O QUE JÁ FOI ENVIADO — modules/catalog/domain/envioDeFotoRepetido.
+  // Avisa, nunca bloqueia: mandar foto nova para produto que já tem é o caso
+  // normal; mandar a MESMA cor de novo é a duplicata.
+  const repetido = conferirEnvioRepetido(
+    grupos.map((g) => ({
+      produtoId: g.produtoId,
+      rotulo: g.pastaProduto,
+      cor: g.cor,
+      fotos: g.arquivos.length,
+    })),
+    jaExistem
+  );
   const semCasar = grupos.filter((g) => !g.produtoId).length;
 
   async function confirmar() {
@@ -811,6 +835,9 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                 nada e a tela não diz por quê. Em 27/08/2026 isso custou uma
                 tentativa: o grupo era uma pasta de COR, o botão estava morto, e
                 não havia como saber. */}
+            {repetido.repetido && (
+              <span className="text-xs text-amber-400">{repetido.texto}</span>
+            )}
             {grupos.length > 0 && grupos.every((g) => !g.produtoId) ? (
               <span className="text-xs text-amber-400">
                 Nenhuma pasta casou com um produto — não há o que enviar. Escolha o produto

@@ -2,6 +2,7 @@ import { criarRepositorio } from "../repositorio";
 import { imagemParaApp, imagemParaBanco } from "../supabase/mappers";
 import type { ImagemProdutoRow } from "../supabase/database.types";
 import type { ImagemProduto } from "../types";
+import { chaveDaFoto } from "@/modules/catalog/domain/envioDeFotoRepetido";
 
 const repo = criarRepositorio<ImagemProduto, ImagemProdutoRow>({
   tabela: "imagens_produto",
@@ -48,4 +49,33 @@ export async function excluirImagem(id: string): Promise<void> {
  */
 export async function listarTodasImagens(): Promise<ImagemProduto[]> {
   return repo.listar();
+}
+
+/**
+ * Quantas fotos cada par produto+cor da loja já tem.
+ *
+ * Serve ao aviso de envio repetido: sem saber o que já existe, a tela não tem
+ * como dizer que o próximo envio duplica. Em 27/08/2026 a mesma pasta subiu
+ * duas vezes e o produto ficou com 108 imagens onde havia 54.
+ *
+ * Falha de leitura devolve mapa vazio, de propósito: o aviso some e o envio
+ * segue como sempre seguiu. Pior contexto, nunca contexto errado — e nunca um
+ * bloqueio por causa de uma consulta que não respondeu.
+ */
+export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  try {
+    const todas = await repo.listar({
+      coluna: "cliente_id",
+      valor: clienteId,
+      campoLocal: "clienteId",
+    });
+    for (const i of todas) {
+      const k = chaveDaFoto(i.produtoId, i.cor ?? "");
+      mapa.set(k, (mapa.get(k) ?? 0) + 1);
+    }
+  } catch {
+    return new Map();
+  }
+  return mapa;
 }
