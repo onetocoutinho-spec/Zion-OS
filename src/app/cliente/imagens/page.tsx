@@ -48,6 +48,7 @@ import {
   type Casamento,
 } from "@/modules/catalog/domain/casarPastaComProduto";
 import { conferirEnvioRepetido } from "@/modules/catalog/domain/envioDeFotoRepetido";
+import { avisoDaPastaEscolhida } from "@/modules/catalog/domain/pastaEscolhidaErrada";
 import { fotosPorProdutoECor } from "@/lib/services/imagensProduto";
 
 function norm(s: string): string {
@@ -593,6 +594,15 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
    */
   const [pastaEscolhida, setPastaEscolhida] = useState("");
   /**
+   * A pasta da tentativa ANTERIOR.
+   *
+   * O seletor do Chrome reabre onde a pessoa parou e escolhe a pasta em que
+   * está, não a que aparece destacada — e foi assim que quatro de cinco
+   * tentativas mandaram a mesma pasta de cor, sem a tela dizer que eram a mesma.
+   */
+  const [pastaAnterior, setPastaAnterior] = useState("");
+  const [profundidades, setProfundidades] = useState<number[]>([]);
+  /**
    * Quantas fotos cada par produto+cor JÁ tem. Vazio até a primeira seleção.
    *
    * Sem isto a tela não tem como avisar que o envio duplica — e reenviar é o
@@ -623,7 +633,12 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     );
 
     // O primeiro segmento do caminho relativo É a pasta escolhida.
-    setPastaEscolhida((caminhos[0] ?? "").split("/")[0] ?? "");
+    const escolhida = (caminhos[0] ?? "").split("/")[0] ?? "";
+    setPastaAnterior(pastaEscolhida);
+    setPastaEscolhida(escolhida);
+    // A profundidade de cada arquivo é o que separa "pasta de cor" (folha, sem
+    // subpasta) de "pasta de produto sem cor" (que é legítima e casa).
+    setProfundidades(caminhos.map((c) => pastasDoCaminho(c).length));
     void fotosPorProdutoECor(clienteId).then(setJaExistem);
 
     const mapa = new Map<string, GrupoMassa>();
@@ -665,6 +680,18 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     jaExistem
   );
   const semCasar = grupos.filter((g) => !g.produtoId).length;
+
+  // O SELETOR DE PASTAS MANDOU A PASTA ERRADA QUATRO VEZES EM CINCO.
+  //
+  // Sem este aviso a tela mostra "1 pasta · 54 fotos · 1 sem produto" — que é
+  // verdade e não explica nada. Ver `modules/catalog/domain/pastaEscolhidaErrada`.
+  const avisoDaEscolha = avisoDaPastaEscolhida({
+    pastaEscolhida,
+    profundidades,
+    grupos: grupos.length,
+    semProduto: semCasar,
+    pastaAnterior,
+  });
 
   async function confirmar() {
     const validos = grupos.filter((g) => g.produtoId);
@@ -763,6 +790,16 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
             <Pill tone="gray">{totalArquivos} fotos</Pill>
             {semCasar > 0 && <Pill tone="yellow">{semCasar} sem produto</Pill>}
           </div>
+
+          {/* O DIAGNÓSTICO DA ESCOLHA vem ANTES da lista, porque é o que decide
+              se vale olhar a lista. Amarelo e não vermelho: enviar assim é
+              possível, escolhendo o produto à mão logo abaixo. */}
+          {avisoDaEscolha && (
+            <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+              <AlertTriangle size={14} className="mt-px shrink-0" />
+              <span>{avisoDaEscolha.texto}</span>
+            </p>
+          )}
 
           <div className="mt-3 max-h-96 space-y-1.5 overflow-y-auto">
             {grupos.map((g, idx) => (
