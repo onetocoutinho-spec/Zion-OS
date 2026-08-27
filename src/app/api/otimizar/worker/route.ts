@@ -192,6 +192,22 @@ async function gerarAnuncio(
       mensagem,
       schema: ESQUEMA_ANUNCIO,
       maxTokens: 24000,
+      // O RASTRO ENTRA AQUI, E A RAZÃO PARA ELE NÃO ESTAR ERA FALSA.
+      //
+      // `rastro` é opcional "porque nem todo chamador tem sessão (o worker do
+      // cron, por exemplo)" — provedorIA.ts. Só que `ia_execucoes` nunca pediu
+      // sessão: pede `cliente_id`, e aceita `usuario_id` nulo. O worker sempre
+      // soube de quem é o produto.
+      //
+      // Medido em 27/08/2026, no staging: 12 anúncios gerados pela esteira e
+      // ZERO linhas em `ia_execucoes`. A maior consumidora de IA do produto era
+      // a única invisível para a tabela feita para responder "quanto custou".
+      //
+      // O `uso` que viaja no JSONB do anúncio (abaixo) não substitui isto: ele
+      // só existe quando o parse dá certo, e some quando o anúncio é
+      // regerado. As tentativas que falharam custaram e não apareciam em lugar
+      // nenhum — inclusive as 3 do laço de retentativa.
+      rastro: { origem: "esteira", clienteId: produto.clienteId, usuarioId: null },
     });
     try {
       const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
