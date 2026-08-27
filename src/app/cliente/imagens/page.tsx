@@ -583,6 +583,14 @@ interface GrupoMassa extends Casamento {
 function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produto[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [grupos, setGrupos] = useState<GrupoMassa[]>([]);
+  /**
+   * A pasta que a pessoa escolheu, para a tela DIZER qual é.
+   *
+   * Sem isto, "1 pastas · 54 fotos" não distingue a pasta certa da errada — e o
+   * seletor do Chrome abre DENTRO da última usada, então errar o nível é o
+   * desfecho comum, não a exceção.
+   */
+  const [pastaEscolhida, setPastaEscolhida] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -604,6 +612,9 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
       caminhos.map(pastasDoCaminho),
       produtos
     );
+
+    // O primeiro segmento do caminho relativo É a pasta escolhida.
+    setPastaEscolhida((caminhos[0] ?? "").split("/")[0] ?? "");
 
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
@@ -700,6 +711,16 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
           type="file"
           multiple
           className="hidden"
+          // ESCOLHER A MESMA PASTA DE NOVO PRECISA DISPARAR O EVENTO.
+          //
+          // `change` só dispara quando o valor MUDA. Sem limpar antes de abrir,
+          // reescolher a mesma pasta não faz nada — e a tela fica mostrando a
+          // seleção anterior como se fosse a nova. Em 27/08/2026 isso custou
+          // duas tentativas: a pessoa selecionou outra pasta, viu os mesmos 54
+          // arquivos, e não tinha como saber qual das duas estava na tela.
+          onClick={(e) => {
+            (e.target as HTMLInputElement).value = "";
+          }}
           onChange={aoEscolherPasta}
           {...({ webkitdirectory: "", directory: "" } as unknown as React.InputHTMLAttributes<HTMLInputElement>)}
         />
@@ -708,6 +729,13 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
       {grupos.length > 0 && (
         <>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+            {/* O NOME DA PASTA, antes dos números. "1 pastas · 54 fotos" não
+                distingue a escolha certa da errada; o nome distingue. */}
+            {pastaEscolhida && (
+              <span className="text-xs text-zinc-400">
+                de <span className="text-zinc-200">{pastaEscolhida}</span>
+              </span>
+            )}
             <Pill tone="violet">{grupos.length} pastas</Pill>
             <Pill tone="gray">{totalArquivos} fotos</Pill>
             {semCasar > 0 && <Pill tone="yellow">{semCasar} sem produto</Pill>}
