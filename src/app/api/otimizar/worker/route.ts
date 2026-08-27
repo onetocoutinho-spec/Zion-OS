@@ -60,6 +60,14 @@ const PAUSA_MS = 2_000; // respiro entre itens (suaviza o rate limit)
 const ORCAMENTO_MS = 250_000; // para antes dos 300s
 const MAX_TENTATIVAS = 3;
 const STALE_MIN = 10; // "processando" preso volta pra fila
+/**
+ * Quantas voltas seguidas sem conseguir travar nada antes de desistir do ciclo.
+ *
+ * Perder a disputa é normal quando várias execuções se sobrepõem — a volta
+ * seguinte pega outra linha. O limite é só para a fila curta com muitos
+ * concorrentes, onde perder sempre queimaria os 250s em ida e volta ao banco.
+ */
+const MAX_PERDIDAS = 5;
 
 type Resultado = "ok" | "erro" | "rate";
 
@@ -447,6 +455,8 @@ async function rodar(): Promise<Response> {
   let ok = 0;
   let falhas = 0;
   let rate = false;
+  /** Quantas voltas seguidas perderam a disputa por TODOS os candidatos. */
+  let perdidasSeguidas = 0;
   const cacheTabelas = new Map<string, TabelaMedida[]>();
   while (Date.now() - inicio < ORCAMENTO_MS) {
     const { data: pend } = await admin
@@ -459,21 +469,42 @@ async function rodar(): Promise<Response> {
     const lote = (pend ?? []) as FilaRow[];
     if (lote.length === 0) break;
 
-    // Trava o lote como "processando" (evita processamento duplo entre execuções).
+    // A TRAVA DO LOTE — E ELA NÃO TRAVAVA.
     //
-    // Esta trava é LOAD-BEARING, e mais do que parece: o orçamento é de 250s e o
-    // cron dispara a cada 60s — até quatro execuções se sobrepõem. Sem a trava,
-    // todas selecionam os mesmos `pendente` e rodam a esteira sobre o mesmo
-    // produto.
+    // O texto que estava aqui descrevia, corretamente, o defeito que o código
+    // abaixo tinha: "o orçamento é de 250s e o cron dispara a cada 60s, até
+    // quatro execuções se sobrepõem. Sem a trava, todas selecionam os mesmos
+    // `pendente` e rodam a esteira sobre o mesmo produto."
     //
-    // Por isso, aqui, avisar não basta: se a trava não pegou, este ciclo PARA.
-    // Os itens continuam `pendente` e o próximo cron os retoma — nada se perde.
-    // É `break` e não `continue` de propósito: `continue` reselecionaria os
-    // mesmos itens e giraria até o orçamento acabar.
-    const { error: erroTravar } = await admin
+    // Era exatamente isso que acontecia. O par era:
+    //
+    //     select ... .eq("status", "pendente").limit(N)      <- lê
+    //     update({ status: "processando" }).in("id", ids)    <- escreve
+    //
+    // Um TOCTOU: entre ler e escrever, outra execução lê a MESMA linha. O
+    // `update` não dizia `where status = 'pendente'`, então as duas escritas
+    // davam certo e as duas seguiam adiante com o mesmo produto.
+    //
+    // MEDIDO em 27/08/2026, seis execuções simultâneas contra o staging:
+    //
+    //     6 execuções · 6 travaram · 1 item DISTINTO
+    //
+    // Todas as seis pegaram a mesma linha. Em produção isso é o cron pagando
+    // quatro vezes pelo mesmo anúncio e gravando quatro cópias dele.
+    //
+    // O CONSERTO é um compare-and-swap de verdade: o `eq("status","pendente")`
+    // vai no próprio UPDATE, e o `select()` devolve as linhas REALMENTE
+    // tomadas. Sob READ COMMITTED o Postgres serializa as escritas na mesma
+    // linha: a segunda espera a primeira, reavalia o WHERE contra a versão já
+    // gravada, vê `processando` e não casa. Quem perde recebe lista vazia.
+    //
+    // A partir daqui o lote que vale é `travados`, nunca `lote`.
+    const { data: travadosRaw, error: erroTravar } = await admin
       .from("fila_otimizacao_produto")
       .update({ status: "processando" })
-      .in("id", lote.map((f) => f.id));
+      .in("id", lote.map((f) => f.id))
+      .eq("status", "pendente")
+      .select("id, cliente_id, produto_id, tentativas");
     if (erroTravar) {
       erroDeEscrita(
         "travar o lote",
@@ -482,8 +513,20 @@ async function rodar(): Promise<Response> {
       );
       break;
     }
+    const travados = (travadosRaw ?? []) as FilaRow[];
+    if (travados.length === 0) {
+      // Perdemos a disputa por todos os candidatos. Não é erro: outra execução
+      // está cuidando deles. Voltar ao topo seleciona linhas DIFERENTES, já que
+      // as tomadas não são mais `pendente` — o laço não gira em falso.
+      //
+      // O contador existe para o caso patológico (muitas execuções, fila curta):
+      // sem ele, perder sempre queimaria os 250s em ida e volta ao banco.
+      if (++perdidasSeguidas >= MAX_PERDIDAS) break;
+      continue;
+    }
+    perdidasSeguidas = 0;
 
-    const res = await Promise.all(lote.map((f) => processarUm(admin, f, cacheTabelas)));
+    const res = await Promise.all(travados.map((f) => processarUm(admin, f, cacheTabelas)));
     for (const r of res) {
       if (r === "ok") ok++;
       else if (r === "erro") falhas++;
