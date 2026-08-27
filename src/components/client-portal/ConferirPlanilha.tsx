@@ -90,10 +90,7 @@ export function ConferirPlanilha({
    * grupo, ou um primeiro item incompleto, e um exemplo vazio não ajuda ninguém.
    * Olha até 20 linhas — passar disso é procurar agulha para mostrar palheiro.
    */
-  const desalinhamento = cabecalhoDesalinhado(
-    planilha.headers.length,
-    planilha.camposPorLinha ?? []
-  );
+  const desalinhamento = cabecalhoDesalinhado(planilha.headers, planilha.camposPorLinha ?? []);
 
   const exemplo = (h: string): string => {
     for (const l of planilha.linhas.slice(0, 20)) {

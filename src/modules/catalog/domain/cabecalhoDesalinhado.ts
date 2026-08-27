@@ -35,6 +35,24 @@
 //
 // A mesma regra de `gradeAchatada` e `pesoImplausivel`: medir, dizer, e deixar
 // a decisão com quem conhece o arquivo.
+//
+// ===========================================================================
+// O ; DO FIM NÃO É COLUNA — E ESSA GUARDA VEIO DE UM FALSO ALARME MEU
+// ===========================================================================
+//
+// A primeira versão comparava só os NÚMEROS, e acusou o arquivo seguinte, que
+// estava correto:
+//
+//     cabeçalho  ...;ULTIMACOMPRA;MARKUP;     11 campos, o último sem nome
+//     dados      ...;/  /;354,20              10 campos
+//
+// A linha do cabeçalho termina em `;`, o que produz um 11º campo VAZIO. Os
+// dados não repetem esse separador, e daí a diferença de um. Nada está
+// desalinhado: `CODIGO` traz código, `PRECO` traz preço.
+//
+// Terminador solto é comum em exportação de ERP. Um detector que grita nele
+// grita em quase todo arquivo — e alarme que sempre toca se aprende a ignorar,
+// inclusive quando é de verdade. Por isso nomes VAZIOS NO FIM não contam.
 
 export interface CabecalhoDesalinhado {
   /** `false` = cabeçalho e dados batem, e não há o que dizer. */
@@ -65,13 +83,21 @@ const NADA: CabecalhoDesalinhado = {
  * aviso, mas não desloca o que já casou.
  */
 export function cabecalhoDesalinhado(
-  colunasNoCabecalho: number,
+  headers: readonly string[],
   camposPorLinha: readonly number[]
 ): CabecalhoDesalinhado {
+  const colunasNoCabecalho = headers.length;
   if (colunasNoCabecalho <= 0 || camposPorLinha.length === 0) return NADA;
 
-  const distintos = [...new Set(camposPorLinha)].sort((a, b) => a - b);
-  const diferentes = camposPorLinha.filter((n) => n !== colunasNoCabecalho).length;
+  // Quantos nomes existem de verdade, descontando os vazios do FIM. Vazio no
+  // MEIO continua contando: ali some uma coluna com dado, e é justamente o que
+  // este detector procura.
+  let nomeados = colunasNoCabecalho;
+  while (nomeados > 0 && !(headers[nomeados - 1] ?? "").trim()) nomeados--;
+
+  const cabe = (n: number) => n === colunasNoCabecalho || n === nomeados;
+  const distintos = [...new Set(camposPorLinha.filter((n) => !cabe(n)))].sort((a, b) => a - b);
+  const diferentes = camposPorLinha.filter((n) => !cabe(n)).length;
   if (diferentes === 0) return NADA;
 
   const quantas =
@@ -83,10 +109,10 @@ export function cabecalhoDesalinhado(
 
   return {
     desalinhado: true,
-    colunasNoCabecalho,
+    colunasNoCabecalho: nomeados,
     camposNasLinhas: distintos,
     texto:
-      `O cabeçalho tem ${colunasNoCabecalho} colunas, mas ${quantas} têm ${larguras}. ` +
+      `O cabeçalho tem ${nomeados} colunas, mas ${quantas} têm ${larguras}. ` +
       `Quando isso acontece, os valores entram debaixo do nome errado — o preço pode ` +
       `aparecer na coluna de estoque, e o custo na de preço. Confira o exemplo de cada ` +
       `coluna abaixo antes de importar: se o valor não combina com o nome, mude o papel ` +
