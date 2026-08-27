@@ -37,7 +37,7 @@
 
 import {
   agruparPorTipo,
-  tipoDoProduto,
+  grupoDoProduto,
   type PrevisaoDeCategoria,
 } from "@/modules/catalog/domain/categoriaPorTipo";
 import { lerCanalServidor, clienteDaCredencial } from "@/modules/integration/infrastructure/canalServidor";
@@ -157,12 +157,29 @@ export async function POST(request: Request) {
   // vezes tem que propor a mesma coisa, ou a proposta não é uma medição.
   const porTipo = new Map<string, { id: string; nome: string }[]>();
   for (const p of [...produtos].sort((a, b) => a.nome.localeCompare(b.nome))) {
-    const t = tipoDoProduto(p.nome);
+    const t = grupoDoProduto(p.nome);
     const lista = porTipo.get(t) ?? [];
     lista.push(p);
     porTipo.set(t, lista);
   }
-  const amostra = [...porTipo.values()].flatMap((l) => l.slice(0, AMOSTRA_POR_TIPO));
+
+  // ESPALHADA PELO GRUPO, E NÃO OS PRIMEIROS DA ORDEM ALFABÉTICA.
+  //
+  // Pegar `slice(0, 15)` de uma lista ordenada por nome parece inofensivo e não
+  // é: num catálogo de calçados os nomes começam pelo mesmo tipo, então os 15
+  // primeiros são uma FAMÍLIA, não uma amostra. Medido em 27/08/2026 nos 321
+  // chinelos — os 15 primeiros eram todos "Chinelo Baby ...", e o grupo inteiro
+  // recebeu a proposta de bebê:
+  //
+  //     os 15 primeiros    MLB1400 (bebê) 12 · MLB273770 2 · outro 1
+  //     1 a cada 21        MLB273770 11 · MLB1400 2 · MLB438492 2
+  //
+  // Um a cada N cobre o grupo inteiro e continua determinístico: mesma lista,
+  // mesma amostra, mesma proposta.
+  const amostra = [...porTipo.values()].flatMap((lista) => {
+    const passo = Math.max(1, Math.ceil(lista.length / AMOSTRA_POR_TIPO));
+    return lista.filter((_, i) => i % passo === 0).slice(0, AMOSTRA_POR_TIPO);
+  });
 
   const nomesDaCategoria = new Map<string, string>();
   const previstos = await emLotes(amostra, SIMULTANEAS, async (p) => {

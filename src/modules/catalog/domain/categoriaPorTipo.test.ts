@@ -16,6 +16,8 @@ import {
   MINIMO_DO_GRUPO,
   agruparPorTipo,
   categoriasDecididas,
+  ehDeBebe,
+  grupoDoProduto,
   tipoDoProduto,
   type PrevisaoDeCategoria,
 } from "./categoriaPorTipo.ts";
@@ -133,3 +135,61 @@ test("os grupos saem do maior para o menor — é a ordem de quem revisa", () =>
   assert.equal(g[0].tipo, "papete");
   assert.equal(g[g.length - 1].tipo, "meia");
 });
+
+// ---------------------------------------------------------------------------
+// Bebê é outro departamento no Mercado Livre — e por isso outro grupo
+// ---------------------------------------------------------------------------
+
+const BEBE = "MLB1400"; // Bebês > Roupas de Bebê > Calçados
+
+test("bebê vira grupo próprio, separado do mesmo tipo adulto", () => {
+  // Medido em 27/08/2026: 30 dos 321 chinelos são de bebê. Sem esta separação,
+  // aprovar "chinelo -> Sandálias e Chinelos" mandava os 30 para o departamento
+  // errado.
+  assert.equal(grupoDoProduto("Chinelo Baby Ipanema 27543 Hello Kitty"), "chinelo baby");
+  assert.equal(grupoDoProduto("Chinelo Havaianas Top Logomania 2"), "chinelo");
+});
+
+test("bebê é palavra inteira — 'babylook' não é bebê", () => {
+  assert.equal(ehDeBebe("Sapatilha Babylook Feminina"), false);
+  assert.equal(ehDeBebe("Chinelo Baby Dedo Ipanema"), true);
+  assert.equal(ehDeBebe("Sandália Bebê Molekinha"), true);
+});
+
+test("infantil, kids e menina NÃO separam — o ML devolve a mesma categoria", () => {
+  // Medido: "Chinelo Infantil Havaianas Disney" e "Chinelo Infantil Masculino
+  // Ipanema" devolvem MLB273770, a mesma do adulto. Separar pelo que não muda
+  // seria inventar grupo.
+  assert.equal(grupoDoProduto("Chinelo Infantil Dedo Havaianas Disney"), "chinelo");
+  assert.equal(grupoDoProduto("Chinelo Cartago 11858 Alabama Kids"), "chinelo");
+  assert.equal(grupoDoProduto("Tênis Baby Menina Molekinha 2750.103"), "tenis baby");
+});
+
+test("o tipo sozinho continua existindo, e é a primeira palavra", () => {
+  // `grupoDoProduto` é a CHAVE; `tipoDoProduto` continua sendo o tipo.
+  assert.equal(tipoDoProduto("Chinelo Baby Ipanema"), "chinelo");
+});
+
+test("o voto do grupo de bebê é independente do grupo adulto", () => {
+  const previsoes: PrevisaoDeCategoria[] = [
+    ...Array.from({ length: 4 }, (_, i) => ({
+      produtoId: `a${i}`, nome: `Chinelo Havaianas Modelo ${i}`, categoriaId: SANDALIAS,
+    })),
+    ...Array.from({ length: 3 }, (_, i) => ({
+      produtoId: `b${i}`, nome: `Chinelo Baby Ipanema ${i}`, categoriaId: BEBE,
+    })),
+  ];
+  const d = categoriasDecididas(previsoes);
+  assert.equal(d.get("a0"), SANDALIAS);
+  assert.equal(d.get("b0"), BEBE);
+  assert.deepEqual(
+    agruparPorTipo(previsoes).map((g) => g.tipo).sort(),
+    ["chinelo", "chinelo baby"]
+  );
+});
+
+test("nome vazio não vira grupo", () => {
+  assert.equal(grupoDoProduto(""), "");
+  assert.equal(grupoDoProduto("   "), "");
+});
+

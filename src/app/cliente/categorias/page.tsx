@@ -38,7 +38,7 @@ import { useClientPortal } from "@/components/client-portal/context";
 import { useLiveQuery } from "@/lib/hooks";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "@/lib/services/produtos";
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
-import { tipoDoProduto } from "@/modules/catalog/domain/categoriaPorTipo";
+import { grupoDoProduto } from "@/modules/catalog/domain/categoriaPorTipo";
 
 interface GrupoProposto {
   tipo: string;
@@ -99,7 +99,7 @@ export default function CategoriasPage() {
       // O grupo é recomposto AQUI, com a mesma função pura do servidor: assim a
       // tela aplica ao mesmo conjunto que a proposta descreveu.
       const alvo = semCategoria
-        .filter((p) => tipoDoProduto(p.nome) === g.tipo)
+        .filter((p) => grupoDoProduto(p.nome) === g.tipo)
         .map((p) => ({ id: p.id, categoriaMl: g.categoriaId }));
 
       // NADA A APLICAR NÃO É SUCESSO.

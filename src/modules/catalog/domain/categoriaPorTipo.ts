@@ -9,9 +9,14 @@
 //
 //     MLB273770 Sandálias e Chinelos   115
 //     MLB23332  Tênis                   30
-//     MLB1400   Calçados                19   <- genérica demais
+//     MLB1400   Calçados (de BEBÊ)      19
 //     MLB269718 Águas Minerais           7   <- lixo
 //     MLB275574 Sapatilhas                7
+//
+// CORREÇÃO DE 27/08: eu tinha escrito aqui que MLB1400 era "genérica demais".
+// Estava errado, e o erro virou uma proposta ruim na tela. O caminho dela é
+// `Bebês > Roupas de Bebê > Calçados` — não é uma categoria vaga de calçado, é
+// OUTRO DEPARTAMENTO. Para "Chinelo Baby Ipanema" ela é a resposta certa.
 //
 // Sete produtos viraram ÁGUA MINERAL. E não é aleatório de rede: "Papete Slide
 // Modare 7208.101 Nobuck" devolve Águas Minerais toda vez, enquanto "Papete
@@ -21,6 +26,22 @@
 // Mais: consultando com `limit=3`, MLB269718 aparece no top-3 até de uma
 // consulta BOA ("Sandália Molekinha" devolve [Sandálias e Chinelos, Águas
 // Minerais]). É ruído recorrente do endpoint, não uma leitura do produto.
+//
+// ===========================================================================
+// BEBÊ É OUTRO GRUPO, E ISSO NÃO É DETALHE
+// ===========================================================================
+//
+// "Chinelo Baby Ipanema" e "Chinelo Havaianas Top" são o mesmo TIPO e categorias
+// DIFERENTES no Mercado Livre — bebê tem departamento próprio. Medido no
+// catálogo real: 108 dos 1003 produtos (10,8%) são de bebê, sendo 30 chinelos.
+//
+// Se o grupo fosse só o tipo, aprovar "chinelo -> Sandálias e Chinelos"
+// mandaria 30 produtos de bebê para o departamento errado. Por isso a chave do
+// grupo é TIPO + BEBÊ, e a tela mostra "chinelo baby" separado de "chinelo".
+//
+// "Infantil", "Kids", "Menina" e "Menino" NÃO entram nessa separação: medido, o
+// ML devolve `Sandálias e Chinelos` para eles, a mesma do adulto. Separar pelo
+// que não muda seria inventar grupo.
 //
 // ===========================================================================
 // O CATÁLOGO VOTA
@@ -106,6 +127,26 @@ export function tipoDoProduto(nome: string): string {
     .find((w) => w.length > 2 && !/^[0-9]+$/.test(w)) ?? "";
 }
 
+/** Só "baby"/"bebê" — as palavras que MUDAM de departamento no ML. */
+const DE_BEBE = /\b(baby|bebe)\b/;
+
+/** Este produto é de bebê? Palavra inteira, para "babylook" não entrar. */
+export function ehDeBebe(nome: string): boolean {
+  return DE_BEBE.test(semAcento(nome ?? ""));
+}
+
+/**
+ * A chave do grupo: o tipo, mais "baby" quando for de bebê.
+ *
+ * É esta que a tela mostra e que decide quem recebe qual categoria — não o tipo
+ * sozinho. Ver o cabeçalho: bebê é outro departamento no Mercado Livre.
+ */
+export function grupoDoProduto(nome: string): string {
+  const t = tipoDoProduto(nome);
+  if (!t) return "";
+  return ehDeBebe(nome) ? `${t} baby` : t;
+}
+
 /**
  * Os grupos de tipo, cada um com a categoria que o grupo propõe.
  *
@@ -117,7 +158,7 @@ export function agruparPorTipo(
 ): GrupoDeCategoria[] {
   const porTipo = new Map<string, PrevisaoDeCategoria[]>();
   for (const p of previsoes) {
-    const t = tipoDoProduto(p.nome);
+    const t = grupoDoProduto(p.nome);
     const lista = porTipo.get(t) ?? [];
     lista.push(p);
     porTipo.set(t, lista);
@@ -161,7 +202,7 @@ export function categoriasDecididas(
   const decidido = new Map<string, string>();
   const grupos = new Map(agruparPorTipo(previsoes).map((g) => [g.tipo, g]));
   for (const p of previsoes) {
-    const g = grupos.get(tipoDoProduto(p.nome));
+    const g = grupos.get(grupoDoProduto(p.nome));
     const valor = g?.categoriaId || p.categoriaId;
     if (valor) decidido.set(p.produtoId, valor);
   }
