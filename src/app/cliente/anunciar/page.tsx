@@ -428,6 +428,9 @@ function Jornada() {
         briefing,
         variantes,
         precoVenda: produto.precoVenda,
+        // A MESMA contagem que já ia para o contexto. Ela agora também decide a
+        // pendência: sem imagem o ML recusa o anúncio.
+        fotosDoProduto: fotos.length,
         onPasso: setPassos,
         retomarDe: retomavel,
         onEtapaConcluida: (_, todas) => gravarProgresso(todas),

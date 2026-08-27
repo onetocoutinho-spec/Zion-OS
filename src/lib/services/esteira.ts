@@ -29,6 +29,21 @@ export interface OpcoesEsteira {
   variantes?: readonly VarianteDaBase[];
   /** Preço do produto pai, para a variação sem preço próprio. */
   precoVenda?: number;
+  /**
+   * Quantas fotos o produto tem. Sem nenhuma, o anúncio não publica: o Mercado
+   * Livre exige ao menos uma imagem, como `api/ml/remover-foto` já registrava
+   * do outro lado ao recusar apagar a última.
+   *
+   * OBRIGATÓRIO, e é o único campo obrigatório destas opções. Opcional com
+   * padrão 0 daria pendência de foto em produto que TEM foto — a tela não
+   * passaria, o valor viraria zero e o anúncio seria reprovado por uma imagem
+   * que está lá. Opcional com "pular quando ausente" traria de volta o defeito
+   * que já apareceu três vezes neste fluxo: o caminho silencioso rodando com
+   * menos verificação que o da tela.
+   *
+   * Obrigatório força cada chamador a responder a pergunta com o número real.
+   */
+  fotosDoProduto: number;
 }
 
 /**
@@ -37,7 +52,10 @@ export interface OpcoesEsteira {
  */
 export async function rodarEsteira(
   briefing: string,
-  opcoes: OpcoesEsteira = {}
+  // SEM `= {}`. O padrão vazio existia porque todo campo era opcional; agora
+  // `fotosDoProduto` não é, e um padrão aqui devolveria o zero silencioso pela
+  // porta dos fundos.
+  opcoes: OpcoesEsteira
 ): Promise<ResultadoEsteira> {
   // A grade real entra no contexto (para a tabela de medidas falar dos tamanhos
   // que existem) e volta no fim como a grade do anúncio. O modelo conhece, mas
@@ -71,5 +89,5 @@ export async function rodarEsteira(
     throw new Error(dados.erro ?? "Falha ao rodar a esteira.");
   }
 
-  return { anuncio: comAGradeDoCadastro(dados.anuncio, grade), tipo: "IA" };
+  return { anuncio: comAGradeDoCadastro(dados.anuncio, grade, opcoes.fotosDoProduto), tipo: "IA" };
 }

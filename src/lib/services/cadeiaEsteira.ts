@@ -64,6 +64,14 @@ export interface OpcoesCadeia {
   variantes?: readonly VarianteDaBase[];
   /** Preço do produto pai, usado quando a variação não tem preço próprio. */
   precoVenda?: number;
+  /**
+   * Quantas fotos o produto tem. Zero é pendência: o ML exige ao menos uma
+   * imagem para publicar. Ver `comAGradeDoCadastro`.
+   *
+   * OBRIGATÓRIO pela mesma razão de `OpcoesEsteira`: padrão 0 reprovaria por
+   * falta de foto um produto que tem foto, só porque a tela esqueceu de passar.
+   */
+  fotosDoProduto: number;
   /** Chamado a cada mudança de estado dos passos (para a barra de progresso). */
   onPasso?: (passos: PassoCadeia[]) => void;
   /**
@@ -120,7 +128,9 @@ async function rodarAgenteTexto(
   return { markdown: dados.resultado ?? "", simulado: false };
 }
 
-export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<ResultadoCadeia> {
+// SEM `= {}`, pela mesma razão de `rodarEsteira`: `fotosDoProduto` é
+// obrigatório, e um padrão vazio o zeraria sem que ninguém decidisse.
+export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia): Promise<ResultadoCadeia> {
   const passos: PassoCadeia[] = ORDEM_ESTEIRA.map((c) => ({
     codigo: c,
     nome: AGENTES[c].nome,
@@ -231,5 +241,5 @@ export async function rodarCadeiaEsteira(opcoes: OpcoesCadeia = {}): Promise<Res
   achar("A10").status = "ok";
   emitir();
 
-  return { anuncio: comAGradeDoCadastro(dados.anuncio, grade), tipo: "IA", passos };
+  return { anuncio: comAGradeDoCadastro(dados.anuncio, grade, opcoes.fotosDoProduto), tipo: "IA", passos };
 }

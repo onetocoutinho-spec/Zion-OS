@@ -37,8 +37,17 @@ const BUCKET = "produtos-imagens";
 const IMAGEM = /\.(jpe?g|png|webp)$/i;
 
 const [pastaRaiz, clienteId] = process.argv.slice(2);
+/**
+ * `--simular` mede sem escrever nada.
+ *
+ * A primeira execução deste script subiu 800 fotos de uma pasta conhecida. A
+ * segunda leva 10.976 de 21 pastas, e quantas CASAM com produto era palpite.
+ * Escrever dez mil arquivos no Storage para descobrir a taxa de acerto é a
+ * ordem errada — mede-se antes, e com as mesmas regras, não com parecidas.
+ */
+const SIMULAR = process.argv.includes("--simular");
 if (!pastaRaiz || !clienteId) {
-  console.error("uso: node scripts/subirFotosDaPasta.mjs <pasta> <clienteId>");
+  console.error("uso: node scripts/subirFotosDaPasta.mjs <pasta> <clienteId> [--simular]");
   process.exit(1);
 }
 
@@ -132,6 +141,24 @@ const comCapa = new Set((jaTem ?? []).filter((i) => i.tipo_imagem === "Principal
 const jaEnviados = new Set(
   (jaTem ?? []).map((i) => `${i.produto_id}||${(i.cor ?? "").trim().toLowerCase()}`)
 );
+
+if (SIMULAR) {
+  const novos = validos.filter((g) => !jaEnviados.has(`${g.produtoId}||${g.cor.trim().toLowerCase()}`));
+  const fotosNovas = novos.reduce((s, g) => s + g.arquivos.length, 0);
+  const naoCasaram = [...grupos.values()].filter((g) => !g.produtoId);
+  console.log(`
+SIMULAÇÃO — nada foi escrito.
+  grupos que casaram com produto ....... ${validos.length} de ${grupos.size}
+  destes, ainda não enviados ........... ${novos.length}
+  FOTOS que subiriam ................... ${fotosNovas}
+  produtos que ganhariam foto .......... ${new Set(novos.map((g) => g.produtoId)).size}
+  fotos puladas (produto+cor já tem) ... ${validos.reduce((s, g) => s + g.arquivos.length, 0) - fotosNovas}
+  fotos sem produto (ficam de fora) .... ${naoCasaram.reduce((s, g) => s + g.arquivos.length, 0)}`);
+  if (naoCasaram.length) {
+    console.log(`  exemplos que NÃO casaram: ${naoCasaram.slice(0, 5).map((g) => g.rotulo).join(" | ")}`);
+  }
+  process.exit(0);
+}
 
 // ---- 5. sobe ---------------------------------------------------------------
 let feito = 0;

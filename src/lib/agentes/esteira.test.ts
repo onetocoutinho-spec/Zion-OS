@@ -49,6 +49,18 @@ const GRADE_INTEIRA = montarVariacoes(
   118
 );
 
+/**
+ * O produto tem foto.
+ *
+ * `comAGradeDoCadastro` passou a exigir a contagem em 27/08/2026: produto sem
+ * imagem não publica, porque o Mercado Livre exige ao menos uma — o mesmo fato
+ * que `api/ml/remover-foto` já usava para recusar apagar a última.
+ *
+ * Os testes daqui são sobre TEXTO e GRADE, então passam 1 para tirar a foto do
+ * caminho. Os que provam a regra da foto estão no fim do arquivo, e passam 0.
+ */
+const COM_FOTO = 1;
+
 test("o schema NÃO pede variacoes — é o ponto do arquivo", () => {
   assert.equal("variacoes" in ESQUEMA_ANUNCIO.properties, false);
   assert.equal((ESQUEMA_ANUNCIO.required as readonly string[]).includes("variacoes"), false);
@@ -69,7 +81,7 @@ test("o prompt diz ao modelo que identidade não se escreve", () => {
 });
 
 test("a grade do anúncio vem do CADASTRO, não da IA", () => {
-  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA);
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
   assert.deepEqual(a.variacoes, GRADE_INTEIRA);
   assert.equal(a.variacoes[0].sku, "01040525");
   // O texto do modelo passa intacto — é onde ele é bom.
@@ -88,7 +100,7 @@ test("grade incompleta REPROVA, por melhor que esteja o texto", () => {
     [{ cor: "Branco", tamanho: "25/26", sku: "", ean: "789", estoque: 3, precoBase: 118 }],
     118
   );
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semSku);
+  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semSku, COM_FOTO);
   assert.equal(a.vereditoA10, "reprovado");
   assert.match(a.motivoVeredito, /Grade de variações incompleta/);
   assert.match(a.motivoVeredito, /SKU/);
@@ -101,24 +113,24 @@ test("EAN vazio NÃO reprova, e vira conselho ao lado dos do modelo", () => {
     [{ cor: "Branco", tamanho: "25/26", sku: "01040525", ean: "", estoque: 3, precoBase: 118 }],
     118
   );
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semEan);
+  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semEan, COM_FOTO);
   assert.equal(a.vereditoA10, "aprovado");
   assert.deepEqual(a.pendencias, []);
   assert.ok(a.sugestoes.some((s) => /EAN/.test(s)), "o EAN deveria virar sugestão");
 });
 
 test("produto SEM grade nenhuma reprova — e diz que é a grade que falta", () => {
-  const a = comAGradeDoCadastro(daIA(), []);
+  const a = comAGradeDoCadastro(daIA(), [], COM_FOTO);
   assert.equal(a.vereditoA10, "reprovado");
   assert.deepEqual(a.variacoes, []);
   assert.match(a.pendencias[0], /grade de variações/);
 });
 
 test("grade inteira preserva o veredito do modelo — a trava não inverte o sinal", () => {
-  assert.equal(comAGradeDoCadastro(daIA(), GRADE_INTEIRA).vereditoA10, "aprovado");
+  assert.equal(comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO).vereditoA10, "aprovado");
   // E um reprovado do modelo continua reprovado, mesmo com a grade certa.
   assert.equal(
-    comAGradeDoCadastro(daIA({ vereditoA10: "reprovado" }), GRADE_INTEIRA).vereditoA10,
+    comAGradeDoCadastro(daIA({ vereditoA10: "reprovado" }), GRADE_INTEIRA, COM_FOTO).vereditoA10,
     "reprovado"
   );
 });
@@ -137,14 +149,14 @@ test("grade inteira preserva o veredito do modelo — a trava não inverte o sin
 // cada uma delas era uma trava permanente sobre um dado que ninguém pede.
 
 test("as pendências vêm SÓ da grade — o modelo não trava mais nada", () => {
-  const a = comAGradeDoCadastro(daIA(), []);
+  const a = comAGradeDoCadastro(daIA(), [], COM_FOTO);
   assert.equal(a.pendencias.length, 1, "entrou pendência que não é da grade");
   assert.match(a.pendencias[0], /grade de variações/);
 });
 
 test("o que o modelo observa vira SUGESTÃO, e sugestão não bloqueia", () => {
   // Grade inteira: nada trava. As observações do modelo continuam visíveis.
-  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA);
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
   assert.deepEqual(a.pendencias, []);
   assert.ok(a.sugestoes.length > 0, "as sugestões do modelo sumiram");
   assert.match(a.sugestoes.join(" "), /fotos reais/i);
@@ -152,7 +164,7 @@ test("o que o modelo observa vira SUGESTÃO, e sugestão não bloqueia", () => {
 
 test("nenhuma sugestão vaza para pendencias — nem por engano", () => {
   // A separação é o ponto do DES-001. Se um dia alguém reconcatenar, isto cai.
-  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA);
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
   for (const s of a.sugestoes) {
     assert.ok(!a.pendencias.includes(s), `a sugestão "${s}" virou trava de novo`);
   }
@@ -184,4 +196,72 @@ test("o esquema NÃO pede pendencias nem obrigatoriedade — é o que fecha a po
     !("obrigatorio" in ficha.items.properties),
     "a ficha técnica voltou a deixar o modelo declarar o que é obrigatório"
   );
+});
+
+// ---------------------------------------------------------------------------
+// A FOTO — a trava que o repositório já conhecia e não aplicava na criação
+// ---------------------------------------------------------------------------
+//
+// `api/ml/remover-foto` recusa apagar a última imagem de um anúncio, com a
+// razão escrita no código: "anúncio sem foto o Mercado Livre não aceita". A
+// mesma verdade nunca tinha chegado ao outro lado — o sistema protegia a última
+// foto de um anúncio no ar e aprovava um anúncio que nunca teve nenhuma.
+//
+// MEDIDO em 27/08/2026, sobre o catálogo real: dos 102 anúncios aprovados com
+// ZERO pendências, 96 não tinham foto alguma. "Pronto para publicar" era falso
+// em 94% dos casos, e o lojista só descobriria no erro do ML.
+//
+// Ela entra como PENDÊNCIA e não como veredito de propósito. Pendência é lista:
+// tem texto, diz o que fazer e some quando resolvida. Foi por NÃO ser assim que
+// 244 anúncios foram reprovados por foto sem uma linha do que corrigir — pelo
+// modelo, que não recebe imagem nenhuma.
+
+const SEM_FOTO = 0;
+
+test("produto sem foto NÃO publica — e a pendência diz onde resolver", () => {
+  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), GRADE_INTEIRA, SEM_FOTO);
+  assert.equal(a.vereditoA10, "reprovado");
+  assert.equal(a.pendencias.length, 1);
+  assert.match(a.pendencias[0], /foto/);
+  assert.match(a.pendencias[0], /Mercado Livre exige pelo menos uma/);
+  assert.match(a.pendencias[0], /Envie em Imagens/, "a pendência precisa dizer PARA ONDE ir");
+});
+
+test("a foto vem PRIMEIRO na lista — é a que impede todas as outras", () => {
+  // Mesma ordem da grade ausente: sem imagem, resolver o resto não publica nada.
+  const semNada = montarVariacoes(
+    [{ cor: "Branco", tamanho: "25/26", sku: "", ean: "", estoque: 3, precoBase: 0 }],
+    0
+  );
+  const a = comAGradeDoCadastro(daIA(), semNada, SEM_FOTO);
+  assert.match(a.pendencias[0], /foto/);
+  assert.ok(a.pendencias.length > 1, "as pendências da grade sumiram junto");
+});
+
+test("uma foto basta — a regra é o mínimo do ML, não um ideal de catálogo", () => {
+  // Cobrar "capa 1:1 + detalhe + medidas" era o que o checklist fazia, e o
+  // modelo nem vê imagem. Aqui a régua é a do marketplace: ao menos uma.
+  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), GRADE_INTEIRA, 1);
+  assert.equal(a.vereditoA10, "aprovado");
+  assert.deepEqual(a.pendencias, []);
+});
+
+test("o motivo do veredito soma as duas causas, sem esconder nenhuma", () => {
+  // Antes, `motivoVeredito` só falava da grade. Um produto sem foto E sem preço
+  // era reprovado citando o preço, e o lojista resolvia o preço para continuar
+  // reprovado — sem saber por quê.
+  const semPreco = montarVariacoes(
+    [{ cor: "Branco", tamanho: "25/26", sku: "01040525", ean: "789", estoque: 3, precoBase: 0 }],
+    0
+  );
+  const a = comAGradeDoCadastro(daIA(), semPreco, SEM_FOTO);
+  assert.match(a.motivoVeredito, /Grade de variações incompleta/);
+  assert.match(a.motivoVeredito, /sem foto/i);
+});
+
+test("com foto e grade inteira, o motivo é o do MODELO — nada é acrescentado", () => {
+  // A trava não pode reescrever o veredito de quem passou. Era assim antes da
+  // foto entrar, e precisa continuar sendo.
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
+  assert.equal(a.motivoVeredito, "Texto completo e competitivo.");
 });

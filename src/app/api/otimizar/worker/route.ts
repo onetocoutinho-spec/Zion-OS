@@ -253,7 +253,7 @@ async function gerarAnuncio(
       rastro: { origem: "esteira", clienteId: produto.clienteId, usuarioId: null },
     });
     try {
-      const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
+      const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade, quantidadeFotos);
       // O CUSTO VIAJA COM O ANÚNCIO.
       //
       // Vai no próprio JSONB porque é o único lugar em que ele sobrevive sem

@@ -270,25 +270,59 @@ export interface AnuncioGerado {
  */
 export function comAGradeDoCadastro(
   daIA: AnuncioDaIA,
-  grade: VariacaoDoAnuncio[]
+  grade: VariacaoDoAnuncio[],
+  /**
+   * Quantas fotos o produto tem no cadastro.
+   *
+   * OBRIGATÓRIO DE PROPÓSITO, e não opcional com padrão. Três vezes seguidas,
+   * neste mesmo fluxo, um caminho recebeu menos contexto que o outro sem que
+   * nada quebrasse: o briefing de atributos, o rastro de custo e a contagem de
+   * fotos, todos passados por `/cliente/anunciar` e esquecidos pelo worker.
+   * Parâmetro obrigatório transforma esquecer em erro de compilação — é o mesmo
+   * motivo pelo qual `pendencias` saiu de `AnuncioDaIA`.
+   */
+  fotosDoProduto: number
 ): AnuncioGerado {
   const daGrade = pendenciasDaGrade(grade);
-  const publicavel = gradePublicavel(grade);
+  const semFoto = fotosDoProduto <= 0;
+  // A FOTO É TRAVA, E A PROVA DISSO JÁ ESTAVA NO REPOSITÓRIO.
+  //
+  // `api/ml/remover-foto` recusa apagar a última imagem de um anúncio, com a
+  // razão escrita: "anúncio sem foto o Mercado Livre não aceita". A mesma
+  // verdade nunca tinha chegado à criação — o sistema protegia a última foto de
+  // um anúncio no ar e aprovava um anúncio que nunca teve nenhuma.
+  //
+  // MEDIDO em 27/08/2026: dos 102 anúncios aprovados com zero pendências, 96
+  // não tinham foto alguma. "Pronto para publicar" era falso em 94% dos casos,
+  // e o lojista só descobriria no erro do ML.
+  //
+  // Ela entra como PENDÊNCIA, não como veredito: pendência é lista, tem texto,
+  // diz o que fazer e some quando resolvida. Foi por não ser assim que 244
+  // anúncios foram reprovados por foto sem uma linha do que corrigir — pelo
+  // modelo, que nem imagem recebe.
+  const pendencias = semFoto
+    ? [
+        "⚠️ informação necessária: foto — este produto não tem nenhuma imagem cadastrada, e o Mercado Livre exige pelo menos uma para publicar. Envie em Imagens.",
+        ...daGrade,
+      ]
+    : daGrade;
+  const publicavel = gradePublicavel(grade) && !semFoto;
   // O EAN sai da grade como CONSELHO, não como trava — ele não é obrigatório em
   // nenhuma categoria medida, e o ML aceita o motivo no lugar do código. As
   // sugestões do modelo continuam valendo; esta entra junto.
   const conselhos = [...(daIA.sugestoes ?? []), ...sugestoesDaGrade(grade)];
+  const motivos = [
+    daIA.motivoVeredito,
+    daGrade.length ? `Grade de variações incompleta: ${daGrade.join(" ")}` : "",
+    semFoto ? "Produto sem foto: o Mercado Livre exige ao menos uma imagem." : "",
+  ].filter(Boolean);
   return {
     ...daIA,
     variacoes: grade,
-    pendencias: daGrade,
+    pendencias,
     sugestoes: conselhos,
     vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
-    motivoVeredito: publicavel
-      ? daIA.motivoVeredito
-      : [daIA.motivoVeredito, `Grade de variações incompleta: ${daGrade.join(" ")}`]
-          .filter(Boolean)
-          .join(" "),
+    motivoVeredito: publicavel ? daIA.motivoVeredito : motivos.join(" "),
   };
 }
 

@@ -35,6 +35,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { montarContexto } from "@/lib/contexto";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { listarImagensDoProduto } from "@/lib/services/imagensProduto";
 import { listarTabelasDoCliente } from "@/lib/services/tabelasMedidasCliente";
 import {
   criarAnuncioGerado,
@@ -215,11 +216,21 @@ export default function ClienteOtimizar() {
     setErro(null);
     try {
       const variantes = await listarVariantesDoProduto(produto.id);
+      // As fotos entram na mesma ida que as variantes: sem imagem o Mercado
+      // Livre recusa o anúncio, e isso virou pendência em vez de surpresa na
+      // hora de publicar.
+      const fotos = await listarImagensDoProduto(produto.id);
       const r = await rodarEsteira("", {
-        contexto: montarContexto({ produto, variantes, tabelasMedidas: tabelasMedidas ?? [] }),
+        contexto: montarContexto({
+          produto,
+          variantes,
+          tabelasMedidas: tabelasMedidas ?? [],
+          quantidadeFotos: fotos.length,
+        }),
         produto: produto.nome,
         variantes,
         precoVenda: produto.precoVenda,
+        fotosDoProduto: fotos.length,
       });
       const passouA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;
       await criarAnuncioGerado({
