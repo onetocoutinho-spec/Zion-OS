@@ -94,6 +94,28 @@ const palavrasDe = (s: string): Set<string> =>
 const CODIGO_MINIMO = 4;
 
 /**
+ * MEDIDA NÃO É CÓDIGO — "152g" identifica um peso, não um produto.
+ *
+ * `152g` normaliza para `152G`: quatro caracteres com dígito, que é exatamente
+ * o mínimo para virar código. E como só um produto do catálogo tinha esse peso
+ * no nome, ele virou uma REFERÊNCIA ÚNICA — identidade, no critério desta
+ * função.
+ *
+ * MEDIDO em 27/08/2026, na pasta SLIME:
+ *
+ *     "Slime Gelele Color 152g"        -> "Slime Gelelé Tradicional Pote 152g"
+ *     "Slime Gelele Glitter Pote 152g" -> o MESMO produto
+ *
+ * Dois produtos diferentes casando num terceiro, os dois "por identidade", pelo
+ * peso. Peso é atributo, e atributo se repete de propósito.
+ *
+ * A lista é curta e o casamento é do TOKEN INTEIRO: "4931103" não vira medida
+ * por acabar em dígito, e "010012" também não. Medido no catálogo inteiro: das
+ * 664 referências únicas, exatamente UMA é medida — esta.
+ */
+const MEDIDA = /^[0-9]+(G|GR|KG|ML|CM|MM|UN|PCS)$/;
+
+/**
  * Códigos escondidos num texto: 4+ alfanuméricos com pelo menos um dígito,
  * atravessando ponto, hífen e barra ("7208.101" → "7208101").
  *
@@ -104,6 +126,7 @@ function codigosNoTexto(texto: string): string[] {
   const brutos = (texto ?? "").match(/[A-Za-z0-9]+(?:[.\-/][A-Za-z0-9]+)*/g) ?? [];
   return brutos
     .map((t) => t.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
+    .filter((t) => !MEDIDA.test(t))
     .filter((t) => t.length >= CODIGO_MINIMO && /[0-9]/.test(t));
 }
 

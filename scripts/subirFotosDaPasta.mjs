@@ -65,6 +65,31 @@ const SIMULAR = process.argv.includes("--simular");
  * pasta, de quem sabe o que aquela pasta é.
  */
 const SO_IDENTIDADE = process.argv.includes("--so-identidade");
+
+/**
+ * `--corte-nome <n>`: confiança mínima para ACEITAR um casamento por nome.
+ *
+ * O padrão do domínio é 0,34, calibrado para catálogo de móvel, onde o nome é a
+ * única identidade que existe. Em catálogo de calçado e brinquedo ele é frouxo,
+ * porque os nomes compartilham quase tudo.
+ *
+ * MEDIDO em 27/08/2026 nas pastas OUTROS e SLIME, conferindo casamento por
+ * casamento:
+ *
+ *     confiança 1,00 (nome idêntico) ... 3 de 3 CERTOS
+ *     confiança < 1,00 ................ 10 de 10 ERRADOS
+ *
+ * "Calcanheira Oliver Anti Impacto" virou "Palmilhas Oliver Eva Anti Impacto"
+ * a 0,60; "Slime Gelele Barbie 180g" virou "Slime Gelele Kit Laboratório" a
+ * 0,50. Palavra em comum não é o mesmo produto.
+ *
+ * O corte é por PASTA porque a resposta certa é por pasta: quem manda a pasta
+ * sabe se o nome dela identifica alguma coisa. `--so-identidade` é o extremo
+ * deste mesmo botão — nenhum nome serve.
+ */
+const CORTE_NOME = SO_IDENTIDADE
+  ? Infinity
+  : Number(process.argv[process.argv.indexOf("--corte-nome") + 1] ?? 0) || 0;
 if (!pastaRaiz || !clienteId) {
   console.error("uso: node scripts/subirFotosDaPasta.mjs <pasta> <clienteId> [--simular]");
   process.exit(1);
@@ -134,11 +159,12 @@ for (const a of arquivos) {
   const chave = `${rotulo}||${cor}`;
   if (!grupos.has(chave)) {
     const casamento = casarPastaComProduto(rotulo, produtos);
-    // Com `--so-identidade`, casar por nome vale o mesmo que não casar: o grupo
+    // Casamento por nome abaixo do corte vale o mesmo que não casar: o grupo
     // aparece como "sem produto" e espera uma pessoa no seletor da tela.
-    const aceito = SO_IDENTIDADE && casamento.via === "nome"
-      ? { produtoId: null, confianca: casamento.confianca, via: null }
-      : casamento;
+    const aceito =
+      casamento.via === "nome" && casamento.confianca < CORTE_NOME
+        ? { produtoId: null, confianca: casamento.confianca, via: null }
+        : casamento;
     grupos.set(chave, { rotulo, cor, arquivos: [], ...aceito });
   }
   grupos.get(chave).arquivos.push(a);

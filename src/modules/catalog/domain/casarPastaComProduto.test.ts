@@ -391,3 +391,62 @@ test("sem casamento nenhum, o padrão continua sendo o segundo nível", () => {
   const caminhos = Array.from({ length: 20 }, (_, i) => ["Fotos", `nada-${i}`, "cor"]);
   assert.equal(nivelDoProdutoPorProfundidade(caminhos, CATALOGO).get(3), 1);
 });
+
+// ---------------------------------------------------------------------------
+// MEDIDA NÃO É CÓDIGO — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// "152g" normaliza para "152G": quatro caracteres com dígito, o mínimo para
+// virar código. E como só um produto tinha esse peso no nome, ele virou uma
+// REFERÊNCIA ÚNICA — identidade, no critério desta função.
+//
+// MEDIDO na pasta SLIME:
+//
+//     "Slime Gelele Color 152g"        -> "Slime Gelelé Tradicional Pote 152g"
+//     "Slime Gelele Glitter Pote 152g" -> o MESMO produto
+//
+// Dois produtos diferentes casando num terceiro, os dois "por identidade", pelo
+// peso. Peso é atributo, e atributo se repete de propósito — é o oposto de
+// identidade.
+//
+// No catálogo inteiro, das 664 referências únicas, exatamente UMA era medida.
+// O estrago é pequeno em número e total em natureza: casar por peso é casar por
+// coincidência, com confiança 1.
+
+const GELELE: ProdutoParaCasar[] = [
+  { id: "g1", nome: "Slime Gelelé Tradicional Pote 152g", sku: "3001" },
+  { id: "g2", nome: "Slime Gelele Kit Laboratório", sku: "3002" },
+];
+
+test("peso no nome NÃO vira referência — 152g não identifica produto", () => {
+  const r = casarPastaComProduto("Slime Gelele Color 152g", GELELE);
+  assert.notEqual(r.via, "referencia", "o peso voltou a valer como identidade");
+});
+
+test("dois produtos com o mesmo peso não colapsam no mesmo id", () => {
+  const a = casarPastaComProduto("Slime Gelele Color 152g", GELELE);
+  const b = casarPastaComProduto("Slime Gelele Glitter Pote 152g", GELELE);
+  assert.ok(
+    !(a.via === "referencia" && b.via === "referencia" && a.produtoId === b.produtoId),
+    "duas pastas diferentes casaram no mesmo produto, por identidade, pelo peso"
+  );
+});
+
+test("código de verdade que acaba em dígito continua valendo", () => {
+  // A regra rejeita o TOKEN INTEIRO como número+unidade. "4931103" não é medida
+  // por acabar em dígito, e "010.012" também não.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "c1", nome: "Tênis Actvitta 4931.103 Loc Oregon", sku: "9001" },
+    { id: "c2", nome: "Sapatênis Kids Casual Mimoflex 010.012", sku: "9002" },
+  ];
+  assert.equal(casarPastaComProduto("Tenis Actvitta 4931103 Loc Oregon", catalogo).produtoId, "c1");
+  assert.equal(casarPastaComProduto("Sapatenis Kids Casual Mimoflex 010012", catalogo).produtoId, "c2");
+});
+
+test("as unidades cobertas são as que aparecem em embalagem", () => {
+  // Lista curta de propósito: cada unidade a mais é um código de verdade a
+  // menos. "M" e "L" sozinhas ficaram de fora — "1234M" pode ser modelo.
+  const catalogo: ProdutoParaCasar[] = [{ id: "u1", nome: "Pote 500ml Gel", sku: "7001" }];
+  const r = casarPastaComProduto("Outro Produto 500ml", catalogo);
+  assert.notEqual(r.via, "referencia");
+});
