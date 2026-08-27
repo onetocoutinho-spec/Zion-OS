@@ -426,6 +426,104 @@ as descrições — começa depois de as categorias estarem aprovadas.
 
 ---
 
+### Passo 5c — preço e estoque: o que travava não era código (27/08)
+
+Com a categoria definida, os três anúncios gerados reprovaram pelo mesmo motivo,
+e ele era verdade: **preço zerado, estoque zerado, sem imagens**. As pendências
+eram MEDIDAS — "preço: nenhuma das 9 variações tem", "EAN: falta em 5 de 9" —,
+nenhuma inventada.
+
+A exportação de derivações do ERP **não tem coluna de preço**, e o `Qtde Estoque`
+dela veio com as 7224 linhas zeradas. O número mora em outro relatório.
+
+**Três buracos de código no caminho, e os três consertados:**
+
+1. A importação "Só os custos" tinha o papel `precoVenda` no seletor da tela e
+   **jogava o valor fora**. Quem mapeasse via a planilha ser aceita e o preço
+   sumir. Agora custo e preço viajam como PAR desde a leitura da linha.
+2. Não havia como importar estoque. Agora entra pela mesma porta — com um
+   terceiro estado, porque **zero é resposta para estoque e não é para dinheiro**:
+   a ausência dele é `-1`, e "esgotou" precisa gravar.
+3. O produto recebia o número de uma linha. Estoque é SOMA das variações: 3 do 35
+   mais 2 do 36 são 5, e nenhum dos dois é o número do produto.
+
+**O primeiro arquivo do Linx chegou desalinhado** — 11 nomes no cabeçalho e 9
+campos em todas as 1505 linhas, porque `REPORTGROUP` é coluna de agrupamento que
+não sai nas linhas. `PRECO` recebia 25,13 (o custo) e `QUANTIDADE` recebia 46,90
+(o preço). Nasceram daí o detector `cabecalhoDesalinhado` e — o que teria bastado
+sozinho — **o valor de exemplo em cada coluna da tela de conferência**.
+
+**E a tela travou duas vezes, com causa medida:**
+
+    1003 produtos × 1505 linhas = 1.509.515 comparações
+    casamento por nome: 5,7 SEGUNDOS de laço síncrono
+
+Não é lentidão, é congelamento: o fio principal não desenha nem responde. Quem
+recarrega no meio interrompe a importação **entre as duas gravações** — variações
+escritas, produtos não. Aconteceu duas vezes, e deixou a base meia gravada.
+
+Consertado em duas frentes: a importação cede o fio a cada 25 produtos, e a
+gravação de N linhas com valores diferentes virou **uma requisição** (migração
+082, `security invoker` — a RLS continua valendo, verificado: própria loja 1,
+loja alheia 0).
+
+**Resultado, medido:**
+
+| | |
+|---|---|
+| produtos | 1003 |
+| com categoria | 998 |
+| com custo | 699 |
+| com preço e estoque | 693 |
+| **completos** (custo + preço + estoque + categoria) | **690** |
+
+Os 313 que faltam não estão no relatório: ele tem 1505 linhas para 7224
+variações. Não é defeito do sistema — é o alcance do arquivo.
+
+---
+
+### Passo 6 — a esteira, com tudo no lugar: APROVADO (27/08)
+
+Três produtos completos na fila. O primeiro anúncio aprovado do percurso:
+
+    Kit Meia Cano Ex Longo Actvitta c/3
+    MLB108791 Meias · nota 46 · 0 pendências
+    veredito: APROVADO · status: aguardando_aprovacao
+
+O motivo que o próprio anúncio deu cita **atributos de meia** — "Gênero, Tipo de
+meias e Tipo de comprimento". É a categoria medida funcionando: até 26/08 esse
+produto recebia a lista de CALÇADO por suposição e reprovaria por "tipo de
+calçado ausente" num produto que não é calçado.
+
+O segundo subiu de 34 para **nota 68** e parou por pouco: falta EAN em 1 de 4
+variações e a tabela de medidas de bebê (17/18, 19/20, 21/22), que não existe no
+sistema.
+
+**A corrente inteira funciona ponta a ponta:** importar → cor e tamanho por prova
+→ categoria pelo voto do catálogo → custo, preço e estoque pelo relatório →
+esteira → anúncio aprovado, aguardando a lojista.
+
+---
+
+### Passos 7 e 8 — NÃO percorridos, e o motivo é dado, não código
+
+**Publicar** exige duas coisas que a conta de teste não tem:
+
+- **nenhuma foto** — 0 imagens na base. O caminho em lote existe e foi consertado
+  (passo 4), mas ninguém subiu uma pasta.
+- **nenhuma conexão com o Mercado Livre** — e
+  [04-MERCADO-LIVRE-STAGING](../staging-setup/04-MERCADO-LIVRE-STAGING.md) é
+  explícito: o ML não tem sandbox completo. Publicar pela conexão da Chinelaria
+  colocaria anúncio de teste na loja que vende, e a guarda 2 deste documento
+  proíbe.
+
+**Acompanhar** depende de ter algo no ar.
+
+Registrado como a guarda 3 mandava: **medido até o anúncio aprovado, não até o
+ar.**
+
+---
+
 ### O que anotar em cada passo
 
 Uma linha por passo, com uma de duas marcas: **passou sozinho** ou **parou aqui,
@@ -447,11 +545,47 @@ para um suporte que não existe mais.
 
 ---
 
-## O que o CHECKPOINT 1 decide
+## CHECKPOINT 1 — decidido em 27/08/2026
 
-A pergunta é uma só: **a loja chega ao fim sozinha?**
+A pergunta era uma só: **a loja chega ao fim sozinha?**
 
-- **Chega** → a Fase 4 (cobrança) está liberada.
-- **Não chega** → o que parou vira a próxima tarefa, e cobrança continua
-  adiada. Abrir a porta antes de a casa se sustentar gasta a primeira impressão
-  de uma conta nova, que não se repõe.
+**Resposta: chega até o anúncio aprovado, e para antes do ar.**
+
+    1 assinar        ✅   (o beco do e-mail foi consertado no percurso)
+    2 provisionar    ✅
+    3 importar       ✅   1003 produtos · 7140 cores · 7211 tamanhos
+    4 imagens        ⚠️   caminho consertado (10,8% → 79,5%), NÃO percorrido
+    5 descrições     ✅   com categoria medida, não suposta
+    5b categorias    ✅   998 de 1003
+    5c preço/estoque ✅   690 completos
+    6 atributos      ✅   cobrados da categoria certa
+    7 publicar       ⛔   sem foto e sem conta ML de teste
+    8 acompanhar     ⛔   depende do 7
+
+**O que isso libera:** nada da Fase 4 ainda. A regra deste checkpoint era
+"chega ao fim sozinha", e o fim é o anúncio NO AR — não o anúncio aprovado.
+
+**O que isso desmente:** a suspeita de que o caminho estava quebrado em muitos
+lugares. Não estava. Dos treze achados, **onze eram silêncio** — o sistema sabia
+a resposta e não contava:
+
+- a aba velha que não avisava;
+- o peso implausível que passava;
+- a grade sem cor e sem tamanho;
+- a importação que duplicava sem dizer;
+- o briefing que afirmava medição sem ter medido;
+- o `preço de venda` aceito na tela e descartado na gravação;
+- a lista do `<select>` ilegível no tema escuro;
+- o cabeçalho desalinhado que punha custo no lugar do preço;
+- o "Aplicar" que apagava a linha sem gravar;
+- a máquina local falando com a conta que paga;
+- a aba congelada que parecia programa morto.
+
+Os dois restantes eram trabalho que faltava: importar preço e importar estoque.
+
+**O que trava o passo 7 NÃO é código.** É uma pasta de fotos e uma conta de teste
+no Mercado Livre. As duas são decisão de quem opera, não linha para escrever.
+
+**Próximo checkpoint:** repetir os passos 7 e 8 quando existir conta ML de teste.
+Até lá, este documento diz o que foi medido e onde parou — que é o que a guarda 3
+exigia.

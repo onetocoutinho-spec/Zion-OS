@@ -113,14 +113,29 @@ a equipe cadastrou.
 
 ---
 
-## CHECKPOINT 1 — depois de T1
+## CHECKPOINT 1 — FECHADO em 27/08/2026
 
-Ler AUD-006 e responder: **a loja chega ao fim sozinha?**
+A pergunta era: **a loja chega ao fim sozinha?**
 
-- **Chega** → Fase 4 (cobrança) está liberada.
-- **Não chega** → o que parou vira a próxima tarefa, e cobrança continua adiada. Abrir a
-  porta antes de a casa se sustentar gasta a primeira impressão de uma conta nova, que
-  não se repõe.
+**Chega até o anúncio APROVADO, e para antes do ar.** O percurso inteiro foi
+percorrido até o passo 6; os passos 7 e 8 pararam por falta de DADO, não de código:
+nenhuma foto na base e nenhuma conta de teste no Mercado Livre. Ver
+[AUD-006](../docs/engineering/AUD-006-a-loja-nova-medida.md).
+
+**A Fase 4 (cobrança) continua ADIADA**, e a regra deste checkpoint é a razão: o
+fim é o anúncio no ar, não o anúncio aprovado. Abrir a porta antes de a casa se
+sustentar gasta a primeira impressão de uma conta nova, que não se repõe.
+
+**O que o T1 desmentiu:** o caminho não estava quebrado em muitos lugares. Dos
+treze achados, **onze eram silêncio** — o sistema sabia a resposta e não contava.
+Os outros dois eram trabalho que faltava (importar preço, importar estoque).
+
+**O que abre agora, e não é código:**
+
+1. uma pasta de fotos organizada `Produto → Cor → fotos`;
+2. uma conta de teste no Mercado Livre, para o passo 7 sem tocar a loja que vende.
+
+**Próximo checkpoint:** repetir 7 e 8 quando as duas existirem.
 
 ---
 
