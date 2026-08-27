@@ -43,7 +43,6 @@ import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
 import {
   casarPastaComProduto,
-  lerCaminhoDaFoto,
   nivelDoProdutoPorProfundidade,
   pastasDoCaminho,
   type Casamento,
@@ -623,7 +622,7 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
       const { pastaProduto, cor } =
         meio.length > 0
           ? { pastaProduto: meio[i] || "(raiz)", cor: meio[i + 1] ?? "" }
-          : lerCaminhoDaFoto(f.webkitRelativePath || f.name);
+          : { pastaProduto: "(raiz)", cor: "" };
       const chave = `${pastaProduto}||${cor}`;
       if (!mapa.has(chave)) {
         mapa.set(chave, {

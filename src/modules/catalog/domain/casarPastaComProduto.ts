@@ -204,15 +204,34 @@ export interface CaminhoDaFoto {
  * sobrar é: nada (fotos soltas na raiz), o produto, ou produto e cor.
  */
 /**
- * As pastas ENTRE a que a pessoa escolheu e o arquivo.
+ * TODAS as pastas do caminho, incluindo a que a pessoa escolheu.
  *
- * `Fotos/CHINELO/Chinelo Klin 442127/4380 azul/01.png` → os três do meio. É a
- * matéria-prima de `nivelDoProdutoPorProfundidade`, que decide qual deles é o
+ * `Fotos/CHINELO/Chinelo Klin 442127/4380 azul/01.png` → as quatro. É a
+ * matéria-prima de `nivelDoProdutoPorProfundidade`, que decide qual delas é o
  * produto.
+ *
+ * ===========================================================================
+ * POR QUE A ESCOLHIDA ENTRA
+ * ===========================================================================
+ *
+ * A versão anterior descartava o primeiro segmento, porque ele é a pasta que a
+ * pessoa selecionou. Isso funciona quando ela seleciona a pasta-mãe — e joga
+ * fora a única informação útil quando ela seleciona a pasta de UM PRODUTO:
+ *
+ *     seleciona `Papete Slide Modare 7208101 Nobuck`
+ *     caminho    Papete Slide Modare 7208101 Nobuck/100983 verde/01.png
+ *     descartado ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  o nome do produto
+ *
+ * Medido em 27/08/2026: a tela agrupou por "100983 verde luna nobu" e não casou
+ * com nada, porque estava procurando o produto no nome da COR.
+ *
+ * Com a escolhida incluída, o catálogo decide entre TODOS os níveis — e a
+ * pessoa pode selecionar a pasta-mãe, a do tipo ou a de um produto só, que a
+ * resposta continua certa.
  */
 export function pastasDoCaminho(caminho: string): string[] {
   const partes = (caminho || "").split("/").filter(Boolean);
-  return partes.length < 2 ? [] : partes.slice(1, -1);
+  return partes.length < 2 ? [] : partes.slice(0, -1);
 }
 
 /**
@@ -287,7 +306,11 @@ export function nivelDoProdutoPorProfundidade(
         melhorIndice = i;
       }
     }
-    escolhido.set(profundidade, melhorCasou > 0 ? melhorIndice : 0);
+    // Sem casamento nenhum, o padrão é o segundo nível — que é a pasta logo
+    // abaixo da escolhida, o comportamento de sempre. Só quando não há sequer
+    // um segundo nível é que resta o primeiro.
+    const padrao = profundidade > 1 ? 1 : 0;
+    escolhido.set(profundidade, melhorCasou > 0 ? melhorIndice : padrao);
   }
   return escolhido;
 }
