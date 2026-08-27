@@ -18,7 +18,10 @@ import {
   montarSystemPromptEsteira,
   type AnuncioDaIA,
 } from "./esteira.ts";
-import { montarVariacoes } from "../../modules/publication/domain/variacoesDoAnuncio.ts";
+import {
+  montarVariacoes,
+  type VariacaoDoAnuncio,
+} from "../../modules/publication/domain/variacoesDoAnuncio.ts";
 
 /** Um resultado de IA bem escrito — e que se declara aprovado. */
 function daIA(over: Partial<AnuncioDaIA> = {}): AnuncioDaIA {
@@ -38,8 +41,9 @@ function daIA(over: Partial<AnuncioDaIA> = {}): AnuncioDaIA {
     // `pendencias` NÃO está aqui: o tipo `AnuncioDaIA` deixou de tê-la, e é essa
     // ausência que torna erro de compilação esquecer de compô-la.
     sugestoes: ["Fotos reais do produto rendem mais que renderização."],
-    vereditoA10: "aprovado",
-    motivoVeredito: "Texto completo e competitivo.",
+    // `vereditoA10` e `motivoVeredito` também NÃO estão aqui, desde 27/08/2026,
+    // pelo mesmo motivo de `pendencias`: saíram de `AnuncioDaIA`. O modelo
+    // escreve o anúncio; quem aprova é o cadastro.
     ...over,
   };
 }
@@ -100,9 +104,9 @@ test("grade incompleta REPROVA, por melhor que esteja o texto", () => {
     [{ cor: "Branco", tamanho: "25/26", sku: "", ean: "789", estoque: 3, precoBase: 118 }],
     118
   );
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semSku, COM_FOTO);
+  const a = comAGradeDoCadastro(daIA(), semSku, COM_FOTO);
   assert.equal(a.vereditoA10, "reprovado");
-  assert.match(a.motivoVeredito, /Grade de variações incompleta/);
+  assert.match(a.motivoVeredito, /Não publica ainda/);
   assert.match(a.motivoVeredito, /SKU/);
 });
 
@@ -113,7 +117,7 @@ test("EAN vazio NÃO reprova, e vira conselho ao lado dos do modelo", () => {
     [{ cor: "Branco", tamanho: "25/26", sku: "01040525", ean: "", estoque: 3, precoBase: 118 }],
     118
   );
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semEan, COM_FOTO);
+  const a = comAGradeDoCadastro(daIA(), semEan, COM_FOTO);
   assert.equal(a.vereditoA10, "aprovado");
   assert.deepEqual(a.pendencias, []);
   assert.ok(a.sugestoes.some((s) => /EAN/.test(s)), "o EAN deveria virar sugestão");
@@ -126,13 +130,51 @@ test("produto SEM grade nenhuma reprova — e diz que é a grade que falta", () 
   assert.match(a.pendencias[0], /grade de variações/);
 });
 
-test("grade inteira preserva o veredito do modelo — a trava não inverte o sinal", () => {
-  assert.equal(comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO).vereditoA10, "aprovado");
-  // E um reprovado do modelo continua reprovado, mesmo com a grade certa.
-  assert.equal(
-    comAGradeDoCadastro(daIA({ vereditoA10: "reprovado" }), GRADE_INTEIRA, COM_FOTO).vereditoA10,
-    "reprovado"
+// ESTE TESTE MUDOU DE LADO EM 27/08/2026, e mudou por inteiro.
+//
+// Ele exigia que "um reprovado do modelo continua reprovado, mesmo com a grade
+// certa" — congelando a premissa de que a opinião do modelo devia travar. Não
+// devia, e a medição mostrou por quê: 299 anúncios reprovados com ZERO
+// pendências, sem uma linha do que corrigir. O mesmo produto, cinco execuções
+// idênticas, deu notas 34/42/45/48/48 e um reprovado entre quatro aprovados.
+//
+// `vereditoA10` saiu de `AnuncioDaIA`, então "um reprovado do modelo" nem existe
+// mais como estado possível — é erro de compilação escrevê-lo. O que sobra para
+// provar é a regra nova: o veredito é a lista de pendências, dita em uma
+// palavra.
+test("o veredito É a lista de pendências — não uma segunda opinião sobre ela", () => {
+  const ok = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
+  assert.equal(ok.vereditoA10, "aprovado");
+  assert.deepEqual(ok.pendencias, []);
+
+  const semSku = montarVariacoes(
+    [{ cor: "Branco", tamanho: "25/26", sku: "", ean: "789", estoque: 3, precoBase: 118 }],
+    118
   );
+  const nao = comAGradeDoCadastro(daIA(), semSku, COM_FOTO);
+  assert.equal(nao.vereditoA10, "reprovado");
+  assert.ok(nao.pendencias.length > 0);
+});
+
+test("aprovado e lista vazia andam SEMPRE juntos — publicar exige os dois", () => {
+  // A trava é `veredito === "aprovado" && pendencias.length === 0`. Enquanto o
+  // veredito era do modelo, as duas podiam discordar — e discordavam em 97% dos
+  // reprovados. Derivado, discordar virou impossível, e é isso que se prova.
+  const casos: [VariacaoDoAnuncio[], number][] = [
+    [GRADE_INTEIRA, COM_FOTO],
+    [GRADE_INTEIRA, 0],
+    [montarVariacoes([{ cor: "Branco", tamanho: "25/26", sku: "", ean: "", estoque: 1, precoBase: 0 }], 0), COM_FOTO],
+    [[], COM_FOTO],
+    [[], 0],
+  ];
+  for (const [grade, fotos] of casos) {
+    const a = comAGradeDoCadastro(daIA(), grade, fotos);
+    assert.equal(
+      a.vereditoA10 === "aprovado",
+      a.pendencias.length === 0,
+      `veredito "${a.vereditoA10}" com ${a.pendencias.length} pendência(s) — eles se soltaram`
+    );
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -219,7 +261,7 @@ test("o esquema NÃO pede pendencias nem obrigatoriedade — é o que fecha a po
 const SEM_FOTO = 0;
 
 test("produto sem foto NÃO publica — e a pendência diz onde resolver", () => {
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), GRADE_INTEIRA, SEM_FOTO);
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, SEM_FOTO);
   assert.equal(a.vereditoA10, "reprovado");
   assert.equal(a.pendencias.length, 1);
   assert.match(a.pendencias[0], /foto/);
@@ -241,7 +283,7 @@ test("a foto vem PRIMEIRO na lista — é a que impede todas as outras", () => {
 test("uma foto basta — a regra é o mínimo do ML, não um ideal de catálogo", () => {
   // Cobrar "capa 1:1 + detalhe + medidas" era o que o checklist fazia, e o
   // modelo nem vê imagem. Aqui a régua é a do marketplace: ao menos uma.
-  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), GRADE_INTEIRA, 1);
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, 1);
   assert.equal(a.vereditoA10, "aprovado");
   assert.deepEqual(a.pendencias, []);
 });
@@ -255,13 +297,19 @@ test("o motivo do veredito soma as duas causas, sem esconder nenhuma", () => {
     0
   );
   const a = comAGradeDoCadastro(daIA(), semPreco, SEM_FOTO);
-  assert.match(a.motivoVeredito, /Grade de variações incompleta/);
-  assert.match(a.motivoVeredito, /sem foto/i);
+  assert.match(a.motivoVeredito, /faltam 2 itens/);
+  assert.match(a.motivoVeredito, /foto/i);
+  assert.match(a.motivoVeredito, /preço/i);
 });
 
-test("com foto e grade inteira, o motivo é o do MODELO — nada é acrescentado", () => {
-  // A trava não pode reescrever o veredito de quem passou. Era assim antes da
-  // foto entrar, e precisa continuar sendo.
+test("com foto e grade inteira, o motivo diz POR QUE passou", () => {
+  // Este teste também mudou de lado em 27/08. Ele exigia que o motivo fosse o
+  // texto do MODELO — e o modelo não escreve mais motivo nenhum. Um "aprovado"
+  // sem razão visível é tão opaco quanto o "reprovado" vazio que originou tudo:
+  // quem lê precisa saber o que foi conferido.
   const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, COM_FOTO);
-  assert.equal(a.motivoVeredito, "Texto completo e competitivo.");
+  assert.match(a.motivoVeredito, /Sem pendências/);
+  assert.match(a.motivoVeredito, /grade/i);
+  assert.match(a.motivoVeredito, /preço/i);
+  assert.match(a.motivoVeredito, /foto/i);
 });

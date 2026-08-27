@@ -15,7 +15,9 @@ import {
   agentesDaEsteira,
 } from "./catalogo";
 import {
-  gradePublicavel,
+  // `gradePublicavel` saiu daqui em 27/08/2026: ela é, por definição,
+  // `pendenciasDaGrade(...).length === 0`, e o veredito passou a olhar a lista
+  // de pendências inteira — que inclui a foto, que a grade não conhece.
   pendenciasDaGrade,
   sugestoesDaGrade,
   type VariacaoDoAnuncio,
@@ -35,7 +37,7 @@ export function montarSystemPromptEsteira(): string {
 LINHA DE PRODUÇÃO (agentes internos):
 ${etapas}
 
-CHECKLIST DE QUALIDADE (o A10 é a trava — só aprove com tudo ✅):
+CHECKLIST DE QUALIDADE (use para ESCREVER — ele não é veredito seu):
 ${checklist}
 
 IDENTIDADE DO PRODUTO NÃO SE ESCREVE — SE LÊ:
@@ -46,7 +48,7 @@ Você NÃO decide quais atributos são obrigatórios. Essa lista é do Mercado L
 
 O que você observar de útil e que MELHORARIA o anúncio (uma foto que falta, uma medida ausente, um dado que enriqueceria a ficha) vai em "sugestoes". Sugestão é conselho para o lojista, não trava.
 
-Preencha "notaDiagnostico" com a nota do A1 (0–100). Defina vereditoA10 = "aprovado" só se passar no checklist de QUALIDADE acima; senão "reprovado" com o motivo. Responda em português do Brasil.
+Preencha "notaDiagnostico" com a nota do A1 (0–100) — ela é informação para quem lê, não decisão. VOCÊ NÃO APROVA NEM REPROVA o anúncio: o que impede publicar é verificado no cadastro, sobre dado real, depois desta resposta. Use o checklist para ESCREVER bem, não para julgar. Responda em português do Brasil.
 
 ${REGRAS_MAE}`;
 }
@@ -141,8 +143,28 @@ export const ESQUEMA_ANUNCIO = {
       description:
         "O que MELHORARIA o anúncio (foto que falta, medida ausente, dado que enriqueceria a ficha). Conselho, nunca trava.",
     },
-    vereditoA10: { type: "string", enum: ["aprovado", "reprovado"] },
-    motivoVeredito: { type: "string" },
+    // `vereditoA10` e `motivoVeredito` NÃO estão aqui — 27/08/2026, e é a
+    // terceira vez que este arquivo aprende a mesma lição.
+    //
+    // `variacoes` saiu porque o modelo inventava SKU. `pendencias` saiu porque
+    // ele inventava obrigatoriedade. O veredito ficou — e virou o novo lugar
+    // por onde o bloqueio passava.
+    //
+    // MEDIDO sobre 411 anúncios do catálogo real: 307 reprovados, 299 deles
+    // (97%) com ZERO pendências. A lojista lia "reprovado" e não havia uma linha
+    // do que corrigir, porque publicar exige veredito aprovado E lista vazia.
+    //
+    // E a opinião não é estável. O MESMO produto, cinco execuções idênticas no
+    // mesmo dia: notas 34, 42, 45, 48, 48 — e um "reprovado" entre quatro
+    // "aprovados". Uma trava permanente sobre o produto do lojista não pode ser
+    // um número que oscila 14 pontos entre chamadas.
+    //
+    // O veredito agora é DERIVADO das pendências, em `comAGradeDoCadastro`:
+    // lista vazia aprova, lista cheia reprova, e o motivo é a própria lista. Um
+    // veredito que não pode discordar do que está escrito na tela.
+    //
+    // A leitura editorial do modelo não se perdeu: ela já vai em `sugestoes`, e
+    // sugestão não bloqueia. `notaDiagnostico` continua, como informação.
   },
   required: [
     "notaDiagnostico",
@@ -158,8 +180,6 @@ export const ESQUEMA_ANUNCIO = {
     "imagensSugeridas",
     "faq",
     "sugestoes",
-    "vereditoA10",
-    "motivoVeredito",
   ],
   additionalProperties: false,
 } as const;
@@ -197,7 +217,10 @@ export interface PerguntaFaq {
  * para sempre por uma exigência que ninguém faz (pendências). `AnuncioGerado`
  * abaixo é o resultado final, depois de o domínio pôr as duas no lugar.
  */
-export type AnuncioDaIA = Omit<AnuncioGerado, "variacoes" | "pendencias">;
+export type AnuncioDaIA = Omit<
+  AnuncioGerado,
+  "variacoes" | "pendencias" | "vereditoA10" | "motivoVeredito"
+>;
 
 export interface AnuncioGerado {
   notaDiagnostico: number;
@@ -306,23 +329,34 @@ export function comAGradeDoCadastro(
         ...daGrade,
       ]
     : daGrade;
-  const publicavel = gradePublicavel(grade) && !semFoto;
   // O EAN sai da grade como CONSELHO, não como trava — ele não é obrigatório em
   // nenhuma categoria medida, e o ML aceita o motivo no lugar do código. As
   // sugestões do modelo continuam valendo; esta entra junto.
   const conselhos = [...(daIA.sugestoes ?? []), ...sugestoesDaGrade(grade)];
-  const motivos = [
-    daIA.motivoVeredito,
-    daGrade.length ? `Grade de variações incompleta: ${daGrade.join(" ")}` : "",
-    semFoto ? "Produto sem foto: o Mercado Livre exige ao menos uma imagem." : "",
-  ].filter(Boolean);
+
+  // O VEREDITO É A LISTA DE PENDÊNCIAS, DITA EM UMA PALAVRA.
+  //
+  // Ele não é mais do modelo (ver o esquema). Aqui ele é DERIVADO: lista vazia
+  // aprova, lista cheia reprova. Não é uma segunda opinião sobre as pendências
+  // — é a mesma informação, e por construção não pode discordar do que a tela
+  // mostra.
+  //
+  // Era exatamente essa discordância o defeito: 299 anúncios "reprovados" com
+  // zero pendências, e nada escrito para a lojista corrigir. Publicar exige
+  // `veredito === "aprovado" && pendencias.length === 0`; com o veredito
+  // derivado, as duas condições viraram uma só, e nenhuma pode travar sozinha.
+  const publicavel = pendencias.length === 0;
   return {
     ...daIA,
     variacoes: grade,
     pendencias,
     sugestoes: conselhos,
-    vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
-    motivoVeredito: publicavel ? daIA.motivoVeredito : motivos.join(" "),
+    vereditoA10: publicavel ? "aprovado" : "reprovado",
+    // O motivo repete a lista de propósito: quem lê o veredito numa listagem,
+    // sem abrir o anúncio, precisa ver a MESMA razão que veria dentro dele.
+    motivoVeredito: publicavel
+      ? "Sem pendências: a grade está completa, há preço e há foto cadastrada."
+      : `Não publica ainda — ${pendencias.length === 1 ? "falta 1 item" : `faltam ${pendencias.length} itens`}: ${pendencias.join(" ")}`,
   };
 }
 

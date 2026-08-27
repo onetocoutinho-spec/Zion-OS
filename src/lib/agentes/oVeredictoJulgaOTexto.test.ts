@@ -56,7 +56,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { CHECKLIST_QUALIDADE } from "./catalogo.ts";
-import { montarSystemPromptEsteira } from "./esteira.ts";
+import { ESQUEMA_ANUNCIO, montarSystemPromptEsteira } from "./esteira.ts";
 
 const LISTA = CHECKLIST_QUALIDADE.join(" | ").toLowerCase();
 
@@ -129,4 +129,62 @@ test("o prompt não se contradiz: nada no checklist reprova por marketplace", ()
       `o prompt voltou a mandar reprovar por "${palavra}" logo depois de proibir`
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// E O VEREDITO SAIU DO MODELO — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// Consertar o checklist tirou a RAZÃO errada das reprovações. Não tirou o
+// PODER: o modelo continuava devolvendo `vereditoA10`, e publicar exige
+// `veredito === "aprovado" && pendencias.length === 0`. Enquanto uma das duas
+// condições fosse opinião, o bloqueio só mudava de motivo.
+//
+// É a terceira vez que este fluxo aprende a mesma coisa. `variacoes` saiu do
+// esquema porque o modelo inventava SKU. `pendencias` saiu porque ele inventava
+// obrigatoriedade. O veredito sai porque ele reprovava sem dizer o quê — e
+// porque a opinião não é estável: o MESMO produto, cinco execuções idênticas no
+// mesmo dia, deu notas 34/42/45/48/48 e um "reprovado" entre quatro
+// "aprovados". Uma trava permanente não pode oscilar 14 pontos entre chamadas.
+//
+// O que sobra do modelo: o texto, `notaDiagnostico` como informação, e
+// `sugestoes` como conselho. Nada que bloqueie.
+
+test("o esquema NÃO pede veredito nem motivo — é o que fecha a porta", () => {
+  const props = Object.keys(ESQUEMA_ANUNCIO.properties);
+  const req = ESQUEMA_ANUNCIO.required as readonly string[];
+  for (const campo of ["vereditoA10", "motivoVeredito"]) {
+    assert.ok(!props.includes(campo), `\`${campo}\` voltou ao esquema do modelo`);
+    assert.ok(!req.includes(campo), `\`${campo}\` voltou a ser exigido do modelo`);
+  }
+});
+
+test("nenhum campo de JULGAMENTO sobrou, por nome nenhum", () => {
+  // Mesma guarda de "nenhum campo de identidade sobrou": se voltar disfarçado,
+  // a lista de propriedades denuncia.
+  const props = Object.keys(ESQUEMA_ANUNCIO.properties).join(" ").toLowerCase();
+  for (const proibido of ["veredito", "aprovad", "reprovad", "motivo", "bloqueio", "trava"]) {
+    assert.ok(!props.includes(proibido), `"${proibido}" entrou no esquema do modelo`);
+  }
+});
+
+test("o prompt diz ao modelo que ele NÃO aprova nem reprova", () => {
+  // Sem esta frase, um modelo que não tem o campo tenta expressar a reprovação
+  // onde puder — foi o que ele fez quando `pendencias` saiu.
+  const p = montarSystemPromptEsteira();
+  assert.match(p, /NÃO APROVA NEM REPROVA/);
+  assert.match(p, /verificado no cadastro/);
+  // E o checklist parou de se apresentar como veredito dele.
+  assert.ok(
+    !/só aprove com tudo/i.test(p),
+    "o prompt voltou a mandar o modelo aprovar contra o checklist"
+  );
+});
+
+test("a nota continua, e continua sendo informação — não decisão", () => {
+  // Tirar a nota junto teria perdido um sinal útil. Ela nunca foi o problema:
+  // o problema era ela decidir. O prompt precisa dizer isso.
+  const props = Object.keys(ESQUEMA_ANUNCIO.properties);
+  assert.ok(props.includes("notaDiagnostico"));
+  assert.match(montarSystemPromptEsteira(), /informação para quem lê, não decisão/);
 });
