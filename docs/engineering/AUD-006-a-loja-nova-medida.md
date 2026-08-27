@@ -589,3 +589,67 @@ no Mercado Livre. As duas são decisão de quem opera, não linha para escrever.
 **Próximo checkpoint:** repetir os passos 7 e 8 quando existir conta ML de teste.
 Até lá, este documento diz o que foi medido e onde parou — que é o que a guarda 3
 exigia.
+
+---
+
+## Depois do CHECKPOINT 1 — o passo 4 foi percorrido (27/08, à tarde)
+
+O checkpoint fechou com **"o que trava o passo 7 NÃO é código: é uma pasta de
+fotos e uma conta de teste no Mercado Livre"**. A pasta de fotos chegou no mesmo
+dia, e percorrê-la mudou a linha 4 de ⚠️ para ✅ — e derrubou **metade** do que
+travava o passo 7.
+
+    4 imagens   ✅  845 de 981 produtos com foto (86%) · 7.985 imagens
+
+### O que o percurso custou, e o que ele achou
+
+Enviar 8 mil fotos com o casador que existia teria sido o pior resultado
+possível: ele funciona bem o bastante para o estrago passar por acerto. Seis
+defeitos apareceram, e nenhum deles era visível antes de tentar.
+
+| achado | o que era | como apareceu |
+|---|---|---|
+| **casamento por palavra** | pasta com código caía na parecença de nome quando o código não resolvia | 53 grupos, **470 fotos no produto errado** — "Sandalia 7162219 Floather" virou MOCASSIM 7397.101 |
+| **leitura truncada** | `imagens_produto` lida sem `range`, e o PostgREST corta em 1000 | o banco recusou 6 lotes: `idx_imagens_produto_uma_capa` pegou o que o código deixou passar |
+| **amostra presa num galho** | o nível do produto era escolhido pelas 30 PRIMEIRAS pastas, todas do primeiro TIPO | 543 grupos viraram 18, e os 11 que casaram foram todos para o mesmo produto |
+| **peso como código** | `152g` → `152G`: 4 caracteres com dígito, o mínimo para virar referência única | dois slimes diferentes casando num terceiro, "por identidade" |
+| **tamanho como código** | `24/25` → `2425`, e o conserto do primeiro item transformou isso em trava | 23 grupos deixaram de casar por causa do próprio conserto |
+| **palavra no lugar do SKU** | 22 produtos com "inativoo", "iinnattivo", "inatt" — recado do ERP lido como código | entraram como produto, 19 receberam foto, e um estava na lista de "faltam fotos" |
+
+**O padrão dos seis é o mesmo do checkpoint:** cinco eram silêncio. O sistema
+tinha o dado e não contava. O único que não era silêncio — a leitura truncada —
+só apareceu porque uma **restrição do banco** gritou; sem a migração 053, ele
+teria corrompido as capas em silêncio também.
+
+### O que foi desfeito
+
+- **547 fotos removidas** do produto errado (Storage e banco), com a capa
+  recomposta nos 20 produtos que ficaram só com secundárias.
+- **22 produtos apagados** — os marcadores do ERP —, com 148 fotos, 28 variantes
+  e 1 anúncio órfão que o `on delete set null` teria deixado para trás.
+
+Nada disso é perda: os originais estão em disco e a planilha está com a lojista.
+
+### O passo 7, hoje
+
+    sem foto ................. RESOLVIDO para 845 de 981 (86%)
+    sem conta ML de teste .... CONTINUA
+
+A guarda 2 segue de pé: publicar pela conexão da Chinelaria poria anúncio de
+teste na loja que vende, e o ML não tem sandbox completo.
+
+**Então o checkpoint não muda de resposta** — "chega até o anúncio aprovado, e
+para antes do ar" — mas muda de motivo. Era falta de dado E de conta; agora é só
+de conta.
+
+### O que sobrou, e de quem é
+
+| o que | quantos | de quem depende |
+|---|---|---|
+| conta ML de teste | — | decisão de quem opera |
+| crédito da OpenAI | 579 na fila, **224 com tudo pronto** | faturamento |
+| fotos que não existem | 136 produtos, 6.467 pares parados | fotógrafo |
+| fotos sem produto | ~2.700 imagens | uma pessoa no seletor da tela |
+
+**361 anúncios estão publicáveis** — aprovados, com zero pendências, foto,
+preço, grade e categoria. Nenhum deles espera código.
