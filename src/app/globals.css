@@ -301,3 +301,26 @@ button:disabled,
     text-align: left;
   }
 }
+
+/* ===========================================================================
+   A LISTA DO <select> É BRANCA POR PADRÃO, E O TEMA É ESCURO
+   ===========================================================================
+
+   O `<select>` fechado herda o estilo da página; a LISTA que abre é desenhada
+   pelo navegador, e as `<option>` voltam ao branco do sistema. Num tema escuro
+   isso dá texto claro sobre fundo branco — ilegível.
+
+   Medido em 27/08/2026, quando a lista de categorias do Mercado Livre abriu sem
+   dar para ler: 43 `<option>` no projeto sem cor própria, contra 3 que
+   lembraram de pôr. Um a um, o conserto rotaria — o 44º nasceria errado.
+
+   Por isso a regra mora aqui, uma vez. Nada de classe em cada `<option>`.
+
+   Vale para Chrome, Edge e Firefox. O Safari do macOS desenha o popup pelo
+   sistema e ignora isto — lá a lista continua clara, e é limitação do
+   navegador, não descuido. */
+select option {
+  background-color: var(--surface-input);
+  color: var(--color-zinc-200, #e4e4e7);
+}
+
