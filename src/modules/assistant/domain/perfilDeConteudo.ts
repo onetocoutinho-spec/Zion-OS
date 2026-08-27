@@ -148,5 +148,6 @@ export function perfilDaLinha(l: LinhaDoPerfil | null): PerfilDeConteudo {
   });
 }
 
-export const COLUNAS_DO_PERFIL = "tom, publico, palavras_preferidas, palavras_proibidas, observacoes";
+export const COLUNAS_DO_PERFIL =
+  "tom, publico, palavras_preferidas, palavras_proibidas, observacoes, garantia, frete_gratis";
 

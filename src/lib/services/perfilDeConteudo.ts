@@ -37,6 +37,11 @@ export async function salvarPerfilDeConteudo(clienteId: string, perfil: PerfilDe
       palavras_preferidas: [...p.palavrasPreferidas],
       palavras_proibidas: [...p.palavrasProibidas],
       observacoes: p.observacoes || null,
+      // `|| null` no texto e `?? null` no booleano, e a diferença importa:
+      // `false` é uma DECISÃO da loja ("não embuto o frete") e precisa ser
+      // gravada. `|| null` a transformaria em "não escolheu", que é outra coisa.
+      garantia: p.garantia || null,
+      frete_gratis: p.freteGratis ?? null,
       atualizado_em: new Date().toISOString(),
       atualizado_por: usuarioId,
     },

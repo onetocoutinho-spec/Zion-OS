@@ -8,6 +8,7 @@
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import {
+  COLUNAS_DO_PERFIL,
   blocoDoPerfil,
   perfilDaLinha,
   type LinhaDoPerfil,
@@ -289,7 +290,7 @@ async function processarUm(
     // não chega deixa o briefing como era — pior contexto, nunca contexto errado.
     const { data: perfilRow } = await admin
       .from("perfis_de_conteudo")
-      .select("tom, publico, palavras_preferidas, palavras_proibidas, observacoes, garantia, frete_gratis")
+      .select(COLUNAS_DO_PERFIL)
       .eq("cliente_id", fila.cliente_id)
       .maybeSingle();
     const perfil = blocoDoPerfil(perfilDaLinha((perfilRow as LinhaDoPerfil | null) ?? null));
