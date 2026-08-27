@@ -66,7 +66,12 @@ export interface Casamento {
   produtoId: string | null;
   /** 0 a 1. Por código e por referência é sempre 1 — identidade não tem grau. */
   confianca: number;
-  via: "codigo" | "referencia" | "nome" | null;
+  /**
+   * `referencia+nome` é o desempate de 27/08: a referência se repete entre
+   * produtos do mesmo modelo, e o NOME COMPLETO escolhe entre eles. Os dois
+   * sinais precisam concordar, e é isso que a separa de `nome`.
+   */
+  via: "codigo" | "referencia" | "referencia+nome" | "nome" | null;
 }
 
 const norm = (s: string): string =>
@@ -84,6 +89,33 @@ const palavrasDe = (s: string): Set<string> =>
       .split(/[^a-z0-9]+/)
       .filter((w) => w.length > 2)
   );
+
+/**
+ * As palavras SEM os números — para o desempate, onde o código já fez o dele.
+ *
+ * `palavrasDe` guarda "2526" e "202425" como se fossem palavras, e aí a pasta
+ * que escreve "202425" briga com o produto que escreve "2024/25" (dois tokens
+ * curtos, descartados). O casamento é perfeito no que importa e a nota cai.
+ *
+ * No desempate isso não é detalhe: a comparação decide entre produtos do MESMO
+ * modelo, então o número é justamente a parte que NÃO distingue.
+ */
+const palavrasSemNumero = (s: string): Set<string> =>
+  new Set(
+    norm(s)
+      .replace(/[0-9]/g, " ")
+      .split(/[^a-z]+/)
+      .filter((w) => w.length > 2)
+  );
+
+function parecencaDeNome(a: string, b: string): number {
+  const A = palavrasSemNumero(a);
+  const B = palavrasSemNumero(b);
+  if (A.size === 0 || B.size === 0) return 0;
+  let comuns = 0;
+  for (const w of A) if (B.has(w)) comuns++;
+  return comuns / Math.max(A.size, B.size);
+}
 
 /**
  * Um código curto demais casa por acaso.
@@ -180,6 +212,26 @@ function referenciasUnicas(produtos: readonly ProdutoParaCasar[]): Map<string, s
   return unicas;
 }
 
+/**
+ * Todos os produtos cujo nome carrega cada referência — inclusive as repetidas.
+ *
+ * `referenciasUnicas` fica com as que apontam para um só. Esta guarda o resto,
+ * que é o material do desempate.
+ */
+function donosPorReferencia(
+  produtos: readonly ProdutoParaCasar[]
+): Map<string, string[]> {
+  const donos = new Map<string, string[]>();
+  for (const p of produtos) {
+    for (const c of new Set(codigosNoTexto(p.nome))) {
+      const lista = donos.get(c) ?? [];
+      lista.push(p.id);
+      donos.set(c, lista);
+    }
+  }
+  return donos;
+}
+
 function casaPorCodigo(pasta: string, p: ProdutoParaCasar): boolean {
   const alvo = soAlfanum(pasta);
   for (const codigo of [p.sku, p.codErp]) {
@@ -205,6 +257,49 @@ export function casarPastaComProduto(
   for (const c of codigosDaPasta) {
     const dono = unicas.get(c);
     if (dono) return { produtoId: dono, confianca: 1, via: "referencia" };
+  }
+
+  // ===========================================================================
+  // REFERÊNCIA REPETIDA: O CÓDIGO ESTREITA, O NOME ESCOLHE — 27/08/2026
+  // ===========================================================================
+  //
+  // "7142.101" em dois produtos era "não casou", e o arquivo explicava por quê:
+  // escolher um dos dois seria chute. A frase estava certa sobre o CÓDIGO
+  // sozinho e errada sobre o par código+nome.
+  //
+  // Quando a referência se repete, os candidatos são o MESMO MODELO em
+  // acabamentos diferentes — e o catálogo os distingue no nome:
+  //
+  //     "Chinelo Baby Dedo Ipanema 27046 Brasil"
+  //     "Chinelo Baby Dedo Feminino Ipanema 27046 Brasil"
+  //
+  // Duas pastas com esses nomes exatos existem. O código sozinho não decide; o
+  // código MAIS o nome decide, e sem sair do modelo certo.
+  //
+  // A REGRA É DUPLA CONCORDÂNCIA, não uma média: as palavras da pasta têm que
+  // ser exatamente as de UM candidato, e de um só. Empate em 1,00 continua
+  // sendo "não casou" — é o caso de dois produtos que o catálogo escreve igual,
+  // e aí não há o que decidir sem uma pessoa.
+  //
+  // Isso é diferente da parecença de nome, que compara contra o CATÁLOGO
+  // INTEIRO e foi o que pôs 470 fotos no sapato errado. Aqui o universo já é o
+  // do modelo: o pior erro possível é trocar um acabamento por outro do mesmo
+  // par, não uma sandália por um mocassim.
+  //
+  // MEDIDO sobre as pastas reais: dos 122 grupos travados por referência
+  // repetida, 96 têm um vencedor exato e único — 928 fotos. Os 26 restantes
+  // continuam sem casar, e a maioria é empate em 1,00.
+  const repetidas = donosPorReferencia(produtos);
+  for (const c of codigosDaPasta) {
+    const candidatos = repetidas.get(c);
+    if (!candidatos || candidatos.length < 2) continue;
+    const porId = new Map(produtos.map((p) => [p.id, p]));
+    const perfeitos = candidatos.filter(
+      (id) => parecencaDeNome(pasta, porId.get(id)?.nome ?? "") >= 0.999
+    );
+    if (perfeitos.length === 1) {
+      return { produtoId: perfeitos[0], confianca: 1, via: "referencia+nome" };
+    }
   }
 
   // ===========================================================================

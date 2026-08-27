@@ -513,3 +513,83 @@ test("SKU que por acaso pareça tamanho continua valendo pelo ERP", () => {
   const catalogo: ProdutoParaCasar[] = [{ id: "s1", nome: "Produto Qualquer", sku: "2425" }];
   assert.equal(casarPastaComProduto("pasta 2425", catalogo).via, "codigo");
 });
+
+// ---------------------------------------------------------------------------
+// REFERÊNCIA REPETIDA: O CÓDIGO ESTREITA, O NOME ESCOLHE — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// "7142.101 está em dois produtos, escolher um seria chute" estava certo sobre
+// o CÓDIGO SOZINHO e errado sobre o par código+nome. Quando a referência se
+// repete, os candidatos são o MESMO MODELO em acabamentos diferentes — e o
+// catálogo os distingue no nome, que é o que a pasta também traz.
+//
+// MEDIDO nas pastas reais: dos 122 grupos travados por referência repetida, 96
+// têm um vencedor exato e único — 928 fotos. Os 26 restantes são empate.
+//
+// A diferença para a parecença de nome, que pôs 470 fotos no sapato errado: lá
+// o universo é o CATÁLOGO INTEIRO e o erro possível é sandália virar mocassim.
+// Aqui o universo já é o do modelo, e o pior erro é trocar um acabamento por
+// outro do mesmo par.
+
+const IPANEMA: ProdutoParaCasar[] = [
+  { id: "i1", nome: "Chinelo Baby Dedo Ipanema 27046 Brasil", sku: "8001" },
+  { id: "i2", nome: "Chinelo Baby Dedo Feminino Ipanema 27046 Brasil", sku: "8002" },
+  { id: "i3", nome: "Chinelo Baby Dedo Ipanema 27247 Sporty", sku: "8003" },
+];
+
+test("referência repetida + nome exato escolhe o produto certo", () => {
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27046 Brasil", IPANEMA);
+  assert.equal(r.produtoId, "i1");
+  assert.equal(r.via, "referencia+nome");
+  assert.equal(r.confianca, 1);
+});
+
+test("a palavra a mais leva para o OUTRO produto do mesmo código", () => {
+  // "Feminino" é a única diferença entre i1 e i2, e é ela que decide. Se o
+  // desempate ignorasse palavras, os dois cairiam no mesmo lugar — que era o
+  // comportamento antigo, só que sem casar nenhum.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Feminino Ipanema 27046 Brasil", IPANEMA);
+  assert.equal(r.produtoId, "i2");
+  assert.equal(r.via, "referencia+nome");
+});
+
+test("EMPATE em nome continua sem casar — dois iguais não se decidem", () => {
+  // O catálogo escreve os dois igual; não há o que decidir sem uma pessoa.
+  // Deixar passar aqui seria escolher no par ou ímpar.
+  const gemeos: ProdutoParaCasar[] = [
+    { id: "g1", nome: "Babuche Boaonda 2402.110 Easy Kids", sku: "9001" },
+    { id: "g2", nome: "Babuche Boaonda 2402.110 Easy Kids", sku: "9002" },
+  ];
+  const r = casarPastaComProduto("Babuche Boaonda 2402110 Easy Kids", gemeos);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("nome PARECIDO não basta — o desempate quer o conjunto inteiro", () => {
+  // 0,80 de parecença é o que a parecença comum aceitaria. Aqui não: ou as
+  // palavras são as mesmas, ou fica para a pessoa.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27046 Havaiana", IPANEMA);
+  assert.equal(r.produtoId, null);
+});
+
+test("o número sai da comparação — quem estreitou foi ele", () => {
+  // A pasta escreve "202425" e o produto "2024/25", que vira dois tokens curtos
+  // e some. Com o número na conta, um casamento perfeito no que importa perdia
+  // a nota. E no desempate o número é justamente o que NÃO distingue: todos os
+  // candidatos o têm.
+  const havaianas: ProdutoParaCasar[] = [
+    { id: "h1", nome: "Chinelo Havaianas Slim Princess 2024/25", sku: "7001" },
+    { id: "h2", nome: "Chinelo Havaianas Star Wars 2024/25", sku: "7002" },
+  ];
+  const r = casarPastaComProduto("Chinelo Havaianas Slim Princess 202425", havaianas);
+  assert.equal(r.produtoId, "h1");
+  assert.equal(r.via, "referencia+nome");
+});
+
+test("referência ÚNICA continua ganhando do desempate — a ordem importa", () => {
+  // Se o desempate rodasse primeiro, uma referência única com nome divergente
+  // poderia ser desviada. Identidade sozinha vem antes.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27247 Outro Nome", IPANEMA);
+  assert.equal(r.produtoId, "i3");
+  assert.equal(r.via, "referencia");
+});

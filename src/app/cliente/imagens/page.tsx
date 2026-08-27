@@ -803,6 +803,13 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                   <span className="flex items-center gap-1.5">
                     {g.via === "codigo" && <Pill tone="violet">código</Pill>}
                     {g.via === "referencia" && <Pill tone="violet">referência</Pill>}
+                    {/* A referência se repetia entre produtos do mesmo modelo e
+                        o nome escolheu entre eles. É identidade — os dois sinais
+                        concordaram —, mas a etiqueta diz os dois de propósito:
+                        quem confere precisa saber que houve um desempate. */}
+                    {g.via === "referencia+nome" && (
+                      <Pill tone="violet">referência + nome</Pill>
+                    )}
                     {g.via === "nome" && (
                       // Casamento por nome é parecença, e parecença erra. O
                       // número existe para a pessoa olhar duas vezes os fracos
