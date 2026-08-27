@@ -66,8 +66,23 @@ const STALE_MIN = 10; // "processando" preso volta pra fila
  * Perder a disputa é normal quando várias execuções se sobrepõem — a volta
  * seguinte pega outra linha. O limite é só para a fila curta com muitos
  * concorrentes, onde perder sempre queimaria os 250s em ida e volta ao banco.
+ *
+ * ERA 5, E 5 ERA POUCO. Medido em 27/08/2026, com dez execuções em paralelo
+ * sobre uma fila de 889 itens: uma delas voltou com `processados: 0` em 2,1s.
+ * Não faltava trabalho — faltava vez.
+ *
+ * A causa é `CONCORRENCIA = 1` com `limit(1)`: todas as execuções selecionam a
+ * MESMA linha (a mais antiga), uma ganha e as outras N-1 perdem. Perder N-1
+ * vezes seguidas é o comportamento esperado com N execuções, não um sinal de
+ * fila vazia — para essa, `lote.length === 0` já quebra o laço antes.
+ *
+ * E desistir custa caro: a execução volta na hora e fica ociosa até o ciclo
+ * seguinte, em vez de usar os 250s que tinha.
+ *
+ * 50 continua sendo um teto real — cada volta é um par de idas ao banco, uns
+ * 100ms, então o pior caso é ~5s de disputa contra um orçamento de 250s.
  */
-const MAX_PERDIDAS = 5;
+const MAX_PERDIDAS = 50;
 
 type Resultado = "ok" | "erro" | "rate";
 
