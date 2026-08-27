@@ -287,6 +287,14 @@ async function processarUm(
       produto: produto.nome,
       auditoriaId: null,
       marketplace: produto.marketplace ?? "Mercado Livre",
+      // A CATEGORIA QUE SUSTENTOU ESTE ANÚNCIO FICA REGISTRADA NELE.
+      //
+      // Sem isto, `anuncios_gerados.categoria_ml` saía NULL mesmo quando a
+      // esteira tinha uma categoria em mãos — e depois não havia como responder
+      // "este anúncio foi feito cobrando os atributos de qual categoria?".
+      // Quando não há categoria, continua null: nulo é "ninguém decidiu", e é a
+      // resposta certa.
+      categoriaMl: categoria || null,
       origem: "esteira",
       tipoExecucao: "IA",
       notaDiagnostico: anuncio.notaDiagnostico,

@@ -28,6 +28,15 @@ export function contextoDoProduto(p: Produto): string {
     `- Nome: ${p.nome}`,
     `- Marca/Modelo: ${p.marca} / ${p.modelo}`,
     `- Categoria: ${p.categoria}`,
+    // A CATEGORIA DO MERCADO LIVRE, QUANDO ELA FOI DECIDIDA.
+    //
+    // `p.categoria` é a árvore interna da loja e costuma estar vazia. Sem esta
+    // linha, o modelo recebia a lista de obrigatórios "medidos na categoria" e
+    // um cadastro que não dizia qual — e concluía o óbvio. Medido em 27/08/2026,
+    // no primeiro anúncio gerado com categoria já definida: "categoria no ML não
+    // definida nesta etapa" no motivo da reprovação, sobre um produto que TINHA
+    // MLB23332 gravado.
+    ...(p.categoriaMl?.trim() ? [`- Categoria no Mercado Livre: ${p.categoriaMl.trim()}`] : []),
     `- SKU: ${p.sku} · Variação: ${p.cor} / ${p.tamanho}`,
     `- Custo: ${formatBRL(p.custo)} · Preço de venda: ${formatBRL(p.precoVenda)} · Estoque: ${p.estoque} un.`,
     `- Marketplace: ${p.marketplace}`,
