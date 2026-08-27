@@ -67,6 +67,14 @@ export interface TabelaDaPlanilha {
   headers: string[];
   linhas: Record<string, string>[];
   /**
+   * Quantos campos cada linha tinha ANTES de virar registro.
+   *
+   * Depois do `forEach` abaixo essa informação some, e é ela que denuncia um
+   * cabeçalho mais largo que os dados. Ver `cabecalhoDesalinhado`: um relatório
+   * do Linx com 11 nomes e 9 campos punha o custo na coluna de preço.
+   */
+  camposPorLinha: number[];
+  /**
    * Quantos papéis conhecidos os cabeçalhos reconheceram, de 0 a 5.
    *
    * É a NOTA da tabela, e o motivo de ela estar aqui: sem um número, a ordem
@@ -108,7 +116,14 @@ function montar(
     });
     return rec;
   });
-  return { aba: aba.nome, linhaDoCabecalho: indice + 1, headers, linhas, papeisReconhecidos };
+  return {
+    aba: aba.nome,
+    linhaDoCabecalho: indice + 1,
+    headers,
+    linhas,
+    camposPorLinha: aba.matriz.slice(indice + 1).map((c) => c.length),
+    papeisReconhecidos,
+  };
 }
 
 /**

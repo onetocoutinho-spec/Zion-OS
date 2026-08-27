@@ -20,6 +20,11 @@ export interface PlanilhaLida {
   headers: string[];
   linhas: Record<string, string>[];
   /**
+   * Quantos campos cada linha de dados tinha. Ver `cabecalhoDesalinhado`: um
+   * relatório do Linx com 11 nomes e 9 campos punha o custo na coluna de preço.
+   */
+  camposPorLinha?: number[];
+  /**
    * De ONDE saiu esta tabela dentro do arquivo.
    *
    * Presente sempre que o leitor teve que escolher. A tela mostra — porque um
@@ -62,6 +67,7 @@ function comoPlanilha(escolhida: TabelaDaPlanilha, todas: TabelaDaPlanilha[]): P
   return {
     headers: escolhida.headers,
     linhas: escolhida.linhas,
+    camposPorLinha: escolhida.camposPorLinha,
     origem: { aba: escolhida.aba, linhaDoCabecalho: escolhida.linhaDoCabecalho },
     ...(todas.length > 1 ? { tabelas: todas } : {}),
   };

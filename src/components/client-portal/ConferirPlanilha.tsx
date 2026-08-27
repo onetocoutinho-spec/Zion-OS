@@ -27,6 +27,7 @@ import {
 } from "@/lib/services/importacaoCustos";
 import { preverCasamentoPorSku, type CasamentoPorPrefixo } from "@/lib/services/casamentoDeSku";
 import { fraseDoCasamento } from "@/modules/catalog/domain/casamentoPorPrefixo";
+import { cabecalhoDesalinhado } from "@/modules/catalog/domain/cabecalhoDesalinhado";
 import {
   colunaDoPapel,
   montarPrevia,
@@ -81,6 +82,26 @@ export function ConferirPlanilha({
   // conferência existe para acabar. Estado derivado, recalculado no render em
   // que a identidade muda.
   const identidade = `${planilha.origem?.aba ?? ""}#${planilha.origem?.linhaDoCabecalho ?? 0}#${planilha.headers.join("|")}`;
+
+  /**
+   * O primeiro valor NÃO VAZIO daquela coluna, para a pessoa ver o que ela traz.
+   *
+   * Não o da primeira linha: relatório de ERP costuma ter linha de cabeçalho de
+   * grupo, ou um primeiro item incompleto, e um exemplo vazio não ajuda ninguém.
+   * Olha até 20 linhas — passar disso é procurar agulha para mostrar palheiro.
+   */
+  const desalinhamento = cabecalhoDesalinhado(
+    planilha.headers.length,
+    planilha.camposPorLinha ?? []
+  );
+
+  const exemplo = (h: string): string => {
+    for (const l of planilha.linhas.slice(0, 20)) {
+      const v = (l[h] ?? "").trim();
+      if (v) return v.length > 28 ? `${v.slice(0, 28)}…` : v;
+    }
+    return "";
+  };
   const [estado, setEstado] = useState(() => ({
     identidade,
     mapa: sugerirMapeamento(planilha.headers),
@@ -210,12 +231,36 @@ export function ConferirPlanilha({
           </div>
         )}
 
+      {/* O CABEÇALHO MAIS LARGO QUE OS DADOS — cabecalhoDesalinhado.
+          Avisa e NÃO conserta: deslocar sozinho seria adivinhar qual coluna
+          sobra, e um alinhamento adivinhado grava com confiança. */}
+      {desalinhamento.desalinhado && (
+        <p className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+          <AlertTriangle size={14} className="mt-px shrink-0" />
+          <span>{desalinhamento.texto}</span>
+        </p>
+      )}
+
       {/* ── As colunas e seus papéis ────────────────────────────────────── */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {planilha.headers.map((h) => (
           <label key={h} className="flex flex-col gap-1">
             <span className="truncate text-xs text-white/60" title={h}>
               {h || "(coluna sem nome)"}
+            </span>
+            {/*
+              O VALOR DE EXEMPLO, e ele não é enfeite.
+
+              Em 27/08/2026 um relatório do Linx chegou com 11 nomes no
+              cabeçalho e 9 campos nas linhas: a coluna "PRECO" trazia 25,13, que
+              era o CUSTO, e "QUANTIDADE" trazia 46,90, que era o preço. Só o
+              nome estava na tela, então não havia como ver.
+
+              Uma linha de exemplo resolve o caso inteiro: quem mapeia LÊ o valor
+              e percebe que ele não combina com o nome.
+            */}
+            <span className="truncate text-[11px] text-zinc-500" title={exemplo(h)}>
+              {exemplo(h) || "(vazio)"}
             </span>
             <select
               value={mapa[h] ?? "ignorar"}
