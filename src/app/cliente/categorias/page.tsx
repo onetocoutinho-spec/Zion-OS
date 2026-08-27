@@ -40,9 +40,16 @@ import { listarProdutosDoCliente, atualizarProdutosBulk } from "@/lib/services/p
 import { cabecalhoAutenticacao } from "@/lib/supabase/sessao";
 import { grupoDoProduto } from "@/modules/catalog/domain/categoriaPorTipo";
 
+interface Alternativa {
+  id: string;
+  nome: string;
+}
+
 interface GrupoProposto {
   tipo: string;
   categoriaId: string;
+  /** As outras categorias do mesmo departamento, para a lojista poder trocar. */
+  alternativas?: Alternativa[];
   nomeCategoria: string;
   total: number;
   consultados: number;
@@ -65,6 +72,14 @@ export default function CategoriasPage() {
   const [grupos, setGrupos] = useState<GrupoProposto[] | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [aplicando, setAplicando] = useState<string | null>(null);
+  /**
+   * A categoria ESCOLHIDA por grupo, quando ela difere da proposta.
+   *
+   * O voto do catálogo corrige o erro aleatório e não corrige o sistemático:
+   * medido, os 23 sapatênis recebem "Sapatilhas" em 7 de 12 consultas —
+   * consistente, e errado. Aprovação sem poder de correção não é aprovação.
+   */
+  const [escolha, setEscolha] = useState<Record<string, string>>({});
   const [erro, setErro] = useState<string | null>(null);
   const [semToken, setSemToken] = useState(false);
 
@@ -92,7 +107,8 @@ export default function CategoriasPage() {
   }
 
   async function aplicar(g: GrupoProposto) {
-    if (!g.categoriaId || aplicando) return;
+    const categoria = escolha[g.tipo] || g.categoriaId;
+    if (!categoria || aplicando) return;
     setAplicando(g.tipo);
     setErro(null);
     try {
@@ -100,7 +116,7 @@ export default function CategoriasPage() {
       // tela aplica ao mesmo conjunto que a proposta descreveu.
       const alvo = semCategoria
         .filter((p) => grupoDoProduto(p.nome) === g.tipo)
-        .map((p) => ({ id: p.id, categoriaMl: g.categoriaId }));
+        .map((p) => ({ id: p.id, categoriaMl: categoria }));
 
       // NADA A APLICAR NÃO É SUCESSO.
       //
@@ -128,7 +144,7 @@ export default function CategoriasPage() {
       // todo caçando.
       const conferencia = await listarProdutosDoCliente(clienteId);
       const gravados = new Set(
-        conferencia.filter((p) => (p.categoriaMl ?? "").trim() === g.categoriaId).map((p) => p.id)
+        conferencia.filter((p) => (p.categoriaMl ?? "").trim() === categoria).map((p) => p.id)
       );
       const faltaram = alvo.filter((a) => !gravados.has(a.id)).length;
       if (faltaram > 0) {
@@ -213,9 +229,34 @@ export default function CategoriasPage() {
 
                 {g.categoriaId ? (
                   <>
-                    <span className="text-sm text-zinc-300">
-                      {g.nomeCategoria || g.categoriaId}
-                      <span className="ml-1.5 text-xs text-zinc-600">{g.categoriaId}</span>
+                    {/* PROPOSTA, NÃO VEREDITO.
+                        A lista traz as outras categorias do mesmo departamento
+                        do Mercado Livre. Quando a proposta está errada de forma
+                        sistemática — sapatênis virando "Sapatilhas" — trocar
+                        aqui é a diferença entre aprovar e refazer 23 produtos à
+                        mão. */}
+                    {g.alternativas && g.alternativas.length > 0 ? (
+                      <select
+                        value={escolha[g.tipo] ?? g.categoriaId}
+                        onChange={(e) =>
+                          setEscolha((a) => ({ ...a, [g.tipo]: e.target.value }))
+                        }
+                        disabled={aplicando !== null}
+                        className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-sm text-zinc-200 outline-none focus:border-violet-500"
+                      >
+                        {g.alternativas.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.nome}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-sm text-zinc-300">
+                        {g.nomeCategoria || g.categoriaId}
+                      </span>
+                    )}
+                    <span className="text-xs text-zinc-600">
+                      {escolha[g.tipo] ?? g.categoriaId}
                     </span>
                     {/*
                       A concordância fica VISÍVEL porque ela é o que sustenta a
@@ -223,9 +264,17 @@ export default function CategoriasPage() {
                       confiança, e esconder o número faria as duas parecerem
                       iguais — foi o que a tela de fotos aprendeu.
                     */}
-                    <Pill tone={g.divergem === 0 ? "gray" : "yellow"}>
-                      {g.concordam} de {g.concordam + g.divergem} concordam
-                    </Pill>
+                    {/* A concordância é sobre a PROPOSTA. Trocada a categoria,
+                        o número deixa de falar dela — e continuar mostrando
+                        "9 de 15 concordam" ao lado de uma escolha da lojista
+                        seria emprestar a ela uma medição que não é dela. */}
+                    {(escolha[g.tipo] ?? g.categoriaId) === g.categoriaId ? (
+                      <Pill tone={g.divergem === 0 ? "gray" : "yellow"}>
+                        {g.concordam} de {g.concordam + g.divergem} concordam
+                      </Pill>
+                    ) : (
+                      <Pill tone="violet">sua escolha</Pill>
+                    )}
                     <Button
                       variant="ghost"
                       onClick={() => void aplicar(g)}

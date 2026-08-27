@@ -61,6 +61,63 @@ interface Previsto {
   nomeCategoria: string;
 }
 
+/** Uma categoria que a lojista pode escolher no lugar da proposta. */
+interface Alternativa {
+  id: string;
+  nome: string;
+}
+
+/**
+ * As IRMÃS da categoria proposta — as outras opções do mesmo departamento.
+ *
+ * ===========================================================================
+ * POR QUE A TELA PRECISA DISSO
+ * ===========================================================================
+ *
+ * O voto do catálogo corrige o erro ALEATÓRIO e não corrige o SISTEMÁTICO.
+ * Medido em 27/08/2026: os 23 sapatênis da base recebem `Sapatilhas` em 7 de 12
+ * consultas — consistente, e errado. Sapatênis masculino não é sapatilha, e o
+ * Mercado Livre não tem categoria de sapatênis: o departamento tem dez filhas
+ * (Alpargata, Botas, Sandálias e Chinelos, Sapatilhas, Sapatos Sociais e
+ * Mocassims, Scarpins, Tênis, Pantufas, Protetor de Sapatos, Outros).
+ *
+ * Sem poder trocar, "aprovar" era só aceitar ou pular — e pular deixa 23
+ * produtos para fazer à mão. Aprovação sem poder de correção não é aprovação.
+ *
+ * Se a proposta estiver no departamento ERRADO, as alternativas vão parecer
+ * todas absurdas — e isso também é informação: significa pular o grupo.
+ */
+async function irmasDaCategoria(
+  categoriaId: string,
+  token: string | null,
+  cache: Map<string, Alternativa[]>
+): Promise<Alternativa[]> {
+  const guardado = cache.get(categoriaId);
+  if (guardado) return guardado;
+
+  const cabecalho = token ? { headers: { Authorization: `Bearer ${token}` } } : undefined;
+  try {
+    const r = await fetch(`${API}/categories/${encodeURIComponent(categoriaId)}`, cabecalho);
+    if (!r.ok) return [];
+    const j = (await r.json()) as { path_from_root?: { id: string }[] };
+    const caminho = j.path_from_root ?? [];
+    // A penúltima é o departamento; a última é a própria categoria.
+    const pai = caminho.length >= 2 ? caminho[caminho.length - 2].id : "";
+    if (!pai) return [];
+
+    const rp = await fetch(`${API}/categories/${encodeURIComponent(pai)}`, cabecalho);
+    if (!rp.ok) return [];
+    const jp = (await rp.json()) as { children_categories?: { id: string; name: string }[] };
+    const irmas = (jp.children_categories ?? []).map((c) => ({ id: c.id, nome: c.name }));
+    cache.set(categoriaId, irmas);
+    return irmas;
+  } catch {
+    // Sem alternativas a tela mostra só a proposta, como antes. Pior contexto,
+    // nunca contexto errado.
+    return [];
+  }
+}
+
 async function preverPeloTitulo(titulo: string, token: string | null): Promise<Previsto> {
   const url = `${API}/sites/MLB/domain_discovery/search?limit=1&q=${encodeURIComponent(titulo)}`;
   try {
@@ -188,6 +245,7 @@ export async function POST(request: Request) {
     return { produtoId: p.id, nome: p.nome, categoriaId: r.categoriaId } as PrevisaoDeCategoria;
   });
 
+  const cacheDeIrmas = new Map<string, Alternativa[]>();
   const grupos = agruparPorTipo(previstos).map((g) => ({
     tipo: g.tipo,
     categoriaId: g.categoriaId,
@@ -202,8 +260,17 @@ export async function POST(request: Request) {
     pequenoDemais: g.pequenoDemais,
   }));
 
+  // As alternativas vêm DEPOIS do agrupamento: são poucas categorias distintas,
+  // e o cache faz uma consulta por categoria, não por grupo.
+  const comAlternativas = await Promise.all(
+    grupos.map(async (g) => ({
+      ...g,
+      alternativas: g.categoriaId ? await irmasDaCategoria(g.categoriaId, token, cacheDeIrmas) : [],
+    }))
+  );
+
   return Response.json({
-    grupos,
+    grupos: comAlternativas,
     produtosSemCategoria: produtos.length,
     consultas: amostra.length,
     comToken: token !== null,
