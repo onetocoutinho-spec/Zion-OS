@@ -40,7 +40,22 @@ interface RepositorioConfig<T extends { id: string }, Row> {
   paraBanco: (dados: Partial<T>) => Record<string, unknown>;
   /** Coluna de ordenação no banco (desc). Padrão: created_at. */
   ordenarPor?: string;
+  /**
+   * Função do banco que atualiza N linhas com valores DIFERENTES numa
+   * requisição só (migração 082). Sem ela, `atualizarVarios` cai no caminho
+   * antigo — uma requisição por payload distinto.
+   */
+  rpcDeLote?: string;
 }
+
+/**
+ * Abaixo disto o caminho antigo já resolve numa requisição ou duas, e trocar de
+ * mecanismo não paga o risco.
+ */
+const POUCAS_LINHAS = 20;
+
+/** Quantas linhas cabem num `jsonb` sem virar um corpo de quilômetros. */
+const LOTE_DA_RPC = 500;
 
 function erroSupabase(acao: string, mensagem: string): never {
   throw new Error(`[Zion OS] Erro ao ${acao} no Supabase: ${mensagem}`);
@@ -49,7 +64,7 @@ function erroSupabase(acao: string, mensagem: string): never {
 export function criarRepositorio<T extends { id: string }, Row>(
   config: RepositorioConfig<T, Row>
 ) {
-  const { tabela, colecao, prefixoIdLocal, selecao, paraApp, paraBanco } = config;
+  const { tabela, colecao, prefixoIdLocal, selecao, paraApp, paraBanco, rpcDeLote } = config;
   const ordenarPor = config.ordenarPor ?? "created_at";
 
   /**
@@ -225,6 +240,47 @@ export function criarRepositorio<T extends { id: string }, Row>(
     if (!supabaseConfigurado) {
       for (const r of registros) updateItem<T>(colecao, r.id, r);
       return;
+    }
+
+    // O CAMINHO DE LOTE, quando a tabela tem função para isso (082).
+    //
+    // O agrupamento abaixo economiza quando o valor se REPETE — propagar um
+    // custo para 40 variações é uma requisição. Mas importação de custo, preço
+    // e estoque tem um valor por LINHA, e aí o agrupamento vira identidade: N
+    // linhas, N requisições. Em 27/08/2026 isso travou a tela e deixou 75
+    // produtos sem gravar depois de 159 variações gravadas.
+    //
+    // A função recebe o array inteiro e faz `update ... from jsonb`. Ela é
+    // `security invoker`, então a RLS continua valendo — verificado: a própria
+    // loja grava 1, a loja alheia grava 0.
+    //
+    // Só entra quando VALE: com poucos payloads distintos o caminho antigo já
+    // faz uma requisição, e trocar por outra não melhora nada.
+    if (rpcDeLote && registros.length > POUCAS_LINHAS) {
+      const linhas = registros.map((r) => {
+        const d = paraBanco(r as Partial<T>);
+        d.id = r.id; // o `where` da função; `paraBanco` não costuma mandá-lo
+        return d;
+      });
+      let caiuNoAntigo = false;
+      for (let i = 0; i < linhas.length; i += LOTE_DA_RPC) {
+        const { error } = await getSupabase().rpc(rpcDeLote, {
+          p_dados: linhas.slice(i, i + LOTE_DA_RPC),
+        });
+        if (!error) continue;
+        // Função ausente = banco ainda sem a migração 082. Aí o caminho antigo
+        // assume, porque gravar devagar é melhor que não gravar. Qualquer OUTRO
+        // erro sobe: engoli-lo esconderia uma falha de gravação real.
+        const ausente = /PGRST202|does not exist|not find the function/i.test(error.message);
+        if (!ausente) erroSupabase(`atualizar registros em ${tabela}`, error.message);
+        console.warn(`[Zion OS] ${rpcDeLote} indisponível; usando o caminho antigo.`);
+        caiuNoAntigo = true;
+        break;
+      }
+      if (!caiuNoAntigo) {
+        notificarMudanca(tabela);
+        return;
+      }
     }
 
     // Agrupa por conteúdo: mesmos campos e mesmos valores → uma requisição.
