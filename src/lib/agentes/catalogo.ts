@@ -20,21 +20,87 @@ export const REGRAS_MAE = `Regras-mãe da Zion Company (valem para TODAS as etap
 - O anúncio só está pronto se o cliente COMPRA sem precisar perguntar nada.`;
 
 // ---- Checklist de qualidade (o A10 usa como trava) ----
+//
+// ===========================================================================
+// ELE JULGAVA O QUE O MODELO NÃO PODE VER — E ISSO É UMA TRAVA SEM SAÍDA
+// ===========================================================================
+//
+// MEDIDO EM 27/08/2026, sobre 411 anúncios gerados pela esteira no catálogo
+// real da lojista. 307 reprovados, e destes 299 (97%) com ZERO pendências
+// listadas: a lojista abre a tela, lê "reprovado", e não há nada escrito para
+// ela corrigir. O motivo alegado, contado por tema:
+//
+//     283 (95%)  material (cabedal/palmilha/solado/forro)
+//     244 (82%)  fotos / imagens / capa
+//     209 (70%)  tabela de medidas
+//     146 (49%)  forma (veste pequeno/normal/grande)
+//      86 (29%)  fechamento (velcro/cadarço/fivela)
+//      82 (27%)  atributo do marketplace
+//
+// O modelo NÃO estava desobedecendo o prompt. Estava obedecendo a esta lista,
+// que o prompt define como a trava do A10 ("só aprove com tudo ✅") — enquanto
+// o mesmo prompt, três parágrafos acima, diz "nunca reprove por falta de
+// atributo de marketplace". Duas ordens opostas; ele seguiu a que estava
+// amarrada ao veredito.
+//
+// E as ordens eram impossíveis de cumprir:
+//
+//   MATERIAL   `GET /categories/{id}/attributes`, nas três categorias da base:
+//              MLB273770 FOOTWEAR_MATERIALS required=False · OUTSOLE_MATERIAL
+//              required=False · MLB1400 FOOTWEAR_MATERIAL required=False ·
+//              MLB23332 EXTERIOR/INTERIOR/OUTSOLE_MATERIALS required=False,
+//              e INSOLES/MIDSOLE ainda por cima `hidden`. NENHUM é exigido.
+//              E não há onde informar: `produto_atributos` tem ZERO linhas,
+//              `descricao_base`/`beneficios`/`cuidados`/`componentes` ZERO
+//              preenchidos. Cobrar isso é cobrar um campo que não existe.
+//
+//   FOTOS      o modelo não recebe imagem nenhuma. Reprovou 244 anúncios por
+//              algo que ele nunca viu.
+//
+//   ATRIBUTOS  a lista é do Mercado Livre e varia por categoria — é o INC-011
+//              inteiro, e `resolverObrigatorios` já a resolve contra a
+//              categoria REAL, medida, antes de o modelo escrever.
+//
+// ===========================================================================
+// A REGRA NOVA: O MODELO JULGA O TEXTO, O CÓDIGO JULGA O DADO
+// ===========================================================================
+//
+// É o DES-001 um nível acima. Lá, `pendencias` saiu do esquema do modelo
+// porque "pedir 'não invente' a um campo obrigatório sem fonte é pedir o
+// impossível — a correção que funciona é NÃO PEDIR". O veredito ficou, e o
+// bloqueio simplesmente mudou de campo.
+//
+// Abaixo sobrou o que o modelo ESCREVEU e pode conferir na própria resposta.
+// O que saiu não deixou de ser verificado — mudou de juiz, e para um que tem
+// o dado na mão:
+//
+//     categoria correta ......... a lojista aprova em /cliente/categorias
+//     atributos obrigatórios .... resolverObrigatorios, contra a categoria real
+//     grade, SKU, cor, tamanho .. pendenciasDaGrade, sobre o cadastro
+//     preço ..................... pendenciasDaGrade
+//     EAN ....................... sugestoesDaGrade (o ML não o exige)
+//     fotos ..................... NÃO É VERIFICADO EM LUGAR NENHUM HOJE.
+//
+// Essa última linha é uma lacuna aberta, e fica escrita porque tirá-la daqui
+// sem dizer seria trocar uma trava falsa por um silêncio. Medido: dos 102
+// anúncios aprovados, 96 não têm foto alguma, e o ML exige imagem para
+// publicar. O lugar dela é uma pendência em código, ao lado da grade — não um
+// palpite de quem não vê a imagem.
+//
+// MATERIAL CONTINUA VISÍVEL, como conselho: o modelo já o escreve em
+// "sugestoes" ("informar materiais de palmilha e solado na ficha técnica"), e
+// sugestão não bloqueia. Quando houver campo para o dado, ele volta a ser
+// cobrado por quem o tiver.
 
 export const CHECKLIST_QUALIDADE = [
   "Título ≤60 caracteres, keyword principal na frente, sem cor/tamanho.",
-  "Categoria correta.",
-  "Atributos obrigatórios da categoria 100% preenchidos (são os filtros de busca).",
-  "Cor principal e material preenchidos, mais os atributos que a CATEGORIA exigir (gênero e tipo são exigência de calçado, não de toda categoria).",
-  "Descrição com benefícios, material/uso, cuidados, envio, garantia e conteúdo da embalagem.",
+  "Descrição completa, com benefícios, indicação de uso, cuidados e conteúdo da embalagem.",
   "Descrição curta presente.",
-  "Tabela de medidas com dados reais + 'como medir' + observação de forma.",
-  "Variações completas: toda a grade cadastrada (numeração em calçado; a dimensão ou o modelo que a categoria usar), SKU único, EAN por variação, tudo no MESMO anúncio.",
-  "Preço de venda presente e maior que zero.",
-  "Capa 1:1 com produto em destaque; imagens de detalhe e medidas presentes.",
-  "Português correto e coerência entre blocos (cor/medida citada = a que existe).",
-  "Sem '⚠️ informação necessária' pendente.",
-  "Teste final: o cliente consegue comprar sem precisar perguntar nada?",
+  "Tabela de medidas montada a partir da GRADE REAL do briefing, com 'como medir'.",
+  "Ficha técnica preenchida com o que o briefing traz — sem inventar o que ele não traz.",
+  "FAQ respondendo as dúvidas que o texto deixa em aberto.",
+  "Português correto e coerência entre blocos (a cor ou medida citada é a que existe no briefing).",
+  "Nada escrito que o briefing não sustente: nenhum número, código, medida ou condição comercial inventado.",
 ] as const;
 
 // ---- Modelo de briefing (entrada que alimenta todos os agentes) ----

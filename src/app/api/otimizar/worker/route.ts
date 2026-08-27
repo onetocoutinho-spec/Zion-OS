@@ -171,7 +171,21 @@ async function gerarAnuncio(
    * briefing afirma coisas diferentes nos dois casos — e afirmava a forte nos
    * dois até 26/08/2026.
    */
-  procedencia: ProcedenciaDosObrigatorios
+  procedencia: ProcedenciaDosObrigatorios,
+  /**
+   * Quantas fotos este produto JÁ tem no cadastro.
+   *
+   * A TERCEIRA VEZ DO MESMO DEFEITO NESTE ARQUIVO. `quantidadeFotos` existe em
+   * `montarContexto` desde que a esteira pediu "imagens reais do produto" de um
+   * item com 8 fotos cadastradas — porque ninguém lhe dizia que existiam.
+   * `/cliente/anunciar` passa (`quantidadeFotos: fotos.length`); o worker não
+   * passava, como não passava o briefing de atributos nem o rastro de custo.
+   *
+   * Medido em 27/08/2026: dos 299 reprovados sem pendência listada, 244 (82%)
+   * alegavam foto. O modelo não recebe imagem alguma — e recebia menos ainda:
+   * nem o NÚMERO delas.
+   */
+  quantidadeFotos: number
 ): Promise<AnuncioGerado> {
   // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
   // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
@@ -203,7 +217,13 @@ async function gerarAnuncio(
 
   const mensagem = montarMensagem(
     [
-      montarContexto({ produto, variantes, tabelasMedidas, atributosObrigatorios: briefingAtributos }),
+      montarContexto({
+        produto,
+        variantes,
+        tabelasMedidas,
+        atributosObrigatorios: briefingAtributos,
+        quantidadeFotos,
+      }),
       briefingDaGrade(grade),
     ].join("\n\n"),
     perfil
@@ -336,6 +356,19 @@ async function processarUm(
 
     const { exigencias, procedencia } = obrigatoriosDoProduto(categoria, daCategoria);
 
+    // QUANTAS FOTOS ESTE PRODUTO JÁ TEM.
+    //
+    // `head: true` com `count: "exact"`: só o número, sem trazer as linhas — o
+    // modelo não usa as URLs, e um produto da base chegou a ter 800 imagens.
+    //
+    // Sem `error` checado, pela mesma regra do perfil e do enriquecimento: uma
+    // contagem que não chega vira 0, e 0 é o que o worker já dizia (nada). Pior
+    // contexto, nunca contexto errado.
+    const { count: fotos } = await admin
+      .from("imagens_produto")
+      .select("id", { count: "exact", head: true })
+      .eq("produto_id", fila.produto_id);
+
     const anuncio = await gerarAnuncio(
       produto,
       variantes,
@@ -343,7 +376,8 @@ async function processarUm(
       atributosDoProduto,
       perfil,
       exigencias,
-      procedencia
+      procedencia,
+      fotos ?? 0
     );
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
