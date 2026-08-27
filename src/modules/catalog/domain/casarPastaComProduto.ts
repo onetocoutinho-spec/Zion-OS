@@ -203,6 +203,95 @@ export interface CaminhoDaFoto {
  * nunca são produto nem cor — a raiz escolhida e o nome do arquivo. O que
  * sobrar é: nada (fotos soltas na raiz), o produto, ou produto e cor.
  */
+/**
+ * As pastas ENTRE a que a pessoa escolheu e o arquivo.
+ *
+ * `Fotos/CHINELO/Chinelo Klin 442127/4380 azul/01.png` → os três do meio. É a
+ * matéria-prima de `nivelDoProdutoPorProfundidade`, que decide qual deles é o
+ * produto.
+ */
+export function pastasDoCaminho(caminho: string): string[] {
+  const partes = (caminho || "").split("/").filter(Boolean);
+  return partes.length < 2 ? [] : partes.slice(1, -1);
+}
+
+/**
+ * Em QUE nível de pasta mora o produto — decidido pelo catálogo, não por regra.
+ *
+ * ===========================================================================
+ * A PASTA QUE CHEGOU, E POR QUE A REGRA FIXA NÃO SERVIA
+ * ===========================================================================
+ *
+ * `lerCaminhoDaFoto` assume `Produto → Cor`, contando do começo. A pasta real
+ * de uma loja, medida em 27/08/2026, tem um nível a mais:
+ *
+ *     BABUCHE / Babuche Baby Molekinha 2749200 / 34224 pretoprata / 01.png
+ *     ^tipo     ^produto                          ^cor
+ *
+ *     9.384 imagens em TIPO/Produto/Cor
+ *     1.592 em ZZ_NAO_IDENTIFICADO/TIPO/Produto/Cor
+ *
+ * Contar do começo põe o TIPO no lugar do produto. Contar do fim quebra a pasta
+ * de dois níveis, que foi o defeito que `lerCaminhoDaFoto` já consertou uma vez.
+ * Nenhuma das duas regras serve para as duas formas.
+ *
+ * ===========================================================================
+ * O CATÁLOGO DECIDE, E A DIFERENÇA É GRANDE
+ * ===========================================================================
+ *
+ * Medido nas pastas reais contra os 1003 produtos da base:
+ *
+ *     nível do TIPO     ("CHINELO", "BABUCHE")    casa com produto:   1 de 20
+ *     nível do PRODUTO  (o nome completo)         casa com produto: 427 de 457
+ *
+ * Não é ambiguidade — é 20 contra 1. Então a escolha é MEDIDA: para cada
+ * profundidade, tenta-se cada nível e fica o que mais casa com o catálogo.
+ *
+ * Por profundidade, e não uma vez só, porque a mesma pasta mistura as duas
+ * formas: o produto está no índice 1 nas de três níveis e no 2 nas de quatro.
+ *
+ * Empate ou nenhum casamento devolve 0 — que é exatamente o comportamento
+ * anterior. Sem prova, nada muda.
+ */
+export function nivelDoProdutoPorProfundidade(
+  meios: readonly (readonly string[])[],
+  produtos: readonly ProdutoParaCasar[],
+  /** Quantas pastas olhar por profundidade. Amostra, não varredura. */
+  amostra = 30
+): Map<number, number> {
+  const porProfundidade = new Map<number, string[][]>();
+  for (const m of meios) {
+    if (m.length === 0) continue;
+    const lista = porProfundidade.get(m.length) ?? [];
+    if (lista.length < amostra) lista.push([...m]);
+    porProfundidade.set(m.length, lista);
+  }
+
+  const escolhido = new Map<number, number>();
+  for (const [profundidade, lista] of porProfundidade) {
+    // O último nível nunca é o produto: se fosse, não sobraria pasta para a cor
+    // — e uma pasta de dois níveis sem cor cai no `?? ""` do chamador.
+    let melhorIndice = 0;
+    let melhorCasou = -1;
+    for (let i = 0; i < profundidade; i++) {
+      let casou = 0;
+      const vistos = new Set<string>();
+      for (const m of lista) {
+        const nome = m[i] ?? "";
+        if (!nome || vistos.has(nome)) continue;
+        vistos.add(nome);
+        if (casarPastaComProduto(nome, produtos).produtoId) casou++;
+      }
+      if (casou > melhorCasou) {
+        melhorCasou = casou;
+        melhorIndice = i;
+      }
+    }
+    escolhido.set(profundidade, melhorCasou > 0 ? melhorIndice : 0);
+  }
+  return escolhido;
+}
+
 export function lerCaminhoDaFoto(caminho: string): CaminhoDaFoto {
   const partes = (caminho || "").split("/").filter(Boolean);
   // Sem barra nenhuma, é só um nome de arquivo: não há pasta que diga produto.

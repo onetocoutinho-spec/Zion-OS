@@ -11,6 +11,8 @@ import {
   CORTE_DE_PARECENCA,
   casarPastaComProduto,
   lerCaminhoDaFoto,
+  nivelDoProdutoPorProfundidade,
+  pastasDoCaminho,
   type ProdutoParaCasar,
 } from "./casarPastaComProduto.ts";
 
@@ -179,5 +181,72 @@ test("palavra sem dígito nunca é referência", () => {
 test("número curto demais não vira referência", () => {
   const curto = [{ id: "x", nome: "Chinelo 12 Basic", sku: "9", codErp: "9" }];
   assert.equal(casarPastaComProduto("12", curto).via, null);
+});
+
+// ---------------------------------------------------------------------------
+// Em que NÍVEL de pasta mora o produto — o catálogo decide
+// ---------------------------------------------------------------------------
+
+test("as pastas do meio saem sem a escolhida e sem o arquivo", () => {
+  assert.deepEqual(pastasDoCaminho("Fotos/CHINELO/Chinelo Klin 442127/4380 azul/01.png"), [
+    "CHINELO", "Chinelo Klin 442127", "4380 azul",
+  ]);
+  assert.deepEqual(pastasDoCaminho("Fotos/Produto/01.png"), ["Produto"]);
+  assert.deepEqual(pastasDoCaminho("01.png"), []);
+});
+
+test("com TIPO na frente, o nível do produto é o do meio", () => {
+  // A pasta real de uma loja, medida em 27/08/2026: TIPO/Produto/Cor. Contar do
+  // começo poria "CHINELO" no lugar do produto — e "CHINELO" não casa com
+  // nenhum dos 1003 produtos, enquanto o nome completo casa com 427 de 457.
+  const meios = [
+    ["CHINELO", "Chinelo Havaianas Top Logomania", "preto"],
+    ["CHINELO", "Chinelo Ipanema 27065 Disney", "rosa"],
+    ["BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+  ];
+  const catalogo = [
+    { id: "a", nome: "Chinelo Havaianas Top Logomania", sku: "1", codErp: "1" },
+    { id: "b", nome: "Chinelo Ipanema 27065 Disney", sku: "2", codErp: "2" },
+    { id: "c", nome: "Babuche Boaonda 1716 John", sku: "3", codErp: "3" },
+  ];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(3), 1);
+});
+
+test("sem TIPO, o produto continua sendo o primeiro nível", () => {
+  // A forma que a tela sempre esperou. Ensinar o nível novo não pode quebrá-la.
+  const meios = [["Chinelo Havaianas Top Logomania", "preto"]];
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top Logomania", sku: "1", codErp: "1" }];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(2), 0);
+});
+
+test("cada profundidade decide sozinha — a mesma pasta mistura as duas formas", () => {
+  // 9.384 imagens em TIPO/Produto/Cor e 1.592 em ZZ/TIPO/Produto/Cor, no mesmo
+  // upload. Uma decisão global poria metade no lugar errado.
+  const catalogo = [{ id: "a", nome: "Babuche Boaonda 1716 John", sku: "1", codErp: "1" }];
+  const meios = [
+    ["BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+    ["ZZ_NAO_IDENTIFICADO", "BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+  ];
+  const mapa = nivelDoProdutoPorProfundidade(meios, catalogo);
+  assert.equal(mapa.get(3), 1);
+  assert.equal(mapa.get(4), 2);
+});
+
+test("nenhum nível casando devolve 0 — o comportamento de antes", () => {
+  // Sem prova, nada muda. Inventar um nível seria pior que a regra fixa.
+  const meios = [["QUALQUER", "COISA", "AQUI"]];
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top", sku: "1", codErp: "1" }];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(3), 0);
+});
+
+test("a amostra não varre a pasta inteira", () => {
+  // 3.338 pastas × 3 níveis × 1003 produtos seriam 10 milhões de comparações,
+  // e a aba congelaria — que é o defeito que a importação de custos acabou de
+  // pagar. A decisão sai de uma amostra por profundidade.
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top", sku: "1", codErp: "1" }];
+  const meios = Array.from({ length: 500 }, (_, i) => ["TIPO", `Chinelo Havaianas Top`, `c${i}`]);
+  const t0 = Date.now();
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo, 30).get(3), 1);
+  assert.ok(Date.now() - t0 < 500, "a escolha do nível demorou demais");
 });
 

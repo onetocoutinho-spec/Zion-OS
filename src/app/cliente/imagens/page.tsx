@@ -44,6 +44,8 @@ import type { ImagemProduto, Produto } from "@/lib/types";
 import {
   casarPastaComProduto,
   lerCaminhoDaFoto,
+  nivelDoProdutoPorProfundidade,
+  pastasDoCaminho,
   type Casamento,
 } from "@/modules/catalog/domain/casarPastaComProduto";
 
@@ -587,9 +589,30 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
 
   function aoEscolherPasta(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
+
+    // QUAL NÍVEL DE PASTA É O PRODUTO — decidido pelo catálogo.
+    //
+    // A pasta que chegou de uma loja real tem TIPO/Produto/Cor, e parte dela
+    // tem um nível a mais. Contar do começo põe "CHINELO" no lugar do produto;
+    // contar do fim quebra a pasta de dois níveis. Nenhuma regra fixa serve
+    // para as duas formas — então o catálogo decide, por profundidade.
+    //
+    // Medido em 27/08/2026: o nível do tipo casa com 1 de 20 nomes, o do
+    // produto com 427 de 457. Não é ambiguidade.
+    const caminhos = files.map((f) => f.webkitRelativePath || f.name);
+    const nivelPorProfundidade = nivelDoProdutoPorProfundidade(
+      caminhos.map(pastasDoCaminho),
+      produtos
+    );
+
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
-      const { pastaProduto, cor } = lerCaminhoDaFoto(f.webkitRelativePath || f.name);
+      const meio = pastasDoCaminho(f.webkitRelativePath || f.name);
+      const i = nivelPorProfundidade.get(meio.length) ?? 0;
+      const { pastaProduto, cor } =
+        meio.length > 0
+          ? { pastaProduto: meio[i] || "(raiz)", cor: meio[i + 1] ?? "" }
+          : lerCaminhoDaFoto(f.webkitRelativePath || f.name);
       const chave = `${pastaProduto}||${cor}`;
       if (!mapa.has(chave)) {
         mapa.set(chave, {
