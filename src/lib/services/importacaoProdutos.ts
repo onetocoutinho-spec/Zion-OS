@@ -22,6 +22,10 @@ import {
   avisoDePesoImplausivel,
   type AvisoDePeso,
 } from "../../modules/catalog/domain/pesoImplausivel.ts";
+import {
+  avisoDeCodigoQueEPalavra,
+  type AvisoDeCodigo,
+} from "../../modules/catalog/domain/codigoQueEPalavra.ts";
 import { nomeSemDerivacao } from "../../modules/catalog/domain/nomeSemDerivacao.ts";
 import { partesDaDerivacao } from "../../modules/catalog/domain/tamanhoDaDerivacao.ts";
 import {
@@ -200,6 +204,17 @@ export interface AnaliseProdutos {
    * coluna de quilo, e dividir por mil seria inventar dado.
    */
   avisoDePeso: AvisoDePeso | null;
+  /**
+   * Palavra no lugar do código. `null` quando não há o que dizer.
+   *
+   * NÃO impede a importação e NÃO corrige. Medido em 27/08/2026 no catálogo da
+   * lojista: 22 de 1003 produtos traziam "inativoo", "iinnattivo", "inatt" e
+   * mais dezenove grafias no SKU e no Código do ERP — alguém marcando "fora de
+   * linha" no campo do código, com uma letra a mais a cada vez porque o ERP não
+   * aceita código repetido. Eles entraram como produto normal, e 19 chegaram a
+   * receber foto. Ver `modules/catalog/domain/codigoQueEPalavra.ts`.
+   */
+  avisoDeCodigo: AvisoDeCodigo | null;
   erro?: string;
 }
 
@@ -588,6 +603,7 @@ export function analisarProdutosCsv(
     linhas: [],
     avisoDeGrade: null,
     avisoDePeso: null,
+    avisoDeCodigo: null,
   };
   const { headers, linhas: registros } = parseCsv(texto);
   if (headers.length === 0 || registros.length === 0) {
@@ -636,6 +652,11 @@ export function analisarProdutosCsv(
     // A régua é a mediana do PRÓPRIO arquivo, então ela é calculada sobre
     // todas as variações — não sobre a amostra, que são oito.
     avisoDePeso: avisoDePesoImplausivel(linhas.flatMap((l) => l.variacoes ?? [])),
+    // Sobre as linhas TODAS, não sobre a amostra de oito: o caso real tinha 22
+    // ocorrências em 1003 linhas, e nenhuma delas nas oito primeiras.
+    avisoDeCodigo: avisoDeCodigoQueEPalavra(
+      linhas.map((l) => ({ nome: l.base.nome, sku: l.base.sku, codErp: l.base.codErp }))
+    ),
   };
 }
 

@@ -102,6 +102,15 @@ export function ConferirCatalogo({
         </p>
       )}
 
+      {/* PALAVRA NO LUGAR DO CÓDIGO — "inativoo", "iinnattivo", "inatt". É um
+          recado do ERP, e o importador lia como SKU. Sem este aviso, 22 linhas
+          viravam produto normal e iam pedir foto e preço. */}
+      {analise.avisoDeCodigo && (
+        <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-sm text-amber-200">
+          {analise.avisoDeCodigo.texto}
+        </p>
+      )}
+
       {/* O ALÇAPÃO DA GRADE — aqui o aviso é só aviso: esta tela não tem
           mapeamento para ajustar, porque a planilha chegou pelo clipe do chat.
           Dizer só "aponte a coluna" sem dizer ONDE seria mandar procurar. */}

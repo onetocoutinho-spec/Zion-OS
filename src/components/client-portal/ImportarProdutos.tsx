@@ -328,6 +328,19 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                       <span>{analise.avisoDePeso.texto}</span>
                     </p>
                   )}
+                  {analise.avisoDeCodigo && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
+                        <AlertTriangle size={14} className="mt-px shrink-0" />
+                        <span>{analise.avisoDeCodigo.texto}</span>
+                      </p>
+                      {analise.avisoDeCodigo.exemplos.length > 0 && (
+                        <p className="mt-2 text-xs text-amber-200/70">
+                          Por exemplo: {analise.avisoDeCodigo.exemplos.join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {avisoDeGrade && (
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
                       <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
