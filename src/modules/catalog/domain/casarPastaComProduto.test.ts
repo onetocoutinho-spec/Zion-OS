@@ -263,3 +263,91 @@ test("a amostra não varre a pasta inteira", () => {
   assert.ok(Date.now() - t0 < 500, "a escolha do nível demorou demais");
 });
 
+
+// ---------------------------------------------------------------------------
+// PASTA COM CÓDIGO NÃO CAI NA PARECENÇA — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// O arquivo já dizia "Código vence nome sempre". A regra valia só quando o
+// código ACERTAVA: quando a pasta trazia um código que não resolvia — produto
+// fora do catálogo, ou referência repetida — o fluxo caía na parecença de nome
+// e casava por PALAVRA, ignorando o código que a própria pasta declarou.
+//
+// MEDIDO sobre os 992 grupos de foto da base real da lojista, comparando o
+// código da pasta com o do produto escolhido, dígito a dígito:
+//
+//     ANTES   código bate 403 · NÃO bate 53  ->  470 fotos no produto ERRADO
+//     DEPOIS  código bate 369 · NÃO bate  0
+//
+// E o erro tinha cara de acerto, porque a palavra em comum era boa. Casos
+// reais, todos de fotos que já tinham sido gravadas:
+//
+//     "Sandalia Beira Rio 8513113 Anel MT"  ->  8367.878 London
+//     "Sandalia Modare 7162219 Floather"    ->  MOCASSIM 7397.101 Floather
+//     "Sandalia Moleca 5504213 Napa Turim"  ->  5555.203 Napa Turim
+//
+// O custo é conhecido: 992 grupos casados viraram 759, e os 233 restantes
+// passam a exigir uma pessoa no seletor da tela. É a troca certa — pasta sem
+// produto aparece em amarelo e alguém resolve; foto no produto errado ninguém
+// revisa, porque ela parece certa.
+
+const SAPATOS: ProdutoParaCasar[] = [
+  { id: "s1", nome: "Sandália Beira Rio 8367.878 London", sku: "2301001" },
+  { id: "s2", nome: "Mocassim Modare 7397.101 Floather N", sku: "2301002" },
+  { id: "s3", nome: "Sandália Moleca 5555.203 Napa Turim", sku: "2301003" },
+  { id: "s4", nome: "Tamanco Slide Modare 7142.101 Canelado", sku: "2301004" },
+  { id: "s5", nome: "Tamanco Slide Modare 7142.101 Elástico", sku: "2301005" },
+];
+
+test("pasta com código que NÃO existe no catálogo não casa por palavra", () => {
+  // O caso da Beira Rio: a pasta diz 8513.113, que não está no catálogo. A
+  // parecença puxava para a 8367.878 porque "Sandalia Beira Rio" é igual.
+  const r = casarPastaComProduto("Sandalia Beira Rio 8513113 Anel MT Premium", SAPATOS);
+  assert.equal(r.produtoId, null, "voltou a casar por parecença apesar do código");
+  assert.equal(r.via, null);
+});
+
+test("uma sandália não vira mocassim por dividirem a palavra Floather", () => {
+  const r = casarPastaComProduto("Sandalia Modare 7162219 Floather Elastic", SAPATOS);
+  assert.equal(r.produtoId, null);
+});
+
+test("pasta com referência REPETIDA continua sem casar — e agora não desvia", () => {
+  // 7142.101 está em dois produtos. `referenciasUnicas` já o descartava, e o
+  // fluxo então caía na parecença e escolhia um dos dois por palavra. Escolher
+  // um de dois é chute, e chute aqui põe foto no anúncio errado.
+  const r = casarPastaComProduto("Tamanco Slide Modare 7142101 CaneladoElastico", SAPATOS);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("o código certo continua casando — a regra não fechou a porta boa", () => {
+  // Sem isto, o conserto teria trocado erro por inutilidade.
+  const r = casarPastaComProduto("Sandalia Beira Rio 8367878 London", SAPATOS);
+  assert.equal(r.produtoId, "s1");
+  assert.equal(r.via, "referencia");
+  assert.equal(casarPastaComProduto("fotos 2301003", SAPATOS).produtoId, "s3");
+});
+
+test("pasta SEM código nenhum continua casando por nome — a parecença sobreviveu", () => {
+  // A regra nova só vale onde há identidade declarada. Onde não há, a parecença
+  // continua sendo a melhor resposta possível — é o caso das pastas de móvel,
+  // que nomeiam o produto sem código.
+  const r = casarPastaComProduto("Cama - NAZARÉ", CATALOGO);
+  assert.equal(r.produtoId, "p2");
+  assert.equal(r.via, "nome");
+  assert.ok(r.confianca >= CORTE_DE_PARECENCA);
+});
+
+test("o SKU do ERP ganha do código que está no NOME do produto", () => {
+  // Caso real e contraintuitivo: a pasta "Tenis Molekinha 2588100 Mumbai" casa
+  // com um produto cujo NOME diz 2864.112 — porque o SKU dele é 2588100. O ERP
+  // é a identidade; o nome é texto, e às vezes o texto está desatualizado.
+  const comSkuDivergente: ProdutoParaCasar[] = [
+    { id: "t1", nome: "Tenis Infantil Molekinho 2864.112 Nylon Sleek", sku: "2588100" },
+    { id: "t2", nome: "Tenis Molekinha 2588.100 Mumbai", sku: "9999999" },
+  ];
+  const r = casarPastaComProduto("Tenis Molekinha 2588100 Mumbai", comSkuDivergente);
+  assert.equal(r.produtoId, "t1");
+  assert.equal(r.via, "codigo");
+});

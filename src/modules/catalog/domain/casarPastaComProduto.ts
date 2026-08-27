@@ -148,9 +148,48 @@ export function casarPastaComProduto(
 
   // Referência do fabricante: também identidade, quando ela não se repete.
   const unicas = referenciasUnicas(produtos);
-  for (const c of codigosNoTexto(pasta)) {
+  const codigosDaPasta = codigosNoTexto(pasta);
+  for (const c of codigosDaPasta) {
     const dono = unicas.get(c);
     if (dono) return { produtoId: dono, confianca: 1, via: "referencia" };
+  }
+
+  // ===========================================================================
+  // PASTA COM CÓDIGO NÃO CAI NA PARECENÇA — E CAÍA
+  // ===========================================================================
+  //
+  // O cabeçalho deste arquivo já dizia a regra: "Código vence nome sempre". Ela
+  // valia só quando o código ACERTAVA. Quando a pasta trazia um código que não
+  // resolvia — porque o produto não está no catálogo, ou porque a referência se
+  // repete —, o fluxo caía na parecença de nome e casava por PALAVRA, ignorando
+  // justamente o código que a pasta havia declarado.
+  //
+  // MEDIDO em 27/08/2026, sobre os 992 grupos de foto da base real, comparando
+  // o código da pasta com o do produto escolhido, dígito a dígito:
+  //
+  //     código BATE ......... 403
+  //     código NÃO BATE .....  53   ->  470 fotos no produto ERRADO
+  //
+  // E o erro tinha cara de acerto, porque a palavra em comum era boa:
+  //
+  //     "Sandalia Beira Rio 8513113 Anel MT"  ->  8367.878 London
+  //     "Sandalia Modare 7162219 Floather"    ->  MOCASSIM 7397.101 Floather
+  //     "Tamanco Slide 7142101 Canelado"      ->  7198.100 Canelado
+  //     "Sandalia Moleca 5504213 Napa Turim"  ->  5555.203 Napa Turim
+  //
+  // Uma sandália virou mocassim. A foto de 8513.113 iria anunciar a 8367.878.
+  //
+  // A regra nova é a que o arquivo já defendia para o código REPETIDO: "vira
+  // não casou, que é o erro seguro". Uma pasta que se identifica por código
+  // está dizendo QUAL produto ela é. Se aquele produto não aparece, a resposta
+  // certa é "não achei" — não "achei um parecido". Parecença só decide onde não
+  // há identidade declarada.
+  //
+  // O custo disto é conhecido e é o custo certo: grupos que antes casavam por
+  // palavra passam a exigir uma pessoa. Foto no produto errado ninguém revisa,
+  // porque ela parece certa.
+  if (codigosDaPasta.length > 0) {
+    return { produtoId: null, confianca: 0, via: null };
   }
 
   const alvo = palavrasDe(pasta);

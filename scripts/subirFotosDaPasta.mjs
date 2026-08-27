@@ -133,10 +133,41 @@ if (validos.length === 0) process.exit(1);
 //
 // A chave é produto+cor, igual à do aviso: cor nova no mesmo produto entra; a
 // mesma cor de novo, não. Retomar é o caso comum, não a exceção.
-const { data: jaTem } = await sb
-  .from("imagens_produto")
-  .select("produto_id, tipo_imagem, cor")
-  .eq("cliente_id", clienteId);
+// E A LEITURA É PAGINADA — ELA NÃO ERA, E QUEBROU EXATAMENTE ONDE TINHA QUE.
+//
+// O PostgREST devolve no MÁXIMO 1000 linhas. Enquanto `imagens_produto` tinha
+// 800, a leitura simples parecia completa. Passou de 1000 na terceira pasta, e
+// a partir dali `comCapa` e `jaEnviados` viravam retratos de um pedaço do
+// banco: produtos com foto passavam por "sem foto", e o script marcava uma
+// SEGUNDA capa.
+//
+// O que salvou foi o banco. `idx_imagens_produto_uma_capa` recusou o INSERT —
+// 6 lotes perdidos, e ZERO capas duplicadas. Restrição no banco pega o que o
+// código esqueceu; foi ela que transformou uma corrupção silenciosa em seis
+// linhas de erro.
+//
+// Este é o defeito que a sentinela `leituraNaoTruncada` guarda em `src/`, e que
+// esta sessão já tinha pego uma vez na leitura de `produtos` (1003 linhas).
+// Repeti aqui, num script, onde a sentinela não alcança.
+async function todasAsImagens() {
+  const out = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await sb
+      .from("imagens_produto")
+      .select("produto_id, tipo_imagem, cor")
+      .eq("cliente_id", clienteId)
+      .range(i, i + 999);
+    if (error) {
+      console.error(`não consegui ler as imagens já enviadas: ${error.message}`);
+      process.exit(1); // sem esta lista, subir é arriscar duplicar tudo
+    }
+    out.push(...data);
+    if (data.length < 1000) break;
+  }
+  return out;
+}
+const jaTem = await todasAsImagens();
+console.log(`imagens já no banco: ${jaTem.length}`);
 const comCapa = new Set((jaTem ?? []).filter((i) => i.tipo_imagem === "Principal").map((i) => i.produto_id));
 const jaEnviados = new Set(
   (jaTem ?? []).map((i) => `${i.produto_id}||${(i.cor ?? "").trim().toLowerCase()}`)
