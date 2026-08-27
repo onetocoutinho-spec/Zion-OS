@@ -450,3 +450,66 @@ test("as unidades cobertas são as que aparecem em embalagem", () => {
   const r = casarPastaComProduto("Outro Produto 500ml", catalogo);
   assert.notEqual(r.via, "referencia");
 });
+
+// ---------------------------------------------------------------------------
+// TAMANHO TAMBÉM NÃO É CÓDIGO — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// A grade infantil se escreve 24/25, 25/26, 33/34. Sem pontuação viram 2425,
+// 2526, 3334 — quatro dígitos, o bastante para virar "código".
+//
+// O estrago apareceu DEPOIS do conserto de hoje, e por causa dele: pasta com
+// código não cai mais na parecença, então uma pasta cujo único "código" era o
+// tamanho parou de casar. Medido nas pastas reais: 23 grupos, 198 fotos,
+// travados só por isso — e sem o número o nome casa a 1,00.
+//
+// Segurança da regra, medida no catálogo: dos 2.006 SKUs e das 664 referências
+// únicas, ZERO seriam excluídos. Só existem dois tokens assim — 2425 e 2526 —,
+// ambos em mais de um produto, ou seja, nunca serviram de identidade.
+
+const HAVAIANAS: ProdutoParaCasar[] = [
+  { id: "h1", nome: "Chinelo Havaianas Baby Classics 25/26", sku: "5001" },
+  { id: "h2", nome: "Chinelo Havaianas Disney Personagens Stylish 24/25", sku: "5002" },
+  { id: "h3", nome: "Chinelo Havaianas Slim Mickey & Minnie Disney 24/25", sku: "5003" },
+];
+
+test("tamanho na pasta não bloqueia o nome — ele não é identidade", () => {
+  const r = casarPastaComProduto("Chinelo Havaianas Baby Classics 2526", HAVAIANAS);
+  assert.equal(r.produtoId, "h1");
+  // A confiança é 0,80, não 1, e a razão fica escrita porque ela surpreende:
+  // `palavrasDe` guarda tokens com MAIS de 2 caracteres. A pasta escreve "2526"
+  // e isso conta como palavra; o produto escreve "25/26", que vira "25" e "26"
+  // e some. Sobra uma palavra a mais de um lado — 4 comuns em 5.
+  //
+  // Não é defeito a consertar aqui: o tamanho não deveria pesar na parecença de
+  // jeito nenhum, e mexer em `palavrasDe` mudaria TODOS os casamentos por nome
+  // do repositório. Fica medido e à vista.
+  assert.ok(r.confianca >= 0.75, `confiança caiu para ${r.confianca}`);
+  assert.equal(r.via, "nome");
+});
+
+test("o produto certo entre dois do MESMO tamanho — o nome decide, não o número", () => {
+  // Este é o caso que mais ensinou. Um desempate por COR mandou esta pasta para
+  // "Slim Mickey & Minnie Disney 24/25" — outro produto, mesmo tamanho. Sem o
+  // tamanho no caminho, ela acha o próprio nome.
+  const r = casarPastaComProduto("Chinelo Havaianas Disney Personagens Stylish 2425", HAVAIANAS);
+  assert.equal(r.produtoId, "h2");
+});
+
+test("a regra é o par CONSECUTIVO, e só ele", () => {
+  // "1319" (modelo Boaonda) e "2402" não são tamanho: 19 não é 14, 02 não é 25.
+  // Se virassem, dois modelos reais sairiam do casamento por identidade.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "b1", nome: "Chinelo Boaonda 1319 Lilly", sku: "6001" },
+    { id: "b2", nome: "Babuche Boaonda 2402-110 Easy Kids", sku: "6002" },
+  ];
+  assert.equal(casarPastaComProduto("fotos 1319 Lilly", catalogo).produtoId, "b1");
+  assert.equal(casarPastaComProduto("Babuche Boaonda 2402-110 Easy Kids", catalogo).produtoId, "b2");
+});
+
+test("SKU que por acaso pareça tamanho continua valendo pelo ERP", () => {
+  // `casaPorCodigo` compara o SKU direto com o texto da pasta, sem passar por
+  // `codigosNoTexto` — então a exclusão não alcança a identidade do ERP.
+  const catalogo: ProdutoParaCasar[] = [{ id: "s1", nome: "Produto Qualquer", sku: "2425" }];
+  assert.equal(casarPastaComProduto("pasta 2425", catalogo).via, "codigo");
+});

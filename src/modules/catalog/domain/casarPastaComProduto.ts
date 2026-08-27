@@ -116,6 +116,36 @@ const CODIGO_MINIMO = 4;
 const MEDIDA = /^[0-9]+(G|GR|KG|ML|CM|MM|UN|PCS)$/;
 
 /**
+ * TAMANHO TAMBÉM NÃO É CÓDIGO — "24/25" vira "2425" e parece modelo.
+ *
+ * A grade de calçado infantil se escreve como par consecutivo: 24/25, 25/26,
+ * 33/34. Sem pontuação viram 2425, 2526, 3334 — quatro dígitos, e o suficiente
+ * para `codigosNoTexto` chamar de código.
+ *
+ * O estrago apareceu DEPOIS do conserto de 27/08, e por causa dele: pasta com
+ * código não cai mais na parecença de nome, então uma pasta cujo único "código"
+ * era o tamanho deixou de casar por completo. Medido: 23 grupos, 198 fotos,
+ * travados só por isso — e removendo o número o nome casa a 1,00:
+ *
+ *     "Chinelo Havaianas Baby Classics 2526" -> "... Baby Classics 25/26"
+ *     "Chinelo Havaianas Aloha 2425"         -> "... Aloha 24/25"
+ *
+ * Um deles é o caso que mais ensina: "Disney Personagens Stylish 2425", que uma
+ * tentativa de desempate pela COR mandou para "Slim Mickey & Minnie Disney
+ * 24/25" — outro produto, mesmo tamanho. Sem o tamanho no caminho, ele acha o
+ * próprio nome, a 1,00.
+ *
+ * A regra é estreita de propósito: quatro dígitos em que o segundo par é o
+ * primeiro MAIS UM. Medido no catálogo: dos 2.006 SKUs e das 664 referências
+ * únicas, ZERO seriam excluídos. Só existem dois tokens assim — 2425 e 2526 —,
+ * e ambos aparecem em mais de um produto, ou seja, nunca serviram de identidade.
+ */
+function ehTamanho(t: string): boolean {
+  if (!/^[0-9]{4}$/.test(t)) return false;
+  return Number(t.slice(2)) === Number(t.slice(0, 2)) + 1;
+}
+
+/**
  * Códigos escondidos num texto: 4+ alfanuméricos com pelo menos um dígito,
  * atravessando ponto, hífen e barra ("7208.101" → "7208101").
  *
@@ -126,7 +156,7 @@ function codigosNoTexto(texto: string): string[] {
   const brutos = (texto ?? "").match(/[A-Za-z0-9]+(?:[.\-/][A-Za-z0-9]+)*/g) ?? [];
   return brutos
     .map((t) => t.replace(/[^A-Za-z0-9]/g, "").toUpperCase())
-    .filter((t) => !MEDIDA.test(t))
+    .filter((t) => !MEDIDA.test(t) && !ehTamanho(t))
     .filter((t) => t.length >= CODIGO_MINIMO && /[0-9]/.test(t));
 }
 
