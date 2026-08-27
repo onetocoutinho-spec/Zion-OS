@@ -153,6 +153,15 @@ export interface AmbiguidadeCusto {
   candidatos: { custo: number; origem: string }[];
 }
 
+/**
+ * De quantos em quantos produtos a importação devolve o fio ao navegador.
+ *
+ * Vinte e cinco porque o casamento por nome custa ~5,7 ms por produto no caso
+ * medido: são ~140 ms entre pausas, abaixo do limite em que a aba parece presa.
+ * Pausar a cada um multiplicaria as idas ao agendador sem ganho perceptível.
+ */
+const PRODUTOS_ENTRE_PAUSAS = 25;
+
 const norm = (s: string) => s.trim().toLowerCase();
 /** Remove zeros à esquerda (Excel dropa "01003335" → "1003335"). */
 const semZeros = (s: string) => s.replace(/^0+/, "");
@@ -581,7 +590,27 @@ export async function importarCustos(
   const prodAtualizados: (Partial<Produto> & { id: string })[] = [];
   let precosGravados = 0;
   const produtosComEstoque = new Set<string>();
+  let desdeAPausa = 0;
   for (const p of produtos) {
+    // CEDER O FIO — 27/08/2026.
+    //
+    // O casamento por NOME é O(n × m): cada produto sem código varre a planilha
+    // inteira chamando `mesmaIdentidade`. Medido com os arquivos reais — 1003
+    // produtos contra 1505 linhas — são 1,5 MILHÃO de comparações e 5,7
+    // segundos de laço SÍNCRONO.
+    //
+    // No navegador isso congela a aba: o fio principal não desenha, não responde
+    // ao clique, e o Chrome oferece "fechar a página". Quem recarrega nesse
+    // intervalo interrompe a importação no meio — foi o que deixou 661 variações
+    // gravadas e 182 produtos sem nada, duas vezes seguidas.
+    //
+    // A pausa não acelera nada: ela devolve o controle ao navegador de tempos em
+    // tempos, e a aba continua viva enquanto a conta roda. Trabalho longo que
+    // não cede o fio é trabalho que a pessoa não consegue esperar.
+    if (++desdeAPausa >= PRODUTOS_ENTRE_PAUSAS) {
+      desdeAPausa = 0;
+      await new Promise((r) => setTimeout(r, 0));
+    }
     let valores = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
     if (valores != null) usados.add(norm(p.sku));
     if (valores == null && p.codErp) {
