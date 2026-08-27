@@ -7,6 +7,11 @@
 // tempo da função.
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import {
+  blocoDoPerfil,
+  perfilDaLinha,
+  type LinhaDoPerfil,
+} from "@/modules/assistant/domain/perfilDeConteudo";
 import { decidirAcessoDoCron, type DecisaoCron } from "@/lib/auth/autorizacaoDoCron";
 import {
   ESQUEMA_ANUNCIO,
@@ -99,11 +104,17 @@ function autorizado(req: Request): DecisaoCron {
   });
 }
 
-function montarMensagem(contexto: string): string {
+function montarMensagem(contexto: string, perfil: string[]): string {
   return [
     "Dados cadastrados no Zion OS para este produto:",
     "",
     contexto,
+    // COMO ESTA LOJA VENDE — incluindo o que ela promete.
+    //
+    // A esteira era o único gerador que NÃO recebia o perfil: `agenteDeTitulo` e
+    // `agenteDeDescricao` já o usavam. E é a esteira que roda em lote, sem
+    // ninguém na tela — justamente onde uma promessa inventada passa despercebida.
+    ...(perfil.length ? ["", ...perfil] : []),
     "",
     "---",
     "",
@@ -123,6 +134,8 @@ async function gerarAnuncio(
   variantes: ProdutoVariante[],
   tabelasMedidas: TabelaMedida[],
   atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[],
+  /** O bloco "como esta loja vende", já montado. Vazio quando não há perfil. */
+  perfil: string[],
   /**
    * O que a CATEGORIA deste produto exige. Ver INC-011: o retrato de calçado
    * era cobrado de 118 anúncios que não são calçado, e em MLB23332 a exigência
@@ -168,7 +181,8 @@ async function gerarAnuncio(
     [
       montarContexto({ produto, variantes, tabelasMedidas, atributosObrigatorios: briefingAtributos }),
       briefingDaGrade(grade),
-    ].join("\n\n")
+    ].join("\n\n"),
+    perfil
   );
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
@@ -269,6 +283,17 @@ async function processarUm(
       .maybeSingle();
     const categoria = (produto.categoriaMl ?? "").trim() || (catRow?.categoria_ml ?? "").trim();
     const daCategoria = categoria ? await atributosObrigatorios(categoria) : null;
+    // O PERFIL DA LOJA, que carrega tom, palavras e as condições comerciais.
+    //
+    // Sem `error` checado, pela mesma regra do enriquecimento acima: perfil que
+    // não chega deixa o briefing como era — pior contexto, nunca contexto errado.
+    const { data: perfilRow } = await admin
+      .from("perfis_de_conteudo")
+      .select("tom, publico, palavras_preferidas, palavras_proibidas, observacoes, garantia, frete_gratis")
+      .eq("cliente_id", fila.cliente_id)
+      .maybeSingle();
+    const perfil = blocoDoPerfil(perfilDaLinha((perfilRow as LinhaDoPerfil | null) ?? null));
+
     const { exigencias, procedencia } = obrigatoriosDoProduto(categoria, daCategoria);
 
     const anuncio = await gerarAnuncio(
@@ -276,6 +301,7 @@ async function processarUm(
       variantes,
       tabelas,
       atributosDoProduto,
+      perfil,
       exigencias,
       procedencia
     );

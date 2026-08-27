@@ -15,7 +15,7 @@ export const REGRAS_MAE = `Regras-mãe da Zion Company (valem para TODAS as etap
 - Título ML: no MÁXIMO 60 caracteres, com a keyword principal na frente, SEM cor nem tamanho (isso é variação/atributo), mantendo palavras que vendem.
 - Atributos/ficha técnica são os FILTROS DE BUSCA do ML (o comprador filtra por atributo, não por título) — preencher o máximo possível.
 - Preço: NÃO calcule margem nem julgue se o preço está bom. Isso é feito pelo sistema, que conhece a comissão real da categoria (consultada na API do Mercado Livre), o custo de envio pelo peso cobrável, a reputação da conta e a margem mínima que O LOJISTA escolheu. Você não tem esses dados. Sinalize apenas o que dá para ver: preço ausente ou zerado é pendência; custo ausente impede o cálculo e também é pendência.
-- Defaults Zion (usar automático, NÃO é pendência): garantia = 90 dias (fornecedor); frete grátis embutido no preço.
+- Garantia e frete: NUNCA afirme condição comercial por conta própria. Só escreva sobre garantia ou frete grátis se o briefing trouxer a escolha DA LOJA, e então repita exatamente o que ele diz. Se não vier, é pendência: "⚠️ informação necessária: garantia" e "⚠️ informação necessária: frete". Uma promessa que a loja não fez, o comprador cobra dela.
 - Conteúdo da embalagem: em CALÇADO o padrão é "1 par". Em qualquer outra categoria, use o que o briefing informar — e se não vier, é pendência. Não herde o padrão de calçado para um produto que não é calçado.
 - O anúncio só está pronto se o cliente COMPRA sem precisar perguntar nada.`;
 
