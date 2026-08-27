@@ -79,14 +79,32 @@ test("a grade do anúncio vem do CADASTRO, não da IA", () => {
 test("grade incompleta REPROVA, por melhor que esteja o texto", () => {
   // Era o texto bom que fazia o problema passar: descrição impecável, FAQ
   // caprichada, SKU inventado no meio.
+  //
+  // MUDADO EM 27/08/2026: o exemplo era o EAN vazio, que deixou de travar — o
+  // Mercado Livre não o exige (GTIN é `conditional_required`, com
+  // EMPTY_GTIN_REASON no lugar). O SKU continua travando, e é ele que este
+  // teste passa a usar: sem SKU não há variação identificável.
+  const semSku = montarVariacoes(
+    [{ cor: "Branco", tamanho: "25/26", sku: "", ean: "789", estoque: 3, precoBase: 118 }],
+    118
+  );
+  const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semSku);
+  assert.equal(a.vereditoA10, "reprovado");
+  assert.match(a.motivoVeredito, /Grade de variações incompleta/);
+  assert.match(a.motivoVeredito, /SKU/);
+});
+
+test("EAN vazio NÃO reprova, e vira conselho ao lado dos do modelo", () => {
+  // O anúncio de nota 86 era reprovado por 2 EANs em 15 variações — tudo o mais
+  // pronto. O ML aceita publicar sem código, declarando o motivo.
   const semEan = montarVariacoes(
     [{ cor: "Branco", tamanho: "25/26", sku: "01040525", ean: "", estoque: 3, precoBase: 118 }],
     118
   );
   const a = comAGradeDoCadastro(daIA({ vereditoA10: "aprovado" }), semEan);
-  assert.equal(a.vereditoA10, "reprovado");
-  assert.match(a.motivoVeredito, /Grade de variações incompleta/);
-  assert.match(a.motivoVeredito, /EAN/);
+  assert.equal(a.vereditoA10, "aprovado");
+  assert.deepEqual(a.pendencias, []);
+  assert.ok(a.sugestoes.some((s) => /EAN/.test(s)), "o EAN deveria virar sugestão");
 });
 
 test("produto SEM grade nenhuma reprova — e diz que é a grade que falta", () => {

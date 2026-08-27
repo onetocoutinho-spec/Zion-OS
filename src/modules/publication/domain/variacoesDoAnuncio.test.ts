@@ -13,6 +13,7 @@ import {
   gradePublicavel,
   montarVariacoes,
   pendenciasDaGrade,
+  sugestoesDaGrade,
   FALTA,
   type VarianteDaBase,
 } from "./variacoesDoAnuncio.ts";
@@ -63,12 +64,45 @@ test("sem variação nenhuma, a grade é VAZIA — não se inventa uma linha pad
 });
 
 test("pendência é uma por CAMPO, não uma por variação", () => {
-  // 26 variações sem EAN gerariam 26 linhas idênticas, e lista assim não é
+  // 26 variações sem preço gerariam 26 linhas idênticas, e lista assim não é
   // lida — é ignorada.
-  const p = pendenciasDaGrade(montarVariacoes(BABUCHE, 118));
+  //
+  // MUDADO EM 27/08/2026: o exemplo era o EAN, que saiu das pendências. Ver o
+  // teste abaixo — ele não trava a publicação, e o ML confirma isso.
+  const p = pendenciasDaGrade(montarVariacoes(BABUCHE, 0));
   assert.equal(p.length, 1);
-  assert.match(p[0], /EAN/);
+  assert.match(p[0], /preço/);
   assert.match(p[0], /nenhuma das 3/);
+});
+
+test("EAN ausente NÃO é pendência — o Mercado Livre não o exige", () => {
+  // Medido em 27/08/2026 na API do ML, nas duas categorias da base:
+  //     GTIN: required=false · catalog_required=false · conditional_required
+  //     EMPTY_GTIN_REASON: "O produto não tem código cadastrado", ...
+  //
+  // Enquanto o EAN travava, um anúncio de nota 86 — título, descrição, ficha,
+  // tabela de medidas e atributos todos prontos — era reprovado por 2 códigos
+  // faltando em 15 variações. Cobrar o que o marketplace não cobra é a forma
+  // exata do INC-011.
+  const semEan = montarVariacoes(BABUCHE, 62);
+  assert.deepEqual(pendenciasDaGrade(semEan), []);
+  assert.equal(gradePublicavel(semEan), true);
+});
+
+test("EAN ausente vira SUGESTÃO, e ela diz a saída que o ML oferece", () => {
+  const s = sugestoesDaGrade(montarVariacoes(BABUCHE, 62));
+  assert.equal(s.length, 1);
+  assert.match(s[0], /EAN/);
+  assert.match(s[0], /Não impede publicar/);
+  assert.match(s[0], /não tem código cadastrado/);
+});
+
+test("grade com EAN em todas não gera sugestão nenhuma", () => {
+  const completa = montarVariacoes(
+    [{ cor: "Preto", tamanho: "37/38", sku: "X1", ean: "789", estoque: 2, precoBase: 62 }],
+    62
+  );
+  assert.deepEqual(sugestoesDaGrade(completa), []);
 });
 
 test("falta parcial diz em quantas de quantas", () => {
@@ -90,7 +124,9 @@ test("grade ausente é a PRIMEIRA pendência — ela impede todas as outras", ()
 
 test("grade só é publicável quando existe e está inteira", () => {
   assert.equal(gradePublicavel([]), false);
-  assert.equal(gradePublicavel(montarVariacoes(BABUCHE, 118)), false); // falta EAN
+  // Sem PREÇO não publica. (O EAN saiu desta lista em 27/08 — ver o teste
+  // acima: o ML não o exige.)
+  assert.equal(gradePublicavel(montarVariacoes(BABUCHE, 0)), false);
   const completa = montarVariacoes(
     [{ cor: "Preto", tamanho: "37/38", sku: "X1", ean: "789", estoque: 2, precoBase: 62 }],
     62

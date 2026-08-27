@@ -118,11 +118,29 @@ export function pendenciasDaGrade(variacoes: readonly VariacaoDoAnuncio[]): stri
     ];
   }
 
+  // O EAN NÃO ESTÁ AQUI, E ISSO FOI MEDIDO — 27/08/2026.
+  //
+  // Estes campos TRAVAM a publicação: sem cor, tamanho, SKU, estoque ou preço, o
+  // anúncio não sobe. O EAN não trava, e o próprio Mercado Livre diz isso:
+  //
+  //     GET /categories/MLB273770/attributes
+  //     GTIN: required=false · catalog_required=false · conditional_required
+  //     EMPTY_GTIN_REASON: "O produto não tem código cadastrado", ...
+  //
+  // Ou seja: o ML aceita publicar sem código de barras, declarando o motivo. Os
+  // obrigatórios da categoria são outros seis (BRAND, MODEL, GENDER, COLOR,
+  // SIZE, FOOTWEAR_TYPE) e GTIN não é um deles.
+  //
+  // Enquanto ele estava nesta lista, um produto pronto era reprovado por 2 EANs
+  // faltando em 15 variações — nota 86, tudo no lugar, barrado por uma exigência
+  // que o marketplace não faz. É a mesma forma do INC-011: cobrar o que o ML não
+  // cobra.
+  //
+  // O EAN ausente vira SUGESTÃO, em `sugestoesDaGrade`: conselho, nunca trava.
   const campos: { chave: keyof VariacaoDoAnuncio; nome: string }[] = [
     { chave: "cor", nome: "cor" },
     { chave: "tamanho", nome: "tamanho" },
     { chave: "sku", nome: "SKU" },
-    { chave: "ean", nome: "EAN" },
     { chave: "estoque", nome: "estoque" },
     { chave: "preco", nome: "preço" },
   ];
@@ -138,6 +156,29 @@ export function pendenciasDaGrade(variacoes: readonly VariacaoDoAnuncio[]): stri
     );
   }
   return pendencias;
+}
+
+/**
+ * O que MELHORARIA a grade, sem impedir a publicação.
+ *
+ * Hoje é só o EAN. Ele não é obrigatório em nenhuma das categorias medidas — o
+ * ML o marca como `conditional_required` e oferece `EMPTY_GTIN_REASON` como
+ * alternativa. Então a ausência dele é conselho, e o conselho diz o que fazer:
+ * ou trazer o código do ERP, ou declarar o motivo na publicação.
+ */
+export function sugestoesDaGrade(variacoes: readonly VariacaoDoAnuncio[]): string[] {
+  if (variacoes.length === 0) return [];
+  const faltando = variacoes.filter((v) => String(v.ean).startsWith(FALTA)).length;
+  if (faltando === 0) return [];
+  const quantas =
+    faltando === variacoes.length
+      ? `nenhuma das ${variacoes.length} variações tem`
+      : `falta em ${faltando} de ${variacoes.length} variações`;
+  return [
+    `EAN (código de barras): ${quantas}. Não impede publicar — o Mercado Livre ` +
+      `aceita o motivo no lugar do código ("O produto não tem código cadastrado"). ` +
+      `Com o EAN, o anúncio ganha o catálogo do ML e aparece em mais buscas.`,
+  ];
 }
 
 /**

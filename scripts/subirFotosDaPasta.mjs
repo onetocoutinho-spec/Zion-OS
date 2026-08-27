@@ -26,7 +26,7 @@
 //
 // Uso:  node --env-file=.env.staging scripts/subirFotosDaPasta.mjs <pasta> <clienteId>
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import {
   casarPastaComProduto,

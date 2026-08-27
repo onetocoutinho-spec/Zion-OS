@@ -17,6 +17,7 @@ import {
 import {
   gradePublicavel,
   pendenciasDaGrade,
+  sugestoesDaGrade,
   type VariacaoDoAnuncio,
 } from "../../modules/publication/domain/variacoesDoAnuncio";
 
@@ -273,10 +274,15 @@ export function comAGradeDoCadastro(
 ): AnuncioGerado {
   const daGrade = pendenciasDaGrade(grade);
   const publicavel = gradePublicavel(grade);
+  // O EAN sai da grade como CONSELHO, não como trava — ele não é obrigatório em
+  // nenhuma categoria medida, e o ML aceita o motivo no lugar do código. As
+  // sugestões do modelo continuam valendo; esta entra junto.
+  const conselhos = [...(daIA.sugestoes ?? []), ...sugestoesDaGrade(grade)];
   return {
     ...daIA,
     variacoes: grade,
     pendencias: daGrade,
+    sugestoes: conselhos,
     vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
     motivoVeredito: publicavel
       ? daIA.motivoVeredito
