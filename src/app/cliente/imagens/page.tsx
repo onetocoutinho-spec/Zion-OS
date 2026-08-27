@@ -805,8 +805,23 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                   : "Enviando…"
                 : "Confirmar envio"}
             </Button>
-            {semCasar > 0 && (
-              <span className="text-xs text-amber-400">Pastas sem produto serão ignoradas.</span>
+            {/* NENHUM CASOU É OUTRA FRASE.
+                "Pastas sem produto serão ignoradas" sugere que ALGUMA vai — e
+                quando nenhuma casa o botão fica desabilitado, o clique não faz
+                nada e a tela não diz por quê. Em 27/08/2026 isso custou uma
+                tentativa: o grupo era uma pasta de COR, o botão estava morto, e
+                não havia como saber. */}
+            {grupos.length > 0 && grupos.every((g) => !g.produtoId) ? (
+              <span className="text-xs text-amber-400">
+                Nenhuma pasta casou com um produto — não há o que enviar. Escolha o produto
+                em cada linha acima, ou selecione a pasta de um nível acima.
+              </span>
+            ) : (
+              semCasar > 0 && (
+                <span className="text-xs text-amber-400">
+                  {semCasar} pasta(s) sem produto serão ignoradas.
+                </span>
+              )
             )}
           </div>
         </>
