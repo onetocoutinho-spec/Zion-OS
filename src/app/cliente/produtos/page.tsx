@@ -327,6 +327,7 @@ function Produtos() {
       ];
       // Só quando veio: "0 com preço" numa planilha sem coluna de preço é ruído.
       if (r.precos > 0) partes.push(`${r.precos} com preço de venda`);
+      if (r.estoques > 0) partes.push(`${r.estoques} com estoque recalculado`);
       if (r.naoEncontrados > 0) partes.push(`${r.naoEncontrados} linha(s) sem produto correspondente`);
       if (r.ambiguos > 0) partes.push(`${r.ambiguos} produto(s) ambíguo(s), deixados de fora`);
 

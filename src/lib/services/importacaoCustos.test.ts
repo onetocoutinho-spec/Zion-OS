@@ -23,6 +23,8 @@ import {
   definirCustoEscolhido,
   camposDoProduto,
   camposDaVariante,
+  SEM_VALOR,
+  type NumerosDaLinha,
 } from "./importacaoCustos.ts";
 import { buscarProduto } from "./produtos.ts";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos.ts";
@@ -216,8 +218,11 @@ test("Journal que LANÇA não interrompe a gravação do custo", async () => {
 
 const ATUAL = { custo: 10, precoVenda: 30 };
 
+/** Um valor de linha completo, para os testes não repetirem os três campos. */
+const v = (p: Partial<NumerosDaLinha>): NumerosDaLinha => ({ ...SEM_VALOR, ...p });
+
 test("planilha com os dois grava os dois", () => {
-  const c = camposDoProduto({ custo: 12, preco: 40 }, ATUAL);
+  const c = camposDoProduto(v({ custo: 12, preco: 40 }), ATUAL);
   assert.equal(c.custo, 12);
   assert.equal(c.precoVenda, 40);
   assert.equal(c.confiancaCusto, "alta");
@@ -227,7 +232,7 @@ test("planilha só de PREÇO não apaga o custo que já estava certo", () => {
   // Zero quer dizer "a coluna não veio". Gravar `custo: 0` destruiria o custo
   // do produto — e custo errado é pior que custo ausente, porque a tela passa a
   // mostrar margem com confiança.
-  const c = camposDoProduto({ custo: 0, preco: 49.9 }, ATUAL);
+  const c = camposDoProduto(v({ custo: 0, preco: 49.9 }), ATUAL);
   assert.equal("custo" in c, false);
   assert.equal("precoMinimo" in c, false);
   assert.equal("confiancaCusto" in c, false);
@@ -235,7 +240,7 @@ test("planilha só de PREÇO não apaga o custo que já estava certo", () => {
 });
 
 test("planilha só de CUSTO não apaga o preço", () => {
-  const c = camposDoProduto({ custo: 15, preco: 0 }, ATUAL);
+  const c = camposDoProduto(v({ custo: 15, preco: 0 }), ATUAL);
   assert.equal("precoVenda" in c, false);
   assert.equal(c.custo, 15);
 });
@@ -247,9 +252,9 @@ test("a margem sai do par EFETIVO — o novo quando veio, o antigo quando não",
   // `?? undefined` na expectativa porque é o que a função faz: margem
   // desconhecida SOME do registro em vez de virar `null`, que o update parcial
   // gravaria como "apague o que estava lá".
-  assert.equal(camposDoProduto({ custo: 0, preco: 60 }, ATUAL).margem, margemZion(10, 60) ?? undefined);
-  assert.equal(camposDoProduto({ custo: 25, preco: 0 }, ATUAL).margem, margemZion(25, 30) ?? undefined);
-  assert.equal(camposDoProduto({ custo: 25, preco: 60 }, ATUAL).margem, margemZion(25, 60) ?? undefined);
+  assert.equal(camposDoProduto(v({ custo: 0, preco: 60 }), ATUAL).margem, margemZion(10, 60) ?? undefined);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 0 }), ATUAL).margem, margemZion(25, 30) ?? undefined);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 60 }), ATUAL).margem, margemZion(25, 60) ?? undefined);
 });
 
 test("HOJE a margem sai SEMPRE indefinida, e isso é do modelo — não desta função", () => {
@@ -266,25 +271,56 @@ test("HOJE a margem sai SEMPRE indefinida, e isso é do modelo — não desta fu
   // alguém releia a decisão em vez de herdá-la.
   assert.equal(margemZion(10, 30), null);
   assert.equal(precoMinimoZion(10), null);
-  assert.equal(camposDoProduto({ custo: 25, preco: 60 }, ATUAL).margem, undefined);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 60 }), ATUAL).margem, undefined);
 });
 
 test("sem número nenhum, nada de custo nem de preço entra", () => {
-  const c = camposDoProduto({ custo: 0, preco: 0 }, ATUAL);
+  const c = camposDoProduto(v({ custo: 0, preco: 0 }), ATUAL);
   assert.equal("custo" in c, false);
   assert.equal("precoVenda" in c, false);
 });
 
 test("a variação guarda precoBase, não precoVenda", () => {
-  const v = camposDaVariante({ custo: 12, preco: 40 });
-  assert.equal(v.custo, 12);
-  assert.equal(v.precoBase, 40);
-  assert.equal("precoVenda" in v, false);
+  const campos = camposDaVariante(v({ custo: 12, preco: 40 }));
+  assert.equal(campos.custo, 12);
+  assert.equal(campos.precoBase, 40);
+  assert.equal("precoVenda" in campos, false);
 });
 
 test("a variação também não é apagada por zero", () => {
-  assert.deepEqual(camposDaVariante({ custo: 0, preco: 40 }), { precoBase: 40 });
-  assert.deepEqual(camposDaVariante({ custo: 12, preco: 0 }), { custo: 12 });
-  assert.deepEqual(camposDaVariante({ custo: 0, preco: 0 }), {});
+  assert.deepEqual(camposDaVariante(v({ custo: 0, preco: 40 })), { precoBase: 40 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12, preco: 0 })), { custo: 12 });
+  assert.deepEqual(camposDaVariante(v({ custo: 0, preco: 0 })), {});
+});
+
+// ---------------------------------------------------------------------------
+// Estoque — o único dos três em que ZERO é resposta
+// ---------------------------------------------------------------------------
+
+test("estoque zero GRAVA — esgotou é informação", () => {
+  // Custo zero e preço zero não existem num catálogo, e por isso são tratados
+  // como ausência. Estoque zero existe o tempo todo, e é justamente o que a
+  // lojista precisa gravar quando o produto esgota. Confundir os dois deixaria
+  // esgotado como se fosse "não informou".
+  assert.equal(camposDaVariante(v({ estoque: 0 })).estoque, 0);
+});
+
+test("estoque ausente é -1, e -1 não grava nada", () => {
+  assert.equal(SEM_VALOR.estoque, -1);
+  assert.equal("estoque" in camposDaVariante(v({})), false);
+});
+
+test("o PRODUTO não recebe estoque de uma linha — ele é a soma das variações", () => {
+  // 3 do tamanho 35 e 2 do 36 são 5, e nenhum dos dois é o número do produto.
+  // A soma é feita depois, quando já se sabe o que cada variação ficou valendo.
+  assert.equal("estoque" in camposDoProduto(v({ estoque: 7 }), ATUAL), false);
+});
+
+test("estoque não apaga custo nem preço, e vice-versa", () => {
+  assert.deepEqual(camposDaVariante(v({ estoque: 4 })), { estoque: 4 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12 })), { custo: 12 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12, preco: 40, estoque: 0 })), {
+    custo: 12, precoBase: 40, estoque: 0,
+  });
 });
 

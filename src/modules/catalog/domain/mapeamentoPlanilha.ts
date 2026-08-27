@@ -23,9 +23,24 @@
 //   3. os sinais de alerta, que é onde a planilha deslocada se denuncia.
 
 /** O que uma coluna representa. "ignorar" é resposta legítima. */
-export type PapelColuna = "sku" | "ean" | "nome" | "custo" | "precoVenda" | "ignorar";
+export type PapelColuna =
+  | "sku"
+  | "ean"
+  | "nome"
+  | "custo"
+  | "precoVenda"
+  | "estoque"
+  | "ignorar";
 
-export const PAPEIS: readonly PapelColuna[] = ["sku", "ean", "nome", "custo", "precoVenda", "ignorar"];
+export const PAPEIS: readonly PapelColuna[] = [
+  "sku",
+  "ean",
+  "nome",
+  "custo",
+  "precoVenda",
+  "estoque",
+  "ignorar",
+];
 
 export const NOME_DO_PAPEL: Record<PapelColuna, string> = {
   sku: "SKU / código",
@@ -33,6 +48,7 @@ export const NOME_DO_PAPEL: Record<PapelColuna, string> = {
   nome: "Nome do produto",
   custo: "Custo",
   precoVenda: "Preço de venda",
+  estoque: "Estoque",
   ignorar: "Ignorar",
 };
 
@@ -82,6 +98,20 @@ const REGRAS: readonly { papel: Exclude<PapelColuna, "ignorar">; testa: (n: stri
   // planilha de reprecificação de 31/07/2026 lia zero colunas de dinheiro.
   { papel: "custo", testa: (n) => n.startsWith("custo") || ["cmv", "cost", "preco_custo", "preco_de_custo", "valor_custo", "custounit"].includes(n) },
   { papel: "precoVenda", testa: (n) => n.startsWith("preco_de_venda") || ["preco", "preco_venda", "valor_venda", "venda", "preco_atual"].includes(n) },
+  // ESTOQUE antes de EAN e SKU: "qtde_estoque" e "saldo" não colidem com eles,
+  // mas a ordem aqui é a ordem de disputa, e dinheiro vem antes de contagem.
+  //
+  // "saldo" entra porque é como o ERP desta base escreve — e o relatório de
+  // derivações do Magazord traz `Qtde Estoque`, que sem esta regra ficaria
+  // "ignorar" e o estoque seguiria zerado no catálogo inteiro.
+  {
+    papel: "estoque",
+    testa: (n) =>
+      n.startsWith("estoque") ||
+      n.startsWith("qtde") ||
+      n.startsWith("quantidade") ||
+      ["saldo", "saldo_estoque", "qtd", "qtd_estoque", "stock", "disponivel"].includes(n),
+  },
   { papel: "ean", testa: (n) => ["ean", "gtin", "ean13", "barcode"].includes(n) || n.startsWith("codigo_barras") || n.startsWith("cod_barras") },
   { papel: "sku", testa: (n) => n === "sku" || n.startsWith("sku") || ["codigo", "cod", "seller_sku", "codigo_sku", "cod_erp", "codigo_erp", "sku_erp", "referencia"].includes(n) },
   { papel: "nome", testa: (n) => ["nome", "produto", "descricao", "titulo", "item"].includes(n) || n.startsWith("nome") || n.startsWith("produto") || n.startsWith("descricao") },

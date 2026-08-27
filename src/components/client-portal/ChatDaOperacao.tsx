@@ -165,6 +165,13 @@ function ResultadoDaPlanilha({ r }: { r: ResultadoCustos }) {
             Destes, <strong>{r.precos}</strong> receberam preço de venda.
           </>
         )}
+        {r.estoques > 0 && (
+          <>
+            {" "}
+            O estoque foi recalculado em <strong>{r.estoques}</strong> produto(s), somando as
+            variações.
+          </>
+        )}
       </p>
       {r.naoEncontrados > 0 && (
         <p className="text-amber-300">
