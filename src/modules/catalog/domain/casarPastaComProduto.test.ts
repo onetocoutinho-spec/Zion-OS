@@ -351,3 +351,43 @@ test("o SKU do ERP ganha do código que está no NOME do produto", () => {
   assert.equal(r.produtoId, "t1");
   assert.equal(r.via, "codigo");
 });
+
+// ---------------------------------------------------------------------------
+// A AMOSTRA DO NÍVEL É ESPALHADA — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// `nivelDoProdutoPorProfundidade` olha uma amostra por profundidade e escolhe o
+// nível que mais casa com o catálogo. A amostra eram as N PRIMEIRAS pastas da
+// varredura — e a varredura é alfabética, então numa árvore TIPO/produto/cor as
+// 30 primeiras caem todas dentro do primeiro TIPO.
+//
+// MEDIDO na pasta ZZ_NAO_IDENTIFICADO: 1.592 fotos, 519 pastas de produto, e as
+// 30 amostradas eram todas de "BABUCHE", cujos códigos não estão neste
+// catálogo. Zero casamentos em TODOS os níveis, e a função caiu no padrão `1` —
+// que ali é a pasta de TIPO.
+//
+// O estrago não é sutil: o nível decide o que é PRODUTO e o que é COR. Com o 1,
+// 543 grupos viraram 18, e os 11 que casaram foram todos para o mesmo produto.
+// Com o 2, 543 grupos e 74 casamentos.
+
+test("o nível certo é achado mesmo quando o começo da varredura não casa", () => {
+  // 40 pastas de um tipo que o catálogo não conhece, e DEPOIS as que casam.
+  // Com amostra do começo, as boas nunca são vistas.
+  const caminhos: string[][] = [];
+  for (let i = 0; i < 40; i++) caminhos.push(["Fotos", "DESCONHECIDO", `item-sem-catalogo-${i}`]);
+  for (let i = 0; i < 10; i++) caminhos.push(["Fotos", "CAMAS", "Cama - NAZARÉ"]);
+  const nivel = nivelDoProdutoPorProfundidade(caminhos, CATALOGO);
+  assert.equal(nivel.get(3), 2, "voltou a amostrar só o começo da varredura");
+});
+
+test("com tudo casando no mesmo nível, a escolha não muda", () => {
+  // A correção não pode mexer no caso simples, que é o comum.
+  const caminhos = Array.from({ length: 12 }, () => ["Fotos", "Cama - BELLA", "Castanho"]);
+  assert.equal(nivelDoProdutoPorProfundidade(caminhos, CATALOGO).get(3), 1);
+});
+
+test("sem casamento nenhum, o padrão continua sendo o segundo nível", () => {
+  // Sem prova, nada muda — é o comportamento que a função já documentava.
+  const caminhos = Array.from({ length: 20 }, (_, i) => ["Fotos", `nada-${i}`, "cor"]);
+  assert.equal(nivelDoProdutoPorProfundidade(caminhos, CATALOGO).get(3), 1);
+});

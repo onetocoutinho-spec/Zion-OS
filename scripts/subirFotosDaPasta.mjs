@@ -46,6 +46,25 @@ const [pastaRaiz, clienteId] = process.argv.slice(2);
  * ordem errada — mede-se antes, e com as mesmas regras, não com parecidas.
  */
 const SIMULAR = process.argv.includes("--simular");
+/**
+ * `--so-identidade` recusa o casamento por PARECENÇA DE NOME.
+ *
+ * Existe para as pastas em que o nome não identifica nada. Medido em
+ * 27/08/2026 na ZZ_NAO_IDENTIFICADO — o nome já diz o que ela é —, 74 pastas
+ * casaram: 36 por código, 38 por nome. As 38 mostram o defeito sozinhas:
+ *
+ *     chinelo-boaonda-lilly-feminino    -> Chinelo Boaonda 1319.241 Lilly Shine
+ *     chinelo-boaonda-lilly-masculino   -> Chinelo Boaonda 1319.241 Lilly Shine
+ *     grendene-kids-medidas             -> Sandália Grendene Kids 23167 Iconic
+ *
+ * Duas pastas diferentes no mesmo produto, e uma pasta de TABELA DE MEDIDAS
+ * virando produto. Foi essa classe de erro que pôs 547 fotos no sapato errado.
+ *
+ * Não é para virar padrão: nas pastas de móvel o nome é a única identidade que
+ * existe, e ali a parecença é a melhor resposta possível. É uma escolha por
+ * pasta, de quem sabe o que aquela pasta é.
+ */
+const SO_IDENTIDADE = process.argv.includes("--so-identidade");
 if (!pastaRaiz || !clienteId) {
   console.error("uso: node scripts/subirFotosDaPasta.mjs <pasta> <clienteId> [--simular]");
   process.exit(1);
@@ -114,7 +133,13 @@ for (const a of arquivos) {
   const cor = a.pastas[i + 1] ?? "";
   const chave = `${rotulo}||${cor}`;
   if (!grupos.has(chave)) {
-    grupos.set(chave, { rotulo, cor, arquivos: [], ...casarPastaComProduto(rotulo, produtos) });
+    const casamento = casarPastaComProduto(rotulo, produtos);
+    // Com `--so-identidade`, casar por nome vale o mesmo que não casar: o grupo
+    // aparece como "sem produto" e espera uma pessoa no seletor da tela.
+    const aceito = SO_IDENTIDADE && casamento.via === "nome"
+      ? { produtoId: null, confianca: casamento.confianca, via: null }
+      : casamento;
+    grupos.set(chave, { rotulo, cor, arquivos: [], ...aceito });
   }
   grupos.get(chave).arquivos.push(a);
 }

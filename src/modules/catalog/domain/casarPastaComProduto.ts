@@ -317,12 +317,51 @@ export function nivelDoProdutoPorProfundidade(
   /** Quantas pastas olhar por profundidade. Amostra, não varredura. */
   amostra = 30
 ): Map<number, number> {
+  // A AMOSTRA É ESPALHADA, E ERA AS 30 PRIMEIRAS.
+  //
+  // `if (lista.length < amostra) push` pega o começo da varredura — e a
+  // varredura é alfabética por pasta. Numa árvore TIPO/produto/cor, as 30
+  // primeiras caem TODAS dentro do primeiro TIPO.
+  //
+  // MEDIDO em 27/08/2026 na pasta ZZ_NAO_IDENTIFICADO: 1.592 fotos, 519 pastas
+  // de produto, e as 30 amostradas eram todas de "BABUCHE" — cujos códigos não
+  // estão neste catálogo. Zero casamentos em TODOS os níveis, e a função caiu
+  // no padrão `1`, que ali é a pasta de TIPO. O nível certo era o 2, onde 74
+  // pastas casam.
+  //
+  // Escolher o nível errado não é um detalhe: ele decide o que vira "produto" e
+  // o que vira "cor". Com o 1, 517 grupos viraram 18 — e os 11 que casaram
+  // foram todos para o mesmo produto.
+  //
+  // Espalhar é a mesma correção da amostragem por tipo em `api/ml/categoria`:
+  // pega-se de passo em passo, não do começo, para a amostra atravessar a
+  // árvore em vez de ficar presa no primeiro galho.
   const porProfundidade = new Map<number, string[][]>();
+  const todosPorProfundidade = new Map<number, string[][]>();
   for (const m of meios) {
     if (m.length === 0) continue;
-    const lista = porProfundidade.get(m.length) ?? [];
-    if (lista.length < amostra) lista.push([...m]);
-    porProfundidade.set(m.length, lista);
+    const lista = todosPorProfundidade.get(m.length) ?? [];
+    lista.push([...m]);
+    todosPorProfundidade.set(m.length, lista);
+  }
+  for (const [profundidade, todos] of todosPorProfundidade) {
+    // O índice é calculado, não incrementado por um passo inteiro.
+    //
+    // A primeira versão fazia `passo = floor(total / amostra)` e caminhava de
+    // `passo` em `passo`. Com 50 itens e amostra 30 o passo dá 1, e ela voltava
+    // a pegar os 30 PRIMEIROS — o mesmo viés, só que escondido. Ou seja: o
+    // espalhamento só valia quando o total passava do dobro da amostra.
+    //
+    // `floor(i * total / amostra)` atravessa a lista inteira em qualquer razão.
+    const espalhada: string[][] = [];
+    if (todos.length <= amostra) {
+      espalhada.push(...todos);
+    } else {
+      for (let i = 0; i < amostra; i++) {
+        espalhada.push(todos[Math.floor((i * todos.length) / amostra)]);
+      }
+    }
+    porProfundidade.set(profundidade, espalhada);
   }
 
   const escolhido = new Map<number, number>();
