@@ -626,3 +626,27 @@ test("dois códigos apontando para o MESMO produto casam", () => {
   assert.equal(r.produtoId, "x1");
   assert.equal(r.via, "referencia+nome");
 });
+
+test("lista MUTADA no lugar refaz o índice — produto novo não fica invisível", () => {
+  // O índice é memorizado pela IDENTIDADE do array. Hoje todos os chamadores
+  // criam array novo e nada quebra, mas nada impede `produtos.push(...)` — e aí
+  // o índice velho responderia, o produto recém-importado ficaria invisível, e
+  // o sintoma seria "a foto não casa com um produto que está na tela".
+  const lista: ProdutoParaCasar[] = [{ id: "u1", nome: "Chinelo Alfa 1111.222", sku: "9001" }];
+  assert.equal(casarPastaComProduto("Chinelo Alfa 1111.222", lista).produtoId, "u1");
+
+  lista.push({ id: "u2", nome: "Chinelo Beta 3333.444", sku: "9002" });
+  const r = casarPastaComProduto("Chinelo Beta 3333.444", lista);
+  assert.equal(r.produtoId, "u2", "o índice velho respondeu e o produto novo sumiu");
+});
+
+test("remover do meio também refaz — o tamanho denuncia", () => {
+  const lista: ProdutoParaCasar[] = [
+    { id: "v1", nome: "Chinelo Alfa 1111.222", sku: "9001" },
+    { id: "v2", nome: "Chinelo Beta 3333.444", sku: "9002" },
+    { id: "v3", nome: "Chinelo Gama 5555.666", sku: "9003" },
+  ];
+  assert.equal(casarPastaComProduto("Chinelo Beta 3333.444", lista).produtoId, "v2");
+  lista.splice(1, 1);
+  assert.equal(casarPastaComProduto("Chinelo Beta 3333.444", lista).produtoId, null);
+});

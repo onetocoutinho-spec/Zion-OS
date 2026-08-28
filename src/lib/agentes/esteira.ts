@@ -291,6 +291,26 @@ export interface AnuncioGerado {
  * "Ano de lançamento", que não existe na categoria. Agora o que ele observa
  * vive em `sugestoes` e não bloqueia nada.
  */
+/**
+ * Os NOMES dos campos que faltam, a partir das pendências.
+ *
+ * As pendências têm a forma "⚠️ informação necessária: <campo> — <explicação>",
+ * e é o `<campo>` que serve de rótulo. Quando o formato não bate — porque
+ * alguém escreveu uma pendência de outro jeito —, a frase inteira entra: perder
+ * a informação seria pior que uma frase comprida.
+ */
+function camposQueFaltam(pendencias: readonly string[]): string {
+  const campos = pendencias.map((p) => {
+    const semMarca = p.replace(/^⚠️\s*informação necessária:\s*/i, "");
+    const ateOTravessao = semMarca.split("—")[0].trim();
+    return ateOTravessao || p;
+  });
+  const unicos = [...new Set(campos)];
+  return unicos.length === 1
+    ? `Falta: ${unicos[0]}.`
+    : `Faltam ${unicos.length}: ${unicos.join(", ")}.`;
+}
+
 export function comAGradeDoCadastro(
   daIA: AnuncioDaIA,
   grade: VariacaoDoAnuncio[],
@@ -368,11 +388,19 @@ export function comAGradeDoCadastro(
     pendencias,
     sugestoes: conselhos,
     vereditoA10: publicavel ? "aprovado" : "reprovado",
-    // O motivo repete a lista de propósito: quem lê o veredito numa listagem,
-    // sem abrir o anúncio, precisa ver a MESMA razão que veria dentro dele.
+    // O motivo nomeia os CAMPOS, não repete os textos.
+    //
+    // A primeira versão concatenava as pendências inteiras. A da foto sozinha
+    // tem cerca de 180 caracteres, então um produto sem foto, sem preço e sem
+    // SKU produzia mais de 400 — gravados no JSONB de cada anúncio e truncados
+    // no meio de uma frase em qualquer listagem, onde o motivo aparece como
+    // resumo de uma linha.
+    //
+    // O detalhe continua tendo dono: é a lista de pendências, logo ali, e é ela
+    // que a tela do anúncio mostra. O motivo é o rótulo.
     motivoVeredito: publicavel
       ? "Sem pendências: a grade está completa, há preço e há foto cadastrada."
-      : `Não publica ainda — ${pendencias.length === 1 ? "falta 1 item" : `faltam ${pendencias.length} itens`}: ${pendencias.join(" ")}`,
+      : `Não publica ainda. ${camposQueFaltam(pendencias)}`,
   };
 }
 

@@ -227,13 +227,40 @@ interface IndiceDoCatalogo {
    */
   palavras: { id: string; palavras: Set<string> }[];
   porId: Map<string, ProdutoParaCasar>;
+  /** O retrato da lista quando o índice foi feito — ver `mudouPorDentro`. */
+  tamanho: number;
+  primeiroId: string | undefined;
+  ultimoId: string | undefined;
 }
 
 const INDICE = new WeakMap<readonly ProdutoParaCasar[], IndiceDoCatalogo>();
 
+/**
+ * A LISTA MUDOU POR DENTRO desde que o índice foi feito?
+ *
+ * O `WeakMap` guarda por IDENTIDADE do array. Hoje todos os chamadores criam um
+ * array novo — `useLiveQuery` refaz a cada carga, os scripts montam uma vez — e
+ * nada quebra. Mas nada no tipo impede `produtos.push(novo)` seguido de
+ * `casarPastaComProduto(pasta, produtos)`: o índice velho responderia, o produto
+ * recém-importado ficaria invisível, e o sintoma seria "a foto não casa com um
+ * produto que está na tela" — que se lê como defeito de casamento e manda
+ * procurar no lugar errado.
+ *
+ * A conferência é O(1) e pega o que acontece na prática: acrescentar, remover e
+ * reordenar mudam o tamanho ou as pontas. Trocar um item do MEIO por outro sem
+ * mexer no tamanho passaria — e para isso não há defesa barata; fica dito.
+ */
+function mudouPorDentro(l: readonly ProdutoParaCasar[], i: IndiceDoCatalogo): boolean {
+  return (
+    l.length !== i.tamanho ||
+    l[0]?.id !== i.primeiroId ||
+    l[l.length - 1]?.id !== i.ultimoId
+  );
+}
+
 function indiceDoCatalogo(produtos: readonly ProdutoParaCasar[]): IndiceDoCatalogo {
   const guardado = INDICE.get(produtos);
-  if (guardado) return guardado;
+  if (guardado && !mudouPorDentro(produtos, guardado)) return guardado;
 
   const donos = new Map<string, string[]>();
   const codigosDoErp: { id: string; codigos: string[] }[] = [];
@@ -254,7 +281,16 @@ function indiceDoCatalogo(produtos: readonly ProdutoParaCasar[]): IndiceDoCatalo
   for (const [codigo, ids] of donos) if (ids.length === 1) unicas.set(codigo, ids[0]);
 
   const palavras = produtos.map((p) => ({ id: p.id, palavras: palavrasDe(p.nome) }));
-  const indice: IndiceDoCatalogo = { donos, unicas, codigosDoErp, porId, palavras };
+  const indice: IndiceDoCatalogo = {
+    donos,
+    unicas,
+    codigosDoErp,
+    porId,
+    palavras,
+    tamanho: produtos.length,
+    primeiroId: produtos[0]?.id,
+    ultimoId: produtos[produtos.length - 1]?.id,
+  };
   INDICE.set(produtos, indice);
   return indice;
 }

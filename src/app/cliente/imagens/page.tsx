@@ -601,7 +601,18 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
    * tentativas mandaram a mesma pasta de cor, sem a tela dizer que eram a mesma.
    */
   const [pastaAnterior, setPastaAnterior] = useState("");
-  const [profundidades, setProfundidades] = useState<number[]>([]);
+  /**
+   * A profundidade MAIS FUNDA entre os arquivos escolhidos, e não uma por arquivo.
+   *
+   * A versão anterior guardava `number[]` — um número por ARQUIVO. Com a pasta
+   * Fotos inteira são ~11 mil entradas presas no estado, e o `.every()` do
+   * diagnóstico rodava sobre todas A CADA RENDER — e esta tela re-renderiza a
+   * cada troca de produto num `<select>`, que existe um por grupo.
+   *
+   * O diagnóstico só pergunta se TODOS são rasos. O máximo responde isso em
+   * O(1), calculado uma vez.
+   */
+  const [profundidadeMaxima, setProfundidadeMaxima] = useState(0);
   /**
    * Quantas fotos cada par produto+cor JÁ tem. Vazio até a primeira seleção.
    *
@@ -636,9 +647,12 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     const escolhida = (caminhos[0] ?? "").split("/")[0] ?? "";
     setPastaAnterior(pastaEscolhida);
     setPastaEscolhida(escolhida);
-    // A profundidade de cada arquivo é o que separa "pasta de cor" (folha, sem
-    // subpasta) de "pasta de produto sem cor" (que é legítima e casa).
-    setProfundidades(caminhos.map((c) => pastasDoCaminho(c).length));
+    // A profundidade é o que separa "pasta de cor" (folha, sem subpasta) de
+    // "pasta de produto sem cor" (que é legítima e casa). Guardamos a MAIS
+    // funda: é ela que o diagnóstico pergunta, e um número não pesa.
+    setProfundidadeMaxima(
+      caminhos.reduce((maior, c) => Math.max(maior, pastasDoCaminho(c).length), 0)
+    );
     // `.catch` explícito: sem ele, uma falha de rede aqui vira rejeição não
     // tratada e o aviso de foto repetida some sem dizer. Mapa vazio é o
     // desfecho certo — a tela segue, e o pior caso é não avisar.
@@ -692,7 +706,8 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
   // verdade e não explica nada. Ver `modules/catalog/domain/pastaEscolhidaErrada`.
   const avisoDaEscolha = avisoDaPastaEscolhida({
     pastaEscolhida,
-    profundidades,
+    profundidadeMaxima,
+    arquivos: totalArquivos,
     grupos: grupos.length,
     semProduto: semCasar,
     pastaAnterior,

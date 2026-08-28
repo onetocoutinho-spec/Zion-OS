@@ -33,10 +33,16 @@
 // OS DOIS SINAIS, E POR QUE SÓ ESTES DOIS
 // ===========================================================================
 //
-// PASTA DE COR   a escolhida não tem subpasta nenhuma E não casou com produto.
+// PASTA DE COR   a escolhida é uma FOLHA da árvore (nenhuma subpasta, ou uma
+//                só de sujeira do tipo "detalhe") E não casou com produto.
 //                Pasta de produto sem cor existe e é legítima — é o caso do
 //                móvel, onde nem todo produto tem cor. A diferença é que ELA
-//                CASA. Sem subpasta e sem casar é o retrato da folha da árvore.
+//                CASA. Folha e sem casar é o retrato da pasta de cor.
+//
+//                A primeira versão exigia profundidade 1 em TODOS os arquivos, e
+//                bastava um perdido numa subpasta para o aviso sumir. Pastas de
+//                foto reais têm essa sujeira: a varredura do disco achou
+//                "copia-de-detalhe" e "DETALHE" em vários lugares.
 //
 // MESMA PASTA    a escolha é idêntica à anterior. Foi o que aconteceu quatro
 //                vezes: o seletor reabre onde parou, a pessoa confirma achando
@@ -49,8 +55,16 @@
 export interface EscolhaDePasta {
   /** O primeiro segmento de `webkitRelativePath` — a pasta que a pessoa clicou. */
   pastaEscolhida: string;
-  /** Profundidade de cada arquivo: quantos níveis de pasta abaixo da escolhida (a escolhida conta 1). */
-  profundidades: readonly number[];
+  /**
+   * A profundidade MAIS FUNDA entre os arquivos (a pasta escolhida conta 1).
+   *
+   * Era `readonly number[]`, uma entrada por arquivo — ~11 mil quando se escolhe
+   * a pasta inteira, presas no estado da tela e percorridas a cada render. O
+   * diagnóstico só pergunta o quão fundo se vai; um número responde isso.
+   */
+  profundidadeMaxima: number;
+  /** Quantos arquivos vieram — para a regra da MAIORIA, abaixo. */
+  arquivos: number;
   /** Quantos grupos a leitura produziu. */
   grupos: number;
   /** Destes, quantos não casaram com produto nenhum. */
@@ -73,16 +87,28 @@ export interface AvisoDaEscolha {
  */
 export function avisoDaPastaEscolhida(e: EscolhaDePasta): AvisoDaEscolha | null {
   const nome = (e.pastaEscolhida ?? "").trim();
-  if (!nome || e.profundidades.length === 0) return null;
+  if (!nome || e.arquivos === 0) return null;
 
-  const semSubpasta = e.profundidades.every((p) => p <= 1);
+  // UM ARQUIVO PERDIDO NÃO PODE DESLIGAR O DIAGNÓSTICO.
+  //
+  // A regra era `profundidades.every((p) => p <= 1)`: bastava UM arquivo numa
+  // subpasta para o aviso sumir. E pasta de foto real tem essa sujeira — a
+  // varredura do disco achou "copia-de-detalhe" e "DETALHE" como subpastas em
+  // vários lugares. A pasta de cor com 53 fotos na raiz e um "detalhe" com uma
+  // deixaria de ser reconhecida, sendo exatamente o caso que este módulo existe
+  // para pegar.
+  //
+  // Agora a pergunta é sobre a FORMA e não sobre cada arquivo: a pasta escolhida
+  // é uma folha, com no máximo um nível de sujeira. Duas subpastas de cor
+  // aninhadas dariam profundidade 3, e aí não é folha.
+  const semSubpasta = e.profundidadeMaxima <= 2 && e.arquivos > 0;
   const nadaCasou = e.grupos > 0 && e.semProduto === e.grupos;
 
   if (semSubpasta && nadaCasou) {
     return {
       tipo: "pasta-de-cor",
       texto:
-        `"${nome}" não tem subpastas e não casou com nenhum produto do catálogo. ` +
+        `"${nome}" é a última pasta da árvore e não casou com nenhum produto do catálogo. ` +
         `Numa pasta de fotos esse é o formato de uma pasta de COR — o nome do produto ` +
         `está na pasta que a contém, e ele não vem junto quando você escolhe esta. ` +
         `Volte um nível no seletor e escolha a pasta do PRODUTO (ou a que reúne vários). ` +

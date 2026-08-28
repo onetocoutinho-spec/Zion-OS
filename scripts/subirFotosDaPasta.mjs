@@ -87,9 +87,34 @@ const SO_IDENTIDADE = process.argv.includes("--so-identidade");
  * sabe se o nome dela identifica alguma coisa. `--so-identidade` é o extremo
  * deste mesmo botão — nenhum nome serve.
  */
-const CORTE_NOME = SO_IDENTIDADE
-  ? Infinity
-  : Number(process.argv[process.argv.indexOf("--corte-nome") + 1] ?? 0) || 0;
+function corteDoNome() {
+  if (SO_IDENTIDADE) return Infinity;
+  const i = process.argv.indexOf("--corte-nome");
+  if (i < 0) return 0; // não pediram corte: vale o padrão do domínio (0,34)
+  // A FLAG SEM VALOR RECUSA, e não cai no zero.
+  //
+  // Era `Number(argv[i + 1] ?? 0) || 0`. Com a flag como ÚLTIMO argumento,
+  // `argv[i+1]` é undefined, `Number(undefined)` é NaN e `NaN || 0` é 0 — que
+  // significa "aceita qualquer parecença", o OPOSTO do que quem digitou a flag
+  // queria. Quem pediu rigor recebia permissividade total, calado.
+  //
+  // E o custo desse silêncio é conhecido: foi parecença frouxa que pôs 470
+  // fotos no produto errado.
+  const bruto = process.argv[i + 1];
+  const n = Number(bruto);
+  if (bruto === undefined || bruto.startsWith("--") || !Number.isFinite(n) || n < 0 || n > 1) {
+    console.error(
+      `--corte-nome precisa de um número entre 0 e 1 (recebi ${bruto === undefined ? "nada" : `"${bruto}"`}).
+` +
+        `  --corte-nome 1     só aceita nome idêntico
+` +
+        `  --so-identidade    recusa qualquer casamento por nome`
+    );
+    process.exit(1);
+  }
+  return n;
+}
+const CORTE_NOME = corteDoNome();
 if (!pastaRaiz || !clienteId) {
   console.error("uso: node scripts/subirFotosDaPasta.mjs <pasta> <clienteId> [--simular]");
   process.exit(1);

@@ -19,7 +19,8 @@ import { avisoDaPastaEscolhida, type EscolhaDePasta } from "./pastaEscolhidaErra
 /** Uma escolha certa: TIPO/produto/cor, e os produtos casaram. */
 const boa = (e: Partial<EscolhaDePasta> = {}): EscolhaDePasta => ({
   pastaEscolhida: "PAPETE",
-  profundidades: [3, 3, 3, 3],
+  profundidadeMaxima: 3,
+  arquivos: 800,
   grupos: 64,
   semProduto: 0,
   ...e,
@@ -32,7 +33,7 @@ test("escolha boa não gera aviso — o silêncio é a resposta comum", () => {
 test("pasta de COR é reconhecida: sem subpasta e sem casar", () => {
   // O caso real: escolher "100983 verde luna nobu" em vez da pasta do produto.
   const a = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "100983 verde luna nobu", profundidades: [1, 1, 1], grupos: 1, semProduto: 1 })
+    boa({ pastaEscolhida: "100983 verde luna nobu", profundidadeMaxima: 1, arquivos: 54, grupos: 1, semProduto: 1 })
   );
   assert.ok(a);
   assert.equal(a.tipo, "pasta-de-cor");
@@ -45,7 +46,7 @@ test("a frase diz POR QUE o nome do produto não veio junto", () => {
   // repetir. `webkitRelativePath` começa na pasta escolhida: o nome do produto
   // não está em lugar nenhum do que o navegador entregou.
   const a = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "preto", profundidades: [1], grupos: 1, semProduto: 1 })
+    boa({ pastaEscolhida: "preto", profundidadeMaxima: 1, arquivos: 9, grupos: 1, semProduto: 1 })
   );
   assert.ok(a);
   assert.match(a.texto, /está na pasta que a contém/);
@@ -55,7 +56,7 @@ test("o aviso oferece a saída pela mão, não só a correção", () => {
   // Quem já está com a pasta aberta pode preferir resolver ali. Mandar refazer
   // é a resposta certa e não é a única.
   const a = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "preto", profundidades: [1], grupos: 1, semProduto: 1 })
+    boa({ pastaEscolhida: "preto", profundidadeMaxima: 1, arquivos: 9, grupos: 1, semProduto: 1 })
   );
   assert.match(a!.texto, /escolha o produto à mão/);
 });
@@ -64,7 +65,7 @@ test("pasta de PRODUTO sem cor NÃO é aviso — ela casa", () => {
   // O caso do móvel: nem todo produto tem subpasta de cor, e isso é legítimo.
   // A diferença para a pasta de cor é exatamente esta — o nome casa.
   const r = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "Cama - NAZARÉ", profundidades: [1, 1], grupos: 1, semProduto: 0 })
+    boa({ pastaEscolhida: "Cama - NAZARÉ", profundidadeMaxima: 1, arquivos: 6, grupos: 1, semProduto: 0 })
   );
   assert.equal(r, null);
 });
@@ -74,7 +75,7 @@ test("nada casou, mas há subpastas: não é o defeito do seletor", () => {
   // casa. Chamar isso de "você escolheu errado" mandaria a pessoa procurar um
   // erro que não existe.
   const r = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "MARCA NOVA", profundidades: [3, 3, 3], grupos: 12, semProduto: 12 })
+    boa({ pastaEscolhida: "MARCA NOVA", profundidadeMaxima: 3, arquivos: 90, grupos: 12, semProduto: 12 })
   );
   assert.equal(r, null);
 });
@@ -96,12 +97,35 @@ test("o defeito vem antes do sintoma: pasta de cor ganha de mesma pasta", () => 
   // cor. Dizer "é a mesma de antes" quando se sabe que é uma pasta de cor seria
   // entregar a pista no lugar da resposta.
   const a = avisoDaPastaEscolhida(
-    boa({ pastaEscolhida: "verde luna", profundidades: [1], grupos: 1, semProduto: 1, pastaAnterior: "verde luna" })
+    boa({ pastaEscolhida: "verde luna", profundidadeMaxima: 1, arquivos: 30, grupos: 1, semProduto: 1, pastaAnterior: "verde luna" })
   );
   assert.equal(a!.tipo, "pasta-de-cor");
 });
 
 test("sem arquivo nenhum não há o que diagnosticar", () => {
-  assert.equal(avisoDaPastaEscolhida(boa({ profundidades: [], grupos: 0, semProduto: 0 })), null);
+  assert.equal(avisoDaPastaEscolhida(boa({ arquivos: 0, grupos: 0, semProduto: 0 })), null);
   assert.equal(avisoDaPastaEscolhida(boa({ pastaEscolhida: "  " })), null);
+});
+
+test("uma subpasta de sujeira NÃO desliga o aviso — foi o defeito da 1ª versão", () => {
+  // A regra era `every(p => p <= 1)`: bastava UM arquivo numa subpasta para o
+  // diagnóstico sumir. A pasta de cor "100983 verde luna" com 53 fotos na raiz
+  // e um "detalhe" com uma deixaria de ser reconhecida — sendo exatamente o
+  // caso que este módulo existe para pegar. Pastas reais têm essa sujeira: a
+  // varredura do disco achou "copia-de-detalhe" e "DETALHE" em vários lugares.
+  const a = avisoDaPastaEscolhida(
+    boa({ pastaEscolhida: "100983 verde luna", profundidadeMaxima: 2, arquivos: 54, grupos: 1, semProduto: 1 })
+  );
+  assert.ok(a, "uma subpasta perdida desligou o diagnóstico");
+  assert.equal(a.tipo, "pasta-de-cor");
+});
+
+test("árvore FUNDA continua fora — três níveis não é folha", () => {
+  // O outro lado do afrouxamento: TIPO/produto/cor dá profundidade 3, e ali a
+  // escolha está certa mesmo que nada case. Chamar isso de "pasta de cor"
+  // mandaria a pessoa subir um nível sem motivo.
+  const r = avisoDaPastaEscolhida(
+    boa({ pastaEscolhida: "MARCA NOVA", profundidadeMaxima: 3, arquivos: 90, grupos: 12, semProduto: 12 })
+  );
+  assert.equal(r, null);
 });

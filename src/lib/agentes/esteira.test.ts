@@ -297,9 +297,21 @@ test("o motivo do veredito soma as duas causas, sem esconder nenhuma", () => {
     0
   );
   const a = comAGradeDoCadastro(daIA(), semPreco, SEM_FOTO);
-  assert.match(a.motivoVeredito, /faltam 2 itens/);
+  // MUDADO EM 28/08: o motivo nomeia os CAMPOS em vez de repetir os textos das
+  // pendências. A pendência da foto sozinha tem ~180 caracteres, e um produto
+  // sem foto, sem preço e sem SKU produzia mais de 400 — gravados no JSONB de
+  // cada anúncio e truncados no meio de uma frase em qualquer listagem. O
+  // detalhe continua tendo dono: é a lista de pendências, que a tela mostra.
+  assert.match(a.motivoVeredito, /Faltam 2/);
   assert.match(a.motivoVeredito, /foto/i);
   assert.match(a.motivoVeredito, /preço/i);
+  assert.ok(a.motivoVeredito.length < 120, `motivo com ${a.motivoVeredito.length} caracteres`);
+});
+
+test("uma pendência só usa o singular, e cabe numa linha", () => {
+  const a = comAGradeDoCadastro(daIA(), GRADE_INTEIRA, SEM_FOTO);
+  assert.match(a.motivoVeredito, /Falta: foto\./);
+  assert.ok(a.motivoVeredito.length < 60);
 });
 
 test("com foto e grade inteira, o motivo diz POR QUE passou", () => {
