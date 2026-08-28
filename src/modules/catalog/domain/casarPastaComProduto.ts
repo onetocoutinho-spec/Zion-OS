@@ -193,51 +193,81 @@ function codigosNoTexto(texto: string): string[] {
 }
 
 /**
- * Os códigos que aparecem no nome de UM produto só.
+ * O QUE SE SABE SOBRE O CATÁLOGO, CALCULADO UMA VEZ.
  *
- * O que se repete fica de fora: dois produtos com "7142.101" no nome são o
- * mesmo modelo em acabamentos diferentes, e escolher um seria chute.
+ * `referenciasUnicas` e `donosPorReferencia` varriam os 981 produtos e rodavam
+ * regex em cada nome — A CADA CHAMADA. Uma pasta de 543 grupos chamava a função
+ * 543 vezes, e cada uma refazia o mesmo índice do zero.
+ *
+ * MEDIDO em 27/08/2026: 10,5 ms por chamada, 5,3 s para 543 grupos. Síncrono,
+ * na thread da interface — a tela não "demora", ela CONGELA. É o mesmo formato
+ * do travamento de 5,7 s que já tinha aparecido no casamento de nomes.
+ *
+ * A memória é por LISTA, num `WeakMap`: a tela passa o mesmo array a cada
+ * chamada do lote, então acerta sempre; e quando o catálogo é recarregado, o
+ * array é outro e o índice se refaz sozinho. Sem invalidação manual, que é onde
+ * cache erra.
+ *
+ * `unicas` sai de `donos` em vez de ser uma segunda varredura — são a mesma
+ * informação, filtrada.
  */
-function referenciasUnicas(produtos: readonly ProdutoParaCasar[]): Map<string, string> {
+interface IndiceDoCatalogo {
+  /** Referência → todos os produtos cujo NOME a contém. */
+  donos: Map<string, string[]>;
+  /** Referência → o produto, quando ela aparece em um só. */
+  unicas: Map<string, string>;
+  /** Os códigos de ERP já normalizados, para não refazer por produto. */
+  codigosDoErp: { id: string; codigos: string[] }[];
+  /**
+   * As palavras de cada nome, prontas.
+   *
+   * A parecença rodava `palavrasDe(p.nome)` para os 981 produtos EM CADA
+   * chamada — normalização, split e filtro, mil vezes por grupo de pasta. É o
+   * que sobrava dos 1,7 s depois de o índice de referências entrar.
+   */
+  palavras: { id: string; palavras: Set<string> }[];
+  porId: Map<string, ProdutoParaCasar>;
+}
+
+const INDICE = new WeakMap<readonly ProdutoParaCasar[], IndiceDoCatalogo>();
+
+function indiceDoCatalogo(produtos: readonly ProdutoParaCasar[]): IndiceDoCatalogo {
+  const guardado = INDICE.get(produtos);
+  if (guardado) return guardado;
+
   const donos = new Map<string, string[]>();
+  const codigosDoErp: { id: string; codigos: string[] }[] = [];
+  const porId = new Map<string, ProdutoParaCasar>();
   for (const p of produtos) {
+    porId.set(p.id, p);
     for (const c of new Set(codigosNoTexto(p.nome))) {
       const lista = donos.get(c) ?? [];
       lista.push(p.id);
       donos.set(c, lista);
     }
+    const codigos = [p.sku, p.codErp]
+      .map((c) => soAlfanum(c ?? ""))
+      .filter((c) => c.length >= CODIGO_MINIMO);
+    if (codigos.length > 0) codigosDoErp.push({ id: p.id, codigos });
   }
   const unicas = new Map<string, string>();
   for (const [codigo, ids] of donos) if (ids.length === 1) unicas.set(codigo, ids[0]);
-  return unicas;
+
+  const palavras = produtos.map((p) => ({ id: p.id, palavras: palavrasDe(p.nome) }));
+  const indice: IndiceDoCatalogo = { donos, unicas, codigosDoErp, porId, palavras };
+  INDICE.set(produtos, indice);
+  return indice;
 }
 
 /**
- * Todos os produtos cujo nome carrega cada referência — inclusive as repetidas.
+ * O código do ERP está dentro do nome da pasta?
  *
- * `referenciasUnicas` fica com as que apontam para um só. Esta guarda o resto,
- * que é o material do desempate.
+ * `alvo` vem PRONTO do chamador: a versão anterior chamava `soAlfanum(pasta)`
+ * dentro do laço de produtos, normalizando a MESMA string 981 vezes por
+ * chamada. Os códigos do lado do produto vêm normalizados do índice.
  */
-function donosPorReferencia(
-  produtos: readonly ProdutoParaCasar[]
-): Map<string, string[]> {
-  const donos = new Map<string, string[]>();
-  for (const p of produtos) {
-    for (const c of new Set(codigosNoTexto(p.nome))) {
-      const lista = donos.get(c) ?? [];
-      lista.push(p.id);
-      donos.set(c, lista);
-    }
-  }
-  return donos;
-}
-
-function casaPorCodigo(pasta: string, p: ProdutoParaCasar): boolean {
-  const alvo = soAlfanum(pasta);
-  for (const codigo of [p.sku, p.codErp]) {
-    const c = soAlfanum(codigo ?? "");
-    if (c.length >= CODIGO_MINIMO && alvo.includes(c)) return true;
-  }
+function casaPorCodigo(alvo: string, codigos: readonly string[]): boolean {
+  for (const c of codigos) if (alvo.includes(c)) return true;
   return false;
 }
 
@@ -245,14 +275,17 @@ export function casarPastaComProduto(
   pasta: string,
   produtos: readonly ProdutoParaCasar[]
 ): Casamento {
+  const indice = indiceDoCatalogo(produtos);
+
   // Identidade primeiro. Um código na pasta encerra a pergunta, e nenhuma
   // parecença de nome deveria discutir com ele.
-  for (const p of produtos) {
-    if (casaPorCodigo(pasta, p)) return { produtoId: p.id, confianca: 1, via: "codigo" };
+  const alvoDoCodigo = soAlfanum(pasta);
+  for (const { id, codigos } of indice.codigosDoErp) {
+    if (casaPorCodigo(alvoDoCodigo, codigos)) return { produtoId: id, confianca: 1, via: "codigo" };
   }
 
   // Referência do fabricante: também identidade, quando ela não se repete.
-  const unicas = referenciasUnicas(produtos);
+  const unicas = indice.unicas;
   const codigosDaPasta = codigosNoTexto(pasta);
   for (const c of codigosDaPasta) {
     const dono = unicas.get(c);
@@ -289,13 +322,11 @@ export function casarPastaComProduto(
   // MEDIDO sobre as pastas reais: dos 122 grupos travados por referência
   // repetida, 96 têm um vencedor exato e único — 928 fotos. Os 26 restantes
   // continuam sem casar, e a maioria é empate em 1,00.
-  const repetidas = donosPorReferencia(produtos);
   for (const c of codigosDaPasta) {
-    const candidatos = repetidas.get(c);
+    const candidatos = indice.donos.get(c);
     if (!candidatos || candidatos.length < 2) continue;
-    const porId = new Map(produtos.map((p) => [p.id, p]));
     const perfeitos = candidatos.filter(
-      (id) => parecencaDeNome(pasta, porId.get(id)?.nome ?? "") >= 0.999
+      (id) => parecencaDeNome(pasta, indice.porId.get(id)?.nome ?? "") >= 0.999
     );
     if (perfeitos.length === 1) {
       return { produtoId: perfeitos[0], confianca: 1, via: "referencia+nome" };
@@ -345,14 +376,13 @@ export function casarPastaComProduto(
 
   let melhor: string | null = null;
   let melhorScore = 0;
-  for (const p of produtos) {
-    const palavras = palavrasDe(p.nome);
+  for (const { id, palavras } of indice.palavras) {
     let comuns = 0;
     for (const w of alvo) if (palavras.has(w)) comuns++;
     const score = comuns / Math.max(alvo.size, palavras.size, 1);
     if (score > melhorScore) {
       melhorScore = score;
-      melhor = p.id;
+      melhor = id;
     }
   }
 
