@@ -728,3 +728,109 @@ não o volume. A pergunta errada foi "quantas fotos vou copiar"; a certa era
 - **~2.700 fotos sem produto** — 630 grupos, e a maioria é de produto que não
   está neste catálogo. Só 26 grupos têm candidato real e pedem uma pessoa.
 - **13 erros de `typecheck:test`**, anteriores a esta branch, em quatro arquivos.
+
+---
+
+## 28/08 — O ENSAIO DO PASSO 7, E O QUE ELE ACHOU
+
+O passo 7 nunca foi percorrido, e a guarda 3 do plano dizia o que fazer nesse
+caso: **parar no dry-run — o payload montado sem enviar.** Isso foi feito hoje.
+
+### Primeiro achado: o ensaio não media o que o real recusa
+
+`go: false` saía no **passo 4** de `publicarNoMercadoLivre`, e a conferência que
+prevê a recusa do ML — `obrigatoriosAusentes` contra `atributosObrigatorios` da
+categoria — só roda no **passo 4.5**. O ensaio validava credencial e categoria e
+devolvia `dry: true` para um anúncio que o ML reprovaria.
+
+Um ensaio que aprova o que o real reprova responde a outra pergunta. A saída
+passou para depois da conferência e antes de `criarItem` — a única linha do
+fluxo que escreve. `oEnsaioMedeOQueORealRecusa.test.ts` guarda a ordem nos dois
+fluxos, porque ela não aparece no retorno da função.
+
+O caminho **User Products** sai antes da conferência, porque o caminho REAL dele
+também não confere. Agora ele diz isso na resposta (`obrigatoriosConferidos:
+false`) em vez de deixar quem conta supor que conferiu.
+
+### Segundo achado: 63% dos publicáveis seriam recusados
+
+Medido em 28/08 com `scripts/ensaioDaPublicacao.mjs`, contra a base real, sem
+rede autenticada e sem enviar nada:
+
+    anúncios 880 · publicáveis 793
+
+    passariam na conferência da categoria ..... 291
+    faltando atributo obrigatório ............. 500
+    sem categoria / sem produto ...............   2
+    categoria que o ML não respondeu ..........   0
+
+    500  GENDER
+    410  FOOTWEAR_TYPE
+
+**"Publicável" queria dizer "passou nas regras da esteira", não "o ML aceita".**
+A esteira cobra foto, grade, preço e categoria; ela nunca cobrou os obrigatórios
+da categoria, que é o que o ML de fato exige.
+
+### Terceiro achado: o dado existe, e é jogado fora
+
+    dos 500 recusados, o resolvedor responde TODOS os ausentes em 497
+
+    497  GENDER          cadastro
+    410  FOOTWEAR_TYPE   cadastro
+      3  GENDER          ausente
+
+`resolverObrigatorios` lê `produto_atributos` — o que a lojista preencheu — e já
+roda hoje: alimenta o BRIEFING que o modelo recebe. O que ele não faz é entrar
+no payload. `montarItemML` monta `attributes` **só** a partir da ficha técnica
+que o modelo escreveu, e numa amostra de 400 aprovados a ficha traz "Gênero" e
+"Tipo de calçado" em apenas 159.
+
+Ou seja: pede-se ao modelo, e não se garante. Quando ele esquece, a resposta que
+estava no banco não chega ao ML.
+
+Os 497 vêm todos de **cadastro** — resposta da lojista, não palpite pelo nome.
+Aproveitá-los não fere "null vira pergunta, nunca chute"; os 3 que sobram viram
+pergunta, que é o comportamento certo.
+
+### O que isso muda no CHECKPOINT 1
+
+Continua "chega até o anúncio aprovado, e para antes do ar" — mas o número de
+anúncios que sobreviveriam ao ar é **291, não 793**, e sobe para ~788 com um
+conserto que não pede nada a ninguém: fazer o payload levar o que o resolvedor
+já sabe.
+
+### O conserto, e por que no payload
+
+Costurado em `publicarNoMercadoLivre`, no passo imediatamente anterior à recusa:
+antes de recusar por atributo ausente, pergunta ao cadastro.
+
+**No servidor, e não no navegador**, porque a resposta depende da CATEGORIA — e
+a categoria muitas vezes só existe ali. `payload.category_id` chega vazio do
+navegador e é preenchido no servidor por `preverCategoria`, que precisa do token
+do lojista, que nunca desce. Resolver no navegador funcionaria só para quem já
+sabia a categoria, que é a minoria. No servidor vale para os três caminhos —
+tela da equipe, portal e confirmação de proposta do chat — porque os três
+atravessam a mesma função.
+
+**Só o que ela respondeu.** `doCadastroParaOPayload` aceita origem `cadastro` e
+`marketplace`, e recusa `nome`. Dedução pelo título serve para sugerir num
+briefing; publicada, vira uma afirmação da lojista que ela não fez, num anúncio
+que fica no ar sob a conta dela. Excluí-la não custou nada: os 497 resolvíveis
+vêm todos do cadastro.
+
+**Leitura que falha não bloqueia.** Erro de banco devolve lista vazia, e o efeito
+é o de antes desta função existir: o obrigatório continua ausente e a recusa é a
+que já existia. Enriquecimento não pode inventar um modo novo de falhar.
+
+### Medido de novo, depois do conserto
+
+    passariam na conferência da categoria .... 788   (era 291)
+      destes, completados pelo cadastro ...... 500
+    faltando atributo obrigatório ............   3   (era 500)
+
+Os 3 que sobram são o mesmo produto — "Chinelo Havaianas Top Liso", sem gênero no
+cadastro e sem gênero no nome. Viram pergunta, que é o comportamento certo.
+
+O que continua fora: o modelo **User Products** não confere obrigatórios em
+caminho nenhum, e por isso o ensaio dele responde `obrigatoriosConferidos:
+false`. Medir aquele caminho é tarefa própria.

@@ -129,6 +129,18 @@ const DISPENSADAS: Record<string, string> = {
     "eq(cliente_id) — 72 linhas. A fila é drenada; ela não acumula catálogo.",
   "src/lib/services/canaisMarketplace.ts::canais_marketplace":
     "eq(marketplace) sob RLS — UMA linha por loja conectada. 1 na base.",
+
+  // ---- Os atributos que a lojista preencheu num produto ----
+  //
+  // `eq(produto_id)`: a ficha de UM produto, lida na publicação para preencher
+  // o obrigatório que o modelo esqueceu de escrever. Cresce com o que a
+  // categoria pergunta, não com o catálogo — e o que a categoria pergunta é
+  // limitado pelo próprio ML (a maior das seis categorias desta base exige 7).
+  //
+  // Medido em produção em 28/08/2026: 549 linhas no total, 72 produtos com
+  // atributos, MÁXIMO de 14 num produto.
+  "src/modules/integration/application/cadastroParaOsObrigatorios.ts::produto_atributos":
+    "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
 };
 
 function arquivosDeCodigo(dir: string, achados: string[] = []): string[] {

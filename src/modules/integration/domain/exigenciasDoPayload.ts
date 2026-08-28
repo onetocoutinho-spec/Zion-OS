@@ -73,6 +73,75 @@ export function obrigatoriosAusentes(
 }
 
 /**
+ * Um obrigatório já resolvido por `resolverObrigatorios`, na forma mínima.
+ *
+ * Tipado por estrutura e não importado do módulo de publicação: esta camada não
+ * precisa conhecer aquela para receber `{ id, valor, origem }`, e `AtributoResolvido`
+ * satisfaz isto sem conversão.
+ */
+export interface ObrigatorioResolvido {
+  id: string;
+  valor: string | null;
+  origem: string;
+}
+
+/**
+ * O CADASTRO PREENCHE O QUE O MODELO ESQUECEU DE ESCREVER.
+ *
+ * ===========================================================================
+ * O QUE FOI MEDIDO EM 28/08/2026
+ * ===========================================================================
+ *
+ * O ensaio do passo 7 (`scripts/ensaioDaPublicacao.mjs`) rodou nos 793 anúncios
+ * publicáveis da base real:
+ *
+ *     passariam na conferência da categoria .... 291
+ *     seriam recusados por atributo ............ 500   (500 GENDER, 410 FOOTWEAR_TYPE)
+ *
+ *     dos 500, o resolvedor responde TODOS os ausentes em ... 497
+ *     497 GENDER e 410 FOOTWEAR_TYPE vindos do CADASTRO
+ *
+ * O payload leva `attributes` montado só a partir da FICHA TÉCNICA que o modelo
+ * escreveu — e numa amostra de 400 aprovados a ficha traz "Gênero" em 159. O
+ * valor está no banco, respondido pela lojista em `produto_atributos`, e nunca
+ * chegava ao Mercado Livre. Pedia-se ao modelo e não se garantia.
+ *
+ * ===========================================================================
+ * SÓ O QUE ELA RESPONDEU — PALPITE NÃO ENTRA
+ * ===========================================================================
+ *
+ * `resolverObrigatorios` responde de quatro origens: `cadastro`, `marketplace`,
+ * `nome` e `ausente`. Aqui entram as DUAS PRIMEIRAS.
+ *
+ * `nome` é dedução — "Chinelo Feminino" no título vira GENDER=Feminino. Serve
+ * para SUGERIR num briefing; não serve para afirmar, sob a conta da lojista, um
+ * atributo de um anúncio que fica no ar. Um palpite publicado é uma afirmação
+ * dela que ela não fez.
+ *
+ * E excluí-lo não custou nada: dos 497 resolvíveis, 497 vêm do cadastro. Os que
+ * sobram continuam virando pergunta — que é o comportamento certo, e o mesmo
+ * "null vira pergunta, nunca chute" do resto do sistema.
+ *
+ * Devolve o que ACRESCENTAR, e não mexe no payload: quem escreve é o chamador,
+ * num lugar só, e esta função continua provável sem montar um payload inteiro.
+ */
+export function doCadastroParaOPayload(
+  ausentes: readonly AtributoExigido[],
+  resolvidos: readonly ObrigatorioResolvido[]
+): { id: string; value_name: string }[] {
+  if (ausentes.length === 0) return [];
+  const podeAfirmar = new Map<string, string>();
+  for (const r of resolvidos) {
+    if (!r.valor?.trim()) continue;
+    if (r.origem !== "cadastro" && r.origem !== "marketplace") continue;
+    podeAfirmar.set(r.id, r.valor.trim());
+  }
+  return ausentes
+    .filter((a) => podeAfirmar.has(a.id))
+    .map((a) => ({ id: a.id, value_name: podeAfirmar.get(a.id)! }));
+}
+
+/**
  * A frase para o lojista — em português, nomeando os atributos.
  *
  * "Faltam atributos obrigatórios" sem dizer QUAIS é a mesma inutilidade de
