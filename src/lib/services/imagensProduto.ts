@@ -53,6 +53,32 @@ export async function listarTodasImagens(): Promise<ImagemProduto[]> {
 }
 
 /**
+ * Quantas fotos cada PRODUTO tem — sem trazer as fotos.
+ *
+ * A tela de lote da equipe passou a precisar disso para o veredito, e a
+ * primeira versão usou `listarTodasImagens()`: `select *` sem filtro, ~4,8 MB
+ * nesta base, reexecutado a cada `notificarMudanca` na tabela. É o mesmo
+ * defeito que a migração 083 acabou de tirar de `fotosPorProdutoECor`,
+ * recriado a dois commits de distância.
+ *
+ * Aqui não dá para usar a RPC: a tela é da equipe e atravessa clientes, e a
+ * função da 083 recebe um cliente. O que dá é pedir UMA coluna — o resto do
+ * peso da linha (url, observações, dimensões) nunca é lido para contar.
+ */
+export async function contarFotosPorProduto(): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  try {
+    for (const i of await repo.listar(undefined, "produto_id")) {
+      if (!i.produtoId) continue;
+      mapa.set(i.produtoId, (mapa.get(i.produtoId) ?? 0) + 1);
+    }
+  } catch {
+    return new Map();
+  }
+  return mapa;
+}
+
+/**
  * Quantas fotos cada par produto+cor da loja já tem.
  *
  * Serve ao aviso de envio repetido: sem saber o que já existe, a tela não tem
@@ -100,7 +126,8 @@ export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string
   // Oito mil linhas atravessavam a rede para virar oitocentas contagens, e a
   // razão piora conforme a loja fotografa mais: as contagens são limitadas pelo
   // catálogo, as linhas crescem a cada foto enviada.
-  if (supabaseConfigurado) {
+  try {
+    if (!supabaseConfigurado) throw new Error("supabase nao configurado");
     const { data, error } = await getSupabase().rpc(RPC_DA_CONTAGEM, { p_cliente: clienteId });
     if (!error) {
       for (const linha of (data ?? []) as LinhaDaContagem[]) {
@@ -117,6 +144,13 @@ export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string
     // leitura de aviso, e ficar sem ela é pior que tentar de novo devagar.
     const ausente = /PGRST202|does not exist|not find the function/i.test(error.message);
     if (!ausente) console.error(`[Zion OS] ${RPC_DA_CONTAGEM} falhou:`, error.message);
+  } catch (e) {
+    // A RPC ficou FORA do try quando entrou, e a função — que NUNCA lançava —
+    // passou a lançar. O chamador é `void fotosPorProdutoECor(...).then(...)`,
+    // sem `.catch`: uma queda de rede virava rejeição não tratada, `jaExistem`
+    // ficava vazio e o aviso de foto repetida DESLIGAVA em silêncio. Foi esse
+    // aviso que impediu as 54 fotos duplicadas.
+    console.error(`[Zion OS] ${RPC_DA_CONTAGEM} indisponível:`, e);
   }
 
   try {

@@ -33,6 +33,22 @@ const linha = (p: Partial<LinhaComCodigo> = {}): LinhaComCodigo => ({
   ...p,
 });
 
+/**
+ * Um catálogo COM CONVENÇÃO NUMÉRICA, mais as linhas que se quer testar.
+ *
+ * O aviso só dispara quando "sem dígito" é DESVIO, e desvio se mede contra o
+ * resto. As fixtures anteriores tinham 1 a 12 linhas, todas marcadores — o que
+ * nenhum ERP produz, e o que fazia o teste provar uma regra mais frouxa do que
+ * a que o produto precisa. Medido na base real: 983 de 983 SKUs com dígito, e
+ * 22 marcadores no meio.
+ */
+const catalogo = (...testadas: LinhaComCodigo[]): LinhaComCodigo[] => [
+  ...Array.from({ length: 80 }, (_, i) =>
+    linha({ nome: `Produto normal ${i}`, sku: `250${1000 + i}`, codErp: `250${1000 + i}` })
+  ),
+  ...testadas,
+];
+
 test("código de verdade tem dígito — nenhum deles é palavra", () => {
   // Os formatos que este catálogo usa de fato. Se algum virar "palavra", o
   // aviso passa a gritar em importação boa e ninguém o lê mais.
@@ -67,15 +83,52 @@ test('"inativo7" tem dígito e NÃO é pego — e isso está certo', () => {
 });
 
 test("catálogo limpo não gera aviso — o silêncio é a resposta comum", () => {
-  assert.equal(avisoDeCodigoQueEPalavra([linha(), linha({ sku: "010.012" })]), null);
+  assert.equal(avisoDeCodigoQueEPalavra(catalogo(linha({ sku: "010.012" }))), null);
+});
+
+test("catálogo de MÓVEL não gera aviso — ali código sem dígito é a convenção", () => {
+  // O contraexemplo que a primeira versão desta regra não tinha, e que estava
+  // dentro do próprio repositório: `casarPastaComProduto.test.ts` usa estes
+  // SKUs. Com a regra antiga (só "sem dígito"), TODOS seriam marcados — e
+  // `apagarProdutosMarcadores.mjs`, que usa a mesma classificação para decidir
+  // o que apagar, teria removido o catálogo inteiro.
+  const movel: LinhaComCodigo[] = [
+    { nome: "Cama - BELLA", sku: "CAT-CAMA-BELLA-CASAL-MOGNO", codErp: "CAT-CAMA-BELLA-CASAL-MOGNO" },
+    { nome: "Cama - NAZARÉ", sku: "CAT-CAMA-NAZARE-SOLTEIRO", codErp: "CAT-CAMA-NAZARE-SOLTEIRO" },
+    { nome: "Jogo de mesa dobrável", sku: "CAT-JOGO-DE-MESA-DOBRAVEL", codErp: "CAT-JOGO-DE-MESA-DOBRAVEL" },
+  ];
+  assert.equal(avisoDeCodigoQueEPalavra(movel), null);
+});
+
+test("um marcador NO MEIO de um catálogo de móvel também fica quieto", () => {
+  // Não dá para distinguir: ali "sem dígito" é a convenção, e um marcador de
+  // texto se parece com todos os outros. Perder este é o preço de não apagar
+  // um catálogo inteiro — e o preço certo, porque o outro erro é irreversível.
+  const movel: LinhaComCodigo[] = [
+    { nome: "Cama - BELLA", sku: "CAT-CAMA-BELLA-CASAL-MOGNO" },
+    { nome: "Cama - NAZARÉ", sku: "CAT-CAMA-NAZARE-SOLTEIRO" },
+    { nome: "Descontinuada", sku: "inativoo" },
+  ];
+  assert.equal(avisoDeCodigoQueEPalavra(movel), null);
+});
+
+test("o valor sozinho NÃO decide — é `ehPalavra` que engana", () => {
+  // A função de um valor só continua dizendo "sim" para o SKU de móvel. Ela é
+  // um sinal, não um veredito, e este teste guarda a diferença: quem confundir
+  // os dois recria o defeito.
+  assert.equal(ehPalavraNoLugarDoCodigo("CAT-CAMA-BELLA-CASAL-MOGNO"), true);
+  assert.equal(avisoDeCodigoQueEPalavra([
+    { nome: "Cama", sku: "CAT-CAMA-BELLA-CASAL-MOGNO" },
+  ]), null);
 });
 
 test("o aviso conta as linhas e mostra as palavras encontradas", () => {
-  const a = avisoDeCodigoQueEPalavra([
-    linha(),
-    linha({ nome: "Chinelos Havaianas Slim Visuals", sku: "iinnattivo", codErp: "iinnattivo" }),
-    linha({ nome: "Mocassim Modare 7397.101 Floather", sku: "inatt", codErp: "inatt" }),
-  ]);
+  const a = avisoDeCodigoQueEPalavra(
+    catalogo(
+      linha({ nome: "Chinelos Havaianas Slim Visuals", sku: "iinnattivo", codErp: "iinnattivo" }),
+      linha({ nome: "Mocassim Modare 7397.101 Floather", sku: "inatt", codErp: "inatt" })
+    )
+  );
   assert.ok(a);
   assert.equal(a.linhas, 2);
   assert.deepEqual(a.palavras.sort(), ["iinnattivo", "inatt"]);
@@ -85,7 +138,7 @@ test("o aviso conta as linhas e mostra as palavras encontradas", () => {
 test("a frase diz a CONSEQUÊNCIA, não o fato", () => {
   // "22 SKUs inválidos" não move ninguém. O que move é saber que eles vão pedir
   // foto e preço, e chegar perto da publicação.
-  const a = avisoDeCodigoQueEPalavra([linha({ sku: "inativoo", codErp: "inativoo" })]);
+  const a = avisoDeCodigoQueEPalavra(catalogo(linha({ sku: "inativoo", codErp: "inativoo" })));
   assert.ok(a);
   assert.match(a.texto, /entram como produto normal/);
   assert.match(a.texto, /pedem foto e preço/);
@@ -96,8 +149,8 @@ test("a frase diz a CONSEQUÊNCIA, não o fato", () => {
 test("basta UM dos dois campos ser palavra", () => {
   // Nos 22 medidos os dois vinham iguais. Um ERP que preencha só um produz o
   // mesmo estrago, e o aviso precisa pegar os dois casos.
-  assert.ok(avisoDeCodigoQueEPalavra([linha({ sku: "2638103", codErp: "inativo" })]));
-  assert.ok(avisoDeCodigoQueEPalavra([linha({ sku: "inativo", codErp: "2638103" })]));
+  assert.ok(avisoDeCodigoQueEPalavra(catalogo(linha({ sku: "2638103", codErp: "inativo" }))));
+  assert.ok(avisoDeCodigoQueEPalavra(catalogo(linha({ sku: "inativo", codErp: "2638103" }))));
 });
 
 test("uma letra só não é palavra — coluna com lixo de uma letra não vira alarme", () => {
@@ -110,7 +163,9 @@ test("muitas palavras distintas não viram uma frase interminável", () => {
   const muitas = Array.from({ length: 12 }, (_, i) =>
     linha({ nome: `Produto ${i}`, sku: "in" + "a".repeat(i + 1) + "tivo", codErp: "" })
   );
-  const a = avisoDeCodigoQueEPalavra(muitas);
+  const a = avisoDeCodigoQueEPalavra(catalogo(...muitas));
+  // 80 normais para 12 marcadores é 87% — a proporção real é ainda mais folgada
+  // (22 em 1003, ou 98%). O corte não é o que este teste mede; ele mede a frase.
   assert.ok(a);
   assert.equal(a.linhas, 12);
   assert.match(a.texto, /entre outras/);

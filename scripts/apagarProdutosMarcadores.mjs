@@ -55,7 +55,7 @@
 // Sem `--apagar` ele só mede e lista, um por um.
 
 import { createClient } from "@supabase/supabase-js";
-import { ehPalavraNoLugarDoCodigo } from "../src/modules/catalog/domain/codigoQueEPalavra.ts";
+import { marcadoresDoCatalogo } from "../src/modules/catalog/domain/codigoQueEPalavra.ts";
 
 const [clienteId] = process.argv.slice(2);
 const APAGAR = process.argv.includes("--apagar");
@@ -90,8 +90,18 @@ async function tudo(tabela, colunas, filtro = (q) => q) {
 const produtos = await tudo("produtos", "id, nome, sku, cod_erp", (q) =>
   q.eq("cliente_id", clienteId)
 );
-const alvos = produtos.filter(
-  (p) => ehPalavraNoLugarDoCodigo(p.sku) || ehPalavraNoLugarDoCodigo(p.cod_erp)
+// A DECISÃO VEM DO DOMÍNIO, com a guarda do catálogo junto.
+//
+// A primeira versão deste script usava `ehPalavraNoLugarDoCodigo` direto — o
+// predicado de UM VALOR. Ele diz "sim" para qualquer SKU sem dígito, e o
+// catálogo de móvel dos testes deste repositório é todo assim
+// ("CAT-CAMA-BELLA-CASAL-MOGNO"). Rodado numa loja de móvel, este script teria
+// apagado o catálogo INTEIRO, com variantes, fotos e anúncios.
+//
+// `marcadoresDoCatalogo` só marca quando "sem dígito" é DESVIO naquele
+// catálogo. Onde é a convenção, devolve lista vazia e o script não faz nada.
+const alvos = marcadoresDoCatalogo(
+  produtos.map((p) => ({ id: p.id, nome: p.nome, sku: p.sku, codErp: p.cod_erp }))
 );
 if (alvos.length === 0) {
   console.log("nenhum produto com palavra no lugar do código. Nada a fazer.");
@@ -161,8 +171,8 @@ console.log(`produtos removidos: ${removidos} de ${ids.length}`);
 // Escrita aceita não é escrita aplicada — `supabase-js` não lança em erro de
 // banco, e a RLS recusa sem erro em alguns caminhos.
 const depois = await tudo("produtos", "id, sku, cod_erp", (q) => q.eq("cliente_id", clienteId));
-const sobraram = depois.filter(
-  (p) => ehPalavraNoLugarDoCodigo(p.sku) || ehPalavraNoLugarDoCodigo(p.cod_erp)
+const sobraram = marcadoresDoCatalogo(
+  depois.map((p) => ({ nome: "", sku: p.sku, codErp: p.cod_erp }))
 ).length;
 const varsDepois = await tudo("produto_variantes", "id", (q) => q.in("produto_id", ids));
 const imgsDepois = await tudo("imagens_produto", "id", (q) => q.in("produto_id", ids));

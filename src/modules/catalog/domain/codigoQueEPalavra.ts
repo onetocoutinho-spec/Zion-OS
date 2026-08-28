@@ -38,12 +38,36 @@
 // descobrir semanas depois que 22 produtos do catálogo não existem.
 //
 // ===========================================================================
-// O QUE CONTA COMO PALAVRA
+// O QUE CONTA COMO PALAVRA — E POR QUE A AUSÊNCIA DE DÍGITO NÃO BASTA
 // ===========================================================================
 //
-// Código tem dígito. "7208.101", "MF9184", "2588100", "010.012" — todos têm.
-// Uma sequência só de letras não é código de produto em ERP nenhum que este
-// repositório já viu, e é isso que a regra usa: SEM NENHUM DÍGITO.
+// Código costuma ter dígito. "7208.101", "MF9184", "2588100", "010.012" — todos
+// têm. Mas "costuma" não é "sempre", e a primeira versão desta regra usava só
+// isso: sem dígito = palavra.
+//
+// ERRADO, e o próprio repositório tem o contraexemplo. O catálogo de móveis dos
+// testes usa SKU sem dígito nenhum:
+//
+//     CAT-CAMA-BELLA-CASAL-MOGNO
+//     CAT-JOGO-DE-MESA-DOBRAVEL
+//
+// Numa loja assim, TODOS os produtos seriam marcados. E como
+// `scripts/apagarProdutosMarcadores.mjs` usa esta mesma classificação para
+// decidir o que apagar, o catálogo inteiro sairia — com variantes, fotos e
+// anúncios. Uma regra de aviso virou uma regra de exclusão, e a de exclusão
+// precisa de mais.
+//
+// O QUE DISCRIMINA É SER EXCEÇÃO NO PRÓPRIO CATÁLOGO. Medido em 27/08/2026 na
+// base real: 983 de 983 SKUs têm dígito — os 22 marcadores eram a exceção de um
+// catálogo cuja convenção é numérica. Num catálogo de móvel a proporção é a
+// oposta, e ali "sem dígito" é a convenção, não o desvio.
+//
+// (O sinal óbvio não serve: `sku === cod_erp` vale em 981 dos 983, marcadores
+// e produtos normais igualmente. Foi medido antes de ser descartado.)
+//
+// Por isso `ehPalavraNoLugarDoCodigo` responde sobre UM VALOR e não decide
+// nada sozinha; quem decide é `avisoDeCodigoQueEPalavra`, que vê a lista
+// inteira. A distinção está nos nomes de propósito.
 //
 // A regra não tenta reconhecer a palavra "inativo". Reconhecer palavras seria
 // perseguir grafias para sempre — foram 22 variações num arquivo só. E o aviso
@@ -67,7 +91,13 @@ export interface AvisoDeCodigo {
   texto: string;
 }
 
-/** Sem nenhum dígito e com pelo menos duas letras: é palavra, não código. */
+/**
+ * Sem nenhum dígito e com pelo menos duas letras: PARECE palavra.
+ *
+ * Responde sobre um valor isolado, e por isso NÃO BASTA para decidir: num
+ * catálogo de móvel todo SKU passa neste teste. Quem decide é
+ * `avisoDeCodigoQueEPalavra`, que compara com o resto da lista.
+ */
 export function ehPalavraNoLugarDoCodigo(valor: string | undefined | null): boolean {
   const v = String(valor ?? "").trim();
   if (v.length < 2) return false;
@@ -79,6 +109,16 @@ const MAX_PALAVRAS = 6;
 const MAX_EXEMPLOS = 3;
 
 /**
+ * Quanto do catálogo precisa usar dígito para que "sem dígito" seja desvio.
+ *
+ * Abaixo disto, códigos sem dígito são a CONVENÇÃO daquele ERP e não há o que
+ * avisar. Medido: a base real tem 100% com dígito; o catálogo de móvel dos
+ * testes tem 0%. Os dois ficam longe da linha, que é o que se quer de um corte
+ * — ele separa dois mundos, não corta um deles ao meio.
+ */
+const CONVENCAO_NUMERICA = 0.8;
+
+/**
  * O arquivo traz palavra onde deveria vir código?
  *
  * `null` quando não há nada a dizer — a ausência de aviso é a resposta comum, e
@@ -88,12 +128,36 @@ const MAX_EXEMPLOS = 3;
  * casos medidos os dois campos vinham iguais, mas um ERP que preencha só um
  * deles produz o mesmo estrago.
  */
+/**
+ * As linhas que são MARCADOR — a decisão completa, com a guarda do catálogo.
+ *
+ * É esta que decide, e não `ehPalavraNoLugarDoCodigo`. Ela existe separada do
+ * aviso porque `scripts/apagarProdutosMarcadores.mjs` precisa da MESMA decisão
+ * para escolher o que apagar — e a primeira versão dele usava o predicado de um
+ * valor só, o que teria apagado um catálogo de móvel inteiro.
+ *
+ * Devolve lista vazia quando o catálogo não tem convenção numérica: ali "sem
+ * dígito" é o normal, e um marcador de texto é indistinguível dos outros.
+ * Perder esse caso é o preço de não apagar o catálogo — e é o preço certo,
+ * porque o outro erro não tem volta.
+ */
+export function marcadoresDoCatalogo<T extends LinhaComCodigo>(
+  linhas: readonly T[]
+): T[] {
+  if (linhas.length === 0) return [];
+  const comDigito = linhas.filter(
+    (l) => /[0-9]/.test(String(l.sku ?? "")) || /[0-9]/.test(String(l.codErp ?? ""))
+  ).length;
+  if (comDigito / linhas.length < CONVENCAO_NUMERICA) return [];
+  return linhas.filter(
+    (l) => ehPalavraNoLugarDoCodigo(l.sku) || ehPalavraNoLugarDoCodigo(l.codErp)
+  );
+}
+
 export function avisoDeCodigoQueEPalavra(
   linhas: readonly LinhaComCodigo[]
 ): AvisoDeCodigo | null {
-  const afetadas = linhas.filter(
-    (l) => ehPalavraNoLugarDoCodigo(l.sku) || ehPalavraNoLugarDoCodigo(l.codErp)
-  );
+  const afetadas = marcadoresDoCatalogo(linhas);
   if (afetadas.length === 0) return null;
 
   const frequencia = new Map<string, number>();

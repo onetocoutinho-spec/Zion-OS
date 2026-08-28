@@ -25,7 +25,7 @@ import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
-import { listarTodasImagens } from "@/lib/services/imagensProduto";
+import { contarFotosPorProduto } from "@/lib/services/imagensProduto";
 import { criarExecucaoLote } from "@/lib/services/execucoesLote";
 import { criarAnuncioGerado } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
@@ -33,7 +33,6 @@ import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
 import type {
   AuditoriaAnuncio,
-  ImagemProduto,
   PrioridadeAuditoria,
   Produto,
   ProdutoVariante,
@@ -126,9 +125,10 @@ export default function EsteiraLotePage() {
   const auditorias = auditoriasData ?? [];
   const { data: produtosData } = useLiveQuery(listarProdutos);
   const { data: variantesData } = useLiveQuery(listarTodasVariantes);
-  // As imagens do lote inteiro, numa leitura só — como as variantes acima. Sem
-  // foto o Mercado Livre recusa o anúncio, e isso agora é pendência.
-  const { data: imagensData } = useLiveQuery(listarTodasImagens);
+  // A CONTAGEM de fotos por produto, não as fotos. `listarTodasImagens()` era
+  // `select *` sem filtro: ~4,8 MB nesta base, reexecutado a cada mudança na
+  // tabela, para virar um mapa de números. Ver `contarFotosPorProduto`.
+  const { data: fotosPorProduto } = useLiveQuery(contarFotosPorProduto);
 
   const produtoPorId = useMemo(() => {
     const m = new Map<string, Produto>();
@@ -146,17 +146,6 @@ export default function EsteiraLotePage() {
     });
     return m;
   }, [variantesData]);
-
-  const fotosPorProduto = useMemo(() => {
-    const m = new Map<string, ImagemProduto[]>();
-    (imagensData ?? []).forEach((i) => {
-      if (!i.produtoId) return;
-      const arr = m.get(i.produtoId) ?? [];
-      arr.push(i);
-      m.set(i.produtoId, arr);
-    });
-    return m;
-  }, [imagensData]);
 
   const lojasAuditadas = useMemo(() => [...new Set(auditorias.map((a) => a.clienteId))], [auditorias]);
 
@@ -202,7 +191,7 @@ export default function EsteiraLotePage() {
           // Sem imagem o ML recusa o anúncio. Item de auditoria sem produto
           // casado não tem foto a contar, e 0 é o número certo — o anúncio
           // realmente não publica assim.
-          fotosDoProduto: fotosPorProduto.get(fila[i].produtoId ?? "")?.length ?? 0,
+          fotosDoProduto: fotosPorProduto?.get(fila[i].produtoId ?? "") ?? 0,
         });
         tipoFinal = r.tipo;
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

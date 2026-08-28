@@ -639,7 +639,12 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
     // A profundidade de cada arquivo é o que separa "pasta de cor" (folha, sem
     // subpasta) de "pasta de produto sem cor" (que é legítima e casa).
     setProfundidades(caminhos.map((c) => pastasDoCaminho(c).length));
-    void fotosPorProdutoECor(clienteId).then(setJaExistem);
+    // `.catch` explícito: sem ele, uma falha de rede aqui vira rejeição não
+    // tratada e o aviso de foto repetida some sem dizer. Mapa vazio é o
+    // desfecho certo — a tela segue, e o pior caso é não avisar.
+    void fotosPorProdutoECor(clienteId)
+      .then(setJaExistem)
+      .catch(() => setJaExistem(new Map()));
 
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
