@@ -188,10 +188,12 @@ export default function EsteiraLotePage() {
           // grade do anúncio. Sem isto o lote publicaria SKU inventado em massa.
           variantes: vars,
           precoVenda: prod?.precoVenda ?? 0,
-          // Sem imagem o ML recusa o anúncio. Item de auditoria sem produto
-          // casado não tem foto a contar, e 0 é o número certo — o anúncio
-          // realmente não publica assim.
-          fotosDoProduto: fotosPorProduto?.get(fila[i].produtoId ?? "") ?? 0,
+          // Sem imagem o ML recusa o anúncio. Mas item de auditoria SEM PRODUTO
+          // casado é `null`, não 0: não há produto a que anexar foto, e cobrar
+          // uma foto de um produto que não existe é reprovar por nada.
+          fotosDoProduto: fila[i].produtoId
+            ? (fotosPorProduto?.get(fila[i].produtoId!) ?? 0)
+            : null,
         });
         tipoFinal = r.tipo;
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

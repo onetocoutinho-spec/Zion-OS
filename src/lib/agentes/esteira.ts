@@ -295,7 +295,7 @@ export function comAGradeDoCadastro(
   daIA: AnuncioDaIA,
   grade: VariacaoDoAnuncio[],
   /**
-   * Quantas fotos o produto tem no cadastro.
+   * Quantas fotos o produto tem no cadastro — ou `null` quando NÃO HÁ PRODUTO.
    *
    * OBRIGATÓRIO DE PROPÓSITO, e não opcional com padrão. Três vezes seguidas,
    * neste mesmo fluxo, um caminho recebeu menos contexto que o outro sem que
@@ -303,11 +303,27 @@ export function comAGradeDoCadastro(
    * fotos, todos passados por `/cliente/anunciar` e esquecidos pelo worker.
    * Parâmetro obrigatório transforma esquecer em erro de compilação — é o mesmo
    * motivo pelo qual `pendencias` saiu de `AnuncioDaIA`.
+   *
+   * `null` E `0` SÃO COISAS DIFERENTES, e tratá-los igual foi um defeito.
+   *
+   * `0` é "este produto não tem foto" — pendência, e das que travam. `null` é
+   * "não há produto a que anexar foto": é a tela `/esteira` da equipe, onde se
+   * roda um briefing digitado para experimentar o prompt, sem produto nenhum
+   * selecionado.
+   *
+   * Com os dois valendo 0, TODA execução daquela tela voltava reprovada com
+   * "este produto não tem nenhuma imagem cadastrada" — sobre um produto que não
+   * existe. Um sinal que aparece em 100% das vezes deixa de ser sinal.
+   *
+   * É a mesma distinção que este repositório paga caro para manter em
+   * `largura`/`altura` ("não medimos" não é "não tem") e em `margem`. Aqui ela
+   * estava colapsada no tipo, e o tipo é onde ela tinha que aparecer.
    */
-  fotosDoProduto: number
+  fotosDoProduto: number | null
 ): AnuncioGerado {
   const daGrade = pendenciasDaGrade(grade);
-  const semFoto = fotosDoProduto <= 0;
+  // `null` não é "sem foto": é "sem produto". Ver o parâmetro.
+  const semFoto = fotosDoProduto !== null && fotosDoProduto <= 0;
   // A FOTO É TRAVA, E A PROVA DISSO JÁ ESTAVA NO REPOSITÓRIO.
   //
   // `api/ml/remover-foto` recusa apagar a última imagem de um anúncio, com a

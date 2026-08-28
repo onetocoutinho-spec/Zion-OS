@@ -71,7 +71,15 @@ export interface OpcoesCadeia {
    * OBRIGATÓRIO pela mesma razão de `OpcoesEsteira`: padrão 0 reprovaria por
    * falta de foto um produto que tem foto, só porque a tela esqueceu de passar.
    */
-  fotosDoProduto: number;
+  /**
+   * Quantas fotos o produto tem — ou `null` quando NÃO HÁ PRODUTO.
+   *
+   * `0` e `null` são coisas diferentes: `0` é "este produto não tem foto", que
+   * é pendência; `null` é "não há produto a que anexar foto", que é a tela da
+   * equipe rodando um briefing digitado para experimentar o prompt. Ver
+   * `comAGradeDoCadastro`.
+   */
+  fotosDoProduto: number | null;
   /** Chamado a cada mudança de estado dos passos (para a barra de progresso). */
   onPasso?: (passos: PassoCadeia[]) => void;
   /**

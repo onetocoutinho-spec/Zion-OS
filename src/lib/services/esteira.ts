@@ -43,7 +43,15 @@ export interface OpcoesEsteira {
    *
    * Obrigatório força cada chamador a responder a pergunta com o número real.
    */
-  fotosDoProduto: number;
+  /**
+   * Quantas fotos o produto tem — ou `null` quando NÃO HÁ PRODUTO.
+   *
+   * `0` e `null` são coisas diferentes: `0` é "este produto não tem foto", que
+   * é pendência; `null` é "não há produto a que anexar foto", que é a tela da
+   * equipe rodando um briefing digitado para experimentar o prompt. Ver
+   * `comAGradeDoCadastro`.
+   */
+  fotosDoProduto: number | null;
 }
 
 /**

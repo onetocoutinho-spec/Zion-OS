@@ -107,13 +107,15 @@ export default function EsteiraPage() {
       // A grade cadastrada vai como DADO nos dois modos. Sem produto escolhido
       // ela fica vazia — e vazia vira pendência, nunca grade inventada.
       const variantes = produto ? await listarVariantesDoProduto(produto.id) : [];
-      // A CONTAGEM DE FOTOS SEGUE A MESMA REGRA DA GRADE, logo acima.
+      // A CONTAGEM DE FOTOS SEGUE A MESMA REGRA DA GRADE, logo acima — e a
+      // ausência de produto é `null`, não zero.
       //
-      // Sem produto escolhido esta tela roda só com um briefing digitado — não
-      // há produto, então não há foto, e 0 é o número certo. A pendência que
-      // aparece também está certa: aquele texto não publica como está, porque o
-      // Mercado Livre exige uma imagem e não há produto a que anexá-la.
-      const fotos = produto ? await listarImagensDoProduto(produto.id) : [];
+      // O comentário anterior dizia que "0 é o número certo" aqui. Não era: com
+      // 0, TODA execução desta tela voltava reprovada com "este produto não tem
+      // nenhuma imagem cadastrada" — sobre um produto que não existe. Um sinal
+      // que aparece em 100% das vezes deixa de ser sinal, e esta tela existe
+      // justamente para experimentar prompt sem produto.
+      const fotos = produto ? await listarImagensDoProduto(produto.id) : null;
       const r =
         modo === "aprofundado"
           ? await rodarCadeiaEsteira({
@@ -122,7 +124,7 @@ export default function EsteiraPage() {
               produto: produto?.nome,
               variantes,
               precoVenda: produto?.precoVenda ?? 0,
-              fotosDoProduto: fotos.length,
+              fotosDoProduto: fotos?.length ?? null,
               onPasso: setPassos,
             })
           : await rodarEsteira(briefing.trim(), {
@@ -130,7 +132,7 @@ export default function EsteiraPage() {
               produto: produto?.nome,
               variantes,
               precoVenda: produto?.precoVenda ?? 0,
-              fotosDoProduto: fotos.length,
+              fotosDoProduto: fotos?.length ?? null,
             });
       setAnuncio(r.anuncio);
       setTipo(r.tipo);
