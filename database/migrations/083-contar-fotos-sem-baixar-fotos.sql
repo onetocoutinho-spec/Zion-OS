@@ -31,6 +31,17 @@
 -- 42501 "permission denied for function", inclusive pedindo o cliente_id de
 -- cada uma das tres lojas da base.
 --
+-- APLICADA NA PRODUCAO em 28/08/2026. Base menor — 1 cliente, 72 produtos, 641
+-- imagens, 144 kB —, entao o ganho de tempo ali e pequeno hoje: 641 linhas
+-- viram 121 contagens, cinco para uma. A funcao entra pelo que ela evita mais
+-- do que pelo que economiza agora, e a razao piora do jeito errado: as
+-- contagens sao limitadas pelo catalogo, as linhas crescem a cada foto.
+--
+-- Conferido na producao, contra os dados dela: 121 chaves pelos dois caminhos,
+-- somas batendo em 641, ZERO divergencias. E os privilegios lidos do proprio
+-- banco: prosecdef=false (invoker), anon nao executa, authenticated executa.
+-- A varredura `alcance-da-agencia` rodou nos dois bancos e voltou vazia.
+--
 -- O primeiro numero ja foi consertado no app: a consulta passou a pedir so as
 -- duas colunas que a contagem le. Sobrou o formato: OITO MIL LINHAS
 -- atravessando a rede para virar OITOCENTAS contagens. Contar e trabalho de
