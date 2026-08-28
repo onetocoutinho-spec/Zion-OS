@@ -14,7 +14,22 @@
 --
 --     select *                     3.896 ms   ~4,8 MB
 --     select produto_id, cor       1.739 ms   ~0,5 MB
---     esta funcao (group by)          ~800 linhas  <- o resultado, e so ele
+--
+-- APLICADA no staging em 27/08/2026, e medida ali, mediana de tres:
+--
+--     select *                     3.645 ms   8.090 linhas   4.821 KB
+--     select produto_id, cor       1.556 ms   8.090 linhas     634 KB
+--     esta funcao                    355 ms     929 linhas      82 KB
+--
+-- Dez vezes mais rapida, cinquenta e nove vezes mais leve. E o numero que
+-- importa mais que os outros: as 929 chaves saem IGUAIS pelos dois caminhos,
+-- zero divergencias, com as somas batendo em 8.090 dos dois lados. A
+-- normalizacao em SQL e a de `chaveDaFoto` sao a mesma coisa, comprovado linha
+-- a linha e nao por leitura.
+--
+-- A promessa de seguranca tambem foi conferida contra o banco: `anon` recebe
+-- 42501 "permission denied for function", inclusive pedindo o cliente_id de
+-- cada uma das tres lojas da base.
 --
 -- O primeiro numero ja foi consertado no app: a consulta passou a pedir so as
 -- duas colunas que a contagem le. Sobrou o formato: OITO MIL LINHAS
