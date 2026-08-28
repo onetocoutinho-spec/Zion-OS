@@ -653,3 +653,78 @@ de conta.
 
 **361 anúncios estão publicáveis** — aprovados, com zero pendências, foto,
 preço, grade e categoria. Nenhum deles espera código.
+
+---
+
+## O resto do dia 27/08 — o que percorrer o passo 4 ainda cobrou
+
+A seção acima fechou com os seis defeitos do casamento de fotos. O dia continuou,
+e o que veio depois não estava em documento nenhum além dos commits — que não é
+onde alguém procura em novembro.
+
+### O seletor de pastas: 4 erros em 5, e a tela não dizia
+
+O envio pela tela falhou **cinco vezes seguidas**, e o casamento não tinha culpa.
+O seletor do Chrome abre dentro da última pasta usada e escolhe a pasta em que se
+**está**, não a que aparece destacada. Quatro tentativas mandaram a mesma pasta de
+COR.
+
+O contorno do dia foi subir pelo terminal. Isso resolveu o dia e **não resolveu o
+produto**: a lojista não tem terminal, e este é um dos passos que ela faz sozinha.
+
+**Não dá para consertar, só para dizer.** `webkitRelativePath` começa NA PASTA
+ESCOLHIDA — o nome do produto não está em lugar nenhum do que o navegador
+entrega. `modules/catalog/domain/pastaEscolhidaErrada` reconhece o formato e
+avisa antes do envio, com dois sinais e só dois: pasta sem subpasta que não casa
+(folha da árvore) e escolha idêntica à anterior. Confirmado funcionando na tela.
+
+### Nove segundos por escolha de pasta, e dois deles eram meus
+
+|  | antes | depois | o que era |
+|---|---|---|---|
+| casador | 5,3 s | 0,2 s | reindexava os 981 produtos a cada uma das 543 pastas — **síncrono**, congelava a tela |
+| contagem de fotos | 3,6 s | 0,4 s | baixava as 8.090 imagens (4,8 MB) para montar 929 contagens |
+
+O primeiro eu **introduzi** no commit do desempate, na mesma manhã: a regra
+estava certa e o custo passou despercebido porque os testes usam catálogos de
+cinco produtos. O segundo é a migração **083**, aplicada nos dois bancos e
+conferida contra os dados de cada um — 929 chaves iguais no staging, 121 na
+produção, zero divergências dos dois lados.
+
+A distinção importa e ficou escrita: congelamento é interface morta, espera é
+interface viva. Só o primeiro parece "o software travou".
+
+### O erro que eu causei, e o que o salvou
+
+Onze pares de produtos com o mesmo nome e SKUs diferentes pareciam duplicata. Eu
+copiei 142 fotos de um irmão para o outro **antes** de comparar as grades. Elas
+não têm uma combinação de cor+tamanho em comum: são o mesmo MODELO partido em
+duas linhas do ERP **por cor**. Pus foto de chinelo rosa em chinelo preto — a
+mesma classe de erro que o dia inteiro foi gasto removendo.
+
+Desfeito por inteiro, e o que tornou o desfazer exato foi a **procedência**:
+cada linha copiada levava `"Copiada do cadastro gêmeo 2356812"` em `observacoes`,
+gravada com a justificativa de que "senão ninguém entende daqui a um mês". Ela
+serviu vinte minutos depois, para outra coisa.
+
+**A regra que sobrou disso**, e que vale mais que o conserto: aja para descobrir
+quando a ação é REVERSÍVEL; meça antes quando ela NÃO É — e meça a **premissa**,
+não o volume. A pergunta errada foi "quantas fotos vou copiar"; a certa era
+"estes dois são mesmo o mesmo produto?".
+
+### O que os números dizem no fim do dia
+
+    produtos 981 · fotos 8.090 · anúncios 410 · PUBLICÁVEIS 361
+    fila: 398 concluídos · 579 pendentes · 4 em erro
+    sem foto 129 · cadastro incompleto 302
+    dos 583 sem anúncio, 230 já prontos para a esteira rodar
+
+### O que ainda não foi olhado
+
+- **4 itens em erro na fila** — o motivo nunca foi lido. Provavelmente crédito.
+- **40 modelos partidos em 89 linhas de produto** por cor. É a versão grande dos
+  "gêmeos": hoje cada linha vira um anúncio, quando o ML quer um anúncio com as
+  cores como variação. Mexe no ERP, não só aqui.
+- **~2.700 fotos sem produto** — 630 grupos, e a maioria é de produto que não
+  está neste catálogo. Só 26 grupos têm candidato real e pedem uma pessoa.
+- **13 erros de `typecheck:test`**, anteriores a esta branch, em quatro arquivos.
