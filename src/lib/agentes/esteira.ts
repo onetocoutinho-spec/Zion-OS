@@ -298,12 +298,23 @@ export interface AnuncioGerado {
  * e é o `<campo>` que serve de rótulo. Quando o formato não bate — porque
  * alguém escreveu uma pendência de outro jeito —, a frase inteira entra: perder
  * a informação seria pior que uma frase comprida.
+ *
+ * O TRAVESSÃO NÃO É O ÚNICO CORTE, e a pendência mais comum é justamente a que
+ * não o usa: a da grade vem de `variacoesDoAnuncio.ts`, que escreve "grade de
+ * variações do produto (cor, tamanho, SKU, EAN e estoque de cada uma)". Com só
+ * o travessão, a frase inteira virava "nome do campo" e ainda ganhava um ponto
+ * final duplicado — o texto antigo com um erro de pontuação novo. Parêntese e
+ * dois-pontos cortam pelo mesmo motivo que o travessão: dali para a frente é
+ * explicação, e quem lê o veredito numa listagem quer a lista dos campos.
+ *
+ * A pontuação final sai depois do corte porque o pedaço cortado pode terminar
+ * em ponto, e o rótulo recebe o seu no fim.
  */
 function camposQueFaltam(pendencias: readonly string[]): string {
   const campos = pendencias.map((p) => {
     const semMarca = p.replace(/^⚠️\s*informação necessária:\s*/i, "");
-    const ateOTravessao = semMarca.split("—")[0].trim();
-    return ateOTravessao || p;
+    const ateOCorte = semMarca.split(/[—(:]/)[0].trim().replace(/[.,;]+$/, "");
+    return ateOCorte || p;
   });
   const unicos = [...new Set(campos)];
   return unicos.length === 1

@@ -100,9 +100,21 @@ function corteDoNome() {
   //
   // E o custo desse silêncio é conhecido: foi parecença frouxa que pôs 470
   // fotos no produto errado.
+  //
+  // VAZIO TAMBEM RECUSA. `Number("")` e `Number(" ")` sao 0 e finitos: a string
+  // vazia atravessava a validacao e virava corte 0, o mais permissivo que
+  // existe. E ela chega sozinha — um invocador de shell com `--corte-nome
+  // $CORTE` e a variavel nao definida passa exatamente isso.
   const bruto = process.argv[i + 1];
   const n = Number(bruto);
-  if (bruto === undefined || bruto.startsWith("--") || !Number.isFinite(n) || n < 0 || n > 1) {
+  if (
+    bruto === undefined ||
+    bruto.trim() === "" ||
+    bruto.startsWith("--") ||
+    !Number.isFinite(n) ||
+    n < 0 ||
+    n > 1
+  ) {
     console.error(
       `--corte-nome precisa de um número entre 0 e 1 (recebi ${bruto === undefined ? "nada" : `"${bruto}"`}).
 ` +

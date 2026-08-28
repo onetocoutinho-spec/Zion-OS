@@ -38,7 +38,12 @@ test("pasta de COR é reconhecida: sem subpasta e sem casar", () => {
   assert.ok(a);
   assert.equal(a.tipo, "pasta-de-cor");
   assert.match(a.texto, /100983 verde luna nobu/);
-  assert.match(a.texto, /Volte um nível/);
+  assert.match(a.texto, /volte um nível/i);
+  // E A SAÍDA CONDICIONADA, porque os dois sinais também cabem numa pasta de
+  // PRODUTO plana cujo código ainda não está no catálogo. Mandar essa pessoa
+  // subir um nível a levaria para a pasta que reúne vários produtos — pior que
+  // o envio que ela ia fazer. O aviso oferece o diagnóstico; não o afirma.
+  assert.match(a.texto, /Se esta JÁ É a pasta do produto/);
 });
 
 test("a frase diz POR QUE o nome do produto não veio junto", () => {

@@ -73,11 +73,22 @@
 // perseguir grafias para sempre — foram 22 variações num arquivo só. E o aviso
 // vale igual para "PRESENTE", "brinde", "kit", ou o que o próximo ERP inventar.
 
-/** Um produto lido do arquivo, do jeito que a importação o monta. */
-export interface LinhaComCodigo {
-  nome: string;
+/**
+ * O par de códigos, que é tudo que a detecção lê.
+ *
+ * Separado de `LinhaComCodigo` porque `marcadoresDoCatalogo` não olha o nome, e
+ * exigi-lo obrigava o chamador a inventar `nome: ""` só para passar pelo tipo —
+ * dado fabricado para agradar uma assinatura, que o próximo leitor precisa
+ * investigar para descobrir que não significa nada.
+ */
+export interface CodigosDaLinha {
   sku: string;
   codErp?: string;
+}
+
+/** Um produto lido do arquivo, do jeito que a importação o monta. */
+export interface LinhaComCodigo extends CodigosDaLinha {
+  nome: string;
 }
 
 export interface AvisoDeCodigo {
@@ -141,7 +152,7 @@ const CONVENCAO_NUMERICA = 0.8;
  * Perder esse caso é o preço de não apagar o catálogo — e é o preço certo,
  * porque o outro erro não tem volta.
  */
-export function marcadoresDoCatalogo<T extends LinhaComCodigo>(
+export function marcadoresDoCatalogo<T extends CodigosDaLinha>(
   linhas: readonly T[]
 ): T[] {
   if (linhas.length === 0) return [];

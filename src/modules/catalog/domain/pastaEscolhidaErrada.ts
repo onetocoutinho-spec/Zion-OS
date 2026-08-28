@@ -109,10 +109,11 @@ export function avisoDaPastaEscolhida(e: EscolhaDePasta): AvisoDaEscolha | null 
       tipo: "pasta-de-cor",
       texto:
         `"${nome}" é a última pasta da árvore e não casou com nenhum produto do catálogo. ` +
-        `Numa pasta de fotos esse é o formato de uma pasta de COR — o nome do produto ` +
-        `está na pasta que a contém, e ele não vem junto quando você escolhe esta. ` +
-        `Volte um nível no seletor e escolha a pasta do PRODUTO (ou a que reúne vários). ` +
-        `Se preferir enviar assim mesmo, escolha o produto à mão na lista abaixo.`,
+        `Numa pasta de fotos esse costuma ser o formato de uma pasta de COR — o nome do ` +
+        `produto está na pasta que a contém, e ele não vem junto quando você escolhe esta. ` +
+        `Se for esse o caso, volte um nível no seletor e escolha a pasta do PRODUTO (ou a ` +
+        `que reúne vários). Se esta JÁ É a pasta do produto, então ele ainda não está no ` +
+        `catálogo — escolha o produto à mão na lista abaixo, ou importe a base primeiro.`,
     };
   }
 

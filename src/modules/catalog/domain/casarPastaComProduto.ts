@@ -231,6 +231,8 @@ interface IndiceDoCatalogo {
   tamanho: number;
   primeiroId: string | undefined;
   ultimoId: string | undefined;
+  /** E dos NOMES, que é de onde `donos` e `palavras` saem. */
+  impressaoDosNomes: number;
 }
 
 const INDICE = new WeakMap<readonly ProdutoParaCasar[], IndiceDoCatalogo>();
@@ -246,15 +248,43 @@ const INDICE = new WeakMap<readonly ProdutoParaCasar[], IndiceDoCatalogo>();
  * produto que está na tela" — que se lê como defeito de casamento e manda
  * procurar no lugar errado.
  *
- * A conferência é O(1) e pega o que acontece na prática: acrescentar, remover e
- * reordenar mudam o tamanho ou as pontas. Trocar um item do MEIO por outro sem
- * mexer no tamanho passaria — e para isso não há defesa barata; fica dito.
+ * A primeira versão comparava só tamanho e pontas — O(1), e cega para a única
+ * mutação que de fato envenena este índice: EDITAR um produto no lugar. Renomear
+ * sem mexer na lista mantém tamanho, primeiro e último id, e `donos`/`palavras`
+ * — ambos derivados de `p.nome` — continuariam respondendo pelo nome velho. E
+ * casar foto por nome velho é o defeito que pôs 470 fotos no produto errado.
+ *
+ * Então a conferência lê os NOMES, e o custo foi medido antes de entrar
+ * (27/08/2026, 981 produtos, mil chamadas — o pior caso de uma escolha de pasta
+ * grande):
+ *
+ *     hash dos nomes     102 ms / 1000 chamadas
+ *     soma de tamanhos     6 ms / 1000 chamadas   (não pega renome de mesmo tamanho)
+ *
+ * Cem milissegundos no pior caso, contra os 5,3 s que a memória tirou. O hash é
+ * FNV-1a de 32 bits, com um separador entre nomes para que "AB"+"C" e "A"+"BC"
+ * não colidam.
  */
+function impressaoDosNomes(l: readonly ProdutoParaCasar[]): number {
+  let h = 2166136261;
+  for (const p of l) {
+    const n = p.nome ?? "";
+    for (let i = 0; i < n.length; i++) {
+      h ^= n.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    h ^= 0x5f;
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
 function mudouPorDentro(l: readonly ProdutoParaCasar[], i: IndiceDoCatalogo): boolean {
   return (
     l.length !== i.tamanho ||
     l[0]?.id !== i.primeiroId ||
-    l[l.length - 1]?.id !== i.ultimoId
+    l[l.length - 1]?.id !== i.ultimoId ||
+    impressaoDosNomes(l) !== i.impressaoDosNomes
   );
 }
 
@@ -290,6 +320,7 @@ function indiceDoCatalogo(produtos: readonly ProdutoParaCasar[]): IndiceDoCatalo
     tamanho: produtos.length,
     primeiroId: produtos[0]?.id,
     ultimoId: produtos[produtos.length - 1]?.id,
+    impressaoDosNomes: impressaoDosNomes(produtos),
   };
   INDICE.set(produtos, indice);
   return indice;

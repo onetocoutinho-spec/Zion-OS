@@ -171,8 +171,9 @@ console.log(`produtos removidos: ${removidos} de ${ids.length}`);
 // Escrita aceita não é escrita aplicada — `supabase-js` não lança em erro de
 // banco, e a RLS recusa sem erro em alguns caminhos.
 const depois = await tudo("produtos", "id, sku, cod_erp", (q) => q.eq("cliente_id", clienteId));
+// Sem `nome`: a deteccao le so os codigos, e a conferencia nao os buscou.
 const sobraram = marcadoresDoCatalogo(
-  depois.map((p) => ({ nome: "", sku: p.sku, codErp: p.cod_erp }))
+  depois.map((p) => ({ sku: p.sku, codErp: p.cod_erp }))
 ).length;
 const varsDepois = await tudo("produto_variantes", "id", (q) => q.in("produto_id", ids));
 const imgsDepois = await tudo("imagens_produto", "id", (q) => q.in("produto_id", ids));

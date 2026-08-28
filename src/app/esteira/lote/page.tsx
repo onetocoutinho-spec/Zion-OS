@@ -128,7 +128,15 @@ export default function EsteiraLotePage() {
   // A CONTAGEM de fotos por produto, não as fotos. `listarTodasImagens()` era
   // `select *` sem filtro: ~4,8 MB nesta base, reexecutado a cada mudança na
   // tabela, para virar um mapa de números. Ver `contarFotosPorProduto`.
-  const { data: fotosPorProduto } = useLiveQuery(contarFotosPorProduto);
+  //
+  // `tabelas` DECLARADO: sem isso a contagem re-executa a cada mudança em
+  // qualquer tabela — e `rodarLote` grava um anúncio e atualiza a auditoria por
+  // item. Um lote de 50 disparava ~100 releituras da tabela de imagens inteira
+  // durante a própria execução. O commit anterior cortou o peso da linha; este
+  // corta o número de idas.
+  const { data: fotosPorProduto } = useLiveQuery(contarFotosPorProduto, [], {
+    tabelas: ["imagens_produto"],
+  });
 
   const produtoPorId = useMemo(() => {
     const m = new Map<string, Produto>();
@@ -191,9 +199,16 @@ export default function EsteiraLotePage() {
           // Sem imagem o ML recusa o anúncio. Mas item de auditoria SEM PRODUTO
           // casado é `null`, não 0: não há produto a que anexar foto, e cobrar
           // uma foto de um produto que não existe é reprovar por nada.
-          fotosDoProduto: fila[i].produtoId
-            ? (fotosPorProduto?.get(fila[i].produtoId!) ?? 0)
-            : null,
+          //
+          // E CONTAGEM QUE NÃO CHEGOU TAMBÉM É `null`. `fotosPorProduto` é
+          // `null` no primeiro render e quando a leitura falha; `?? 0` ali
+          // transformaria "ainda não sei" em "não tem foto" para TODO item da
+          // fila, e o veredito reprovado seria gravado por `criarAnuncioGerado`.
+          // O mapa presente e sem a chave, esse sim, é zero de verdade.
+          fotosDoProduto:
+            fila[i].produtoId && fotosPorProduto
+              ? (fotosPorProduto.get(fila[i].produtoId!) ?? 0)
+              : null,
         });
         tipoFinal = r.tipo;
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

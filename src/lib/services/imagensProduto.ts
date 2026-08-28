@@ -64,16 +64,19 @@ export async function listarTodasImagens(): Promise<ImagemProduto[]> {
  * Aqui não dá para usar a RPC: a tela é da equipe e atravessa clientes, e a
  * função da 083 recebe um cliente. O que dá é pedir UMA coluna — o resto do
  * peso da linha (url, observações, dimensões) nunca é lido para contar.
+ *
+ * E ELA DEIXA A FALHA SUBIR, ao contrário de `fotosPorProdutoECor` logo abaixo.
+ * A diferença não é de estilo: lá o mapa vazio APAGA um aviso, aqui ele LIGA
+ * uma pendência que trava a publicação. Engolir o erro devolveria "nenhum
+ * produto tem foto" para uma queda de rede, e o lote gravaria um catálogo
+ * inteiro como reprovado por falta de foto. `useLiveQuery` já sabe distinguir:
+ * a rejeição vira `data: null` e `estado: "erro"`, e `null` é "não sei".
  */
 export async function contarFotosPorProduto(): Promise<Map<string, number>> {
   const mapa = new Map<string, number>();
-  try {
-    for (const i of await repo.listar(undefined, "produto_id")) {
-      if (!i.produtoId) continue;
-      mapa.set(i.produtoId, (mapa.get(i.produtoId) ?? 0) + 1);
-    }
-  } catch {
-    return new Map();
+  for (const i of await repo.listar(undefined, "produto_id")) {
+    if (!i.produtoId) continue;
+    mapa.set(i.produtoId, (mapa.get(i.produtoId) ?? 0) + 1);
   }
   return mapa;
 }
@@ -148,28 +151,34 @@ export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string
   // Oito mil linhas atravessavam a rede para virar oitocentas contagens, e a
   // razão piora conforme a loja fotografa mais: as contagens são limitadas pelo
   // catálogo, as linhas crescem a cada foto enviada.
-  try {
-    if (!supabaseConfigurado) throw new Error("supabase nao configurado");
-    const { data, error } = await getSupabase().rpc(RPC_DA_CONTAGEM, { p_cliente: clienteId });
-    if (!error) {
-      // A chave é montada AQUI, por `contagensPorChave`, e a função devolve a
-      // cor crua desde a 084 — uma definição só da forma, num lugar só.
-      return contagensPorChave((data ?? []) as LinhaDaContagem[]);
+  //
+  // O `if` fica FORA do `try`: sem Supabase não há falha nenhuma, há o caminho
+  // local — o modo em que o repositório roda em demonstração e em boa parte dos
+  // testes de tela. Passar por exceção faria o `catch` abaixo imprimir um erro a
+  // cada escolha de pasta, e um erro que aparece sempre deixa de ser erro.
+  if (supabaseConfigurado) {
+    try {
+      const { data, error } = await getSupabase().rpc(RPC_DA_CONTAGEM, { p_cliente: clienteId });
+      if (!error) {
+        // A chave é montada AQUI, por `contagensPorChave`, e a função devolve a
+        // cor crua desde a 084 — uma definição só da forma, num lugar só.
+        return contagensPorChave((data ?? []) as LinhaDaContagem[]);
+      }
+      // Função ausente = banco sem a 083. O caminho antigo assume, porque contar
+      // devagar é melhor que não avisar sobre foto repetida. QUALQUER outro erro
+      // também cai para o caminho antigo aqui, e a razão é diferente da do
+      // `repositorio`: lá o risco é esconder uma GRAVAÇÃO que falhou; aqui é uma
+      // leitura de aviso, e ficar sem ela é pior que tentar de novo devagar.
+      const ausente = /PGRST202|does not exist|not find the function/i.test(error.message);
+      if (!ausente) console.error(`[Zion OS] ${RPC_DA_CONTAGEM} falhou:`, error.message);
+    } catch (e) {
+      // A RPC ficou FORA do try quando entrou, e a função — que NUNCA lançava —
+      // passou a lançar. O chamador é `void fotosPorProdutoECor(...).then(...)`,
+      // sem `.catch`: uma queda de rede virava rejeição não tratada, `jaExistem`
+      // ficava vazio e o aviso de foto repetida DESLIGAVA em silêncio. Foi esse
+      // aviso que impediu as 54 fotos duplicadas.
+      console.error(`[Zion OS] ${RPC_DA_CONTAGEM} indisponível:`, e);
     }
-    // Função ausente = banco sem a 083. O caminho antigo assume, porque contar
-    // devagar é melhor que não avisar sobre foto repetida. QUALQUER outro erro
-    // também cai para o caminho antigo aqui, e a razão é diferente da do
-    // `repositorio`: lá o risco é esconder uma GRAVAÇÃO que falhou; aqui é uma
-    // leitura de aviso, e ficar sem ela é pior que tentar de novo devagar.
-    const ausente = /PGRST202|does not exist|not find the function/i.test(error.message);
-    if (!ausente) console.error(`[Zion OS] ${RPC_DA_CONTAGEM} falhou:`, error.message);
-  } catch (e) {
-    // A RPC ficou FORA do try quando entrou, e a função — que NUNCA lançava —
-    // passou a lançar. O chamador é `void fotosPorProdutoECor(...).then(...)`,
-    // sem `.catch`: uma queda de rede virava rejeição não tratada, `jaExistem`
-    // ficava vazio e o aviso de foto repetida DESLIGAVA em silêncio. Foi esse
-    // aviso que impediu as 54 fotos duplicadas.
-    console.error(`[Zion OS] ${RPC_DA_CONTAGEM} indisponível:`, e);
   }
 
   try {
