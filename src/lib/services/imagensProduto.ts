@@ -3,6 +3,7 @@ import { imagemParaApp, imagemParaBanco } from "../supabase/mappers";
 import type { ImagemProdutoRow } from "../supabase/database.types";
 import type { ImagemProduto } from "../types";
 import { chaveDaFoto } from "@/modules/catalog/domain/envioDeFotoRepetido";
+import { getSupabase, supabaseConfigurado } from "../supabase/client";
 
 const repo = criarRepositorio<ImagemProduto, ImagemProdutoRow>({
   tabela: "imagens_produto",
@@ -82,8 +83,42 @@ export async function listarTodasImagens(): Promise<ImagemProduto[]> {
  */
 const COLUNAS_DA_CONTAGEM = "produto_id, cor";
 
+/** A função da 083. Ausente = migração não rodou, e o caminho antigo assume. */
+const RPC_DA_CONTAGEM = "contar_fotos_por_produto_e_cor";
+
+interface LinhaDaContagem {
+  produto_id: string;
+  cor: string | null;
+  total: number;
+}
+
 export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string, number>> {
   const mapa = new Map<string, number>();
+
+  // CONTAR É TRABALHO DE BANCO — migração 083.
+  //
+  // Oito mil linhas atravessavam a rede para virar oitocentas contagens, e a
+  // razão piora conforme a loja fotografa mais: as contagens são limitadas pelo
+  // catálogo, as linhas crescem a cada foto enviada.
+  if (supabaseConfigurado) {
+    const { data, error } = await getSupabase().rpc(RPC_DA_CONTAGEM, { p_cliente: clienteId });
+    if (!error) {
+      for (const linha of (data ?? []) as LinhaDaContagem[]) {
+        // `chaveDaFoto` de novo, e não a chave montada em SQL: quem manda na
+        // forma da chave é o app, e a função só devolve as partes.
+        mapa.set(chaveDaFoto(linha.produto_id, linha.cor ?? ""), Number(linha.total) || 0);
+      }
+      return mapa;
+    }
+    // Função ausente = banco sem a 083. O caminho antigo assume, porque contar
+    // devagar é melhor que não avisar sobre foto repetida. QUALQUER outro erro
+    // também cai para o caminho antigo aqui, e a razão é diferente da do
+    // `repositorio`: lá o risco é esconder uma GRAVAÇÃO que falhou; aqui é uma
+    // leitura de aviso, e ficar sem ela é pior que tentar de novo devagar.
+    const ausente = /PGRST202|does not exist|not find the function/i.test(error.message);
+    if (!ausente) console.error(`[Zion OS] ${RPC_DA_CONTAGEM} falhou:`, error.message);
+  }
+
   try {
     const todas = await repo.listar(
       {
