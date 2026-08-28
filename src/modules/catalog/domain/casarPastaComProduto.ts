@@ -322,15 +322,34 @@ export function casarPastaComProduto(
   // MEDIDO sobre as pastas reais: dos 122 grupos travados por referência
   // repetida, 96 têm um vencedor exato e único — 928 fotos. Os 26 restantes
   // continuam sem casar, e a maioria é empate em 1,00.
+  //
+  // TODOS OS CÓDIGOS DA PASTA, E ELES PRECISAM CONCORDAR.
+  //
+  // A primeira versão retornava no PRIMEIRO código com vencedor único, sem
+  // olhar os demais — e aí uma pasta com dois códigos ("Sandalia 7208.101 ref
+  // 7142.101") dependia da ORDEM das palavras no nome. Renomear a pasta mudava
+  // o produto escolhido, sem nada indicar.
+  //
+  // Ordem não é evidência. Se dois códigos da mesma pasta apontam para produtos
+  // diferentes, a pasta está dizendo duas coisas, e a resposta é a mesma que o
+  // arquivo dá para todo empate: "não casou", que é o erro seguro.
+  const vencedores = new Set<string>();
   for (const c of codigosDaPasta) {
     const candidatos = indice.donos.get(c);
     if (!candidatos || candidatos.length < 2) continue;
     const perfeitos = candidatos.filter(
       (id) => parecencaDeNome(pasta, indice.porId.get(id)?.nome ?? "") >= 0.999
     );
-    if (perfeitos.length === 1) {
-      return { produtoId: perfeitos[0], confianca: 1, via: "referencia+nome" };
-    }
+    // Empate DENTRO de um código já era "não casou"; só o vencedor único conta.
+    if (perfeitos.length === 1) vencedores.add(perfeitos[0]);
+  }
+  if (vencedores.size === 1) {
+    return { produtoId: [...vencedores][0], confianca: 1, via: "referencia+nome" };
+  }
+  if (vencedores.size > 1) {
+    // Dois códigos, dois produtos. A pasta se contradiz — e escolher um seria
+    // exatamente o chute que esta função existe para não dar.
+    return { produtoId: null, confianca: 0, via: null };
   }
 
   // ===========================================================================

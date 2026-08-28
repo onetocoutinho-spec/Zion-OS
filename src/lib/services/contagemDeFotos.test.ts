@@ -97,10 +97,20 @@ test("cor NULA e cor VAZIA caem no mesmo grupo, como em chaveDaFoto", () => {
 });
 
 test("a chave final é montada pelo APP, não pelo SQL", () => {
-  // A função devolve as PARTES (produto_id, cor) e o app monta a chave com
-  // `chaveDaFoto`. Montar a chave em SQL criaria uma segunda definição de
-  // formato, e as duas divergiriam no primeiro ajuste.
-  assert.match(SERVICO, /chaveDaFoto\(linha\.produto_id, linha\.cor \?\? ""\)/);
+  // A função devolve as PARTES e o app monta a chave. Montar a chave em SQL
+  // criaria uma segunda definição de formato, e as duas divergiriam.
+  //
+  // ATUALIZADO PELA 084: a montagem saiu da linha solta e virou
+  // `contagensPorChave`, uma função pura que os DOIS caminhos usam — o da RPC e
+  // o da leitura direta. Foi essa extração que tornou a equivalência
+  // demonstrável em teste (`equivalenciaDaContagem.test.ts`) em vez de
+  // conferida à mão contra o banco.
+  //
+  // E ela não era só cosmética: a 083 repetia a normalização de cor em SQL, e
+  // as duas JÁ DIVERGIAM — `btrim` deixa a tabulação que o `trim()` do
+  // JavaScript remove.
+  assert.match(SERVICO, /contagensPorChave/);
+  assert.match(SERVICO, /export function contagensPorChave/);
   assert.doesNotMatch(DEFINICAO, /\|\|/, "o SQL passou a concatenar a chave");
 });
 

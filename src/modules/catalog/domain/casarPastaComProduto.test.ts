@@ -593,3 +593,36 @@ test("referência ÚNICA continua ganhando do desempate — a ordem importa", ()
   assert.equal(r.produtoId, "i3");
   assert.equal(r.via, "referencia");
 });
+
+test("dois códigos apontando para produtos DIFERENTES não casam", () => {
+  // A primeira versão do desempate retornava no primeiro código com vencedor
+  // único, sem olhar os outros — e aí a ORDEM das palavras no nome da pasta
+  // decidia o produto. Renomear a pasta mudava o resultado, sem nada indicar.
+  //
+  // Ordem não é evidência. Dois códigos discordando é a pasta dizendo duas
+  // coisas, e a resposta é a mesma de todo empate: "não casou".
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "a1", nome: "Sandalia Modare 7208.101 Nobuck", sku: "1" },
+    { id: "a2", nome: "Sandalia Modare 7208.101 Verniz", sku: "2" },
+    { id: "b1", nome: "Tamanco Slide 7142.101 Canelado", sku: "3" },
+    { id: "b2", nome: "Tamanco Slide 7142.101 Elastico", sku: "4" },
+  ];
+  // A pasta bate exatamente com "a1" pelo primeiro código e com "b1" pelo
+  // segundo — dois vencedores, nenhum escolhido.
+  const r = casarPastaComProduto("Sandalia Modare 7208.101 Nobuck 7142.101 Canelado", catalogo);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("dois códigos apontando para o MESMO produto casam", () => {
+  // Concordância não é ambiguidade. Se os dois códigos levam ao mesmo lugar,
+  // não há o que decidir — e recusar aqui seria perder um casamento certo.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "x1", nome: "Papete Modare 7208.101 ref 7300.500 Nobuck", sku: "1" },
+    { id: "x2", nome: "Papete Modare 7208.101 Verniz", sku: "2" },
+    { id: "x3", nome: "Outra Coisa 7300.500 Qualquer", sku: "3" },
+  ];
+  const r = casarPastaComProduto("Papete Modare 7208.101 ref 7300.500 Nobuck", catalogo);
+  assert.equal(r.produtoId, "x1");
+  assert.equal(r.via, "referencia+nome");
+});

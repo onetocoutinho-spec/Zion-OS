@@ -112,15 +112,37 @@ const COLUNAS_DA_CONTAGEM = "produto_id, cor";
 /** A função da 083. Ausente = migração não rodou, e o caminho antigo assume. */
 const RPC_DA_CONTAGEM = "contar_fotos_por_produto_e_cor";
 
-interface LinhaDaContagem {
+export interface LinhaDaContagem {
   produto_id: string;
   cor: string | null;
   total: number;
 }
 
-export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string, number>> {
+/**
+ * As linhas de contagem viram o mapa de chaves — e SOMANDO, nunca sobrescrevendo.
+ *
+ * Pura, e exportada por causa disso: é ela que torna a equivalência entre os
+ * dois caminhos TESTÁVEL. A 083 repetia a normalização de cor em SQL, e os
+ * testes dela só sabiam comparar strings do arquivo `.sql`; a 084 tirou a
+ * normalização de lá, e agora `chaveDaFoto` é o único dono da forma.
+ *
+ * A SOMA é o que a mudança exige. Com a cor vindo CRUA, duas linhas diferentes
+ * ("Preto" e "preto ") caem na mesma chave — sobrescrever perderia uma delas, e
+ * a contagem sairia menor que a verdade. Somar é a resposta certa, e é o que a
+ * leitura direta sempre fez ao contar uma a uma.
+ */
+export function contagensPorChave(
+  linhas: readonly LinhaDaContagem[]
+): Map<string, number> {
   const mapa = new Map<string, number>();
+  for (const l of linhas) {
+    const k = chaveDaFoto(l.produto_id, l.cor ?? "");
+    mapa.set(k, (mapa.get(k) ?? 0) + (Number(l.total) || 0));
+  }
+  return mapa;
+}
 
+export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string, number>> {
   // CONTAR É TRABALHO DE BANCO — migração 083.
   //
   // Oito mil linhas atravessavam a rede para virar oitocentas contagens, e a
@@ -130,12 +152,9 @@ export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string
     if (!supabaseConfigurado) throw new Error("supabase nao configurado");
     const { data, error } = await getSupabase().rpc(RPC_DA_CONTAGEM, { p_cliente: clienteId });
     if (!error) {
-      for (const linha of (data ?? []) as LinhaDaContagem[]) {
-        // `chaveDaFoto` de novo, e não a chave montada em SQL: quem manda na
-        // forma da chave é o app, e a função só devolve as partes.
-        mapa.set(chaveDaFoto(linha.produto_id, linha.cor ?? ""), Number(linha.total) || 0);
-      }
-      return mapa;
+      // A chave é montada AQUI, por `contagensPorChave`, e a função devolve a
+      // cor crua desde a 084 — uma definição só da forma, num lugar só.
+      return contagensPorChave((data ?? []) as LinhaDaContagem[]);
     }
     // Função ausente = banco sem a 083. O caminho antigo assume, porque contar
     // devagar é melhor que não avisar sobre foto repetida. QUALQUER outro erro
@@ -162,12 +181,13 @@ export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string
       },
       COLUNAS_DA_CONTAGEM
     );
-    for (const i of todas) {
-      const k = chaveDaFoto(i.produtoId, i.cor ?? "");
-      mapa.set(k, (mapa.get(k) ?? 0) + 1);
-    }
+    // A MESMA função do caminho da RPC, com cada linha valendo 1. As duas
+    // pontas passam pelo mesmo agregador; é isso que torna a equivalência
+    // demonstrável em teste em vez de conferida à mão contra o banco.
+    return contagensPorChave(
+      todas.map((i) => ({ produto_id: i.produtoId, cor: i.cor ?? null, total: 1 }))
+    );
   } catch {
     return new Map();
   }
-  return mapa;
 }
