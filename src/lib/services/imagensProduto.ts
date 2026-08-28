@@ -62,14 +62,37 @@ export async function listarTodasImagens(): Promise<ImagemProduto[]> {
  * segue como sempre seguiu. Pior contexto, nunca contexto errado — e nunca um
  * bloqueio por causa de uma consulta que não respondeu.
  */
+/**
+ * Só as duas colunas que a contagem lê — e a diferença é de segundos.
+ *
+ * MEDIDO em 27/08/2026, com 8.090 imagens na base:
+ *
+ *     select *              3.896 ms   ~4,8 MB
+ *     produto_id, cor       1.739 ms   ~0,5 MB
+ *
+ * A função devolve um MAPA DE CONTAGENS. Ela nunca lê url, observações, status,
+ * largura, altura — mas as trazia todas, atravessando a rede a cada escolha de
+ * pasta na tela de imagens. Somados aos 5,3 s que o casador gastava reindexando
+ * o catálogo, davam nove segundos de tela parada antes de aparecer a primeira
+ * linha.
+ *
+ * É o mesmo motivo de `selecaoAlternativa` existir, escrito em `repositorio.ts`
+ * sobre outro caso: o navegador é o operário deste desenho, e cada clique puxa
+ * a tabela inteira.
+ */
+const COLUNAS_DA_CONTAGEM = "produto_id, cor";
+
 export async function fotosPorProdutoECor(clienteId: string): Promise<Map<string, number>> {
   const mapa = new Map<string, number>();
   try {
-    const todas = await repo.listar({
-      coluna: "cliente_id",
-      valor: clienteId,
-      campoLocal: "clienteId",
-    });
+    const todas = await repo.listar(
+      {
+        coluna: "cliente_id",
+        valor: clienteId,
+        campoLocal: "clienteId",
+      },
+      COLUNAS_DA_CONTAGEM
+    );
     for (const i of todas) {
       const k = chaveDaFoto(i.produtoId, i.cor ?? "");
       mapa.set(k, (mapa.get(k) ?? 0) + 1);
