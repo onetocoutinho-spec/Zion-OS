@@ -953,3 +953,53 @@ gravado no banco):
     se ela cadastrar as faltantes ... 671 de 674
 
 Os 3 restantes são os sem gênero em lugar nenhum.
+
+### As numerações cadastradas — 11 das 16, e por que não 16 (28/08)
+
+Escritas em `tabelas_medidas` da loja por `scripts/completarTabelasDeMedida.mjs`:
+
+    Molekinho   21=14,0  22=14,5  23=15,0  24=15,5
+    Ipanema     25=16,0  26=16,7
+    Yvate       41=27,3  42=28,0  43=28,7
+    Beira Rio   41=27,3
+    Modare      33=21,5
+
+**Nenhum número foi interpolado.** Todos saíram de `PADRAO_BR`, em
+`tabelasMedidas.ts`, cuja fonte declarada é "guias da Chinelaria Leilane Neves
+(05_Guias_de_Medidas)" e cuja faixa adulta o próprio arquivo diz estar "alinhada
+ao guia Azaleia/Yvate".
+
+**Molekinho 19 e 20 NÃO foram escritos**: `PADRAO_BR` começa em 21, e não há
+fonte para eles em lugar nenhum do repositório. Inventar dois valores para
+destravar 4 anúncios seria pôr no anúncio um comprimento de pé que ninguém
+mediu. Ficam como pergunta para quem tem a tabela do fabricante.
+
+**O que estes números são, e o que não são.** São REFERÊNCIA, não medida de
+fabricante. Conferido marca a marca antes de escrever:
+
+    Yvate       a tabela dela É o PADRAO_BR de 34 a 40, valor a valor —
+                continuar em 41 a 43 pela mesma grade é exato.
+    Modare      grade própria, passo 0,7 terminando em 26,5. A continuação dela
+    Beira Rio   daria 27,2 em 41 e 21,6 em 33; a fonte diz 27,3 e 21,5.
+                Diferença de 1 mm, e o valor escrito é o da fonte, não o meu.
+    Molekinho   tabela em pares; o 25/26 dela bate com o 25 do PADRAO_BR.
+    Ipanema     grade Grendene em pares; a infantil dela não foi conferida.
+
+Quem tiver a tabela do fabricante corrige por cima em `/cliente/medidas` — é
+exatamente para isso que a tabela dela passou a completar a embutida.
+
+**Reversível**: o estado anterior das 14 tabelas foi salvo antes da escrita, e o
+que mudou são 11 linhas acrescentadas em 5 delas. Nenhuma linha existente foi
+alterada ou removida.
+
+### Onde os dois portões deixam o catálogo agora
+
+    User Products ... 667 de 674   (era 258 de manhã, 641 depois do cadastro)
+    clássico ........ 119 de 119   (era ~29)
+    ------------------------------------------
+    total ........... 786 de 793   (era 377)
+
+Os 7 que sobram: 3 sem gênero em lugar nenhum e 4 Molekinho de numeração 19/20,
+os dois números sem fonte. Nenhum deles é código.
+
+E continua faltando o mesmo de manhã: **a conta ML de teste**.
