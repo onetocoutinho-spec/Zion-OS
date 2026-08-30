@@ -1369,3 +1369,52 @@ inteira, e agora está escrita nas duas funções.
 estavam certos por dentro, e o defeito só aparece quando alguém vê os dois lado
 a lado. Foi o primeiro achado do dia que veio de uma pessoa usando a tela, e o
 mais caro dos que apareceram.
+
+### A marca âmbar estava exatamente ao contrário (28/08)
+
+Pedido: "confere se a marca âmbar aparece onde deve". Não aparecia — e o modo
+como errava é pior que não existir.
+
+`oNomeContradiz` comparava sempre o TIPO DE CALÇADO lido do nome contra o valor
+proposto, fosse ele qual fosse. Num grupo "Gênero Meninas", o nome "Sandália
+Molekinha" produz tipo "Sandália", que difere de "Meninas" — e a tela marcava.
+
+    grupo                        itens   âmbar (antes)   âmbar (depois)
+    Gênero Meninas                 277        152              12
+    Gênero Feminino                236        153               —
+    Gênero Meninos                 168         84               6
+    Gênero Masculino                71         61               —
+    Gênero Sem gênero               38         31               —
+    Tipo de calçado Sandália       224          —               —
+    Tipo de calçado Tamanco         35          —               —
+    Tipo de calçado Chinelo         12          —               —
+    ─────────────────────────────────────────────────────────────────
+    TOTAL                        1.061        481              18
+
+**481 marcas falsas em 1.061 propostas, e zero verdadeiras.** Uma marca que
+aparece em metade dos itens deixa de ser marca — é o mesmo defeito do "sinal que
+aparece em 100% das vezes" que o `semProdutoNaoEeSemFoto` registrou, aplicado a
+uma cor na tela.
+
+**Dois consertos:**
+
+1. **Compara o MESMO atributo.** `oNomeContradiz(nome, atributo, valor)` lê do
+   nome o atributo que está sendo julgado, não sempre o tipo.
+2. **Refinar não é contradizer.** O nome diz apenas "Infantil" e produz "Sem
+   gênero"; a proposta cruza nome e palavras-chave e produz "Meninas". Um refina
+   o outro, e marcar isso encheria a tela de âmbar em 481 itens.
+
+**As 18 que sobraram são perguntas de verdade** — o nome diz o lado adulto e a
+proposta diz o infantil:
+
+    Meninas   Sandália Molekinha 2312.260 Turim Fem
+    Meninas   Mochila Feminino Coca Cola 304 Drink Sunset
+    Meninos   Sapatênis Molekinho 2861-204 Neo Masculino
+    Meninos   Sandalia Cartago Baby Masculino 12586 Malaga Baby
+
+Molekinha é marca infantil e o nome diz "Fem" — vale ela decidir. E a mochila
+não é calçado, o que é outra coisa que só aparece quando alguém olha.
+
+**Continua sem verificação visual.** A rota compila e responde 200; onde a marca
+aparece está medido contra os 1.061 nomes reais. A cor na tela eu não vi — o
+portal exige login e eu não digito credenciais.

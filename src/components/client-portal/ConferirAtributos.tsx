@@ -76,7 +76,7 @@ export function ConferirAtributos({ grupos, onConfirmar, onDescartar }: Props) {
 
   /** Os que se contradizem primeiro, e SEMPRE visíveis. Ver o topo do arquivo. */
   function ordenados(g: GrupoDeProposta): { p: ProdutoDaProposta; contradiz: boolean }[] {
-    const com = restantes(g).map((p) => ({ p, contradiz: oNomeContradiz(p.produto, g.valor) }));
+    const com = restantes(g).map((p) => ({ p, contradiz: oNomeContradiz(p.produto, g.atributo, g.valor) }));
     return [...com.filter((x) => x.contradiz), ...com.filter((x) => !x.contradiz)];
   }
 

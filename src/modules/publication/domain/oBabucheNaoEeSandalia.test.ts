@@ -115,29 +115,64 @@ test("nome e palavras-chave vazios não afirmam nada", () => {
 
 import { oNomeContradiz } from "./composicaoConteudo.ts";
 
+const TIPO = "Tipo de calçado";
+const GENERO = "Gênero";
+
 test("o nome que diz OUTRO tipo é contradição — e a tela marca", () => {
   // Os quatro casos reais que entraram no lote de 324.
-  assert.equal(oNomeContradiz("Tamanco Azaleia 19112 Taina", "Chinelo"), true);
-  assert.equal(oNomeContradiz("Sandália Cartago 12489 Atlanta", "Chinelo"), true);
-  assert.equal(oNomeContradiz("Tamanco Modare 7125.244 Microperfuros", "Chinelo"), true);
-  assert.equal(oNomeContradiz("Sandalia Papete Baby Menina Grendene", "Chinelo"), true);
+  assert.equal(oNomeContradiz("Tamanco Azaleia 19112 Taina", TIPO, "Chinelo"), true);
+  assert.equal(oNomeContradiz("Sandália Cartago 12489 Atlanta", TIPO, "Chinelo"), true);
+  assert.equal(oNomeContradiz("Tamanco Modare 7125.244 Microperfuros", TIPO, "Chinelo"), true);
+  assert.equal(oNomeContradiz("Sandalia Papete Baby Menina Grendene", TIPO, "Chinelo"), true);
+});
+
+test("A COMPARAÇÃO É DO MESMO ATRIBUTO — e não era", () => {
+  // A primeira versão comparava sempre o TIPO do nome contra o valor proposto,
+  // fosse ele qual fosse. Num grupo "Gênero Meninas", o nome "Sandália
+  // Molekinha" produzia tipo "Sandália", que difere de "Meninas" — e a tela
+  // marcava. Medido em staging: 481 marcas em 1.061 propostas, TODAS falsas, e
+  // zero nos grupos de tipo, onde a marca faria sentido.
+  //
+  // Marca que aparece em metade dos itens deixa de ser marca.
+  assert.equal(oNomeContradiz("Sandália Molekinha Infantil 2357", GENERO, "Meninas"), false);
+  assert.equal(oNomeContradiz("Chinelo Rider Infantil", GENERO, "Meninos"), false);
+});
+
+test("REFINAR NÃO É CONTRADIZER — 'Sem gênero' convive com Meninas", () => {
+  // O nome diz apenas "Infantil" e produz "Sem gênero"; a proposta cruza nome e
+  // palavras-chave e produz "Meninas". Um refina o outro.
+  assert.equal(oNomeContradiz("Sandália Molekinha Infantil", GENERO, "Meninas"), false);
+  assert.equal(oNomeContradiz("Chinelo Infantil Menino", GENERO, "Sem gênero"), false);
+});
+
+test("mas gênero de lado OPOSTO é contradição de verdade", () => {
+  // Os 18 que sobraram marcados em staging são deste tipo: o nome diz o lado
+  // adulto e a proposta diz o infantil. "Sandália Molekinha 2312.260 Turim Fem"
+  // contra "Meninas" — vale ela olhar.
+  assert.equal(oNomeContradiz("Sandália Molekinha Turim Fem", GENERO, "Meninas"), true);
+  assert.equal(oNomeContradiz("Sapatênis Molekinho Neo Masculino", GENERO, "Meninos"), true);
+  assert.equal(oNomeContradiz("Chinelo Feminino Slim", GENERO, "Masculino"), true);
 });
 
 test("nome que CONCORDA não é contradição", () => {
-  assert.equal(oNomeContradiz("Chinelo Havaianas Top Brasil", "Chinelo"), false);
-  assert.equal(oNomeContradiz("Sandália Molekinha 2357.108", "Sandália"), false);
+  assert.equal(oNomeContradiz("Chinelo Havaianas Top Brasil", TIPO, "Chinelo"), false);
+  assert.equal(oNomeContradiz("Sandália Molekinha 2357.108", TIPO, "Sandália"), false);
 });
 
 test("nome que não diz tipo nenhum NÃO é contradição — só não confirma", () => {
   // O babuche e a papete: o nome não nomeia um tipo aceito, então não há o que
   // contradizer. Marcá-los seria gritar em 330 produtos e ensinar a ignorar a
   // marca justamente onde ela precisa ser vista.
-  assert.equal(oNomeContradiz("Babuche Yvate Kids Liso", "Chinelo"), false);
-  assert.equal(oNomeContradiz("Papete Moleca 5469.135 Santorini", "Chinelo"), false);
-  assert.equal(oNomeContradiz("Calçado Yvate 4020 Confort", "Sandália"), false);
+  assert.equal(oNomeContradiz("Babuche Yvate Kids Liso", TIPO, "Chinelo"), false);
+  assert.equal(oNomeContradiz("Papete Moleca 5469.135 Santorini", TIPO, "Chinelo"), false);
+  assert.equal(oNomeContradiz("Calçado Yvate 4020 Confort", TIPO, "Sandália"), false);
+});
+
+test("atributo que a tela não conhece não marca nada", () => {
+  assert.equal(oNomeContradiz("Chinelo Havaianas", "Material", "EVA"), false);
 });
 
 test("acento e caixa não inventam contradição", () => {
-  assert.equal(oNomeContradiz("SANDALIA CARTAGO 12489", "Sandália"), false);
-  assert.equal(oNomeContradiz("sandália cartago", "Sandália"), false);
+  assert.equal(oNomeContradiz("SANDALIA CARTAGO 12489", TIPO, "Sandália"), false);
+  assert.equal(oNomeContradiz("sandália cartago", TIPO, "Sandália"), false);
 });

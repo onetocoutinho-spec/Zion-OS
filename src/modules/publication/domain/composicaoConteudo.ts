@@ -277,11 +277,34 @@ function footwearParaNome(valor: string): string | undefined {
  * não nomeia tipo nenhum (o babuche, a papete) não contradiz nada — só não
  * confirma, e continua sendo pergunta.
  */
-export function oNomeContradiz(nome: string, valorProposto: string): boolean {
-  const doNome = oQueOTextoAfirma(nome).find((a) => a.id === "FOOTWEAR_TYPE");
+export function oNomeContradiz(
+  nome: string,
+  /** O nome exibido do atributo — "Gênero", "Tipo de calçado". */
+  nomeAtributo: string,
+  valorProposto: string
+): boolean {
+  const id = ID_POR_NOME_EXIBIDO[nomeAtributo];
+  if (!id) return false;
+  const doNome = oQueOTextoAfirma(nome).find((a) => a.id === id);
   if (!doNome) return false;
-  return semAcento(doNome.valorNome) !== semAcento(valorProposto);
+
+  const dele = semAcento(doNome.valorNome);
+  const proposto = semAcento(valorProposto);
+  if (dele === proposto) return false;
+  // Um dos dois é o valor VAGO: não se contradizem, um refina o outro.
+  return !VAGOS.has(dele) && !VAGOS.has(proposto);
 }
+
+/**
+ * Valores que não afirmam um lado — refinar não é contradizer.
+ *
+ * "Sem gênero" é o que o ML chama o infantil sem lado. Um nome que diz apenas
+ * "Infantil" produz esse valor, e a proposta que cruza nome e palavras-chave
+ * produz "Meninas". Marcar isso como contradição encheria a tela de âmbar em
+ * 481 de 1.061 propostas — e uma marca que aparece em metade dos itens deixa de
+ * ser marca, que é o defeito que ela existe para não repetir.
+ */
+const VAGOS = new Set(["sem genero"]);
 
 /** O corte que `montarItemML` aplica ao título. Ver `tituloPublicado`. */
 export const LIMITE_DO_TITULO = 60;
@@ -389,6 +412,11 @@ const NOME_EXIBIDO: Record<string, string> = {
   GENDER: "Gênero",
   FOOTWEAR_TYPE: "Tipo de calçado",
 };
+
+/** O inverso de `NOME_EXIBIDO`, para ler o atributo pelo nome que a tela usa. */
+const ID_POR_NOME_EXIBIDO: Record<string, string> = Object.fromEntries(
+  Object.entries(NOME_EXIBIDO).map(([id, nome]) => [nome, id])
+);
 
 /**
  * O que um texto afirma, na forma que `produto_atributos` guarda.
