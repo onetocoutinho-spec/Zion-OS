@@ -36,6 +36,7 @@ import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guarda
 import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obrigatoriosDoCadastro } from "./cadastroParaOsObrigatorios";
+import { oQueOTituloAfirma } from "@/modules/publication/domain/composicaoConteudo";
 
 
 export interface PedidoDePublicacao {
@@ -383,6 +384,8 @@ export async function publicarNoMercadoLivre(
     let ausentes = obrigatoriosAusentes(payload, exigencias);
     /** O que o SERVIDOR completou — o navegador não sabe disso. Ver o dry abaixo. */
     let completadosPeloCadastro: string[] = [];
+    /** E o que veio do próprio título que vai ao ar. */
+    let completadosPeloTitulo: string[] = [];
 
     // ---- ANTES DE RECUSAR, PERGUNTAR AO CADASTRO.
     //
@@ -411,6 +414,38 @@ export async function publicarNoMercadoLivre(
           preenchidos: completadosPeloCadastro,
           origem: "produto_atributos",
         });
+        ausentes = obrigatoriosAusentes(payload, exigencias);
+      }
+    }
+
+    // ---- E O QUE O PRÓPRIO TÍTULO JÁ AFIRMA.
+    //
+    // Depois do cadastro, e só para o que ainda falta. `payload.title` é a
+    // string que VAI AO AR — não o nome do produto, que não é publicado.
+    //
+    // Medido em 28/08: 5 dos 12 anúncios recusados por gênero tinham a palavra
+    // no título que subiria ("Chinelo Slide Infantil Molekinha", "Chinelo
+    // Olympikus 921 unissex"). O anúncio ia com "Infantil" na linha mais
+    // visível que existe e o sistema o recusava dizendo não saber o gênero.
+    //
+    // Por isso NÃO é a dedução que `doCadastroParaOPayload` recusa: aquela lê o
+    // nome do CADASTRO, que ninguém publica, e afirma sob a conta da lojista o
+    // que ela não disse. Esta acrescenta ao campo estruturado o mesmo dito que
+    // já está na vitrine. Negar aqui seria publicar a afirmação e recusá-la.
+    if (ausentes.length > 0) {
+      const titulo = typeof payload.title === "string" ? payload.title : "";
+      const afirmados = oQueOTituloAfirma(titulo);
+      const podeAfirmar = new Map(afirmados.map((x) => [x.id, x.valorNome]));
+      const doTitulo = ausentes
+        .filter((a) => podeAfirmar.has(a.id))
+        .map((a) => ({ id: a.id, value_name: podeAfirmar.get(a.id)! }));
+      if (doTitulo.length > 0) {
+        payload.attributes = [
+          ...((payload.attributes as Record<string, unknown>[] | undefined) ?? []),
+          ...doTitulo,
+        ];
+        completadosPeloTitulo = doTitulo.map((a) => a.id);
+        log("info", "titulo", { preenchidos: completadosPeloTitulo, origem: "title" });
         ausentes = obrigatoriosAusentes(payload, exigencias);
       }
     }
@@ -456,6 +491,7 @@ export async function publicarNoMercadoLivre(
         // isso. Sem esta lista, quem confere lê um anúncio sem gênero e vai
         // "consertar" o que já está resolvido, ou aprova sem saber o que sobe.
         completadosPeloCadastro,
+        completadosPeloTitulo,
         categoryId: payload.category_id,
         sellerId: canal.sellerId ?? tokens.userId ?? null,
       });

@@ -1118,3 +1118,90 @@ Três saídas, e nenhuma é minha para escolher:
   É a que mais serve à intenção, e a mais cara.
 - **aceitar a dedução pelo nome** — barata e cobre 2 de 12. Publica sob a conta
   dela uma afirmação que ela não fez, e hoje foi recusada de propósito.
+
+### O ERP traz gênero? Conferido no arquivo real (28/08)
+
+Arquivo: a exportação de 19/08, 7,5 MB — a mesma que o passo 3 registra.
+**28 colunas, e nenhuma é `Gênero`.** Nem `Cor`, nem `Tamanho`, o que já era
+sabido: o Magazord não tem esse relatório (confirmado com você em 26/08).
+
+    Id Derivação · Tags Produto · Código · Código Alternativo · Id Produto ·
+    Produto - Derivação · Nome da Derivação · Marca · Modelo · Qtde Estoque ·
+    Id Pai · Código Pai · Código Agrupador · Tipo · Tipo Registro · EAN · NCM ·
+    CEST · Origem Fiscal · Peso · Largura · Altura · Comprimento · Volume ·
+    Palavras Chave · Data de Lançamento · Data Atualização · Ativo
+
+Três candidatas foram abertas antes de concluir:
+
+    Tags Produto    VAZIA nas 7.224 linhas
+    Tipo            um valor só, "Produto" — é tipo de registro
+    Palavras Chave  6.815 de 7.224 preenchidas (94%)
+
+**O gênero está em `Palavras Chave`.** Medido contra os 12 anúncios que o bundle
+recusa por gênero ausente:
+
+    responde ............ 10 de 12   ("chinelo masculino", "sandália infantil")
+    não responde .........  2 de 12   (palavras-chave vazias)
+
+Contra os 2 de 12 que o NOME do produto responde, é outra ordem de grandeza.
+
+### O que isso decide, e o que não decide
+
+Decide que **existe um caminho**: o importador pode gravar em
+`produto_atributos` o que extrair das palavras-chave — e hoje ele não escreve lá
+de jeito nenhum, que é o laço da seção anterior.
+
+Não decide se ler dali conta como resposta DELA. `Palavras Chave` é texto livre
+de SEO, não um campo "Gênero" preenchido num formulário. É mais forte que o nome
+— é descrição deliberada, escrita pela loja, com 94% de preenchimento — e ainda
+assim é leitura de texto livre.
+
+**A forma que resolve a dúvida:** extrair na IMPORTAÇÃO, gravando em
+`produto_atributos` com a origem registrada, e não na publicação. Aí deixa de
+ser dedução em tempo de publicar e vira cadastro com procedência, que ela vê e
+corrige antes de qualquer anúncio subir. E abre o laço para todo mundo: o
+importador passa a ter um caminho até `produto_atributos`, que hoje não existe.
+
+### O título já afirmava — e nós recusávamos (28/08)
+
+Sua observação derrubou uma medição minha e uma doutrina minha, nessa ordem.
+
+**A medição.** Eu tinha testado o NOME DO CADASTRO, não o título do anúncio. São
+strings diferentes, e o modelo escreve no título o gênero que o cadastro não
+tem. Refeito nos 12 recusados:
+
+    nome do cadastro ......  2 de 12
+    TÍTULO do anúncio .....  5 de 12
+    Palavras Chave (ERP) .. 10 de 12
+    os três juntos ........ 11 de 12
+
+**A doutrina.** De manhã recusei preencher `GENDER` por dedução, com o argumento
+de que seria afirmar sob a conta da lojista o que ela não disse. O argumento
+vale para o nome do CADASTRO — string que ninguém publica. Não vale para o
+título:
+
+    Chinelo Slide Infantil Molekinha Nuvem 2338.110 EVA   <- ia ao ar assim
+    Chinelo Olympikus 921 unissex conforto                <- e assim
+
+O anúncio subia com "Infantil" na linha mais visível que existe, e o sistema o
+recusava dizendo não saber o gênero. Preencher o atributo não acrescenta
+afirmação: acrescenta o mesmo dito, no campo que o marketplace lê. Recusar era
+publicar a afirmação e negá-la na mesma operação.
+
+**A regra, nas duas portas.** Ficha → cadastro → título, nessa ordem, e o título
+só quando os dois primeiros calam. `oQueOTituloAfirma` usa o vocabulário fechado
+que já existia (`generoParaId`, `footwearParaId`), e lê o título **cortado nos
+60 do ML** — palavra depois do corte não é publicada, e sobre o que não sobe não
+há coerência a invocar. A porta clássica lê de `payload.title`, que é
+literalmente a string que sobe.
+
+`doCadastroParaOPayload` continua recusando `origem: "nome"`. As duas regras
+convivem porque falam de strings diferentes.
+
+**Medido no T1 depois:**
+
+    User Products   monta 146 -> 148 de 189
+    recusa por gênero    12 -> 7
+
+Os 7 não têm gênero em fonte nenhuma. O resto das 41 recusas é tabela de medida
+de marca (Ipanema infantil, Olympikus, Zaxynina, Cartago) — o item 2.

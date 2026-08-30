@@ -180,6 +180,88 @@ function footwearParaId(valor: string): string | undefined {
   return undefined;
 }
 
+/** Nome canônico do tipo de calçado, para o payload clássico (que usa `value_name`). */
+function footwearParaNome(valor: string): string | undefined {
+  const s = semAcento(valor);
+  if (/chinelo/.test(s)) return "Chinelo";
+  if (/sandal/.test(s)) return "Sandália";
+  if (/tamanco/.test(s)) return "Tamanco";
+  if (/mule/.test(s)) return "Mule";
+  return undefined;
+}
+
+/** O corte que `montarItemML` aplica ao título. Ver `tituloPublicado`. */
+export const LIMITE_DO_TITULO = 60;
+
+/**
+ * O título COMO ELE VAI AO AR — cortado nos 60 do Mercado Livre.
+ *
+ * O corte não é detalhe: é ele que separa "o anúncio afirma isso" de "alguém
+ * escreveu isso em algum lugar". Uma palavra depois do caractere 60 não é
+ * publicada, e a coerência de `oQueOTituloAfirma` vale só sobre o que sobe.
+ */
+export function tituloPublicado(anuncio: AnuncioGerado): string {
+  return (anuncio?.tituloOtimizado ?? "").slice(0, LIMITE_DO_TITULO);
+}
+
+/** Um atributo que o próprio título já declara, nas duas formas que o ML aceita. */
+export interface AfirmacaoDoTitulo {
+  id: string;
+  valorId?: string;
+  valorNome: string;
+}
+
+/**
+ * O QUE O TÍTULO JÁ AFIRMA — e por que ler dali NÃO é palpite.
+ *
+ * ===========================================================================
+ * A CONTRADIÇÃO QUE ISTO DESFAZ, MEDIDA EM 28/08/2026
+ * ===========================================================================
+ *
+ * Dos 12 anúncios que o bundle recusava por gênero ausente, CINCO tinham a
+ * palavra no título que ia subir:
+ *
+ *     Chinelo Slide Infantil Molekinha Nuvem 2338.110 EVA
+ *     Chinelo Rider Infantil Masculino 12673 Core Up
+ *     Sandália Papete Infantil Zaxynina 19060 Moderninha
+ *     Chinelo Ipanema infantil Disney Joy 27323
+ *     Chinelo Olympikus 921 unissex conforto
+ *
+ * O anúncio subiria com "Infantil" na linha mais visível que existe, e o
+ * sistema o recusava dizendo que não sabe o gênero. Isso não é cuidado — é
+ * incoerência.
+ *
+ * ===========================================================================
+ * POR QUE ESTA LEITURA É DIFERENTE DA DEDUÇÃO PELO NOME
+ * ===========================================================================
+ *
+ * `doCadastroParaOPayload` recusa `origem: "nome"`, e continua certo: deduzir
+ * do NOME DO CADASTRO — uma string que não é publicada — para afirmar um
+ * atributo sob a conta da lojista é pôr na boca dela o que ela não disse.
+ *
+ * Aqui a string é outra. É o título que VAI AO AR. Preencher o atributo com o
+ * que ele já declara não acrescenta afirmação nenhuma: acrescenta o mesmo dito,
+ * no campo estruturado, onde o marketplace consegue ler. Recusar seria publicar
+ * a afirmação na vitrine e negá-la na ficha.
+ *
+ * MEDIDO, e a diferença é grande: o nome do cadastro responde 2 dos 12; o
+ * título do anúncio responde 5. O modelo escreve gênero em título que o
+ * cadastro não tem.
+ *
+ * O vocabulário é o MESMO dos leitores da ficha — `generoParaId` e
+ * `footwearParaId`, listas fechadas. Título que não traz a palavra devolve
+ * lista vazia, e o obrigatório continua virando pergunta.
+ */
+export function oQueOTituloAfirma(titulo: string): AfirmacaoDoTitulo[] {
+  const afirma: AfirmacaoDoTitulo[] = [];
+  const genero = generoParaId(titulo);
+  if (genero) afirma.push({ id: "GENDER", valorId: genero.id, valorNome: genero.nome });
+  const tipoId = footwearParaId(titulo);
+  const tipoNome = footwearParaNome(titulo);
+  if (tipoId && tipoNome) afirma.push({ id: "FOOTWEAR_TYPE", valorId: tipoId, valorNome: tipoNome });
+  return afirma;
+}
+
 function primeiroNumero(s: string): number {
   const m = s.match(/\d+/);
   return m ? parseInt(m[0], 10) : 9999;
@@ -205,16 +287,32 @@ export function montarBundleUserProducts(
   const brand = fichaValor(anuncio, ["marca"], doCadastro);
   if (!brand) return { ok: false, motivo: "marca ausente na ficha técnica (obrigatória no ML)" };
 
-  const genero = generoParaId(
-    fichaValor(anuncio, ["genero", "gênero", "genero (masculino/feminino)"], doCadastro)
-  );
+  // FICHA → CADASTRO → TÍTULO QUE VAI AO AR. Ver `oQueOTituloAfirma`.
+  //
+  // O título entra por ÚLTIMO e só quando os dois primeiros calam: ele não é
+  // uma quarta opinião, é a constatação de que o anúncio já declara aquilo na
+  // linha mais visível que tem. Recusar depois disso seria publicar a afirmação
+  // na vitrine e negá-la na ficha — foi o que aconteceu com 5 dos 12 recusados
+  // por gênero em 28/08.
+  const doTitulo = new Map(oQueOTituloAfirma(tituloPublicado(anuncio)).map((x) => [x.id, x]));
+
+  const generoDoTitulo = doTitulo.get("GENDER");
+  const genero =
+    generoParaId(fichaValor(anuncio, ["genero", "gênero", "genero (masculino/feminino)"], doCadastro)) ??
+    (generoDoTitulo?.valorId
+      ? { id: generoDoTitulo.valorId, nome: generoDoTitulo.valorNome }
+      : null);
   if (!genero) {
-    return { ok: false, motivo: "gênero ausente ou não reconhecido na ficha técnica (obrigatório)" };
+    return {
+      ok: false,
+      motivo:
+        "gênero ausente ou não reconhecido — nem na ficha técnica, nem no cadastro, nem no título do anúncio",
+    };
   }
 
-  const footwearTypeId = footwearParaId(
-    fichaValor(anuncio, ["tipo de calcado", "tipo de calçado"], doCadastro)
-  );
+  const footwearTypeId =
+    footwearParaId(fichaValor(anuncio, ["tipo de calcado", "tipo de calçado"], doCadastro)) ??
+    doTitulo.get("FOOTWEAR_TYPE")?.valorId;
   const familyName = (anuncio.tituloOtimizado || brand).slice(0, 60);
   const model = fichaValor(anuncio, ["modelo"], doCadastro) || familyName;
   const descricao = anuncio.descricaoCompleta || anuncio.descricaoCurta || "";

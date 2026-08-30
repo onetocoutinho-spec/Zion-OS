@@ -90,15 +90,31 @@ test("sem marca → falha, não chuta", () => {
   assert.match(r.motivo, /marca/i);
 });
 
+// O TÍTULO PADRÃO DESTE ARQUIVO DIZ "Feminino", e desde 28/08 isso responde.
+//
+// `oQueOTituloAfirma` entrou como última fonte do gênero: quando a ficha e o
+// cadastro calam, vale o que o título QUE VAI AO AR já declara — publicar
+// "Chinelo Slim Feminino" e recusar o anúncio por não saber o gênero era
+// publicar a afirmação e negá-la na mesma operação.
+//
+// Então "ausente" agora exige um título mudo. O caso continua sendo o mesmo, e
+// é o que importa: sem fonte NENHUMA, recusa.
+const SEM_GENERO_NO_TITULO = "Chinelo Slim Conforto Leve";
+
 test("gênero ausente ou não reconhecido → falha", () => {
   const semGenero = montarBundleUserProducts(
-    anuncio({ ficha: [{ atributo: "Marca", valor: "Modare", obrigatorio: true }], variacoes: [v("38")] }),
+    anuncio({
+      titulo: SEM_GENERO_NO_TITULO,
+      ficha: [{ atributo: "Marca", valor: "Modare", obrigatorio: true }],
+      variacoes: [v("38")],
+    }),
     {}
   );
   assert.equal(semGenero.ok, false);
 
   const generoLixo = montarBundleUserProducts(
     anuncio({
+      titulo: SEM_GENERO_NO_TITULO,
       ficha: [
         { atributo: "Marca", valor: "Modare", obrigatorio: true },
         { atributo: "Gênero", valor: "xyz", obrigatorio: true },
@@ -108,6 +124,20 @@ test("gênero ausente ou não reconhecido → falha", () => {
     {}
   );
   assert.equal(generoLixo.ok, false);
+});
+
+test("e com o título dizendo, o MESMO anúncio passa", () => {
+  // O par do teste acima: a única diferença é a palavra no título que sobe.
+  const r = montarBundleUserProducts(
+    anuncio({
+      titulo: "Chinelo Slim Feminino Conforto",
+      ficha: [{ atributo: "Marca", valor: "Modare", obrigatorio: true }],
+      variacoes: [v("38")],
+    }),
+    {}
+  );
+  assert.equal(r.ok, true, r.ok === false ? r.motivo : "");
+  assert.equal(r.ok && r.bundle.generoNome, "Feminino");
 });
 
 test("marca ainda com pendência (⚠️) conta como ausente", () => {
