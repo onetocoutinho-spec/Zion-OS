@@ -84,3 +84,13 @@ next-env.d.ts
 # conta real, refeito por medicao quando precisa — nao e fonte, e nao deve
 # viajar entre maquinas.
 /backup/
+
+# Rascunho de sessao na raiz: log de corrida (`.tmp-fotos.log`), script de uma
+# vez so (`.tmp-rodar.sh`), medicao que se refaz com um comando. Pelo MESMO
+# motivo dos rascunhos do Obsidian acima: seis linhas de entulho em todo
+# `git status` ensinam a passar o olho pela lista de untracked, e e ali que um
+# arquivo que IMPORTA se esconde.
+#
+# O prefixo `.tmp-` e a marca de "nao versionar" — quem quiser guardar um
+# resultado, tira o prefixo e ele volta a aparecer.
+/.tmp-*
