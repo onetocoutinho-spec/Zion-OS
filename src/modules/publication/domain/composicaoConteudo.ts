@@ -262,6 +262,27 @@ function footwearParaNome(valor: string): string | undefined {
   return undefined;
 }
 
+/**
+ * O NOME DO PRODUTO CONTRADIZ ESTE VALOR? — a segunda metade do achado do
+ * babuche.
+ *
+ * Consertar a regra impede a proposta errada de nascer. Não impede a que já
+ * nasceu, nem a que vier de outra fonte — e foi uma proposta já gravada que
+ * pôs "Tamanco Azaleia 19112" dentro de um lote de 324 "Chinelo", onde a
+ * lojista confirmou tudo num toque porque a tela mostrava três itens e
+ * escondia 321.
+ *
+ * Quando o nome nomeia um tipo ACEITO e o valor proposto é OUTRO, isso não é
+ * dúvida: é contradição, e a tela tem que mostrar em vez de esconder. Nome que
+ * não nomeia tipo nenhum (o babuche, a papete) não contradiz nada — só não
+ * confirma, e continua sendo pergunta.
+ */
+export function oNomeContradiz(nome: string, valorProposto: string): boolean {
+  const doNome = oQueOTextoAfirma(nome).find((a) => a.id === "FOOTWEAR_TYPE");
+  if (!doNome) return false;
+  return semAcento(doNome.valorNome) !== semAcento(valorProposto);
+}
+
 /** O corte que `montarItemML` aplica ao título. Ver `tituloPublicado`. */
 export const LIMITE_DO_TITULO = 60;
 
@@ -376,13 +397,86 @@ const NOME_EXIBIDO: Record<string, string> = {
  * banco e ninguém a acha — o defeito mais caro deste dia, e o motivo de o mapa
  * acima morar junto do vocabulário.
  */
-export function atributosParaOCadastro(
-  texto: string
-): { nomeAtributo: string; valorAtributo: string }[] {
-  return oQueOTextoAfirma(texto)
-    .filter((a) => NOME_EXIBIDO[a.id])
-    .map((a) => ({ nomeAtributo: NOME_EXIBIDO[a.id], valorAtributo: a.valorNome }));
+/**
+ * POR QUE O TIPO SAI SÓ DO NOME — achado por quem olhou a tela, em 28/08/2026.
+ *
+ * A primeira versão lia o tipo das palavras-chave junto com o gênero, e a
+ * lojista abriu `/cliente/atributos` e perguntou: "por que tem babuche em
+ * sandálias e babuche em chinelos?".
+ *
+ * Estava. Trinta babuches divididos 18/12 entre os dois grupos — e a causa é
+ * que "babuche" NÃO EXISTE no vocabulário: a categoria MLB273770 aceita quatro
+ * valores, Sandália, Chinelo, Tamanco e Mule, e babuche não é nenhum. Então a
+ * resposta vinha de outra palavra qualquer da lista de busca:
+ *
+ *     "babuche infantil feminina, calçado Yvate kids, babuche em EVA,
+ *      sandália infantil..."   <- é este "sandália" que decidia
+ *
+ * Quem descreveu com "sandália" virou Sandália; quem descreveu com "chinelo"
+ * virou Chinelo. Não era o produto decidindo: era qual sinônimo de SEO a loja
+ * usou para ser encontrada.
+ *
+ * O NOME diz o que a coisa É; as palavras-chave dizem com o que ela CONCORRE.
+ * Medido na planilha: dos 342 babuches, 330 não trazem nenhum tipo aceito no
+ * nome — viram pergunta, que é o certo — e 12 trazem "sandália" no próprio
+ * nome, e para esses a loja mesma já disse.
+ *
+ * ---------------------------------------------------------------------------
+ * O QUE CONTINUA EM ABERTO, e está medido
+ * ---------------------------------------------------------------------------
+ *
+ * A lista de valores aceitos é POR CATEGORIA, e esta aqui é fixa. Medido no ML
+ * em 28/08:
+ *
+ *     MLB273770  Sandália · Chinelo · Tamanco · Mule
+ *     MLB1400    Tênis · Sapato de croche · Chinelo · Sandália · Sapato · Pantufas
+ *
+ * `Tamanco` e `Mule` NÃO são aceitos em MLB1400, e `Tênis`/`Sapato`/`Pantufas`
+ * este módulo nem lê. Propor Tamanco num produto de MLB1400 seria propor um
+ * valor que aquela categoria recusa. Ninguém foi mordido ainda porque a base é
+ * quase toda MLB273770 — mas é o próximo defeito desta função, e ele já tem
+ * nome: `atributosObrigatorios` traz `values` do ML e nós descartamos (é a
+ * tarefa T3 do plano).
+ */
+
+export function atributosParaOCadastro(fontes: {
+  /** O nome do produto no cadastro. Diz O QUE a coisa é. */
+  nome?: string;
+  /** O texto de busca do ERP. Diz COM O QUE ela concorre. */
+  palavrasChave?: string;
+}): { nomeAtributo: string; valorAtributo: string }[] {
+  const nome = (fontes.nome ?? "").trim();
+  const kw = (fontes.palavrasChave ?? "").trim();
+
+  const saida: { nomeAtributo: string; valorAtributo: string }[] = [];
+
+  // GÊNERO: OS DOIS TEXTOS JUNTOS, e não um depois do outro.
+  //
+  // A primeira versão lia o nome primeiro e caía nas palavras-chave só se ele
+  // calasse — e isso jogava fora a resposta mais específica. Medido:
+  //
+  //     nome "Sandália Molekinha Infantil"      -> Sem gênero
+  //     palavras "sandália infantil feminina"   -> Meninas
+  //     OS DOIS JUNTOS                          -> Meninas
+  //
+  // O nome diz "infantil" e as palavras dizem de que lado; separados, o nome
+  // vence e a metade útil se perde. Juntos, `generoParaId` cruza os dois — que é
+  // exatamente o que ele passou a fazer depois do "Infantil Masculino".
+  //
+  // Isto NÃO vale para o tipo de calçado logo abaixo, e a diferença é o ponto:
+  // ali os dois textos DISCORDAM (o nome diz babuche, a busca diz sandália) e
+  // juntá-los deixaria a busca decidir. Aqui eles se COMPLEMENTAM.
+  const genero = oQueOTextoAfirma(`${nome} ${kw}`).find((a) => a.id === "GENDER");
+  if (genero) saida.push({ nomeAtributo: NOME_EXIBIDO.GENDER, valorAtributo: genero.valorNome });
+
+  // TIPO DE CALÇADO: SÓ DO NOME. Ver `TIPO_SO_DO_NOME`.
+  const tipo = oQueOTextoAfirma(nome).find((a) => a.id === "FOOTWEAR_TYPE");
+  if (tipo) saida.push({ nomeAtributo: NOME_EXIBIDO.FOOTWEAR_TYPE, valorAtributo: tipo.valorNome });
+
+  return saida;
 }
+
+
 
 
 function primeiroNumero(s: string): number {

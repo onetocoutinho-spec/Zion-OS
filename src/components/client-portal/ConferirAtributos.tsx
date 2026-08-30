@@ -32,10 +32,27 @@
 //
 // Cada produto tem "não é" ao lado. É a saída do caso isolado sem quebrar o
 // lote: o item sai do grupo e o resto continua confirmável de uma vez.
+//
+// ===========================================================================
+// O QUE ESCONDER CUSTOU, EM 28/08/2026
+// ===========================================================================
+//
+// A primeira versão escondia tudo além dos três primeiros. A lojista confirmou
+// um grupo de 324 "Chinelo" num toque — e 44 deles não eram chinelo: havia
+// "Tamanco Azaleia 19112" e "Sandália Cartago 12489" ali dentro, com o nome do
+// produto dizendo o tipo certo, atrás do botão "ver os outros 321".
+//
+// A regra que gerava aquilo foi consertada. Isto aqui é a outra metade: quando
+// o NOME do produto nomeia um tipo e o valor proposto é OUTRO, o item aparece
+// SEMPRE, marcado, antes dos demais — nunca escondido pelo corte dos três.
+//
+// Esconder o que é rotina é economia de tela. Esconder o que se contradiz é
+// economia de atenção no único lugar onde a atenção era necessária.
 
 import { useState } from "react";
-import { Check, ChevronDown, Sparkles, X } from "lucide-react";
-import type { GrupoDeProposta } from "@/lib/services/propostasDeAtributo";
+import { AlertTriangle, Check, ChevronDown, Sparkles, X } from "lucide-react";
+import { oNomeContradiz } from "@/modules/publication/domain/composicaoConteudo";
+import type { GrupoDeProposta, ProdutoDaProposta } from "@/lib/services/propostasDeAtributo";
 
 interface Props {
   grupos: GrupoDeProposta[];
@@ -56,6 +73,12 @@ export function ConferirAtributos({ grupos, onConfirmar, onDescartar }: Props) {
 
   const chaveDo = (g: GrupoDeProposta) => `${g.atributo}|${g.valor}`;
   const restantes = (g: GrupoDeProposta) => g.produtos.filter((p) => !descartados.has(p.atributoId));
+
+  /** Os que se contradizem primeiro, e SEMPRE visíveis. Ver o topo do arquivo. */
+  function ordenados(g: GrupoDeProposta): { p: ProdutoDaProposta; contradiz: boolean }[] {
+    const com = restantes(g).map((p) => ({ p, contradiz: oNomeContradiz(p.produto, g.valor) }));
+    return [...com.filter((x) => x.contradiz), ...com.filter((x) => !x.contradiz)];
+  }
 
   async function confirmar(g: GrupoDeProposta) {
     const chave = chaveDo(g);
@@ -88,8 +111,14 @@ export function ConferirAtributos({ grupos, onConfirmar, onDescartar }: Props) {
         const chave = chaveDo(g);
         const confirmados = resolvidos[chave];
         const lista = restantes(g);
+        const comMarca = ordenados(g);
+        const contradizem = comMarca.filter((x) => x.contradiz).length;
         const aberto = abertos.has(chave);
-        const ocultos = lista.length - VISIVEIS;
+        // O corte dos três NUNCA esconde uma contradição: o mínimo visível é o
+        // número delas. Ver o topo do arquivo — foi assim que 44 valores
+        // errados entraram num toque.
+        const visiveis = Math.max(VISIVEIS, contradizem);
+        const ocultos = lista.length - visiveis;
 
         if (confirmados !== undefined) {
           return (
@@ -133,13 +162,41 @@ export function ConferirAtributos({ grupos, onConfirmar, onDescartar }: Props) {
               </div>
             </div>
 
+            {contradizem > 0 && (
+              <p
+                role="status"
+                className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200"
+              >
+                {contradizem === 1
+                  ? "1 produto tem outro tipo no próprio nome"
+                  : `${contradizem} produtos têm outro tipo no próprio nome`}{" "}
+                — estão marcados abaixo. Confirmando o grupo, eles vão junto.
+              </p>
+            )}
+
             <ul className="mt-3 space-y-1" role="list">
-              {lista.slice(0, aberto ? undefined : VISIVEIS).map((p) => (
+              {comMarca.slice(0, aberto ? undefined : visiveis).map(({ p, contradiz }) => (
                 <li
                   key={p.atributoId}
-                  className="flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5"
+                  className={
+                    contradiz
+                      ? "flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-2.5 py-1.5"
+                      : "flex items-center gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5"
+                  }
                 >
-                  <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">{p.produto}</span>
+                  {contradiz && (
+                    <AlertTriangle size={12} className="shrink-0 text-amber-400" aria-hidden />
+                  )}
+                  <span
+                    className={
+                      contradiz
+                        ? "min-w-0 flex-1 truncate text-xs text-amber-100"
+                        : "min-w-0 flex-1 truncate text-xs text-zinc-300"
+                    }
+                  >
+                    {p.produto}
+                    {contradiz && <span className="sr-only"> — o nome diz outro tipo</span>}
+                  </span>
                   <button
                     type="button"
                     onClick={() => void descartar(p.atributoId)}

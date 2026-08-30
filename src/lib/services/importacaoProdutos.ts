@@ -760,7 +760,7 @@ function produtoCriadoCodErp(p: { codErp?: string | null }): string {
 
 async function gravarAtributosDasPalavrasChave(
   clienteId: string,
-  criados: readonly { id: string; codErp?: string | null }[],
+  criados: readonly { id: string; nome?: string | null; codErp?: string | null }[],
   linhas: readonly LinhaProduto[]
 ): Promise<number> {
   // CASADO POR `codErp`, NÃO POR ÍNDICE.
@@ -787,7 +787,10 @@ async function gravarAtributosDasPalavrasChave(
     // `atributosParaOCadastro` já descarta o que não tem nome exibido: gravar
     // pelo id cru criaria a linha e ninguém a acharia. A regra mora junto do
     // vocabulário, e o backfill do ERP chama a MESMA.
-    for (const a of atributosParaOCadastro(texto)) {
+    // O NOME diz o que a coisa é; as palavras-chave dizem com o que ela
+    // concorre. Ver `atributosParaOCadastro` — foi a lojista quem viu a
+    // diferença, olhando babuche dividido entre sandálias e chinelos.
+    for (const a of atributosParaOCadastro({ nome: prod.nome ?? "", palavrasChave: texto })) {
       aGravar.push({
         produtoId: prod.id,
         clienteId,

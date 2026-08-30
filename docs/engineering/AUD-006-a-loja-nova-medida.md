@@ -1311,3 +1311,61 @@ têm gênero em fonte nenhuma — viram pergunta, que é o certo.
 **O que NÃO foi verificado:** a tela autenticada. Ela exige login e eu não
 digito credenciais — a rota compila e responde 200, sem erro de servidor nem de
 console, e é até onde eu chego sozinho. Mesma parede do seletor de pastas.
+
+### "Por que tem babuche em sandálias e babuche em chinelos?" (28/08)
+
+A pergunta é da lojista, olhando `/cliente/atributos`. Estava certa, e o que ela
+achou foi mais do que perguntou.
+
+**O defeito.** O tipo de calçado saía das PALAVRAS-CHAVE. "Babuche" não existe
+no vocabulário — a categoria MLB273770 aceita quatro valores (Sandália, Chinelo,
+Tamanco, Mule) e babuche não é nenhum — então a resposta vinha de outra palavra
+qualquer da lista de busca:
+
+    "babuche infantil feminina, calçado Yvate kids, babuche em EVA,
+     sandália infantil..."        <- era este "sandália" que decidia
+
+Quem a loja descreveu com "sandália" virou Sandália; com "chinelo", Chinelo. Não
+era o produto decidindo: era qual sinônimo de SEO ela usou para ser encontrada.
+
+**O dano, medido.** Ela já havia confirmado o maior grupo — 324 "Chinelo" num
+toque. **44 deles não eram chinelo:** 17 papetes, 12 babuches e 15 outros, entre
+eles "Tamanco Azaleia 19112" e "Sandália Cartago 12489" — produtos cujo PRÓPRIO
+NOME diz o tipo certo. Revertidos com autorização dela; os 280 corretos ficaram.
+
+**Os dois consertos, porque a regra sozinha não bastava:**
+
+1. **O tipo sai do NOME, nunca das palavras-chave.** O nome diz o que a coisa é;
+   as palavras-chave dizem com o que ela concorre. Dos 342 babuches da planilha,
+   330 não trazem tipo aceito no nome — viram pergunta — e 12 trazem "sandália"
+   no próprio nome, e para esses a loja já respondeu.
+2. **A tela MOSTRA a contradição.** Consertar a regra impede a proposta errada de
+   nascer, não a que já nasceu. Quando o nome nomeia um tipo e o valor proposto é
+   outro, o item aparece sempre, marcado, antes dos demais — nunca escondido
+   pelo corte dos três primeiros.
+
+**O erro de desenho era meu.** Mostrei três produtos e escondi 321 atrás de "ver
+os outros", para o botão de confirmar caber na tela do telefone. Otimizei para o
+toque ser fácil e não para ela poder discordar. Esconder o que é rotina é
+economia de tela; esconder o que se contradiz é economia de atenção no único
+lugar onde a atenção era necessária.
+
+**E um segundo erro, achado ao medir o conserto.** A primeira versão lia o gênero
+do nome primeiro e só caía nas palavras-chave se ele calasse — e isso jogava fora
+a resposta mais específica ("Sem gênero" saltou de 40 para 117 propostas). O nome
+diz "infantil" e as palavras dizem de que lado; **juntos** dão Meninas. Para o
+gênero os dois textos se COMPLEMENTAM; para o tipo eles DISCORDAM. É a diferença
+inteira, e agora está escrita nas duas funções.
+
+**Depois de tudo, em staging:**
+
+    1.341 atributos · 1.061 propostas · 280 confirmados
+    tipo de calçado 551 · com o nome contradizendo: 0
+
+    277 Meninas · 236 Feminino · 224 Sandália · 168 Meninos
+     71 Masculino · 38 Sem gênero · 35 Tamanco · 12 Chinelo
+
+**O que isso ensinou sobre o método.** Nenhum teste meu pegaria: os dois grupos
+estavam certos por dentro, e o defeito só aparece quando alguém vê os dois lado
+a lado. Foi o primeiro achado do dia que veio de uma pessoa usando a tela, e o
+mais caro dos que apareceram.

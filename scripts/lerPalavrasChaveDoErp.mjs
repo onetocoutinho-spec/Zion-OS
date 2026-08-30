@@ -124,7 +124,9 @@ for (const p of produtos) {
     semPalavras++;
     continue;
   }
-  for (const a of atributosParaOCadastro(kw)) {
+  // Nome E palavras-chave, e cada um responde uma coisa: o tipo sai do nome
+  // (foi o babuche que ensinou), o gênero sai dos dois.
+  for (const a of atributosParaOCadastro({ nome: p.nome ?? "", palavrasChave: kw })) {
     if (existentes.has(`${p.id}|${a.nomeAtributo}`)) continue;
     aGravar.push({
       produto_id: p.id,
