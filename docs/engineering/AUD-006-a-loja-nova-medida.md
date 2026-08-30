@@ -1064,3 +1064,57 @@ que preenche a ficha ali é a importação, não o cadastro.
 **Como não repetir:** o script não diz em que base está falando. Imprimir a
 origem (`NEXT_PUBLIC_SUPABASE_URL`) na primeira linha teria posto "produção" na
 tela em cada uma das seis medições de hoje.
+
+---
+
+## POR QUE A LOJA NOVA CHEGA SEM ATRIBUTO — investigado em 28/08
+
+A pergunta era por que o T1 tem ZERO linhas em `produto_atributos` e a loja real
+tem 549. A resposta explica as duas, e abre um buraco no caminho da intenção.
+
+`produto_atributos` tem **exatamente dois escritores**:
+
+1. `components/produtos/AbaAtributos.tsx` — um por vez, à mão, na tela
+   `/produtos/[id]`, que é **da equipe**.
+2. `services/importarAnunciosML.ts` — o "enriquecer", que copia de volta os
+   atributos dos anúncios que a loja **já tem publicados** no Mercado Livre.
+
+A loja de produção tem 549 porque já vende no ML: o enriquecer leu os anúncios
+vivos dela. O T1 tem zero porque veio de planilha de ERP e nunca publicou.
+
+### O laço, e ele está fechado
+
+Para quem nunca publicou, os quatro caminhos até o gênero:
+
+| caminho | estado |
+|---|---|
+| planilha do ERP | `CAMPOS_MAPEAVEIS` tem 18 campos, **nenhum** é atributo |
+| enriquecer do ML | precisa de anúncio publicado, e publicar é o que falta |
+| a lojista | o portal dela **não tem** onde informar atributo |
+| pelo nome | responde **2 dos 12** medidos, e publicar dedução foi recusado |
+
+**Atributo vem de anúncio publicado; publicar exige atributo.** É a mesma forma
+do defeito que peso e dimensão tiveram em 26/08, e que aquele arquivo registra:
+*"o importador NÃO TINHA ONDE COLOCAR. Não era falha de mapeamento: o campo não
+existia."*
+
+E está no caminho crítico da intenção — "publica sem ninguém da Zion em nenhum
+passo". Hoje, para esses anúncios, ela não publica: o único lugar de informar o
+atributo é uma tela da Zion.
+
+### O que o conserto de hoje realmente cobre
+
+Ele funcionou nos 500 anúncios da loja real **porque ela já vendia**. Numa loja
+nova não há o que completar. `oCadastroDaLojaNovaChegaVazio.test.ts` fixa isso —
+falha no dia em que o laço se abrir, que é o dia de reescrever esta seção.
+
+### A decisão que fica para você
+
+Três saídas, e nenhuma é minha para escolher:
+
+- **coluna no importador** — o ERP da Chinelaria traz gênero? Se traz, é o
+  conserto mais barato e tem precedente exato (peso/dimensão, 26/08).
+- **perguntar no portal** — a pendência já existe e é lida; falta onde responder.
+  É a que mais serve à intenção, e a mais cara.
+- **aceitar a dedução pelo nome** — barata e cobre 2 de 12. Publica sob a conta
+  dela uma afirmação que ela não fez, e hoje foi recusada de propósito.
