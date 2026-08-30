@@ -8,7 +8,11 @@ import type { AnuncioGerado } from "../../../lib/agentes/esteira";
 import type { LinhaGuiaTamanho } from "../../../lib/marketplaces/mercadolivre";
 import type { VariacaoUP } from "../../integration/domain/mlUserProducts";
 import { normalizarTamanho } from "./normalizarTamanho.ts";
-import { medidaDoTamanho, medidasDaMarca } from "../../catalog/domain/tabelasMedidas.ts";
+import {
+  medidaDoTamanho,
+  medidasDaMarca,
+  type TabelaDaLoja,
+} from "../../catalog/domain/tabelasMedidas.ts";
 
 export const GENERO_ID = {
   feminino: "339665",
@@ -174,6 +178,8 @@ export function montarBundleUserProducts(
     tipoAnuncio?: string;
     /** `produto_atributos` por `fichaDoCadastro` — o que a ficha não trouxer. */
     doCadastro?: ReadonlyMap<string, string>;
+    /** As tabelas de `/cliente/medidas` — ver `comAsDaLoja`. */
+    tabelasDaLoja?: readonly TabelaDaLoja[];
   } = {}
 ): ResultadoBundle {
   const { doCadastro } = opts;
@@ -194,12 +200,14 @@ export function montarBundleUserProducts(
   const model = fichaValor(anuncio, ["modelo"], doCadastro) || familyName;
   const descricao = anuncio.descricaoCompleta || anuncio.descricaoCurta || "";
 
-  const cmPorTamanho = medidasDaMarca(brand);
+  const cmPorTamanho = medidasDaMarca(brand, opts.tabelasDaLoja ?? []);
 
   const variacoes: VariacaoUP[] = [];
   const cmPorTamanhoNaGuia = new Map<string, number>();
   const tokensPorMedida = new Map<number, string[]>();
   const vistos = new Set<string>();
+  /** Tamanhos que a tabela da marca não cobre — a recusa os nomeia. */
+  const semMedida: string[] = [];
 
   for (const v of anuncio.variacoes ?? []) {
     const norm = normalizarTamanho(v.tamanho);
@@ -208,7 +216,17 @@ export function montarBundleUserProducts(
     // Par contra tabela individual continua recusado, e não há aproximação —
     // ver `medidaDoTamanho`.
     const cm = medidaDoTamanho(cmPorTamanho, norm.valor);
-    if (cm === undefined) continue; // sem medida da marca → não entra na guia
+    if (cm === undefined) {
+      // GUARDA QUAL TAMANHO FICOU DE FORA, para a recusa poder nomeá-lo.
+      //
+      // Antes a recusa dizia só "nenhuma variação com tamanho publicável +
+      // medida da marca X" — verdade, e sem dizer o que fazer. Medido em 28/08,
+      // os 30 recusados desta base faltavam por tamanho FORA da faixa da
+      // tabela: Molekinho 19 a 24, Ipanema 25 e 26, Yvate 41 a 43. Dizer o
+      // número transforma a parede numa linha para ela cadastrar.
+      if (!semMedida.includes(norm.valor)) semMedida.push(norm.valor);
+      continue;
+    }
 
     const cor = (v.cor ?? "").trim();
     const chave = `${norm.valor}|${cor.toLowerCase()}`;
@@ -241,7 +259,13 @@ export function montarBundleUserProducts(
   if (variacoes.length === 0) {
     return {
       ok: false,
-      motivo: `nenhuma variação com tamanho publicável + medida da marca "${brand}"`,
+      motivo: semMedida.length
+        ? `a tabela de medidas da marca "${brand}" não cobre ${
+            semMedida.length === 1 ? "o tamanho" : "os tamanhos"
+          } ${semMedida.join(", ")}. Abra Medidas, acrescente ${
+            semMedida.length === 1 ? "essa numeração" : "essas numerações"
+          } na tabela da ${brand} e publique de novo.`
+        : `nenhuma variação com tamanho publicável + medida da marca "${brand}"`,
     };
   }
 

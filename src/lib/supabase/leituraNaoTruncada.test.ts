@@ -146,6 +146,11 @@ const DISPENSADAS: Record<string, string> = {
   // respondeu. Mesmo número medido.
   "src/lib/services/ensaioDaPublicacao.ts::produto_atributos":
     "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
+  // As tabelas de medida da loja, lidas no ensaio congelado pelo mesmo motivo
+  // que `otimizar/worker` já as lia: uma por MARCA que a loja vende. Cresce com
+  // o mostruário, não com o catálogo.
+  "src/lib/services/ensaioDaPublicacao.ts::tabelas_medidas":
+    "eq(cliente_id) — 14 linhas na base, uma por marca (28/08/2026).",
 };
 
 function arquivosDeCodigo(dir: string, achados: string[] = []): string[] {

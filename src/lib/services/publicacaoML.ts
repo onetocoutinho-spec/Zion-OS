@@ -10,6 +10,7 @@ import {
   fichaDoCadastro,
 } from "../../modules/publication/domain/composicaoConteudo";
 import { listarAtributosDoProduto } from "./produtoAtributos";
+import { listarTabelasDoCliente } from "./tabelasMedidasCliente";
 import { irmaosDaFamilia } from "../../modules/publication/domain/irmaosDaFamilia";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
@@ -22,7 +23,7 @@ import {
 } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
 import { autorAtual } from "../auth/autorAtual";
-import type { AnuncioGeradoRegistro } from "../types";
+import type { AnuncioGeradoRegistro, TabelaMedida } from "../types";
 import {
   capturarDecisao,
   type CapturaDeDecisao,
@@ -237,6 +238,19 @@ async function executarPublicacao(
     }
   }
 
+  // E AS TABELAS DE MEDIDA DELA, pelo mesmo motivo e com a mesma regra.
+  //
+  // `medidasDaMarca` lia so a lista embutida no software. Medido em 28/08: 30
+  // dos 674 recusados por tamanho FORA da faixa dessa lista — Molekinho 19 a
+  // 24, Ipanema 25 e 26, Yvate 41 a 43. As medidas nao estao no software e nao
+  // e para estarem; o que faltava era a resposta dela chegar ate aqui.
+  let tabelasDaLoja: TabelaMedida[] = [];
+  try {
+    tabelasDaLoja = await listarTabelasDoCliente(registro.clienteId);
+  } catch {
+    tabelasDaLoja = [];
+  }
+
   const payload = montarPreviewML(registro, { ...opcoes, pictures });
   if (!go) {
     // A simulação também precisa avisar: é justamente onde dá para corrigir
@@ -245,6 +259,7 @@ async function executarPublicacao(
       pictures,
       tipoAnuncio: opcoes.tipoAnuncio,
       doCadastro,
+      tabelasDaLoja,
     });
     return { dry: true, payload, ...(previa.ok && previa.avisos ? { avisos: previa.avisos } : {}) };
   }
@@ -256,6 +271,7 @@ async function executarPublicacao(
     pictures,
     tipoAnuncio: opcoes.tipoAnuncio,
     doCadastro,
+    tabelasDaLoja,
   });
   const userProducts = bundleUP.ok ? bundleUP.bundle : undefined;
   const avisosDoBundle = bundleUP.ok ? bundleUP.avisos : undefined;

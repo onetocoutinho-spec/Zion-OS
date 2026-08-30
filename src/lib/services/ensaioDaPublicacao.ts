@@ -126,7 +126,21 @@ export async function ensaioDoRegistro(clienteDaSessao: string, reg: AnuncioGera
       valorAtributo: a.valor_atributo ?? "",
     }))
   );
-  const bundle = montarBundleUserProducts(reg.anuncio, { pictures: fotos, doCadastro });
+  // E as tabelas de medida dela, pela mesma razao do cadastro: este e o pedido
+  // que o clique publica, e ele nao pode recusar por uma medida que ela tem.
+  const { data: tabelas } = await getSupabaseAdmin()
+    .from("tabelas_medidas")
+    .select("marca, linhas")
+    .eq("cliente_id", clienteDaSessao);
+  const tabelasDaLoja = ((tabelas ?? []) as { marca: string | null; linhas: unknown }[]).map((t) => ({
+    marca: t.marca ?? "",
+    linhas: (Array.isArray(t.linhas) ? t.linhas : []) as { rotulo: string; valor: string }[],
+  }));
+  const bundle = montarBundleUserProducts(reg.anuncio, {
+    pictures: fotos,
+    doCadastro,
+    tabelasDaLoja,
+  });
   const { data: irmaos } = await getSupabaseAdmin()
     .from("anuncios_gerados")
     .select("ml_item_id")

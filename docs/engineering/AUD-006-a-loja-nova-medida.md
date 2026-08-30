@@ -910,3 +910,46 @@ que esses anúncios usam.
 
 Continua parado no mesmo lugar do CHECKPOINT 1: **falta a conta ML de teste**.
 Nenhum destes 760 foi ao ar, e nenhum vai antes dessa decisão.
+
+### As medidas de marca que faltam (28/08)
+
+Os 30 recusados por medida foram medidos um a um. Todos por TAMANHO FORA DA
+FAIXA da tabela embutida no software — nenhum por erro de leitura:
+
+    Molekinho  19 a 24   a tabela embutida começa em 25/26   (bebê)
+    Ipanema    25 e 26   começa em 33/34                     (infantil)
+    Yvate      41 a 43   termina em 40
+    Beira Rio  41        termina em 40
+    Modare     33        começa em 34
+
+(O sufixo "BR" do cadastro — "38 BR", "41-42 BR", "36,0 BR", 34 das 67 formas
+distintas — foi conferido e NÃO é o problema: `normalizarTamanho` já o resolve.)
+
+**Essas medidas não estão no software e não é para estarem.** Centímetro de
+calçado é o que a compradora usa para decidir o pé; inventar aqui é a mesma
+falta que `medidaDoTamanho` recusa quando escolhe entre 35 e 36 e "inventa 0,7
+cm". Não cadastrei nenhuma.
+
+O que faltava era a resposta DELA chegar. A lojista tem editor em
+`/cliente/medidas` e 14 tabelas gravadas em `tabelas_medidas` — e
+`medidasDaMarca` lia só a lista embutida. Ela editava, salvava, e a publicação
+não mudava: a parede não tinha maçaneta.
+
+Agora a tabela dela COMPLETA a embutida — acrescenta o que falta, corrige o que
+ela discorda, e não apaga o que ela não repetiu. E a recusa deixou de ser um
+beco:
+
+    antes   nenhuma variação com tamanho publicável + medida da marca "Molekinho"
+    agora   a tabela de medidas da marca "Molekinho" não cobre o tamanho 21.
+            Abra Medidas, acrescente essa numeração na tabela da Molekinho e
+            publique de novo.
+
+**Medido, e o número de hoje não muda:** 641 de 674, igual — as 14 tabelas dela
+são cópia das embutidas, então não há nada novo para acrescentar ainda. O que
+mudou é que agora existe o que fazer. Simulando em memória as faltantes (nada
+gravado no banco):
+
+    hoje ............................ 641 de 674
+    se ela cadastrar as faltantes ... 671 de 674
+
+Os 3 restantes são os sem gênero em lugar nenhum.

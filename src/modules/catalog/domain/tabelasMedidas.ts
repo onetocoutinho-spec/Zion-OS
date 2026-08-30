@@ -9,6 +9,13 @@
 // Modare = números oficiais do cliente; demais = referência (confirmar no
 // modelo). Vizzano/Moleca/Actvitta ainda pendentes → caem no padrão BR.
 
+//
+// E ACIMA DE TODAS, desde 28/08/2026, a tabela que a LOJISTA mantém em
+// `/cliente/medidas` — ver `comAsDaLoja`. Esta lista é o que o software sabe;
+// a dela é o que a loja sabe, e a loja é quem vende o sapato.
+
+import { normalizarTamanho } from "../../publication/domain/normalizarTamanho";
+
 /** Padrão BR: numeração → comprimento do pé (cm). Referência de fallback. */
 export const PADRAO_BR: Record<string, number> = {
   // Infantil
@@ -206,9 +213,95 @@ const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
  * As chaves seguem o formato canônico do `normalizarTamanho` (pares "33/34"
  * ou individuais "38"), então o join com as variações é direto.
  */
-export function medidasDaMarca(marca: string): Record<string, number> {
+export function medidasDaMarca(
+  marca: string,
+  /**
+   * As tabelas que A LOJISTA mantém em `/cliente/medidas`. Ver `comAsDaLoja`.
+   */
+  daLoja: readonly TabelaDaLoja[] = []
+): Record<string, number> {
   const key = normalizarMarca(marca ?? "");
-  return TABELAS_MARCA[key] ?? PADRAO_REFERENCIA;
+  return comAsDaLoja(TABELAS_MARCA[key] ?? PADRAO_REFERENCIA, marca, daLoja);
+}
+
+/** Uma tabela como o cadastro dela guarda: rótulo do tamanho + "24,5 cm". */
+export interface TabelaDaLoja {
+  marca: string;
+  linhas: readonly { rotulo: string; valor: string }[];
+}
+
+/**
+ * A TABELA DA LOJISTA COMPLETA A NOSSA — medido em 28/08/2026.
+ *
+ * ===========================================================================
+ * O QUE ESTAVA ACONTECENDO
+ * ===========================================================================
+ *
+ * `medidasDaMarca` lia só `TABELAS_MARCA`, a lista embutida aqui. A lojista tem
+ * um editor de tabelas em `/cliente/medidas`, tem 14 tabelas gravadas em
+ * `tabelas_medidas`, e NENHUMA delas chegava à publicação: elas alimentavam o
+ * briefing dos agentes e mais nada.
+ *
+ * O efeito, nos 674 anúncios de calçado publicáveis desta base: 30 recusados
+ * por "nenhuma variação com tamanho publicável + medida da marca" — todos por
+ * tamanho FORA da faixa da tabela embutida.
+ *
+ *     Molekinho  19 a 24   a tabela embutida começa em 25/26  (bebê)
+ *     Ipanema    25 e 26   começa em 33/34                    (infantil)
+ *     Yvate      41 a 43   termina em 40
+ *     Beira Rio  41        termina em 40
+ *     Modare     33        começa em 34
+ *
+ * Nenhuma dessas medidas está no software, e NÃO É PARA ESTAR: centímetro de
+ * calçado é o que a compradora usa para decidir o pé, e inventar aqui é a
+ * mesma falta que `medidaDoTamanho` recusa quando escolhe entre 35 e 36.
+ *
+ * O que dá para fazer — e é o que faltava — é deixar a resposta dela chegar. Com
+ * isto, a lojista abre a tabela da Molekinho, acrescenta 19 a 24, e publica. Sem
+ * isto, ela edita a tabela, salva, e nada muda: a parede não tem maçaneta.
+ *
+ * ===========================================================================
+ * COMPLETA, NÃO SUBSTITUI
+ * ===========================================================================
+ *
+ * A dela entra por cima da nossa, rótulo a rótulo — acrescenta o que falta e
+ * corrige o que ela discorda. Substituir apagaria os tamanhos que ela não
+ * repetiu na dela, e sumir com tamanho publicável não é o que alguém quer ao
+ * editar uma tabela.
+ *
+ * Rótulo ilegível ou valor sem número é IGNORADO, não vira zero: zero seria um
+ * pé de 0 cm no anúncio.
+ */
+export function comAsDaLoja(
+  base: Record<string, number>,
+  marca: string,
+  daLoja: readonly TabelaDaLoja[]
+): Record<string, number> {
+  const key = normalizarMarca(marca ?? "");
+  if (!key || daLoja.length === 0) return base;
+
+  const juntas = { ...base };
+  let mudou = false;
+  for (const t of daLoja) {
+    if (normalizarMarca(t.marca ?? "") !== key) continue;
+    for (const l of t.linhas ?? []) {
+      const rotulo = normalizarTamanho(l.rotulo);
+      if (!rotulo.ok) continue;
+      const cm = cmDaLinha(l.valor);
+      if (cm === undefined) continue;
+      juntas[rotulo.valor] = cm;
+      mudou = true;
+    }
+  }
+  return mudou ? juntas : base;
+}
+
+/** "24,5 cm" → 24.5. `undefined` quando não há número — nunca zero. */
+function cmDaLinha(valor: string | undefined | null): number | undefined {
+  const m = /(\d+(?:[.,]\d+)?)/.exec(String(valor ?? ""));
+  if (!m) return undefined;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 /**
