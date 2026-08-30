@@ -50,7 +50,7 @@
 // SEMPRE rode com `--simular` antes. Ele imprime quantos mudam e para onde, sem
 // escrever nada.
 
-import { createClient } from "@supabase/supabase-js";
+import { clienteDaBase } from "./aBaseDoComando.mjs";
 import { comAGradeDoCadastro } from "../src/lib/agentes/esteira.ts";
 import { montarVariacoes } from "../src/modules/publication/domain/variacoesDoAnuncio.ts";
 
@@ -61,13 +61,7 @@ if (!clienteId) {
   process.exit(1);
 }
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !chave) {
-  console.error("faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-const sb = createClient(url, chave, { auth: { persistSession: false } });
+const sb = clienteDaBase();
 
 /** Leitura paginada: o PostgREST corta em 1000 e o catálogo passa disso. */
 async function tudo(tabela, colunas, filtro = (q) => q) {

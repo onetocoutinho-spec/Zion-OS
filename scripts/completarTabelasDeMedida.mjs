@@ -38,7 +38,7 @@
 //
 // SEM `--gravar` não escreve nada.
 
-import { createClient } from "@supabase/supabase-js";
+import { clienteDaBase } from "./aBaseDoComando.mjs";
 import { PADRAO_BR } from "../src/modules/catalog/domain/tabelasMedidas.ts";
 import { normalizarTamanho } from "../src/modules/publication/domain/normalizarTamanho.ts";
 
@@ -69,13 +69,7 @@ if (!clienteId) {
   process.exit(1);
 }
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !chave) {
-  console.error("faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-const sb = createClient(url, chave, { auth: { persistSession: false } });
+const sb = clienteDaBase();
 
 const paraLinha = (cm) => `${cm.toFixed(1).replace(".", ",")} cm`;
 const primeiroNumero = (s) => {

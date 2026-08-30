@@ -54,7 +54,7 @@
 //
 // Sem `--apagar` ele só mede e lista, um por um.
 
-import { createClient } from "@supabase/supabase-js";
+import { clienteDaBase } from "./aBaseDoComando.mjs";
 import { marcadoresDoCatalogo } from "../src/modules/catalog/domain/codigoQueEPalavra.ts";
 
 const [clienteId] = process.argv.slice(2);
@@ -63,13 +63,7 @@ if (!clienteId) {
   console.error("uso: ... apagarProdutosMarcadores.mjs <clienteId> [--apagar]");
   process.exit(1);
 }
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !chave) {
-  console.error("faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-const sb = createClient(url, chave, { auth: { persistSession: false } });
+const sb = clienteDaBase();
 const BUCKET = "produtos-imagens";
 
 /** Leitura paginada — o PostgREST corta em 1000 e o catálogo passa disso. */

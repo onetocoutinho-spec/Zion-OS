@@ -51,7 +51,7 @@
 // sem extensão e o resolvedor de ESM do node exige extensão.
 
 import { readdirSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+import { clienteDaBase } from "./aBaseDoComando.mjs";
 import {
   casarPastaComProduto,
   nivelDoProdutoPorProfundidade,
@@ -63,13 +63,7 @@ if (!clienteId || !pastaRaiz) {
   console.error("uso: ... limparFotosDoProdutoErrado.mjs <clienteId> <pastaRaiz> [--apagar]");
   process.exit(1);
 }
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !chave) {
-  console.error("faltam NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
-const sb = createClient(url, chave, { auth: { persistSession: false } });
+const sb = clienteDaBase();
 const BUCKET = "produtos-imagens";
 const IMAGEM = /\.(jpe?g|png|webp)$/i;
 

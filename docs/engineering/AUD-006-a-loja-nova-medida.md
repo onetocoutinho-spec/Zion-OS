@@ -1003,3 +1003,64 @@ Os 7 que sobram: 3 sem gênero em lugar nenhum e 4 Molekinho de numeração 19/2
 os dois números sem fonte. Nenhum deles é código.
 
 E continua faltando o mesmo de manhã: **a conta ML de teste**.
+
+---
+
+## CORREÇÃO — 28/08, fim do dia: eu medi a base errada
+
+Tudo que este documento registrou hoje sob "os 793 publicáveis" foi medido em
+**produção**, não na base do percurso T1. São duas bases, e elas não se parecem:
+
+                          staging (T1)   produção (loja real)
+    produtos                     983               72
+    fotos                      8.090              641
+    anúncios                     410              880
+    publicáveis                  361              793
+    JÁ NO AR                       0              792
+    produto_atributos              0              549
+    tabelas_medidas                0               14
+
+O erro entrou no primeiro comando do dia: `ensaioDaPublicacao.mjs` rodou com
+`--env-file=.env.local`, que aponta para produção. Cheguei a rodá-lo com o
+cliente do T1 (`065e0f75`), recebi "anúncios: 0" e li isso como id errado — em
+vez de como base errada. Troquei o id e segui.
+
+**O que isso muda:**
+
+- Os números de hoje — 291→788 no clássico, 258→641→667 no User Products —
+  descrevem anúncios que **já estão no ar**: 792 dos 793. Que os portões os
+  deixem passar é coerente (eles passaram), mas "prontos para publicar" está
+  errado. Havia **um** anúncio publicável sem MLB.
+- As 11 numerações de medida foram gravadas nas tabelas da **loja real**. É onde
+  elas servem — ela usa aquelas tabelas —, mas eu as descrevi como conserto do
+  catálogo do percurso, e não são.
+- Na base do T1 os dois consertos de hoje **não resolvem nada**: `produto_atributos`
+  e `tabelas_medidas` estão VAZIAS ali. O ensaio contra staging diz, com todas as
+  letras: `destes, completados pelo cadastro ..... 0`.
+
+**O passo 7 medido na base certa (28/08, staging, cliente 065e0f75):**
+
+    publicáveis 361 · User Products 189 · clássico 172
+
+    User Products   bundle monta 146 · recusa 43
+                        12  gênero ausente na ficha técnica
+                        31  marca sem tabela de medidas (Ipanema infantil,
+                            Olympikus, Under Armour — marcas que não têm
+                            tabela nenhuma, embutida ou da loja)
+
+    conferência da categoria (sobre os 361)
+                    passariam 288 · faltando atributo 70 · sem categoria 3
+                        56 GENDER · 6 SOCKS_TYPE · 6 LENGTH_TYPE · 4 FOOTWEAR_TYPE
+
+O corte por caminho dentro dos 70 não foi medido — é a mesma conta que eu já
+errei uma vez hoje ao aplicar a conferência clássica ao conjunto inteiro, e não
+vou repetir de cabeça.
+
+**O que continua valendo do dia:** os consertos de código. Eles são corretos e
+os testes os provam; o que estava errado era o conjunto sobre o qual eu contei.
+Numa loja nova — que é o caso do T1 — `produto_atributos` chega vazio, então o
+que preenche a ficha ali é a importação, não o cadastro.
+
+**Como não repetir:** o script não diz em que base está falando. Imprimir a
+origem (`NEXT_PUBLIC_SUPABASE_URL`) na primeira linha teria posto "produção" na
+tela em cada uma das seis medições de hoje.

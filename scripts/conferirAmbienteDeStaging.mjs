@@ -28,8 +28,9 @@
 
 import { readFileSync, existsSync } from "node:fs";
 
-const REF_STAGING = "fivlziuvxvhpuibrjwlq";
-const REF_PRODUCAO = "ouynursknlgtmewcdjzr";
+// As refs vivem em `aBaseDoComando.mjs` desde 28/08, e este script importa em
+// vez de repetir: duas listas divergem no dia em que uma delas muda.
+import { REF_STAGING, REF_PRODUCAO } from "./aBaseDoComando.mjs";
 
 const arquivo = process.argv[2] ?? ".env.staging";
 
