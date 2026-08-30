@@ -70,6 +70,22 @@ export async function excluirAtributo(id: string): Promise<void> {
  * perde; isso é aceitável justamente por causa do D2, que reescreve tudo a cada
  * enriquecimento em vez de casar linha a linha.
  */
+/**
+ * Grava atributos PROPOSTOS pela importação — sem apagar nada.
+ *
+ * Irmã de `substituirAtributosDoMarketplace`, e diferente dela no que importa:
+ * aquela SUBSTITUI o conjunto inteiro da origem "Marketplace", porque a
+ * reimportação do ML é a verdade do ML naquele instante. Esta ACRESCENTA, e
+ * nunca apaga: o que ela grava é uma proposta lida das palavras-chave do ERP, e
+ * o que a lojista respondeu à mão não pode ser varrido por uma importação.
+ */
+export async function criarAtributosBulk(
+  atributos: readonly Omit<ProdutoAtributo, "id">[]
+): Promise<void> {
+  if (atributos.length === 0) return;
+  await repo.criarVarios([...atributos], { retornar: false });
+}
+
 export async function substituirAtributosDoMarketplace(
   clienteId: string,
   atributos: readonly { produtoId: string; nomeAtributo: string; valorAtributo: string }[]

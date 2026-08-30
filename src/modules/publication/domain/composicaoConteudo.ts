@@ -198,7 +198,7 @@ export const LIMITE_DO_TITULO = 60;
  *
  * O corte não é detalhe: é ele que separa "o anúncio afirma isso" de "alguém
  * escreveu isso em algum lugar". Uma palavra depois do caractere 60 não é
- * publicada, e a coerência de `oQueOTituloAfirma` vale só sobre o que sobe.
+ * publicada, e a coerência de `oQueOTextoAfirma` vale só sobre o que sobe.
  */
 export function tituloPublicado(anuncio: AnuncioGerado): string {
   return (anuncio?.tituloOtimizado ?? "").slice(0, LIMITE_DO_TITULO);
@@ -212,7 +212,28 @@ export interface AfirmacaoDoTitulo {
 }
 
 /**
- * O QUE O TÍTULO JÁ AFIRMA — e por que ler dali NÃO é palpite.
+ * O QUE UM TEXTO DECLARA, no vocabulário fechado que este módulo já tinha.
+ *
+ * A FUNÇÃO É NEUTRA; a justificativa mora em cada chamador, e elas são
+ * diferentes:
+ *
+ *   TÍTULO DO ANÚNCIO     `publicarNoMercadoLivre` e o bundle. Legítimo porque
+ *                         é a string que VAI AO AR — preencher o atributo com o
+ *                         que ela já declara não acrescenta afirmação nenhuma.
+ *                         Ver a contradição medida logo abaixo.
+ *
+ *   PALAVRAS-CHAVE DO ERP `importacaoProdutos`. Legítimo por outra razão: o
+ *                         resultado vai para `produto_atributos`, com
+ *                         `origem: "Importação"`, ONDE ELA REVISA — e não
+ *                         direto para o payload. Deduzir para propor à lojista
+ *                         é diferente de deduzir para afirmar ao marketplace.
+ *
+ * Chamar isto sobre uma string que ninguém publica E gravar direto no payload
+ * seria a soma errada das duas — é o que `doCadastroParaOPayload` recusa como
+ * `origem: "nome"`.
+ *
+ * ---------------------------------------------------------------------------
+ * A CONTRADIÇÃO DO TÍTULO — e por que ler dali NÃO é palpite.
  *
  * ===========================================================================
  * A CONTRADIÇÃO QUE ISTO DESFAZ, MEDIDA EM 28/08/2026
@@ -252,7 +273,7 @@ export interface AfirmacaoDoTitulo {
  * `footwearParaId`, listas fechadas. Título que não traz a palavra devolve
  * lista vazia, e o obrigatório continua virando pergunta.
  */
-export function oQueOTituloAfirma(titulo: string): AfirmacaoDoTitulo[] {
+export function oQueOTextoAfirma(titulo: string): AfirmacaoDoTitulo[] {
   const afirma: AfirmacaoDoTitulo[] = [];
   const genero = generoParaId(titulo);
   if (genero) afirma.push({ id: "GENDER", valorId: genero.id, valorNome: genero.nome });
@@ -287,14 +308,14 @@ export function montarBundleUserProducts(
   const brand = fichaValor(anuncio, ["marca"], doCadastro);
   if (!brand) return { ok: false, motivo: "marca ausente na ficha técnica (obrigatória no ML)" };
 
-  // FICHA → CADASTRO → TÍTULO QUE VAI AO AR. Ver `oQueOTituloAfirma`.
+  // FICHA → CADASTRO → TÍTULO QUE VAI AO AR. Ver `oQueOTextoAfirma`.
   //
   // O título entra por ÚLTIMO e só quando os dois primeiros calam: ele não é
   // uma quarta opinião, é a constatação de que o anúncio já declara aquilo na
   // linha mais visível que tem. Recusar depois disso seria publicar a afirmação
   // na vitrine e negá-la na ficha — foi o que aconteceu com 5 dos 12 recusados
   // por gênero em 28/08.
-  const doTitulo = new Map(oQueOTituloAfirma(tituloPublicado(anuncio)).map((x) => [x.id, x]));
+  const doTitulo = new Map(oQueOTextoAfirma(tituloPublicado(anuncio)).map((x) => [x.id, x]));
 
   const generoDoTitulo = doTitulo.get("GENDER");
   const genero =

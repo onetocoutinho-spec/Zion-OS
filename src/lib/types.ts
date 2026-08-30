@@ -182,7 +182,18 @@ export interface ProdutoVariante {
 }
 
 export type TipoAtributo = "texto" | "numero" | "lista" | "booleano";
-export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA";
+/**
+ * De onde veio a resposta deste atributo.
+ *
+ * `Importação` entrou em 28/08/2026 e é a que uma LOJA NOVA alcança sozinha: a
+ * importação da planilha lê gênero e tipo das palavras-chave do ERP e os PROPÕE
+ * aqui. As outras vêm da equipe, do template, do marketplace ou do modelo.
+ *
+ * A origem é o que mantém proposta e resposta distinguíveis. O que a lojista
+ * respondeu à mão fica `Manual`; o que a importação deduziu fica `Importação`, e
+ * ela corrige por cima.
+ */
+export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA" | "Importação";
 
 /** Atributo dinâmico do produto (ficha técnica flexível por categoria). */
 export interface ProdutoAtributo {

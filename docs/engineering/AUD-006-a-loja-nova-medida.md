@@ -1237,3 +1237,43 @@ inventar. Um teste novo guarda isso.
 (33/34 a 43/44), produtos infantis. As outras 8 são par do cadastro contra
 tabela individual, que o DES-004 recusa de propósito. As duas pedem tabela do
 fabricante, e agora `/cliente/medidas` chega até a publicação.
+
+### A importação passa a propor o atributo — o laço abriu (28/08)
+
+`produto_atributos` ganhou o TERCEIRO escritor, e é o único que uma loja nova
+alcança sozinha: a importação da planilha.
+
+`Palavras Chave` virou coluna mapeável, e o cabeçalho real do Magazord a mapeia
+**sozinho** — tem teste com as 28 colunas da exportação de 19/08, porque uma
+coluna que exige a lojista saber mapeá-la não serve a quem chega novo.
+
+**PROPÕE, NÃO AFIRMA**, e a diferença está em onde escreve. Ler gênero de texto
+livre de SEO é dedução, e `doCadastroParaOPayload` continua recusando dedução no
+payload. Esta leitura não contorna a recusa: grava em `produto_atributos` com
+`origem: "Importação"` — a origem entrou no tipo — onde ela vê e corrige ANTES
+de publicar. Deduzir para propor à dona do produto é diferente de deduzir para
+afirmar ao marketplace.
+
+E **acrescenta, nunca varre**: `criarAtributosBulk` é irmã de
+`substituirAtributosDoMarketplace` e diferente dela no que importa — aquela
+apaga a origem inteira antes de gravar, porque a reimportação do ML é a verdade
+do ML; esta não pode, porque varreria o que a lojista respondeu à mão.
+
+**Medido, simulando a reimportação sobre o catálogo do T1:**
+
+    hoje ......................... monta 159 · sem gênero 7 · sem medida 23
+    com as palavras-chave ........ monta 165 · sem gênero 1 · sem medida 23
+
+Sobra **um** sem gênero: o produto cujas palavras-chave estão vazias no ERP.
+Vira pergunta, que é o certo.
+
+### Onde o T1 está no fim de 28/08
+
+    User Products   146 -> 165 de 189   (título 5, referência BR 11, palavras-chave 6)
+    sem gênero       12 -> 1
+    sem medida       34 -> 23
+
+As 23 restantes são tabela de medida de marca: 15 Ipanema (marca conhecida,
+tabela adulta em pares, produtos infantis) e 8 par-contra-tabela-individual, que
+o DES-004 recusa de propósito. As duas pedem tabela do fabricante — e
+`/cliente/medidas` agora chega até a publicação.

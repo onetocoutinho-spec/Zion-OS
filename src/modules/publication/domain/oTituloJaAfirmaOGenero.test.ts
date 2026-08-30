@@ -37,7 +37,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  oQueOTituloAfirma,
+  oQueOTextoAfirma,
   tituloPublicado,
   montarBundleUserProducts,
   fichaDoCadastro,
@@ -82,7 +82,7 @@ test("os cinco títulos reais que estavam sendo recusados", () => {
     "Chinelo Olympikus 921 unissex conforto",
   ];
   for (const titulo of reais) {
-    const afirma = oQueOTituloAfirma(titulo);
+    const afirma = oQueOTextoAfirma(titulo);
     assert.ok(
       afirma.some((a) => a.id === "GENDER"),
       `"${titulo}" não teve o gênero lido`
@@ -98,7 +98,7 @@ test("título sem a palavra não afirma nada — continua virando pergunta", () 
     "Chinelo Cartago Alabama 1 11859",
   ]) {
     assert.deepEqual(
-      oQueOTituloAfirma(titulo).filter((a) => a.id === "GENDER"),
+      oQueOTextoAfirma(titulo).filter((a) => a.id === "GENDER"),
       [],
       `"${titulo}" inventou um gênero`
     );
@@ -111,7 +111,7 @@ test("O CORTE DE 60 É A REGRA: palavra que não sobe não afirma", () => {
   assert.ok(depoisDoCorte.length > LIMITE_DO_TITULO);
   assert.ok(!tituloPublicado(anuncio(depoisDoCorte)).includes("Feminino"));
   assert.deepEqual(
-    oQueOTituloAfirma(tituloPublicado(anuncio(depoisDoCorte))).filter((a) => a.id === "GENDER"),
+    oQueOTextoAfirma(tituloPublicado(anuncio(depoisDoCorte))).filter((a) => a.id === "GENDER"),
     [],
     "leu uma palavra que o Mercado Livre não vai publicar"
   );
@@ -157,7 +157,7 @@ test("nada em lugar nenhum: recusa, e o motivo nomeia as três fontes", () => {
 });
 
 test("as duas formas do valor saem juntas — id para o bundle, nome para o clássico", () => {
-  const [g] = oQueOTituloAfirma("Chinelo Feminino Bonito").filter((a) => a.id === "GENDER");
+  const [g] = oQueOTextoAfirma("Chinelo Feminino Bonito").filter((a) => a.id === "GENDER");
   assert.equal(g.valorId, GENERO_ID.feminino);
   assert.equal(g.valorNome, "Feminino");
 });

@@ -36,7 +36,7 @@ import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guarda
 import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { obrigatoriosDoCadastro } from "./cadastroParaOsObrigatorios";
-import { oQueOTituloAfirma } from "@/modules/publication/domain/composicaoConteudo";
+import { oQueOTextoAfirma } from "@/modules/publication/domain/composicaoConteudo";
 
 
 export interface PedidoDePublicacao {
@@ -434,7 +434,7 @@ export async function publicarNoMercadoLivre(
     // já está na vitrine. Negar aqui seria publicar a afirmação e recusá-la.
     if (ausentes.length > 0) {
       const titulo = typeof payload.title === "string" ? payload.title : "";
-      const afirmados = oQueOTituloAfirma(titulo);
+      const afirmados = oQueOTextoAfirma(titulo);
       const podeAfirmar = new Map(afirmados.map((x) => [x.id, x.valorNome]));
       const doTitulo = ausentes
         .filter((a) => podeAfirmar.has(a.id))

@@ -6,9 +6,11 @@
 
 import { parseCsv, normalizarHeader } from "../csv";
 import { MARKETPLACES } from "../constantes";
-import type { Marketplace, Produto, ProdutoVariante } from "../types";
+import type { Marketplace, Produto, ProdutoAtributo, ProdutoVariante } from "../types";
 import { criarProdutos } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
+import { criarAtributosBulk } from "./produtoAtributos";
+import { oQueOTextoAfirma } from "../../modules/publication/domain/composicaoConteudo.ts";
 import {
   margemLiquida,
   precoMinimoOuNull,
@@ -43,6 +45,10 @@ const ALIASES: Record<string, string> = {
   categoria: "categoria", category: "categoria", departamento: "categoria",
   sku: "sku", codigo: "sku", cod: "sku", codigo_interno: "sku", id: "sku",
   cor: "cor", color: "cor",
+  // A coluna que o Magazord traz preenchida em 94% das linhas — ver
+  // `atributosDasPalavrasChave`. Não vira campo do produto: vira `produto_atributos`.
+  palavras_chave: "palavrasChave", palavraschave: "palavrasChave",
+  palavras: "palavrasChave", keywords: "palavrasChave", tags: "palavrasChave",
   tamanho: "tamanho", size: "tamanho", numeracao: "tamanho", numero: "tamanho", grade: "tamanho",
   custo: "custo", custo_unitario: "custo", preco_custo: "custo", preco_de_custo: "custo", valor_de_custo: "custo", custo_medio: "custo", custo_linx: "custo", custo_compra: "custo",
   preco: "precoVenda", preco_venda: "precoVenda", precovenda: "precoVenda", preco_de_venda: "precoVenda", valor_unitario: "precoVenda", price: "precoVenda", valor: "precoVenda", preco_atual: "precoVenda",
@@ -174,6 +180,14 @@ export interface LinhaProduto {
   margem: number | null;
   /** Preenchido no modo agrupado (base com variações). */
   variacoes?: VariacaoImportada[];
+  /**
+   * O texto livre de busca do ERP, quando a planilha o trouxe.
+   *
+   * NÃO é campo do produto e não é gravado como tal. Serve a uma coisa só:
+   * `atributosDasPalavrasChave` lê dali o gênero e o tipo de calçado e os
+   * propõe em `produto_atributos`. Ver a função para o porquê.
+   */
+  palavrasChave?: string;
 }
 
 export interface AnaliseProdutos {
@@ -280,6 +294,11 @@ export const CAMPOS_MAPEAVEIS: {
   { campo: "modelo", rotulo: "Modelo" },
   { campo: "categoria", rotulo: "Categoria" },
   { campo: "sku", rotulo: "SKU interno" },
+  {
+    campo: "palavrasChave",
+    rotulo: "Palavras-chave",
+    dica: "Não vira campo do produto — vira gênero e tipo, para você conferir",
+  },
   { campo: "marketplace", rotulo: "Marketplace (opcional)" },
   { campo: "confianca", rotulo: "Confiança do custo" },
   {
@@ -396,6 +415,8 @@ function mapearLinha(
   const confiancaCusto = normalizarConfianca(val("confianca"));
   const codErp = val("codErp");
 
+  const palavrasChave = val("palavrasChave").trim();
+
   const base: BaseProduto = {
     nome: nomeSemDerivacao(val("nome"), val("nomeDerivacao")) || "Produto sem nome",
     marca: val("marca"),
@@ -434,11 +455,14 @@ function mapearLinha(
   // Arquivo sem peso continua saindo exatamente como antes: nenhuma variação,
   // nenhum comportamento novo.
   const medidas = medidasDaLinha(val);
-  if (Object.keys(medidas).length === 0) return { base, margem };
+  if (Object.keys(medidas).length === 0) {
+    return { base, margem, ...(palavrasChave ? { palavrasChave } : {}) };
+  }
 
   return {
     base,
     margem,
+    ...(palavrasChave ? { palavrasChave } : {}),
     variacoes: [
       {
         sku: val("sku"),
@@ -577,7 +601,14 @@ function construirAgrupado(
       confiancaCusto,
     };
 
-    linhas.push({ base, margem, variacoes });
+    // As palavras-chave do PAI. No modo agrupado todas as derivações do mesmo
+    // código repetem o texto de busca do produto; a primeira preenchida basta.
+    const palavrasChave = (
+      linhasGrupo
+        .map((rec) => (cols.palavrasChave ? (rec[cols.palavrasChave] ?? "") : ""))
+        .find((v) => v.trim()) ?? ""
+    ).trim();
+    linhas.push({ base, margem, variacoes, ...(palavrasChave ? { palavrasChave } : {}) });
   }
   return linhas;
 }
@@ -664,7 +695,103 @@ export interface ResumoImportacaoProdutos {
   total: number;
   totalVariacoes: number;
   comMargemBaixa: number;
+  /** Quantos atributos saíram das palavras-chave — ver a função abaixo. */
+  atributosPropostos: number;
 }
+
+/**
+ * O QUE AS PALAVRAS-CHAVE DO ERP PROPÕEM — e por que isto abre um laço.
+ *
+ * ===========================================================================
+ * O LAÇO, MEDIDO EM 28/08/2026
+ * ===========================================================================
+ *
+ * `produto_atributos` tinha DOIS escritores: a aba de atributos, que é tela da
+ * EQUIPE, e o "enriquecer" do Mercado Livre, que copia de volta os atributos
+ * dos anúncios JÁ PUBLICADOS. Uma loja que nunca publicou não alcança nenhum
+ * dos dois — e publicar exige o atributo. Atributo vinha de anúncio publicado;
+ * publicar exigia atributo.
+ *
+ * Por isso o catálogo do T1 tem ZERO linhas ali, enquanto a loja que já vende
+ * tem 549. E por isso o conserto do mesmo dia — o cadastro completar a ficha —
+ * não resolve nada para quem chega novo: não há cadastro a consultar.
+ *
+ * Esta função é a terceira porta, e a única que uma loja nova atravessa
+ * sozinha: a importação passa a escrever ali.
+ *
+ * ===========================================================================
+ * A FONTE, E POR QUE ELA SERVE
+ * ===========================================================================
+ *
+ * A exportação real do Magazord tem 28 colunas e NENHUMA é "Gênero" — nem
+ * "Cor", nem "Tamanho" (confirmado em 26/08: o ERP não tem esse relatório). Mas
+ * `Palavras Chave` vem preenchida em 6.815 das 7.224 linhas, e o gênero está
+ * lá: "chinelo masculino", "sandália infantil feminina".
+ *
+ * Medido contra os anúncios que a publicação recusava por gênero ausente:
+ *
+ *     nome do cadastro .....  2 de 12
+ *     título do anúncio ....  5 de 12
+ *     PALAVRAS-CHAVE ....... 10 de 12
+ *
+ * ===========================================================================
+ * PROPÕE, NÃO AFIRMA — e a diferença está em ONDE isto escreve
+ * ===========================================================================
+ *
+ * Ler gênero de texto livre de SEO é dedução, e `doCadastroParaOPayload` recusa
+ * dedução. A recusa continua de pé, e esta função não a contorna: ela não
+ * escreve no payload. Escreve em `produto_atributos`, com `origem:
+ * "Importação"`, ONDE A LOJISTA VÊ E CORRIGE antes de qualquer anúncio subir.
+ *
+ * Deduzir para PROPOR à dona do produto é diferente de deduzir para AFIRMAR ao
+ * marketplace. A origem gravada é o que mantém as duas distinguíveis: o que ela
+ * respondeu à mão fica com a origem da tela, e isto fica com a da importação.
+ *
+ * NÃO APAGA NADA. `criarAtributosBulk` só acrescenta — ao contrário de
+ * `substituirAtributosDoMarketplace`, que varre a origem dela inteira antes de
+ * gravar. Aqui os produtos acabaram de ser criados nesta mesma chamada, então
+ * não há o que sobrescrever; e o dia em que houver, a escolha já está feita: o
+ * que a lojista respondeu não é varrido por uma importação.
+ */
+async function gravarAtributosDasPalavrasChave(
+  clienteId: string,
+  criados: readonly { id: string }[],
+  linhas: readonly LinhaProduto[]
+): Promise<number> {
+  const aGravar: Omit<ProdutoAtributo, "id">[] = [];
+  criados.forEach((prod, i) => {
+    const texto = linhas[i]?.palavrasChave;
+    if (!texto) return;
+    for (const a of oQueOTextoAfirma(texto)) {
+      aGravar.push({
+        produtoId: prod.id,
+        clienteId,
+        nomeAtributo: NOME_EXIBIDO[a.id] ?? a.id,
+        valorAtributo: a.valorNome,
+        tipoAtributo: "texto",
+        obrigatorio: false,
+        origem: "Importação",
+      });
+    }
+  });
+  if (aGravar.length === 0) return 0;
+  try {
+    await criarAtributosBulk(aGravar);
+  } catch (e) {
+    // Falhar aqui NÃO invalida a importação: os produtos e as variações já
+    // estão gravados, e o atributo é uma PROPOSTA. O efeito de não gravar é o
+    // de antes desta função existir.
+    console.error("[Zion OS] atributos das palavras-chave não gravados:", e);
+    return 0;
+  }
+  return aGravar.length;
+}
+
+/** O nome que o ML exibe, que é como `produto_atributos` guarda (DES-002). */
+const NOME_EXIBIDO: Record<string, string> = {
+  GENDER: "Gênero",
+  FOOTWEAR_TYPE: "Tipo de calçado",
+};
 
 export async function confirmarImportacaoProdutos(params: {
   clienteId: string;
@@ -705,8 +832,11 @@ export async function confirmarImportacaoProdutos(params: {
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
 
+  const atributos = await gravarAtributosDasPalavrasChave(clienteId, criados, linhas);
+
   return {
     total: produtos.length,
+    atributosPropostos: atributos,
     totalVariacoes: variantes.length,
     // Margem desconhecida não entra na contagem: só conta o que se sabe baixo.
     comMargemBaixa: linhas.filter((l) => l.margem !== null && l.margem < 5).length,
