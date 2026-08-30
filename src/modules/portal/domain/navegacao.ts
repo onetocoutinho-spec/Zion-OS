@@ -80,6 +80,12 @@ export const AREAS: readonly AreaDoPortal[] = [
       // precisar. Sem ela o sistema cobra os obrigatorios de calcado por
       // suposicao — 1003 de 1003 produtos numa base medida em 26/08/2026.
       { href: "/cliente/categorias", label: "Categoria no Mercado Livre" },
+      // Ao lado da categoria, e pelo mesmo motivo: e a categoria que diz QUAIS
+      // atributos o anuncio precisa, e sao eles que a tela ao lado confirma. Ate
+      // 28/08/2026 a unica tela de atributos era a da equipe — entao um
+      // obrigatorio que so a lojista sabe responder exigia alguem da Zion, que e
+      // exatamente o que a intencao do produto diz que nao pode acontecer.
+      { href: "/cliente/atributos", label: "Atributos do produto" },
       { href: "/cliente/precificacao", label: "Precificação" },
     ],
   },
