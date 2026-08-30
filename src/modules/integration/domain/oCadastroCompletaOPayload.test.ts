@@ -58,9 +58,18 @@ test("valor em branco não conta como resposta", () => {
   assert.deepEqual(r, []);
 });
 
-test("o que o marketplace já sabe entra — é dado, não palpite", () => {
-  const r = doCadastroParaOPayload([GENERO], [{ id: "GENDER", valor: "Feminino", origem: "marketplace" }]);
-  assert.deepEqual(r, [{ id: "GENDER", value_name: "Feminino" }]);
+test("SÓ `cadastro` afirma — nenhuma outra origem entra", () => {
+  // A lista de origens que afirmam encolheu para uma em 28/08: `marketplace`
+  // estava aceita e nenhum chamador a produzia, então o teste que a cobria
+  // provava uma regra que não rodava. Este guarda o inverso, que é o que
+  // importa: origem nova não entra sozinha, tem que ser decidida.
+  for (const origem of ["marketplace", "nome", "ausente", "qualquer-outra"]) {
+    assert.deepEqual(
+      doCadastroParaOPayload([GENERO], [{ id: "GENDER", valor: "Feminino", origem }]),
+      [],
+      `origem "${origem}" foi publicada sem decisão`
+    );
+  }
 });
 
 test("só o que FALTA — o que já está no payload não é reescrito", () => {

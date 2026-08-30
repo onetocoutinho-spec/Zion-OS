@@ -52,7 +52,18 @@ const FALTANDO = {
 };
 
 const [clienteId] = process.argv.slice(2);
-const GRAVAR = process.argv.includes("--gravar");
+// `--simular` RECUSA a gravacao, e nao apenas deixa de pedi-la.
+//
+// A flag estava documentada no cabecalho e nunca era lida: so `--gravar`
+// decidia, entao `--gravar --simular` escrevia. Quem aprendeu o idioma de
+// `subirFotosDaPasta.mjs` — onde `--simular` e real e foi o que impediu envio
+// errado — acrescentaria `--simular` esperando protecao e escreveria em
+// producao. Uma flag que nao faz o que o nome diz e pior que flag nenhuma.
+const SIMULAR = process.argv.includes("--simular");
+const GRAVAR = process.argv.includes("--gravar") && !SIMULAR;
+if (SIMULAR && process.argv.includes("--gravar")) {
+  console.log("--simular e --gravar juntos: SIMULANDO, nada sera escrito.");
+}
 if (!clienteId) {
   console.error("uso: node --import tsx scripts/completarTabelasDeMedida.mjs <clienteId> [--gravar]");
   process.exit(1);
@@ -110,7 +121,7 @@ for (const [marca, numeracoes] of Object.entries(FALTANDO)) {
   }
 
   if (novas.length === 0) {
-    console.log(`${marca}: nada a acrescenter.`);
+    console.log(`${marca}: nada a acrescentar.`);
     continue;
   }
 

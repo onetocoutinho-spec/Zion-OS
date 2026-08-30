@@ -42,7 +42,27 @@ interface VariacaoNoPayload {
   attributes?: AtributoNoPayload[];
 }
 
-/** Todos os ids presentes no payload, dos dois lugares onde eles moram. */
+/**
+ * Todos os ids presentes no payload, dos dois lugares onde eles moram.
+ *
+ * SÓ POR `id`, e a revisão de 28/08 tentou mudar isso e desistiu — fica dito
+ * para não se tentar de novo. A dúvida era: um atributo mandado como
+ * `{ name: "Marca" }` conta como presente? Se contasse, `doCadastroParaOPayload`
+ * pararia de acrescentar o mesmo atributo por id e o item nunca subiria
+ * afirmando os dois.
+ *
+ * Não conta, por dois motivos que se somam. `exigenciasDoPayload.test.ts` já
+ * decidiu isto com razão dada: "o ML pode até casar pelo nome, mas não é
+ * garantido — e dizer 'está lá' sobre algo que talvez não chegue seria afirmar
+ * o que não se sabe". E `montarItemML` emite `{ name }` EXATAMENTE quando
+ * `MAPA_ATRIBUTOS_ML` não conhece o rótulo, então resolver o nome por aquele
+ * mesmo mapa devolveria null sempre: a mudança não consertaria o caso que a
+ * motivou, e enfraqueceria a checagem no caso que ela já protege.
+ *
+ * O que sobra é um item com `{ name: "<rótulo que ninguém mapeia>" }` ao lado
+ * do `{ id }` vindo do cadastro. O ML descarta o nome que não resolve, e a
+ * alternativa era deixar passar um obrigatório de verdade ausente.
+ */
 function idsPresentes(payload: Record<string, unknown>): Set<string> {
   const ids = new Set<string>();
   for (const a of (payload.attributes as AtributoNoPayload[] | undefined) ?? []) {
@@ -86,6 +106,19 @@ export interface ObrigatorioResolvido {
 }
 
 /**
+ * As origens que podem ser AFIRMADAS num anuncio no ar.
+ *
+ * So `cadastro`: e a resposta que a lojista deu. `nome` e deducao pelo titulo e
+ * serve para sugerir num briefing, nao para afirmar sob a conta dela.
+ *
+ * `marketplace` esteve aqui e SAIU em 28/08: `obrigatoriosDoCadastro`, o unico
+ * chamador, chama `resolverObrigatorios` sem o terceiro argumento, entao aquela
+ * origem nunca chegava — e um ramo que ninguem alcanca com um teste que o
+ * cobre prova uma regra que nao roda. Volta junto com quem a produza.
+ */
+const ORIGENS_QUE_AFIRMAM = new Set(["cadastro"]);
+
+/**
  * O CADASTRO PREENCHE O QUE O MODELO ESQUECEU DE ESCREVER.
  *
  * ===========================================================================
@@ -111,7 +144,7 @@ export interface ObrigatorioResolvido {
  * ===========================================================================
  *
  * `resolverObrigatorios` responde de quatro origens: `cadastro`, `marketplace`,
- * `nome` e `ausente`. Aqui entram as DUAS PRIMEIRAS.
+ * `nome` e `ausente`. Aqui entra a PRIMEIRA — ver `ORIGENS_QUE_AFIRMAM`.
  *
  * `nome` é dedução — "Chinelo Feminino" no título vira GENDER=Feminino. Serve
  * para SUGERIR num briefing; não serve para afirmar, sob a conta da lojista, um
@@ -133,7 +166,7 @@ export function doCadastroParaOPayload(
   const podeAfirmar = new Map<string, string>();
   for (const r of resolvidos) {
     if (!r.valor?.trim()) continue;
-    if (r.origem !== "cadastro" && r.origem !== "marketplace") continue;
+    if (!ORIGENS_QUE_AFIRMAM.has(r.origem)) continue;
     podeAfirmar.set(r.id, r.valor.trim());
   }
   return ausentes

@@ -240,15 +240,24 @@ async function executarPublicacao(
 
   // E AS TABELAS DE MEDIDA DELA, pelo mesmo motivo e com a mesma regra.
   //
+  // Guardada por `produtoId` como a de cima: sem produto nao ha bundle. O que
+  // NAO da para evitar daqui e a categoria — quem decide se este anuncio vai
+  // pelo modelo User Products e o servidor, depois de prever a categoria com o
+  // token que o navegador nao tem. Entao os 119 classicos desta base ainda
+  // pagam as duas leituras; evita-las exigiria a categoria aqui, e ela nao esta
+  // aqui.
+  //
   // `medidasDaMarca` lia so a lista embutida no software. Medido em 28/08: 30
   // dos 674 recusados por tamanho FORA da faixa dessa lista — Molekinho 19 a
   // 24, Ipanema 25 e 26, Yvate 41 a 43. As medidas nao estao no software e nao
   // e para estarem; o que faltava era a resposta dela chegar ate aqui.
   let tabelasDaLoja: TabelaMedida[] = [];
-  try {
-    tabelasDaLoja = await listarTabelasDoCliente(registro.clienteId);
-  } catch {
-    tabelasDaLoja = [];
+  if (registro.produtoId) {
+    try {
+      tabelasDaLoja = await listarTabelasDoCliente(registro.clienteId);
+    } catch {
+      tabelasDaLoja = [];
+    }
   }
 
   const payload = montarPreviewML(registro, { ...opcoes, pictures });

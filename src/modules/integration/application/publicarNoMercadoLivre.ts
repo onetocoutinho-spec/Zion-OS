@@ -381,6 +381,8 @@ export async function publicarNoMercadoLivre(
     // repetir o defeito num lugar novo.
     const exigencias = await atributosObrigatorios(String(payload.category_id));
     let ausentes = obrigatoriosAusentes(payload, exigencias);
+    /** O que o SERVIDOR completou — o navegador não sabe disso. Ver o dry abaixo. */
+    let completadosPeloCadastro: string[] = [];
 
     // ---- ANTES DE RECUSAR, PERGUNTAR AO CADASTRO.
     //
@@ -404,8 +406,9 @@ export async function publicarNoMercadoLivre(
           ...((payload.attributes as Record<string, unknown>[] | undefined) ?? []),
           ...doCadastro,
         ];
+        completadosPeloCadastro = doCadastro.map((a) => a.id);
         log("info", "cadastro", {
-          preenchidos: doCadastro.map((a) => a.id),
+          preenchidos: completadosPeloCadastro,
           origem: "produto_atributos",
         });
         ausentes = obrigatoriosAusentes(payload, exigencias);
@@ -445,6 +448,14 @@ export async function publicarNoMercadoLivre(
       return resposta({
         dry: true,
         obrigatoriosConferidos: true,
+        // O QUE O SERVIDOR COMPLETOU, porque a prévia da tela não sabe.
+        //
+        // `aprovacoes` e `PublicarAnuncio` mostram `montarPreviewML(registro)`,
+        // montado no navegador a partir da ficha. O servidor acrescenta o que
+        // veio de `produto_atributos` — 500 anúncios nesta base — e publica com
+        // isso. Sem esta lista, quem confere lê um anúncio sem gênero e vai
+        // "consertar" o que já está resolvido, ou aprova sem saber o que sobe.
+        completadosPeloCadastro,
         categoryId: payload.category_id,
         sellerId: canal.sellerId ?? tokens.userId ?? null,
       });

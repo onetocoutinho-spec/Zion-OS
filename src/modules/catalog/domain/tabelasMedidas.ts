@@ -281,27 +281,61 @@ export function comAsDaLoja(
   if (!key || daLoja.length === 0) return base;
 
   const juntas = { ...base };
+  // A PRIMEIRA RESPOSTA DELA VENCE, e o desempate precisa ser dito.
+  //
+  // `TabelaMedida.marca` e livre e o editor permite varias tabelas da mesma
+  // marca. Sobrescrevendo, quem vencia era a ULTIMA — e a ordem vem do banco,
+  // sem `order by`: o anuncio publicaria um comprimento hoje e outro amanha sem
+  // ninguem ter editado nada. `fichaDoCadastro` decidiu o mesmo para o mesmo
+  // tipo de dado; duas politicas para uma pergunta so e como as duas divergem.
+  const postos = new Set();
   let mudou = false;
   for (const t of daLoja) {
     if (normalizarMarca(t.marca ?? "") !== key) continue;
     for (const l of t.linhas ?? []) {
       const rotulo = normalizarTamanho(l.rotulo);
-      if (!rotulo.ok) continue;
+      if (!rotulo.ok || postos.has(rotulo.valor)) continue;
       const cm = cmDaLinha(l.valor);
       if (cm === undefined) continue;
       juntas[rotulo.valor] = cm;
+      postos.add(rotulo.valor);
       mudou = true;
     }
   }
   return mudou ? juntas : base;
 }
 
-/** "24,5 cm" → 24.5. `undefined` quando não há número — nunca zero. */
+/**
+ * A faixa em que um comprimento de pe humano cabe, em centimetros.
+ *
+ * O menor calcado infantil brasileiro fica perto de 9 cm; o maior adulto, perto
+ * de 33. Os limites sao largos de proposito: recusar uma medida legitima seria
+ * travar publicacao, e este modulo existe para nao fazer isso.
+ */
+const CM_MINIMO = 5;
+const CM_MAXIMO = 40;
+
+/**
+ * "24,5 cm" → 24.5. `undefined` fora da faixa de um pe — e nunca zero.
+ *
+ * O EDITOR DELA E TEXTO LIVRE ("uma por linha, no formato rotulo = valor") e a
+ * importacao de planilha ADIVINHA a coluna do valor. Uma linha colada como
+ * `34 = 34 - 22,3 cm`, ou uma planilha cuja coluna escolhida e a da numeracao,
+ * faz o primeiro numero ser 34 — e 34 cm iria para a guia de tamanhos do ML
+ * como comprimento do pe. `0,223 m` viraria 0,223 cm.
+ *
+ * Este e o modulo que se recusa a escolher entre 35 e 36 porque isso "inventa
+ * 0,7 cm". Aceitar 34 cm calado e a mesma falta, uma ordem de grandeza maior.
+ *
+ * Fora da faixa, a linha e IGNORADA e o tamanho continua sem medida — entao a
+ * recusa do bundle nomeia o rotulo e ela ve qual linha corrigir. Silencio aqui
+ * seria pior que a recusa la.
+ */
 function cmDaLinha(valor: string | undefined | null): number | undefined {
   const m = /(\d+(?:[.,]\d+)?)/.exec(String(valor ?? ""));
   if (!m) return undefined;
   const n = Number(m[1].replace(",", "."));
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+  return Number.isFinite(n) && n >= CM_MINIMO && n <= CM_MAXIMO ? n : undefined;
 }
 
 /**

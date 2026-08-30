@@ -82,14 +82,33 @@ function paraNumero(v: string | number | undefined | null): number {
  * Puro, e por isso separado da leitura: quem tem o cliente do banco é o
  * chamador — no navegador é a sessão dela, no servidor é o admin da conversa —
  * e nenhum dos dois pertence a esta camada.
+ *
+ * ACEITA AS DUAS FORMAS DE LINHA, e isso não é conveniência. A regra "o cadastro
+ * completa o que a ficha não trouxe" nasceu em 28/08 com TRÊS implementações —
+ * esta, o mapa cru de `cadastroParaOsObrigatorios` e a conversão inline do
+ * ensaio congelado — cada uma com sua normalização de chave. Duas divergências
+ * reais saíram disso no mesmo dia: uma porta casava o nome do atributo sem
+ * acento e sem caixa, a outra por igualdade exata; o mesmo produto publicava por
+ * um caminho e era recusado pelo outro.
+ *
+ * Aceitando `nomeAtributo` (o serviço) e `nome_atributo` (o banco), os três
+ * chamadores passam a chamar ESTA função, e a forma da chave tem um dono só.
  */
+export interface LinhaDoCadastro {
+  nomeAtributo?: string | null;
+  valorAtributo?: string | null;
+  /** A mesma linha como o banco a devolve — os dois caminhos de servidor. */
+  nome_atributo?: string | null;
+  valor_atributo?: string | null;
+}
+
 export function fichaDoCadastro(
-  atributos: readonly { nomeAtributo: string; valorAtributo: string }[]
+  atributos: readonly LinhaDoCadastro[]
 ): Map<string, string> {
   const mapa = new Map<string, string>();
   for (const a of atributos) {
-    const nome = semAcento(a.nomeAtributo ?? "");
-    const valor = (a.valorAtributo ?? "").trim();
+    const nome = semAcento(a.nomeAtributo ?? a.nome_atributo ?? "");
+    const valor = (a.valorAtributo ?? a.valor_atributo ?? "").trim();
     if (!nome || !valor || mapa.has(nome)) continue;
     mapa.set(nome, valor);
   }

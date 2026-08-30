@@ -25,6 +25,10 @@
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolverObrigatorios } from "@/modules/publication/domain/atributosDoMarketplace";
+import {
+  fichaDoCadastro,
+  type LinhaDoCadastro,
+} from "@/modules/publication/domain/composicaoConteudo";
 import type { AtributoExigido, ObrigatorioResolvido } from "../domain/exigenciasDoPayload";
 
 /**
@@ -69,13 +73,17 @@ export async function obrigatoriosDoCadastro(
     if (!produto) return [];
 
     const p = produto as { nome?: string | null; marca?: string | null; modelo?: string | null };
-    const doCadastro = new Map<string, string>();
-    for (const a of (atributos ?? []) as { nome_atributo?: string; valor_atributo?: string | null }[]) {
-      const nome = a.nome_atributo?.trim();
-      const valor = a.valor_atributo?.trim();
-      if (!nome || !valor || doCadastro.has(nome)) continue;
-      doCadastro.set(nome, valor);
-    }
+
+    // A MESMA `fichaDoCadastro` da porta do User Products.
+    //
+    // Aqui o mapa era montado com `a.nome_atributo` CRU, e `resolverObrigatorios`
+    // procura por `p.atributos?.get(nome)` com o nome que o ML devolveu
+    // ("Gênero"). Um ERP que gravasse "GENERO" ou "genero" era resolvido pela
+    // outra porta e caía em `origem: "ausente"` nesta — o mesmo produto
+    // publicando por um caminho e recusado pelo outro, sem nada explicando.
+    //
+    // Com a chave normalizada dos dois lados, as duas portas respondem igual.
+    const doCadastro = fichaDoCadastro((atributos ?? []) as LinhaDoCadastro[]);
 
     return resolverObrigatorios(
       {

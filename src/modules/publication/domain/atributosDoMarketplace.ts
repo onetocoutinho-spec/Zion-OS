@@ -430,6 +430,42 @@ const DO_NOME: Record<string, LeitorDeAtributo> = {
   FOOTWEAR_TYPE: (p) => tipoDeCalcadoDoNome(p.nome),
 };
 
+/**
+ * O valor que ela respondeu para ESTE atributo, casando o nome sem rigor de
+ * grafia.
+ *
+ * A busca era `p.atributos?.get(nome)` — igualdade exata contra o nome que o ML
+ * devolveu ("Gênero"). Quem monta o mapa varia: um caminho normaliza (sem
+ * acento, minúsculas) e outro guardava o nome cru do banco, e o mesmo produto
+ * era resolvido por uma porta e recusado pela outra. Um ERP que grave "GENERO"
+ * cai no mesmo buraco sem nada no log dizendo por quê.
+ *
+ * Exato primeiro, para não mudar o que já funcionava; depois a comparação sem
+ * acento e sem caixa. Não é afrouxar o critério — o atributo continua sendo o
+ * mesmo atributo, escrito de outro jeito.
+ */
+function doCadastroDela(
+  atributos: ReadonlyMap<string, string> | undefined,
+  nome: string
+): string | null {
+  if (!atributos) return null;
+  const exato = atributos.get(nome);
+  if (exato) return exato;
+  const alvo = semAcentoNemCaixa(nome);
+  for (const [chave, valor] of atributos) {
+    if (semAcentoNemCaixa(chave) === alvo) return valor;
+  }
+  return null;
+}
+
+function semAcentoNemCaixa(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 export function resolverObrigatorios(
   p: DadosDoProduto,
   /**
@@ -452,7 +488,7 @@ export function resolverObrigatorios(
     // O CADASTRO PRIMEIRO, e agora ele inclui os atributos que ela preencheu.
     // Antes só chegavam marca e modelo; "Gênero" e os outros passavam direto
     // para o palpite pelo nome.
-    const cadastro = limpo(doCadastro) ?? limpo(p.atributos?.get(nome));
+    const cadastro = limpo(doCadastro) ?? limpo(doCadastroDela(p.atributos, nome));
     if (cadastro) return { id, nome, valor: cadastro, origem: "cadastro" };
     const mercado = limpo(doMarketplace.get(id));
     if (mercado) return { id, nome, valor: mercado, origem: "marketplace" };
