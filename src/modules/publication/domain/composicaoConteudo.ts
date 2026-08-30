@@ -72,14 +72,64 @@ function paraNumero(v: string | number | undefined | null): number {
   return isNaN(n) ? 0 : n;
 }
 
-/** Valor da ficha técnica por atributo (ignora pendências "informação necessária"). */
-function fichaValor(anuncio: AnuncioGerado, aliases: string[]): string {
+/**
+ * O que a lojista preencheu em `produto_atributos`, pronto para consulta.
+ *
+ * Puro, e por isso separado da leitura: quem tem o cliente do banco é o
+ * chamador — no navegador é a sessão dela, no servidor é o admin da conversa —
+ * e nenhum dos dois pertence a esta camada.
+ */
+export function fichaDoCadastro(
+  atributos: readonly { nomeAtributo: string; valorAtributo: string }[]
+): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const a of atributos) {
+    const nome = semAcento(a.nomeAtributo ?? "");
+    const valor = (a.valorAtributo ?? "").trim();
+    if (!nome || !valor || mapa.has(nome)) continue;
+    mapa.set(nome, valor);
+  }
+  return mapa;
+}
+
+/**
+ * Valor da ficha técnica por atributo (ignora pendências "informação necessária"),
+ * e SE A FICHA NÃO TIVER, o que a lojista respondeu no cadastro.
+ *
+ * ===========================================================================
+ * POR QUE O CADASTRO ENTRA AQUI — MEDIDO EM 28/08/2026
+ * ===========================================================================
+ *
+ * `montarBundleUserProducts` recusa sem gênero, e recusava 408 dos 674 anúncios
+ * publicáveis de calçado da base real. A ficha técnica é escrita pelo modelo, e
+ * numa amostra de 400 aprovados ela traz "Gênero" em 159.
+ *
+ * A resposta existia: está em `produto_atributos`, preenchida pela lojista. O
+ * caminho clássico passou a lê-la no mesmo dia (`doCadastroParaOPayload`), e
+ * esta é a MESMA falta pela outra porta — 85% deste catálogo publica por aqui,
+ * não por lá.
+ *
+ * A FICHA CONTINUA MANDANDO. O cadastro é consultado só quando ela não
+ * responde: o modelo trabalha em cima do anúncio, e sobrescrever o que ele
+ * escreveu com um valor mais velho seria trocar a resposta de um pelo outro sem
+ * ninguém pedir. E nada de dedução pelo nome — o que a lojista não respondeu
+ * continua virando recusa, que é o que faz a pergunta chegar até ela.
+ */
+function fichaValor(
+  anuncio: AnuncioGerado,
+  aliases: string[],
+  doCadastro?: ReadonlyMap<string, string>
+): string {
   const alvo = aliases.map(semAcento);
   for (const f of anuncio.fichaTecnica ?? []) {
     if (!alvo.includes(semAcento(f.atributo))) continue;
     const v = (f.valor ?? "").trim();
     if (!v || /informacao necessaria/.test(semAcento(v))) continue;
     return v;
+  }
+  for (const nome of alvo) {
+    const v = doCadastro?.get(nome)?.trim();
+    if (v) return v;
   }
   return "";
 }
@@ -119,19 +169,29 @@ function primeiroNumero(s: string): number {
  */
 export function montarBundleUserProducts(
   anuncio: AnuncioGerado,
-  opts: { pictures?: string[]; tipoAnuncio?: string } = {}
+  opts: {
+    pictures?: string[];
+    tipoAnuncio?: string;
+    /** `produto_atributos` por `fichaDoCadastro` — o que a ficha não trouxer. */
+    doCadastro?: ReadonlyMap<string, string>;
+  } = {}
 ): ResultadoBundle {
-  const brand = fichaValor(anuncio, ["marca"]);
+  const { doCadastro } = opts;
+  const brand = fichaValor(anuncio, ["marca"], doCadastro);
   if (!brand) return { ok: false, motivo: "marca ausente na ficha técnica (obrigatória no ML)" };
 
-  const genero = generoParaId(fichaValor(anuncio, ["genero", "gênero", "genero (masculino/feminino)"]));
+  const genero = generoParaId(
+    fichaValor(anuncio, ["genero", "gênero", "genero (masculino/feminino)"], doCadastro)
+  );
   if (!genero) {
     return { ok: false, motivo: "gênero ausente ou não reconhecido na ficha técnica (obrigatório)" };
   }
 
-  const footwearTypeId = footwearParaId(fichaValor(anuncio, ["tipo de calcado", "tipo de calçado"]));
+  const footwearTypeId = footwearParaId(
+    fichaValor(anuncio, ["tipo de calcado", "tipo de calçado"], doCadastro)
+  );
   const familyName = (anuncio.tituloOtimizado || brand).slice(0, 60);
-  const model = fichaValor(anuncio, ["modelo"]) || familyName;
+  const model = fichaValor(anuncio, ["modelo"], doCadastro) || familyName;
   const descricao = anuncio.descricaoCompleta || anuncio.descricaoCurta || "";
 
   const cmPorTamanho = medidasDaMarca(brand);

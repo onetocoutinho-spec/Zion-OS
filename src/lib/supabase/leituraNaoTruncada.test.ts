@@ -141,6 +141,11 @@ const DISPENSADAS: Record<string, string> = {
   // atributos, MÁXIMO de 14 num produto.
   "src/modules/integration/application/cadastroParaOsObrigatorios.ts::produto_atributos":
     "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
+  // O ensaio congelado da proposta lê a mesma ficha, do mesmo jeito e pelo
+  // mesmo motivo: o bundle User Products precisa do gênero que a lojista
+  // respondeu. Mesmo número medido.
+  "src/lib/services/ensaioDaPublicacao.ts::produto_atributos":
+    "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
 };
 
 function arquivosDeCodigo(dir: string, achados: string[] = []): string[] {

@@ -834,3 +834,79 @@ cadastro e sem gênero no nome. Viram pergunta, que é o comportamento certo.
 O que continua fora: o modelo **User Products** não confere obrigatórios em
 caminho nenhum, e por isso o ensaio dele responde `obrigatoriosConferidos:
 false`. Medir aquele caminho é tarefa própria.
+
+### CORREÇÃO, no mesmo dia: o 788 vale para 119 anúncios, não para 793
+
+O número acima mede a conferência do **fluxo clássico**. Só que
+`publicarNoMercadoLivre` BIFURCA antes dela, no passo 3.5: categoria em
+`CATEGORIAS_USER_PRODUCTS` segue outro caminho e nunca chega ao passo 4.5.
+
+E MLB273770 — calçado — está nessa lista. Medido:
+
+    User Products (MLB273770) ... 674   85% dos publicáveis
+    clássico (as outras 5) ...... 119
+
+Então o conserto de hoje cobre **119**, não 793. Para os 674, o portão é outro:
+`montarBundleUserProducts`, que monta a guia de tamanhos e RECUSA quando não
+acha o dado. Medido nos 674:
+
+    bundle monta ...... 258
+    bundle recusa ..... 416
+        408  gênero ausente ou não reconhecido na ficha técnica
+          8  nenhuma variação com tamanho publicável + medida da marca
+
+**É o mesmo defeito, na mesma linha, por outra porta.** `montarBundleUserProducts`
+lê o gênero de `fichaValor(anuncio, ["genero", ...])` — a ficha técnica que o
+modelo escreveu, e que traz "Gênero" em 159 de 400. A resposta continua em
+`produto_atributos`, e continua sem chegar.
+
+O que de fato atravessaria os portões que controlamos, hoje:
+
+    119 clássicos + 258 User Products = 377 de 793
+
+**Como o erro passou:** medi a conferência sem antes perguntar qual caminho o
+catálogo toma. O ensaio rodou a função certa sobre o conjunto errado, e o
+número saiu grande e convincente. A pergunta que faltou é de uma linha —
+`precisaUserProducts(categoria)` — e ela estava no mesmo arquivo que eu editei.
+
+### A porta do User Products, consertada e medida (28/08)
+
+Mesmo defeito, mesma fonte de verdade, endereço diferente:
+`montarBundleUserProducts` lê o gênero de `fichaValor(anuncio, ["genero", ...])`
+— a ficha que o modelo escreveu — e recusa sem ele.
+
+`fichaValor` passou a consultar `produto_atributos` **quando a ficha não
+responde**. A ficha continua mandando: o anúncio é o trabalho do modelo sobre
+este produto, e o cadastro é a resposta de antes; sobrescrever uma pela outra
+trocaria a nova pela velha sem ninguém pedir.
+
+Três chamadores recebem o cadastro, e o terceiro não é simetria: o ensaio
+congelado da proposta do chat É o pedido que o clique publica. Se ele recusasse
+enquanto o navegador monta o dele com o cadastro, o cartão e a tela passariam a
+discordar sobre o mesmo anúncio.
+
+Medido nos 674 publicáveis de calçado:
+
+    sem cadastro   monta 258 · recusa 416
+                       408  gênero ausente na ficha técnica
+                         8  sem tamanho publicável + medida da marca
+
+    COM cadastro   monta 641 · recusa  33
+                        30  sem tamanho publicável + medida da marca
+                         3  gênero ausente na ficha técnica
+
+As recusas por medida de marca subiram de 8 para 30, e **isso não é regressão**:
+são anúncios que antes morriam antes, no gênero, e nunca chegavam a esta
+conferência. O bloqueio seguinte ficou visível — Molekinho (13), Ipanema (7),
+Modare (6), Yvate (3), Beira Rio (1) não têm medida cadastrada para os tamanhos
+que esses anúncios usam.
+
+### Onde os dois portões deixam o catálogo
+
+    User Products ... 641 de 674   (era 258)
+    clássico ........ 119 de 119   (era ~29)
+    ------------------------------------------
+    total ........... 760 de 793   (era 377)
+
+Continua parado no mesmo lugar do CHECKPOINT 1: **falta a conta ML de teste**.
+Nenhum destes 760 foi ao ar, e nenhum vai antes dessa decisão.

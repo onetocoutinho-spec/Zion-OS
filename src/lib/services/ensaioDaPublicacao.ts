@@ -13,7 +13,10 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { montarPreviewML } from "@/lib/services/publicacaoML";
 import { registroDoProduto, registroPorId } from "@/lib/services/preparacaoDeAnuncio";
-import { montarBundleUserProducts } from "@/modules/publication/domain/composicaoConteudo";
+import {
+  montarBundleUserProducts,
+  fichaDoCadastro,
+} from "@/modules/publication/domain/composicaoConteudo";
 import {
   impressaoDaPublicacao,
   type EnsaioDaPublicacao,
@@ -108,7 +111,22 @@ export async function ensaioDoRegistro(clienteDaSessao: string, reg: AnuncioGera
   // conhecidos que `publicarNoML` montava no navegador no clique — só
   // que AGORA, e guardados na Proposal. O clique publica isto, não o que
   // o navegador releria depois.
-  const bundle = montarBundleUserProducts(reg.anuncio, { pictures: fotos });
+  //
+  // O CADASTRO ENTRA AQUI TAMBÉM, e não por simetria: este é o pedido que o
+  // clique publica. Se o bundle congelado recusar por gênero ausente enquanto o
+  // navegador monta o dele com o cadastro, o cartão do chat e a tela passam a
+  // discordar sobre o mesmo anúncio — e o que vale é este.
+  const { data: atributos } = await getSupabaseAdmin()
+    .from("produto_atributos")
+    .select("nome_atributo, valor_atributo")
+    .eq("produto_id", reg.produtoId ?? "");
+  const doCadastro = fichaDoCadastro(
+    ((atributos ?? []) as { nome_atributo: string; valor_atributo: string | null }[]).map((a) => ({
+      nomeAtributo: a.nome_atributo,
+      valorAtributo: a.valor_atributo ?? "",
+    }))
+  );
+  const bundle = montarBundleUserProducts(reg.anuncio, { pictures: fotos, doCadastro });
   const { data: irmaos } = await getSupabaseAdmin()
     .from("anuncios_gerados")
     .select("ml_item_id")
