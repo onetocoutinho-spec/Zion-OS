@@ -129,7 +129,7 @@ export async function ensaioDoRegistro(clienteDaSessao: string, reg: AnuncioGera
     const [{ data: atributos }, { data: tabelas }] = await Promise.all([
       getSupabaseAdmin()
         .from("produto_atributos")
-        .select("nome_atributo, valor_atributo")
+        .select("nome_atributo, valor_atributo, origem")
         .eq("produto_id", reg.produtoId),
       getSupabaseAdmin()
         .from("tabelas_medidas")

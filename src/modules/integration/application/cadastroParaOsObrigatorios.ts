@@ -67,7 +67,7 @@ export async function obrigatoriosDoCadastro(
         .maybeSingle(),
       sb
         .from("produto_atributos")
-        .select("nome_atributo, valor_atributo")
+        .select("nome_atributo, valor_atributo, origem")
         .eq("produto_id", produtoId),
     ]);
     if (!produto) return [];

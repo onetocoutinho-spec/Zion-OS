@@ -753,20 +753,51 @@ export interface ResumoImportacaoProdutos {
  * não há o que sobrescrever; e o dia em que houver, a escolha já está feita: o
  * que a lojista respondeu não é varrido por uma importação.
  */
+/** O código do ERP do produto já gravado, quando ele tem um. */
+function produtoCriadoCodErp(p: { codErp?: string | null }): string {
+  return p.codErp ?? "";
+}
+
 async function gravarAtributosDasPalavrasChave(
   clienteId: string,
-  criados: readonly { id: string }[],
+  criados: readonly { id: string; codErp?: string | null }[],
   linhas: readonly LinhaProduto[]
 ): Promise<number> {
+  // CASADO POR `codErp`, NÃO POR ÍNDICE.
+  //
+  // `criarProdutos` promete ordem preservada num comentário, e as variações já
+  // dependiam disso. Um consumidor a mais da mesma promessa é um a mais para
+  // quebrar junto — e o atributo trocado é pior que a variação trocada: a grade
+  // ela vê na tela, o gênero só aparece no anúncio publicado.
+  //
+  // O índice segue como reserva para a linha sem `codErp` (a planilha plana sem
+  // código pai), onde não há chave melhor.
+  const porCodigo = new Map<string, string>();
+  for (const l of linhas) {
+    const cod = (l.base.codErp ?? "").trim();
+    const texto = l.palavrasChave;
+    if (cod && texto && !porCodigo.has(cod)) porCodigo.set(cod, texto);
+  }
+
   const aGravar: Omit<ProdutoAtributo, "id">[] = [];
   criados.forEach((prod, i) => {
-    const texto = linhas[i]?.palavrasChave;
+    const cod = (produtoCriadoCodErp(prod) ?? "").trim();
+    const texto = cod ? (porCodigo.get(cod) ?? linhas[i]?.palavrasChave) : linhas[i]?.palavrasChave;
     if (!texto) return;
     for (const a of oQueOTextoAfirma(texto)) {
+      // SEM NOME EXIBIDO, NÃO GRAVA.
+      //
+      // `produto_atributos` guarda o NOME que o ML mostra ("Gênero"), não o id
+      // — convenção do DES-002 — e é por esse nome que `resolverObrigatorios`
+      // procura. Gravar `nome_atributo: "MATERIAL"` criaria a linha e ninguém a
+      // acharia: o sintoma seria "o cadastro tem a resposta e a publicação
+      // recusa mesmo assim", que é o defeito mais caro deste dia.
+      const nomeAtributo = NOME_EXIBIDO[a.id];
+      if (!nomeAtributo) continue;
       aGravar.push({
         produtoId: prod.id,
         clienteId,
-        nomeAtributo: NOME_EXIBIDO[a.id] ?? a.id,
+        nomeAtributo,
         valorAtributo: a.valorNome,
         tipoAtributo: "texto",
         obrigatorio: false,

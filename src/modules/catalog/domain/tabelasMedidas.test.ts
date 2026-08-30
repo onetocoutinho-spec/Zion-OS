@@ -75,10 +75,18 @@ test("medidasDaMarca devolve a grade da marca conhecida", () => {
 });
 
 test("medidasDaMarca normaliza acento, caixa e pontuação da marca", () => {
-  const alvo = TABELAS_MARCA["beira rio"];
-  assert.equal(medidasDaMarca("Beira-Rio"), alvo);
-  assert.equal(medidasDaMarca("  BEIRA   RIO  "), alvo);
-  assert.equal(medidasDaMarca("Azaléia"), TABELAS_MARCA["azaleia"]);
+  // `deepEqual` e não `equal`: desde 28/08 a função devolve uma CÓPIA. Entregar
+  // o objeto do módulo convidava um `tabela["46"] = 30.7` no chamador a valer
+  // para todas as marcas pelo resto do processo.
+  assert.deepEqual(medidasDaMarca("Beira-Rio"), TABELAS_MARCA["beira rio"]);
+  assert.deepEqual(medidasDaMarca("  BEIRA   RIO  "), TABELAS_MARCA["beira rio"]);
+  assert.deepEqual(medidasDaMarca("Azaléia"), TABELAS_MARCA["azaleia"]);
+});
+
+test("o retorno é CÓPIA — escrever nele não contamina o módulo", () => {
+  const primeira = medidasDaMarca("Modare");
+  primeira["46"] = 99;
+  assert.equal(medidasDaMarca("Modare")["46"], undefined, "a escrita vazou para o módulo");
 });
 
 // A REFERÊNCIA DEIXOU DE SER SÓ A METADE ADULTA — 28/08/2026.

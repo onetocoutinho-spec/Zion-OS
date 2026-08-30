@@ -100,13 +100,43 @@ export interface LinhaDoCadastro {
   /** A mesma linha como o banco a devolve — os dois caminhos de servidor. */
   nome_atributo?: string | null;
   valor_atributo?: string | null;
+  /** De onde veio a resposta. Ver `ORIGEM_QUE_NAO_E_RESPOSTA`. */
+  origem?: string | null;
 }
+
+/**
+ * A origem que NÃO conta como resposta da lojista.
+ *
+ * ===========================================================================
+ * A PORTA DOS FUNDOS, FECHADA EM 28/08/2026
+ * ===========================================================================
+ *
+ * A importação passou a ler gênero das palavras-chave do ERP e gravar em
+ * `produto_atributos` com `origem: "Importação"`. A justificativa escrita era
+ * "PROPÕE, não afirma — ela vê e corrige antes de publicar".
+ *
+ * Só que não existe tela dela para isso. `oCadastroDaLojaNovaChegaVazio.test.ts`
+ * afirma, e passa: o portal da lojista não tem onde ver nem responder atributo;
+ * a única tela é `/produtos/[id]`, da EQUIPE.
+ *
+ * Sem a revisão, a proposta não é proposta. Ela entraria no mapa do cadastro,
+ * e o cadastro é aceito sem ressalva pelas duas portas de publicação — porque
+ * `origem: cadastro` quer dizer "o que ela respondeu". A dedução que
+ * `doCadastroParaOPayload` recusa pela porta da frente entraria pela dos
+ * fundos, com o carimbo dela.
+ *
+ * Então ela fica FORA do mapa que alimenta a publicação. Continua gravada, e é
+ * o certo: a equipe vê, e ela vira resposta de verdade no dia em que houver
+ * onde a lojista confirmar. Nesse dia, esta linha sai.
+ */
+const ORIGEM_QUE_NAO_E_RESPOSTA = "Importação";
 
 export function fichaDoCadastro(
   atributos: readonly LinhaDoCadastro[]
 ): Map<string, string> {
   const mapa = new Map<string, string>();
   for (const a of atributos) {
+    if ((a.origem ?? "") === ORIGEM_QUE_NAO_E_RESPOSTA) continue;
     const nome = semAcento(a.nomeAtributo ?? a.nome_atributo ?? "");
     const valor = (a.valorAtributo ?? a.valor_atributo ?? "").trim();
     if (!nome || !valor || mapa.has(nome)) continue;
@@ -157,15 +187,57 @@ function fichaValor(
   return "";
 }
 
-/** Gênero (texto pt) → value_id do ML + nome canônico. Null se não reconhecido. */
+/**
+ * Gênero (texto pt) → value_id do ML + nome canônico. Null se não reconhecido.
+ *
+ * ===========================================================================
+ * A ORDEM DOS `if`s DEIXOU DE SER A REGRA — 28/08/2026
+ * ===========================================================================
+ *
+ * Esta função foi escrita para um CAMPO de valor único ("Gênero: Feminino") e
+ * em 28/08 passou a receber TÍTULO INTEIRO e palavras-chave do ERP, onde duas
+ * palavras convivem na mesma frase. Numa cascata de `if`s vence a PRIMEIRA da
+ * lista, que não é a mais específica:
+ *
+ *     "Chinelo Rider Infantil Masculino"     -> Masculino  (adulto!)
+ *     "Sandalia Molekinha Infantil Feminina" -> Sem gênero (só porque
+ *                                               /feminino/ não casa "Feminina")
+ *     "Chinelo Infantil Menino"              -> Meninos    (certo por sorte)
+ *
+ * Três calçados infantis, três respostas. E o primeiro publicava sapato de
+ * MENINO como masculino ADULTO — no campo que decide para quem o Mercado Livre
+ * mostra o anúncio, tendo `meninos` (339667) disponível para exatamente isso.
+ *
+ * Agora o texto é lido INTEIRO antes de decidir: o marcador infantil e o lado
+ * são coletados, e o cruzamento escolhe. `Feminina`/`Masculina` entraram porque
+ * a terminação feminina do adjetivo é comum em título de sandália, e a ausência
+ * dela era o acaso que fazia o segundo caso "escapar".
+ *
+ * OS DOIS LADOS JUNTOS DEVOLVEM NULL. "Chinelo Feminino e Masculino" não é uma
+ * terceira categoria — é uma frase que não responde, e null vira pergunta.
+ */
 function generoParaId(valor: string): { id: string; nome: string } | null {
   const s = semAcento(valor);
   if (!s) return null;
-  if (/menina/.test(s)) return { id: GENERO_ID.meninas, nome: "Meninas" };
-  if (/menino/.test(s)) return { id: GENERO_ID.meninos, nome: "Meninos" };
-  if (/(feminino|mulher|\bfem\b)/.test(s)) return { id: GENERO_ID.feminino, nome: "Feminino" };
-  if (/(masculino|homem|\bmasc\b)/.test(s)) return { id: GENERO_ID.masculino, nome: "Masculino" };
-  if (/infantil/.test(s)) return { id: GENERO_ID.sem_genero_infantil, nome: "Sem gênero" };
+
+  const menina = /menina/.test(s);
+  const menino = /menino/.test(s);
+  const infantil = /(infantil|infanto)/.test(s);
+  const feminino = menina || /(feminin[oa]|mulher|\bfem\b)/.test(s);
+  const masculino = menino || /(masculin[oa]|homem|\bmasc\b)/.test(s);
+
+  if (feminino && masculino) return null;
+  if (feminino) {
+    return menina || infantil
+      ? { id: GENERO_ID.meninas, nome: "Meninas" }
+      : { id: GENERO_ID.feminino, nome: "Feminino" };
+  }
+  if (masculino) {
+    return menino || infantil
+      ? { id: GENERO_ID.meninos, nome: "Meninos" }
+      : { id: GENERO_ID.masculino, nome: "Masculino" };
+  }
+  if (infantil) return { id: GENERO_ID.sem_genero_infantil, nome: "Sem gênero" };
   if (/(unissex|sem genero)/.test(s)) return { id: GENERO_ID.sem_genero, nome: "Sem gênero" };
   return null;
 }
@@ -204,8 +276,8 @@ export function tituloPublicado(anuncio: AnuncioGerado): string {
   return (anuncio?.tituloOtimizado ?? "").slice(0, LIMITE_DO_TITULO);
 }
 
-/** Um atributo que o próprio título já declara, nas duas formas que o ML aceita. */
-export interface AfirmacaoDoTitulo {
+/** Um atributo que o texto já declara, nas duas formas que o ML aceita. */
+export interface AfirmacaoDoTexto {
   id: string;
   valorId?: string;
   valorNome: string;
@@ -273,12 +345,12 @@ export interface AfirmacaoDoTitulo {
  * `footwearParaId`, listas fechadas. Título que não traz a palavra devolve
  * lista vazia, e o obrigatório continua virando pergunta.
  */
-export function oQueOTextoAfirma(titulo: string): AfirmacaoDoTitulo[] {
-  const afirma: AfirmacaoDoTitulo[] = [];
-  const genero = generoParaId(titulo);
+export function oQueOTextoAfirma(texto: string): AfirmacaoDoTexto[] {
+  const afirma: AfirmacaoDoTexto[] = [];
+  const genero = generoParaId(texto);
   if (genero) afirma.push({ id: "GENDER", valorId: genero.id, valorNome: genero.nome });
-  const tipoId = footwearParaId(titulo);
-  const tipoNome = footwearParaNome(titulo);
+  const tipoId = footwearParaId(texto);
+  const tipoNome = footwearParaNome(texto);
   if (tipoId && tipoNome) afirma.push({ id: "FOOTWEAR_TYPE", valorId: tipoId, valorNome: tipoNome });
   return afirma;
 }
@@ -334,7 +406,7 @@ export function montarBundleUserProducts(
   const footwearTypeId =
     footwearParaId(fichaValor(anuncio, ["tipo de calcado", "tipo de calçado"], doCadastro)) ??
     doTitulo.get("FOOTWEAR_TYPE")?.valorId;
-  const familyName = (anuncio.tituloOtimizado || brand).slice(0, 60);
+  const familyName = (anuncio.tituloOtimizado || brand).slice(0, LIMITE_DO_TITULO);
   const model = fichaValor(anuncio, ["modelo"], doCadastro) || familyName;
   const descricao = anuncio.descricaoCompleta || anuncio.descricaoCurta || "";
 

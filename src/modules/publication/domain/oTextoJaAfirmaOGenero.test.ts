@@ -31,7 +31,7 @@
 // O corte de 60 caracteres é parte da regra, não detalhe: palavra depois do
 // corte não é publicada, e sobre o que não sobe não há coerência a invocar.
 //
-// Rodar: npx tsx --test src/modules/publication/domain/oTituloJaAfirmaOGenero.test.ts
+// Rodar: npx tsx --test src/modules/publication/domain/oTextoJaAfirmaOGenero.test.ts
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -88,6 +88,39 @@ test("os cinco títulos reais que estavam sendo recusados", () => {
       `"${titulo}" não teve o gênero lido`
     );
   }
+});
+
+test("DUAS PALAVRAS NA MESMA FRASE: vence a mais específica, não a primeira", () => {
+  // A revisão de 28/08 pegou isto no próprio conserto: `generoParaId` era uma
+  // cascata de `if`s feita para um CAMPO de valor único, e recebendo o título
+  // inteiro vencia a primeira da lista. "Chinelo Rider Infantil Masculino" —
+  // um dos cinco títulos que justificaram a mudança — publicava sapato de
+  // MENINO como masculino ADULTO.
+  const g = (t: string) => oQueOTextoAfirma(t).find((a) => a.id === "GENDER");
+  assert.equal(g("Chinelo Rider Infantil Masculino 12673 Core Up")?.valorId, GENERO_ID.meninos);
+  assert.equal(g("Sandalia Molekinha Infantil Feminina 2357")?.valorId, GENERO_ID.meninas);
+  assert.equal(g("Chinelo Infantil Menino Rider")?.valorId, GENERO_ID.meninos);
+  // Sem lado, o marcador infantil sozinho continua "sem gênero infantil".
+  assert.equal(g("Chinelo Slide Infantil Molekinha")?.valorId, GENERO_ID.sem_genero_infantil);
+  // E sem marcador infantil, o adulto continua adulto.
+  assert.equal(g("Chinelo Slim Feminino Conforto")?.valorId, GENERO_ID.feminino);
+});
+
+test("A TERMINAÇÃO FEMININA DO ADJETIVO conta — era o acaso que escondia o defeito", () => {
+  // `/feminino/` não casava "Feminina", então "Infantil Feminina" caía no
+  // `/infantil/` seguinte e dava "Sem gênero". Parecia funcionar por sorte.
+  const g = (t: string) => oQueOTextoAfirma(t).find((a) => a.id === "GENDER");
+  assert.equal(g("Sandália Feminina Modare")?.valorId, GENERO_ID.feminino);
+  assert.equal(g("Sandália Masculina Rider")?.valorId, GENERO_ID.masculino);
+});
+
+test("OS DOIS LADOS JUNTOS não são uma terceira categoria — devolvem null", () => {
+  // "Chinelo Feminino e Masculino" é uma frase que não responde. Null vira
+  // pergunta, que é a resposta certa para o que não se sabe.
+  assert.deepEqual(
+    oQueOTextoAfirma("Chinelo Feminino e Masculino Unissex").filter((a) => a.id === "GENDER"),
+    []
+  );
 });
 
 test("título sem a palavra não afirma nada — continua virando pergunta", () => {

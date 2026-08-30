@@ -133,7 +133,17 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
       const r = await confirmarImportacaoProdutos({ clienteId, cliente: nome, linhas: analise.linhas });
       setMsg({
         tipo: "ok",
-        texto: `${r.total} produtos importados${r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : ""}.`,
+        // O número dos atributos PROPOSTOS aparece aqui, e não é enfeite: sem
+        // ele a importação deduz gênero de dezenas de produtos e a tela diz só
+        // "1003 produtos". Quem importou não fica sabendo que há o que conferir,
+        // que é o oposto do contrato de proposta.
+        texto:
+          `${r.total} produtos importados` +
+          (r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : "") +
+          (r.atributosPropostos > 0
+            ? `. ${r.atributosPropostos} atributos (gênero, tipo) foram lidos das palavras-chave — confira antes de publicar`
+            : "") +
+          ".",
       });
       setEtapa("arquivo");
       setTexto("");

@@ -295,7 +295,12 @@ export function comAsDaLoja(
   daLoja: readonly TabelaDaLoja[]
 ): Record<string, number> {
   const key = normalizarMarca(marca ?? "");
-  if (!key || daLoja.length === 0) return base;
+  // CÓPIA SEMPRE. `base` é `TABELAS_MARCA[key]` ou `PADRAO_REFERENCIA` — objetos
+  // do módulo, vivos pelo processo inteiro. Devolvê-los direto convida um
+  // `tabela["46"] = 30.7` no chamador a valer para todas as marcas dali em
+  // diante, e o sintoma seria uma medida aparecendo em anúncio que nada tem a
+  // ver. São 6 a 25 chaves: copiar não é custo.
+  if (!key || daLoja.length === 0) return { ...base };
 
   const juntas = { ...base };
   // A PRIMEIRA RESPOSTA DELA VENCE, e o desempate precisa ser dito.
@@ -319,7 +324,7 @@ export function comAsDaLoja(
       mudou = true;
     }
   }
-  return mudou ? juntas : base;
+  return mudou ? juntas : { ...base };
 }
 
 /**

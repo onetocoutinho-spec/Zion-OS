@@ -78,7 +78,7 @@ export default function ImportarProdutosPage() {
         linhas: analise.linhas,
       });
       setResultado(
-        `Importados ${resumo.total} produtos${resumo.totalVariacoes > 0 ? ` e ${resumo.totalVariacoes} variações` : ""}${resumo.comMargemBaixa > 0 ? ` · ${resumo.comMargemBaixa} com margem abaixo de 5%` : ""}.`
+        `Importados ${resumo.total} produtos${resumo.totalVariacoes > 0 ? ` e ${resumo.totalVariacoes} variações` : ""}${resumo.comMargemBaixa > 0 ? ` · ${resumo.comMargemBaixa} com margem abaixo de 5%` : ""}${resumo.atributosPropostos > 0 ? ` · ${resumo.atributosPropostos} atributos lidos das palavras-chave, a conferir` : ""}.`
       );
       setTimeout(() => router.push("/produtos"), 1000);
     } finally {
