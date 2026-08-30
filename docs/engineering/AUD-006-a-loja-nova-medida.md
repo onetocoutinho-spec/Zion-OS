@@ -1205,3 +1205,35 @@ convivem porque falam de strings diferentes.
 
 Os 7 não têm gênero em fonte nenhuma. O resto das 41 recusas é tabela de medida
 de marca (Ipanema infantil, Olympikus, Zaxynina, Cartago) — o item 2.
+
+### A metade da referência que estava sobrando (28/08)
+
+Das 41 recusas que restavam no T1, **34 eram medida** e não gênero. Por marca:
+
+    15 Ipanema · 4 Cartago · 3 Olympikus · 3 Zaxynina · 3 Klin · 2 Rider
+     1 Under Armour · 1 Modare · 1 Grendene Kids · 1 Pegada
+
+Cartago, Olympikus, Zaxynina, Klin, Rider, Pegada, Under Armour e Grendene Kids
+**não estão em `TABELAS_MARCA`** — caíam na grade de referência. E a referência
+era só a metade ADULTA do `PADRAO_BR` (33 a 45), enquanto esses produtos são
+infantis.
+
+O corte vinha de `bdaa5c3` (09/07), e o commit diz por quê: *"marca sem tabela
+(Vizzano/Moleca/Actvitta) usa grade padrão BR ADULTO"*. As três são marcas
+adultas — **o corte foi ajustado ao catálogo daquele dia**, não a uma regra
+sobre infantil ser desconhecível. Hoje quem cai ali inclui seis marcas infantis.
+
+Recusar não protegia ninguém: a resposta estava na outra metade da MESMA fonte.
+
+    T1 · User Products   monta 148 -> 159 de 189
+         sem medida           34 -> 23
+
+**O que NÃO mudou, e é o cuidado que sobrou:** marca conhecida continua sozinha
+com a tabela dela. Completar a grade da Modare com a genérica misturaria grades,
+e a diferença (22,3 contra 22,5 no 34) é o milímetro que este módulo se recusa a
+inventar. Um teste novo guarda isso.
+
+**As 23 que sobram:** 15 são Ipanema — marca CONHECIDA, tabela em pares adulta
+(33/34 a 43/44), produtos infantis. As outras 8 são par do cadastro contra
+tabela individual, que o DES-004 recusa de propósito. As duas pedem tabela do
+fabricante, e agora `/cliente/medidas` chega até a publicação.

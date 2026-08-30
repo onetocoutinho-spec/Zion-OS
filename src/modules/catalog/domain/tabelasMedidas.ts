@@ -197,13 +197,30 @@ export const MODELOS_PADRAO: {
   linhas: linhasDe(tab),
 }));
 
-/** Grade adulto de referência (padrão BR) para marcas ainda sem tabela. */
-const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
-  Object.entries(PADRAO_BR).filter(([k]) => {
-    const n = Number(k);
-    return n >= 33 && n <= 45;
-  })
-);
+/**
+ * Grade de referência (padrão BR) para marcas ainda sem tabela — INTEIRA.
+ *
+ * ===========================================================================
+ * O CORTE EM 33 SAIU EM 28/08/2026
+ * ===========================================================================
+ *
+ * Era `n >= 33 && n <= 45` — a metade ADULTA do `PADRAO_BR`, sem razão escrita.
+ * O efeito, medido no catálogo do percurso T1: produto INFANTIL de marca que
+ * este arquivo não conhece (Cartago, Olympikus, Zaxynina, Klin, Rider, Pegada,
+ * Under Armour, Grendene Kids) caía na grade adulta, não achava a numeração 19
+ * a 32, e a publicação era recusada por "nenhuma variação com tamanho
+ * publicável".
+ *
+ * Recusar ali não protegia ninguém: a fonte da resposta é a MESMA — `PADRAO_BR`,
+ * dos guias da Chinelaria — e ela cobre 21 a 45. Usar metade dela para marca
+ * desconhecida e chamar a outra metade de desconhecida era arbitrário.
+ *
+ * O que NÃO mudou, e é o cuidado que importa: marca CONHECIDA continua usando a
+ * tabela dela, inteira e sozinha. Completar a grade de uma marca com a
+ * referência genérica é misturar grades — e a diferença entre a Modare (22,3 em
+ * 34) e o padrão (22,5) é o milímetro que este módulo se recusa a inventar.
+ */
+const PADRAO_REFERENCIA: Record<string, number> = { ...PADRAO_BR };
 
 /**
  * Mapa ESTRUTURADO numeração → comprimento do pé (cm) de uma marca — a
