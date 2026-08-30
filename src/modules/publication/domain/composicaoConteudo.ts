@@ -355,6 +355,36 @@ export function oQueOTextoAfirma(texto: string): AfirmacaoDoTexto[] {
   return afirma;
 }
 
+/**
+ * O nome que o Mercado Livre EXIBE para cada atributo.
+ *
+ * `produto_atributos` guarda o nome exibido, não o id — convenção do DES-002 —
+ * e é por ele que `resolverObrigatorios` procura. Mora aqui, ao lado do
+ * vocabulário que produz os ids, porque separar os dois já custou um achado de
+ * revisão: sem o nome, a importação gravava o id cru e nenhuma das duas portas
+ * de publicação achava a linha.
+ */
+const NOME_EXIBIDO: Record<string, string> = {
+  GENDER: "Gênero",
+  FOOTWEAR_TYPE: "Tipo de calçado",
+};
+
+/**
+ * O que um texto afirma, na forma que `produto_atributos` guarda.
+ *
+ * Atributo sem nome exibido NÃO SAI DAQUI: gravado pelo id, a linha existe no
+ * banco e ninguém a acha — o defeito mais caro deste dia, e o motivo de o mapa
+ * acima morar junto do vocabulário.
+ */
+export function atributosParaOCadastro(
+  texto: string
+): { nomeAtributo: string; valorAtributo: string }[] {
+  return oQueOTextoAfirma(texto)
+    .filter((a) => NOME_EXIBIDO[a.id])
+    .map((a) => ({ nomeAtributo: NOME_EXIBIDO[a.id], valorAtributo: a.valorNome }));
+}
+
+
 function primeiroNumero(s: string): number {
   const m = s.match(/\d+/);
   return m ? parseInt(m[0], 10) : 9999;

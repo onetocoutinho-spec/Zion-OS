@@ -10,7 +10,7 @@ import type { Marketplace, Produto, ProdutoAtributo, ProdutoVariante } from "../
 import { criarProdutos } from "./produtos";
 import { criarVariantesBulk } from "./produtoVariantes";
 import { criarAtributosBulk } from "./produtoAtributos";
-import { oQueOTextoAfirma } from "../../modules/publication/domain/composicaoConteudo.ts";
+import { atributosParaOCadastro } from "../../modules/publication/domain/composicaoConteudo.ts";
 import {
   margemLiquida,
   precoMinimoOuNull,
@@ -784,21 +784,15 @@ async function gravarAtributosDasPalavrasChave(
     const cod = (produtoCriadoCodErp(prod) ?? "").trim();
     const texto = cod ? (porCodigo.get(cod) ?? linhas[i]?.palavrasChave) : linhas[i]?.palavrasChave;
     if (!texto) return;
-    for (const a of oQueOTextoAfirma(texto)) {
-      // SEM NOME EXIBIDO, NÃO GRAVA.
-      //
-      // `produto_atributos` guarda o NOME que o ML mostra ("Gênero"), não o id
-      // — convenção do DES-002 — e é por esse nome que `resolverObrigatorios`
-      // procura. Gravar `nome_atributo: "MATERIAL"` criaria a linha e ninguém a
-      // acharia: o sintoma seria "o cadastro tem a resposta e a publicação
-      // recusa mesmo assim", que é o defeito mais caro deste dia.
-      const nomeAtributo = NOME_EXIBIDO[a.id];
-      if (!nomeAtributo) continue;
+    // `atributosParaOCadastro` já descarta o que não tem nome exibido: gravar
+    // pelo id cru criaria a linha e ninguém a acharia. A regra mora junto do
+    // vocabulário, e o backfill do ERP chama a MESMA.
+    for (const a of atributosParaOCadastro(texto)) {
       aGravar.push({
         produtoId: prod.id,
         clienteId,
-        nomeAtributo,
-        valorAtributo: a.valorNome,
+        nomeAtributo: a.nomeAtributo,
+        valorAtributo: a.valorAtributo,
         tipoAtributo: "texto",
         obrigatorio: false,
         origem: "Importação",
@@ -818,11 +812,6 @@ async function gravarAtributosDasPalavrasChave(
   return aGravar.length;
 }
 
-/** O nome que o ML exibe, que é como `produto_atributos` guarda (DES-002). */
-const NOME_EXIBIDO: Record<string, string> = {
-  GENDER: "Gênero",
-  FOOTWEAR_TYPE: "Tipo de calçado",
-};
 
 export async function confirmarImportacaoProdutos(params: {
   clienteId: string;

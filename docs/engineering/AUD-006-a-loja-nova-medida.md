@@ -1277,3 +1277,37 @@ As 23 restantes são tabela de medida de marca: 15 Ipanema (marca conhecida,
 tabela adulta em pares, produtos infantis) e 8 par-contra-tabela-individual, que
 o DES-004 recusa de propósito. As duas pedem tabela do fabricante — e
 `/cliente/medidas` agora chega até a publicação.
+
+### A fila de perguntas existe — 1.409 propostas em staging (28/08)
+
+`/cliente/atributos` é a tela que faltava: até hoje o portal da lojista não
+tinha onde ver nem responder atributo, e por isso a leitura das palavras-chave
+ficava gravada e bloqueada.
+
+**Backfill, e não reimportação.** O catálogo do T1 entrou antes da coluna
+existir, e rodar a importação de novo deixaria 2006 produtos onde há 1003 — está
+registrado no passo 3. `scripts/lerPalavrasChaveDoErp.mjs` escreve só os
+atributos, casando pelo `cod_erp`, com a MESMA `atributosParaOCadastro` que a
+importação usa. Não sobrescreve o que já existe, e rodar duas vezes não duplica.
+
+    planilha 7.224 linhas · 941 códigos com palavras-chave
+    produtos 981 · sem cod_erp 0 · sem palavras-chave 61
+
+    324  Tipo de calçado Chinelo      273  Gênero Meninas
+    282  Tipo de calçado Sandália     239  Gênero Feminino
+                                      163  Gênero Meninos
+                                       74  Gênero Masculino
+     14  Tipo de calçado Tamanco       40  Gênero Sem gênero
+
+**1.409 propostas, em 8 perguntas.** É o formato que a tela espera: a maior
+resolve 324 produtos num toque.
+
+    hoje (proposta, não confirmada)   monta 159 de 189
+    SE ela confirmar tudo             monta 164 de 189 · sem gênero 7 -> 2
+
+Os 5 que entram são os que nem título nem ficha respondiam. Os 2 que sobram não
+têm gênero em fonte nenhuma — viram pergunta, que é o certo.
+
+**O que NÃO foi verificado:** a tela autenticada. Ela exige login e eu não
+digito credenciais — a rota compila e responde 200, sem erro de servidor nem de
+console, e é até onde eu chego sozinho. Mesma parede do seletor de pastas.
