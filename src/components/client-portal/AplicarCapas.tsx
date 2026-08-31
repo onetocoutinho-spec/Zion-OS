@@ -25,7 +25,6 @@
 // aqui criaria um segundo lugar para ela divergir.
 
 import { useState } from "react";
-import Image from "next/image";
 import { AlertTriangle, Check, ImageIcon, Loader2 } from "lucide-react";
 import type { CapaParaAplicar } from "@/lib/services/capasParaAplicar";
 import type { RespostaDaCapa } from "@/modules/catalog/domain/desfechoDaFoto";
@@ -75,10 +74,25 @@ export function AplicarCapas({ capas, onAplicar }: Props) {
             key={c.imagemId}
             className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/20 p-4 sm:flex-row sm:items-start"
           >
-            <div className="relative size-20 shrink-0 overflow-hidden rounded-lg bg-white">
-              {/* `unoptimized`: a URL é pública do Storage e já sai em 1200×1200
-                  quadrada. Passar pelo otimizador só gastaria uma volta. */}
-              <Image src={c.url} alt={`Capa nova de ${c.produto}, cor ${c.cor}`} fill sizes="80px" className="object-contain" unoptimized />
+            {/* `img` E NAO `next/image`, e o repositorio guarda isso com teste:
+                `next/image` ativa a copia de sharp@0.34 que o Next embute, e ela
+                herda as CVEs da libvips. A primeira versao desta tela usou
+                `next/image` e o `dependenciasVulneraveis.test` reprovou — com
+                razao, e antes de chegar ao ar.
+
+                Nao se perde nada: a URL e publica do Storage, ja sai em
+                1200x1200 quadrada, e aqui aparece a 80px. O otimizador so
+                gastaria uma volta. */}
+            <div className="size-20 shrink-0 overflow-hidden rounded-lg bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={c.url}
+                alt={`Capa nova de ${c.produto}, cor ${c.cor}`}
+                width={80}
+                height={80}
+                loading="lazy"
+                className="size-full object-contain"
+              />
             </div>
 
             <div className="min-w-0 flex-1">
