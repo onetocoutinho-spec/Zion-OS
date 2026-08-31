@@ -40,9 +40,42 @@
 // Uso:
 //   node --env-file=.env.local --import tsx scripts/aplicarDecisaoDasGemeas.mjs <clienteId>
 //   node --env-file=.env.local --import tsx scripts/aplicarDecisaoDasGemeas.mjs <clienteId> --apagar
+//
+// As regras que consultam o ERP precisam do export, apontado por `EXPORT_ERP`.
+// Sem ele, elas RECUSAM — e o relatório diz "sem linha no ERP" em vez de
+// decidir por idade, que é o que sobraria.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { clienteDaBase } from "./aBaseDoComando.mjs";
+
+/**
+ * O export de derivação do ERP, indexado por EAN.
+ *
+ * Uma regra pode precisar dele (`exigeErp: true`) — e aí o EAN é a chave, que é
+ * exata: 4.272 EANs distintos, nenhum repetido, conferido em 31/08/2026.
+ *
+ * Ausente o arquivo, as regras que o exigem RECUSAM em vez de decidir sem ele.
+ */
+const CAMINHO_ERP = process.env.EXPORT_ERP ?? "";
+function lerErp() {
+  if (!CAMINHO_ERP) return new Map();
+  const linhas = new TextDecoder("windows-1252")
+    .decode(readFileSync(CAMINHO_ERP))
+    .split(/\r?\n/)
+    .filter((l) => l.trim());
+  const campos = (l) => l.split(";").map((c) => c.replace(/^"|"$/g, "").trim());
+  const cab = campos(linhas[0]);
+  const i = (n) => cab.indexOf(n);
+  const [iEan, iCod, iNome, iEst, iAtivo] = [i("EAN"), i("Código"), i("Nome da Derivação"), i("Qtde Estoque"), i("Ativo")];
+  const mapa = new Map();
+  for (const l of linhas.slice(1)) {
+    const c = campos(l);
+    const e = (c[iEan] ?? "").trim();
+    if (e && c.length > iAtivo) mapa.set(e, { cod: c[iCod], nome: c[iNome], est: c[iEst], ativo: c[iAtivo] });
+  }
+  return mapa;
+}
+const ERP = lerErp();
 
 const [clienteId] = process.argv.slice(2);
 const APAGAR = process.argv.includes("--apagar");
@@ -174,6 +207,56 @@ const REGRAS = [
       return Math.abs((so[0].estoque ?? 0) - alvo) === Math.abs((so[1].estoque ?? 0) - alvo) ? null : so[0];
     },
   },
+  {
+    produto: /Calce Facil Casual Slip On.*Actvitta/i,
+    exigeErp: true,
+    motivo: "o ERP decide, na ordem do que custa mais errar: código, cor, estoque",
+    // O CASO MAIS PESADO DA LISTA, e o único com anúncios NO AR.
+    //
+    // Não são 11 conflitos independentes: são 5 EANs, três deles com QUATRO
+    // linhas. E o critério automático acerta em uns e erra em outros dentro do
+    // mesmo produto — no EAN 7900190247670 ele fica com a linha de estoque 2
+    // quando o ERP diz 10, e existem duas linhas com 10.
+    //
+    // A regra é uma escada, e a ordem dela é a do CUSTO DE ERRAR:
+    //
+    //   1. o código do ERP — sem ele a linha não concilia com nada: nem custo,
+    //      nem peso, nem preço mínimo, nem a próxima importação;
+    //   2. a cor que o ERP escreve no nome da derivação — "preto/branco" e
+    //      "Preto" são sapatos diferentes na vitrine;
+    //   3. o estoque do ERP — erra em peças, e a importação corrige.
+    //
+    // Cada degrau só é consultado quando o anterior empata. Onde o ERP não fala
+    // — o PREÇO não está no export — a escada não inventa critério: cai no
+    // desempate por idade, o mesmo do resto.
+    escolher: (grupo, erp) => {
+      if (!erp) return null;
+      const n = (s) =>
+        String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+      const nomeErp = n(erp.nome);
+      const nota = (v) => [
+        String(v.sku ?? "").trim() === String(erp.cod ?? "").trim() ? 0 : 1,
+        n(v.cor) && nomeErp.includes(n(v.cor)) ? 0 : 1,
+        String(v.estoque ?? "") === String(erp.est ?? "") ? 0 : 1,
+      ];
+      const ordenado = [...grupo].sort((a, b) => {
+        const na = nota(a), nb = nota(b);
+        for (let i = 0; i < na.length; i++) if (na[i] !== nb[i]) return na[i] - nb[i];
+        const ta = Date.parse(a.created_at ?? "") || 0, tb = Date.parse(b.created_at ?? "") || 0;
+        if (ta !== tb) return ta - tb;
+        return a.id < b.id ? -1 : 1;
+      });
+      // A escada precisa SEPARAR. Se a melhor e a segunda empatam nos três
+      // degraus do ERP, o que restou foi idade — e idade não é razão para
+      // escolher entre dados diferentes. Recusa.
+      const [p1, p2] = ordenado;
+      const iguais = nota(p1).join() === nota(p2).join();
+      const mesmoDado = ["sku", "cor", "estoque", "preco_base", "custo"].every(
+        (c) => String(p1[c] ?? "") === String(p2[c] ?? "")
+      );
+      return iguais && !mesmoDado ? null : p1;
+    },
+  },
 ];
 
 // ---- monta o plano ---------------------------------------------------------
@@ -192,9 +275,16 @@ for (const grupo of [...grupos.values()].filter((g) => g.length > 1)) {
   const nome = nomeDo.get(grupo[0].produto_id) ?? "";
   const regra = REGRAS.find((r) => r.produto.test(nome));
   if (!regra) continue;
-  const fica = regra.escolher(grupo);
+  const doErp = ERP.get((grupo[0].ean ?? "").trim()) ?? null;
+  if (regra.exigeErp && !doErp) {
+    // Regra que depende do ERP não decide sem ele. Sem o export, ou com o EAN
+    // ausente dele, o grupo fica intocado — e o relatório diz por quê.
+    naoPrevistos.push({ nome, ean: grupo[0].ean, quantos: grupo.length, porque: "sem linha no ERP" });
+    continue;
+  }
+  const fica = regra.escolher(grupo, doErp);
   if (!fica) {
-    naoPrevistos.push({ nome, ean: grupo[0].ean, quantos: grupo.length });
+    naoPrevistos.push({ nome, ean: grupo[0].ean, quantos: grupo.length, porque: "a regra não separou" });
     continue;
   }
   for (const v of grupo) {
@@ -224,7 +314,7 @@ for (const [nome, l] of porProduto) {
 }
 if (naoPrevistos.length > 0) {
   console.log("NÃO PREVISTOS pela regra — intocados:");
-  for (const x of naoPrevistos) console.log(`  ${x.ean} · ${x.quantos} linhas · ${x.nome.slice(0, 46)}`);
+  for (const x of naoPrevistos) console.log(`  ${x.ean} · ${x.quantos} linhas · ${x.porque ?? "?"} · ${x.nome.slice(0, 40)}`);
   console.log();
 }
 console.log(`estoque que deixa de ser contado duas vezes: ${plano.reduce((s, p) => s + (p.sai.estoque ?? 0), 0)} peças`);
