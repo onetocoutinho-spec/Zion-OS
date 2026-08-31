@@ -104,23 +104,40 @@ const nomeDo = new Map(produtos.map((p) => [p.id, p.nome]));
 // ele identifica UMA peça física. Duas linhas com o mesmo EAN no mesmo produto
 // são a mesma peça contada duas vezes — não há leitura em que sejam duas.
 //
-// Variante sem EAN fica de fora. Sem código de barras a igualdade teria de ser
-// deduzida de cor+tamanho, e deduzir é exatamente o que este script não faz.
+// E A CHAVE TEM UM SUPLENTE, QUE APARECEU TARDE — 31/08/2026.
+//
+// Zerados os grupos por EAN, o banco ainda acusou 5 códigos repetidos. Não eram
+// meus: eram pares que a chave nunca tinha VISTO, porque as duas linhas estão
+// entre as 53 sem EAN — e sem EAN elas caíam fora do agrupamento, contadas como
+// "fora do escopo".
+//
+// O suplente é o SKU. Dentro do MESMO produto, duas linhas com o mesmo código
+// do ERP são a mesma derivação: o código identifica a peça no ERP tão bem
+// quanto o código de barras identifica no varejo.
+//
+// Medido nos cinco: 1 par idêntico, 4 de grafia de tamanho, ZERO divergindo em
+// dado, e estoque igual nos cinco. As regras que já existem resolvem todos —
+// faltava só a chave alcançá-los.
+//
+// O EAN CONTINUA PREFERIDO quando existe. Ele é global e o SKU é do ERP desta
+// loja; onde os dois existem, o mais forte decide.
 const grupos = new Map();
-let semEan = 0;
+let semChave = 0;
 for (const v of variantes) {
   const ean = (v.ean ?? "").trim();
-  if (!ean) {
-    semEan++;
+  const sku = (v.sku ?? "").trim();
+  const chaveDaLinha = ean ? `ean:${ean}` : sku ? `sku:${sku}` : null;
+  if (!chaveDaLinha) {
+    semChave++;
     continue;
   }
-  const k = `${v.produto_id}|${ean}`;
+  const k = `${v.produto_id}|${chaveDaLinha}`;
   if (!grupos.has(k)) grupos.set(k, []);
   grupos.get(k).push(v);
 }
 const gemeas = [...grupos.values()].filter((g) => g.length > 1);
 
-console.log(`variantes ${variantes.length} · sem EAN (fora do escopo) ${semEan}`);
+console.log(`variantes ${variantes.length} · sem EAN e sem SKU (fora do escopo) ${semChave}`);
 const tamanhos = new Map();
 for (const g of gemeas) tamanhos.set(g.length, (tamanhos.get(g.length) ?? 0) + 1);
 console.log(
