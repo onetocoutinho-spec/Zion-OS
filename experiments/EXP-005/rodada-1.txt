@@ -1,0 +1,155 @@
+# EXP-005 · RODADA 1 · provedor: gemini · ZERO MUTAÇÃO
+
+
+======================================================================
+# S1
+======================================================================
+
+-- turno: "Quais produtos da Actvitta estão faltando peso?"
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Actvitta","estadoDePeso":"faltando","termosDoProduto":["produto"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer saber quais produtos da Actvitta estão sem peso."}
+   classific: declaradas=[] genericas=[produto] fronteira=[]
+   materializacaoCorrente: — → M1
+   6 prod · 80 var · fronteira=[] · acionavel=true
+
+-- turno: "Só os tênis."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"nao_mencionado","termosDoProduto":["tênis"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer filtrar o conjunto anterior pelos itens que são tênis."}
+   classific: declaradas=[tênis] genericas=[] fronteira=[]
+   materializacaoCorrente: M1 → M2
+   5 prod · 78 var · fronteira=[] · acionavel=true
+
+-- turno: "Coloca 400g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"faltando","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":400,"interpretacao":"Atribuir 400 gramas aos produtos do conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M2 · acionavel=true
+   >> PROPOSTA prop-M2  acao=preencher_peso  pesoGramas=400
+      alvo:      78 varianteId(s) — 0cde13e7, 2bcc857d, 2e719a66, 4dac30b1, …
+      contagens: 5 produto(s) · 78 variação(ões) · 0 já preenchida(s)
+      excluidos: 0 variação(ões) que JÁ têm peso
+
+======================================================================
+# S2
+======================================================================
+
+-- turno: "Me mostra os produtos sem peso da Havaianas."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Havaianas","estadoDePeso":"faltando","termosDoProduto":["produto"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer ver produtos da marca Havaianas que estão sem peso."}
+   classific: declaradas=[] genericas=[produto] fronteira=[]
+   materializacaoCorrente: — → M3
+   5 prod · 64 var · fronteira=[] · acionavel=true
+
+-- turno: "Só os masculinos."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"nao_mencionado","termosDoProduto":["masculino"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"Filtrar por produtos masculinos."}
+   classific: declaradas=[] genericas=[] fronteira=[masculino]
+   materializacaoCorrente: M3 → M4
+   5 prod · 64 var · fronteira=[masculino] · acionavel=false
+
+-- turno: "Coloca 320g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"faltando","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":320,"interpretacao":"Preencher peso de 320g nos itens anteriores."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M4 · acionavel=false
+   >> PROPOSTA RECUSADA: a intenção de refinamento "masculino" não foi resolvida
+
+-- [EVENTO HUMANO] seleção manual
+   materializacaoCorrente: M4 → M5
+   acionavel: true · 3 prod · 41 var
+
+-- turno: "Coloca 320g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"faltando","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":320,"interpretacao":"Atribuir 320 gramas aos itens do conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M5 · acionavel=true
+   >> PROPOSTA prop-M5  acao=preencher_peso  pesoGramas=320
+      alvo:      41 varianteId(s) — 2f92773e, d6a5bb45, 54fe1d08, 4e13dabf, …
+      contagens: 3 produto(s) · 41 variação(ões) · 0 já preenchida(s)
+      excluidos: 9 variação(ões) que JÁ têm peso — d318fb8d, 374706cd, 9906fe62, e7f9673b, …
+         · Chinelo Havaianas Masculino Top Max Comfort Original: alvo 9 de 18, preservadas 9
+
+======================================================================
+# S3
+======================================================================
+
+-- turno: "Me mostra os produtos sem peso da Vizzano."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Vizzano","estadoDePeso":"faltando","termosDoProduto":["produto"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"Operador quer ver produtos da Vizzano que estão sem peso."}
+   classific: declaradas=[] genericas=[produto] fronteira=[]
+   materializacaoCorrente: — → M6
+   1 prod · 3 var · fronteira=[] · acionavel=true
+
+-- turno: "Coloca 320g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"nao_mencionado","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":320,"interpretacao":"O operador quer atribuir um peso de 320 gramas aos itens do conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M6 · acionavel=true
+   >> PROPOSTA prop-M6  acao=preencher_peso  pesoGramas=320
+      alvo:      3 varianteId(s) — 6672e4fa, 4416307d, 392b593f
+      contagens: 1 produto(s) · 3 variação(ões) · 0 já preenchida(s)
+      excluidos: 36 variação(ões) que JÁ têm peso — dd7e461e, eda7a6f6, 6a3b7be7, e5cebefc, …
+         · Rasteira Feminina Vizzano 6371.1005: alvo 3 de 39, preservadas 36
+
+======================================================================
+# S4
+======================================================================
+
+-- turno: "Quais tênis e chinelos da Actvitta estão sem peso?"
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Actvitta","estadoDePeso":"faltando","termosDoProduto":["tênis","chinelo"],"relacao":"cumulativa","acao":"nenhuma","pesoGramas":0,"interpretacao":"Buscar tênis e chinelos da marca Actvitta que estão sem peso."}
+   classific: declaradas=[tênis] genericas=[] fronteira=[chinelo]
+   materializacaoCorrente: — → M7
+   5 prod · 78 var · fronteira=[chinelo] · acionavel=false
+
+-- turno: "Coloca 320g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"faltando","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":320,"interpretacao":"Atribuir 320 gramas ao conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M7 · acionavel=false
+   >> PROPOSTA RECUSADA: a intenção de refinamento "chinelo" não foi resolvida
+
+======================================================================
+# S5
+======================================================================
+
+-- turno: "Quais produtos da Molekinha estão sem peso?"
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Molekinha","estadoDePeso":"faltando","termosDoProduto":["produto"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer saber quais produtos da Molekinha estão sem peso."}
+   classific: declaradas=[] genericas=[produto] fronteira=[]
+   materializacaoCorrente: — → M8
+   0 prod · 0 var · fronteira=[] · acionavel=false
+
+-- turno: "Coloca 300g nesses."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"nao_mencionado","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":300,"interpretacao":"O operador quer preencher o peso em gramas para o conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M8 · acionavel=false
+   >> PROPOSTA RECUSADA: o conjunto corrente está vazio
+
+======================================================================
+# S6
+======================================================================
+
+-- turno: "Quais produtos da Havaianas estão sem peso?"
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"Havaianas","estadoDePeso":"faltando","termosDoProduto":["produto"],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer saber quais produtos da marca Havaianas estão sem peso."}
+   classific: declaradas=[] genericas=[produto] fronteira=[]
+   materializacaoCorrente: — → M9
+   5 prod · 64 var · fronteira=[] · acionavel=true
+
+-- turno: "Coloca 320g neles."
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":true,"marca":"","estadoDePeso":"nao_mencionado","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"preencher_peso","pesoGramas":320,"interpretacao":"Atribuir 320 gramas ao conjunto anterior."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   ação sobre: M9 · acionavel=true
+   >> PROPOSTA prop-M9  acao=preencher_peso  pesoGramas=320
+      alvo:      64 varianteId(s) — 445ea841, 1070bc4d, 55b6ec7d, 67a68ee4, …
+      contagens: 5 produto(s) · 64 variação(ões) · 0 já preenchida(s)
+      excluidos: 9 variação(ões) que JÁ têm peso — d318fb8d, 374706cd, 9906fe62, e7f9673b, …
+         · Chinelo Havaianas Masculino Top Max Comfort Original: alvo 9 de 18, preservadas 9
+
+======================================================================
+# S7
+======================================================================
+
+-- turno: "Quais produtos estão sem peso?"
+   modelo:   {"entendeu":true,"perguntar":"","referenciaConjuntoAnterior":false,"marca":"","estadoDePeso":"faltando","termosDoProduto":[],"relacao":"nao_se_aplica","acao":"nenhuma","pesoGramas":0,"interpretacao":"O operador quer saber quais produtos estão sem peso."}
+   classific: declaradas=[] genericas=[] fronteira=[]
+   materializacaoCorrente: — → M10
+   19 prod · 223 var · fronteira=[] · acionavel=true
+
+======================================================================
+# INVARIANTES
+OK   I1 modelo nunca emite id: 16/16
+OK   I4 refinamento ⊆ anterior: 2/2
+OK   I2 alvo sem variação já preenchida: 4/4
+OK   N5 contagens determinísticas: 4/4
+OK   I10 fronteira pendente bloqueia: 3/3
+OK   I12 recusa não recai na anterior: 2/2
+OK   I11 seleção não vira regra: 1/1

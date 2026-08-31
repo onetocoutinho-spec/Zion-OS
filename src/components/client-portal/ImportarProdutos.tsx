@@ -19,6 +19,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { lerPlanilhaComoCsv } from "@/lib/planilha";
+import { listarProdutosDoCliente } from "@/lib/services/produtos";
+import {
+  conferirImportacaoRepetida,
+  type ImportacaoRepetida,
+} from "@/modules/catalog/domain/importacaoRepetida";
 import { useClientPortal } from "./context";
 import {
   analisarProdutosCsv,
@@ -43,6 +48,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
   const [exemplos, setExemplos] = useState<Record<string, string>>({});
   const [mapeamento, setMapeamento] = useState<Record<string, string>>({});
   const [analise, setAnalise] = useState<AnaliseProdutos | null>(null);
+  const [repetida, setRepetida] = useState<ImportacaoRepetida | null>(null);
   const [importando, setImportando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
@@ -76,10 +82,47 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
     });
   }
 
-  function analisar() {
+  /**
+   * O conserto de um clique para a grade achatada.
+   *
+   * Reanalisa com o mapeamento NOVO em mãos, e não com o do estado:
+   * `setMapeamento` só vale no próximo render, então reanalisar depois dele
+   * leria o mapeamento velho — e o aviso continuaria na tela depois do clique
+   * que o resolve.
+   */
+  function usarComoVariacao(coluna: string) {
+    const novo = { ...mapeamento, skuVariacao: coluna };
+    setMapeamento(novo);
+    setAnalise(analisarProdutosCsv(texto, "Mercado Livre", novo));
+  }
+
+  async function analisar() {
     const a = analisarProdutosCsv(texto, "Mercado Livre", mapeamento);
     setAnalise(a);
+    setRepetida(null);
     setEtapa("revisar");
+
+    // A CONFERÊNCIA É AQUI, ANTES DO CLIQUE — e não depois, num relatório.
+    //
+    // `confirmarImportacaoProdutos` é `insert` puro: sem upsert, e sem índice
+    // único em (cliente_id, cod_erp) que segurasse. Subir a mesma planilha duas
+    // vezes DOBRA o catálogo em silêncio — 2006 produtos onde havia 1003, na
+    // base medida em 26/08/2026.
+    //
+    // Falha de rede não vira aviso falso nem trava a importação: sem a lista do
+    // catálogo, a tela fica como sempre foi. Um aviso que só às vezes aparece é
+    // pior que nenhum se ele também aparecer errado.
+    try {
+      const doCatalogo = await listarProdutosDoCliente(clienteId);
+      setRepetida(
+        conferirImportacaoRepetida(
+          a.linhas.map((l) => l.base.codErp ?? l.base.sku ?? ""),
+          doCatalogo.map((p) => p.codErp ?? p.sku ?? "")
+        )
+      );
+    } catch {
+      setRepetida(null);
+    }
   }
 
   async function importar() {
@@ -90,11 +133,22 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
       const r = await confirmarImportacaoProdutos({ clienteId, cliente: nome, linhas: analise.linhas });
       setMsg({
         tipo: "ok",
-        texto: `${r.total} produtos importados${r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : ""}.`,
+        // O número dos atributos PROPOSTOS aparece aqui, e não é enfeite: sem
+        // ele a importação deduz gênero de dezenas de produtos e a tela diz só
+        // "1003 produtos". Quem importou não fica sabendo que há o que conferir,
+        // que é o oposto do contrato de proposta.
+        texto:
+          `${r.total} produtos importados` +
+          (r.totalVariacoes > 0 ? ` e ${r.totalVariacoes} variações` : "") +
+          (r.atributosPropostos > 0
+            ? `. ${r.atributosPropostos} atributos (gênero, tipo) foram lidos das palavras-chave — confira antes de publicar`
+            : "") +
+          ".",
       });
       setEtapa("arquivo");
       setTexto("");
       setAnalise(null);
+      setRepetida(null);
       onImportado?.();
     } catch (e) {
       setMsg({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha ao importar." });
@@ -116,6 +170,10 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
   }
 
   const faltaNome = !mapeamento.nome;
+  // O aviso do alçapão sai do JSX para o TypeScript estreitar `colunaSugerida`
+  // uma vez só, em vez de uma asserção a cada uso.
+  const avisoDeGrade = analise?.avisoDeGrade ?? null;
+  const colunaDaGrade = avisoDeGrade?.colunaSugerida;
   const naoUsadas = headers.filter((h) => !Object.values(mapeamento).includes(h));
 
   return (
@@ -229,7 +287,7 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                 <Button variant="ghost" onClick={() => setEtapa("arquivo")}>
                   <ArrowLeft size={14} /> Trocar arquivo
                 </Button>
-                <Button onClick={analisar} disabled={faltaNome}>
+                <Button onClick={() => void analisar()} disabled={faltaNome}>
                   Revisar <ArrowRight size={14} />
                 </Button>
               </div>
@@ -256,12 +314,73 @@ export function ImportarProdutos({ onImportado }: { onImportado?: () => void }) 
                       </span>
                     )}
                   </div>
+                  {/* O ALÇAPÃO DA GRADE — modules/catalog/domain/gradeAchatada.
+                      Avisa, nunca bloqueia: nome repetido é legítimo. O botão
+                      existe porque "SKU da variação" é vocabulário NOSSO, e
+                      quem não o conhece não sabe que existe conserto. */}
+                  {/* PESO QUE O RESTO DA PLANILHA DESMENTE — INC do T1, 26/08.
+                      Avisa, nunca corrige: dividir por mil o que "parece grama"
+                      seria inventar dado, que é o que produziu 87 custos falsos
+                      e o estrago que a migração 031 desfez. */}
+                  {/* JÁ IMPORTADA ANTES — modules/catalog/domain/importacaoRepetida.
+                      Conta e pergunta, nunca decide: reimportar de propósito é
+                      legítimo (é o que se faz depois de corrigir o mapeamento),
+                      e apagar por conta própria seria pior que duplicar. */}
+                  {repetida && repetida.repetidos > 0 && (
+                    <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+                      <AlertTriangle size={14} className="mt-px shrink-0" />
+                      <span>{repetida.texto}</span>
+                    </p>
+                  )}
+                  {analise.avisoDePeso && (
+                    <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+                      <AlertTriangle size={14} className="mt-px shrink-0" />
+                      <span>{analise.avisoDePeso.texto}</span>
+                    </p>
+                  )}
+                  {analise.avisoDeCodigo && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
+                        <AlertTriangle size={14} className="mt-px shrink-0" />
+                        <span>{analise.avisoDeCodigo.texto}</span>
+                      </p>
+                      {analise.avisoDeCodigo.exemplos.length > 0 && (
+                        <p className="mt-2 text-xs text-amber-200/70">
+                          Por exemplo: {analise.avisoDeCodigo.exemplos.join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {avisoDeGrade && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                      <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-200">
+                        <AlertTriangle size={14} className="mt-px shrink-0" />
+                        <span>{avisoDeGrade.texto}</span>
+                      </p>
+                      {colunaDaGrade && (
+                        <div className="mt-2">
+                          <Button variant="ghost" onClick={() => usarComoVariacao(colunaDaGrade)}>
+                            <Wand2 size={14} /> Usar “{colunaDaGrade}” como SKU da variação
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" onClick={() => setEtapa("mapear")}>
                       <ArrowLeft size={14} /> Ajustar mapeamento
                     </Button>
+                    {/* O RÓTULO MUDA QUANDO HÁ REPETIÇÃO.
+                        "Importar 1003" e "Importar 1003 (1003 em duplicidade)"
+                        pedem confirmações diferentes, e o botão é a última coisa
+                        que a pessoa lê antes de clicar. */}
                     <Button onClick={importar} disabled={importando || analise.total === 0}>
-                      <Upload size={14} /> {importando ? "Importando…" : `Importar ${analise.total}`}
+                      <Upload size={14} />{" "}
+                      {importando
+                        ? "Importando…"
+                        : repetida && repetida.repetidos > 0
+                          ? `Importar ${analise.total} (${repetida.repetidos} em duplicidade)`
+                          : `Importar ${analise.total}`}
                     </Button>
                   </div>
                 </>

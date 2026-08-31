@@ -16,6 +16,7 @@
 import { listarProdutosDoCliente } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import type { Produto, ProdutoVariante } from "../types";
+import { pesoConhecidoDoProduto } from "../../modules/catalog/domain/pendenciasDoCatalogo";
 
 export interface ProdutoComPeso {
   id: string;
@@ -44,6 +45,22 @@ export interface ProdutoComPeso {
    * pendência. Eram 12 variações inalcançáveis na base real.
    */
   variacoesSemPeso: number;
+  /**
+   * O peso que as variantes JÁ PESADAS têm em comum, ou `null` quando não há.
+   *
+   * `null` cobre os dois casos em que não dá para completar sozinho: ninguém
+   * tem peso, ou as pesadas DISCORDAM. Os dois pedem uma pessoa.
+   *
+   * Existe porque `pesoGramas` é o MAIOR, e o maior não distingue "todas
+   * concordam em 390 g" de "uma tem 300 e outra 450". Completar pelo máximo
+   * daria 450 g às que faltam num produto onde metade pesa 300 — frete cobrado
+   * a mais em toda venda daquele lado.
+   *
+   * A regra vem de `pesoConhecidoDoProduto`, no domínio, e não é reescrita
+   * aqui: uma segunda definição de "qual peso vale" divergiria em silêncio da
+   * que o assistente usa para preparar a mesma aplicação.
+   */
+  pesoUnicoGramas: number | null;
 }
 
 /** Gramas ↔ quilos num lugar só, para o arredondamento não vazar pela tela. */
@@ -83,6 +100,11 @@ export async function listarProdutosComPeso(clienteId: string): Promise<ProdutoC
       // Contado, não deduzido do máximo: é a diferença entre "tem algum peso" e
       // "está completo", e foi confundi-las que escondeu o estado parcial.
       variacoesSemPeso: vs.filter((v) => !((Number(v.peso) || 0) > 0)).length,
+      pesoUnicoGramas: pesoConhecidoDoProduto({
+        id: p.id,
+        nome: p.nome,
+        variantes: vs.map((v) => ({ pesoGramas: paraGramas(Number(v.peso) || 0) })),
+      } as unknown as Parameters<typeof pesoConhecidoDoProduto>[0]),
     };
   });
 }

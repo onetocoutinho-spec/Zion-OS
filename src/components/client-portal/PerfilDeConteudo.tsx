@@ -81,6 +81,45 @@ export function PerfilDeConteudo() {
             <Input value={proibidas} onChange={(e) => setProibidas(e.target.value)} placeholder="promoção, barato, imperdível" />
           </Field>
         </div>
+        {/*
+          AS PROMESSAS COMERCIAIS — 081.
+          Até 27/08/2026 estas duas eram "Defaults Zion" escritos nas regras-mãe:
+          garantia de 90 dias e frete grátis embutido. Saíam em toda descrição,
+          em nome de uma loja que nunca escolheu — e quem o comprador cobra é
+          ela. Aqui a escolha volta para quem paga a conta.
+
+          Vazio NÃO é "não dá garantia" nem "não dá frete": é "não escolheu", e
+          o assistente trata isso como pendência, sem afirmar.
+        */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Garantia que você oferece"
+            hint="nas suas palavras. Vazio = o anúncio não fala de garantia."
+          >
+            <Input
+              value={perfil.garantia}
+              maxLength={LIMITES.texto}
+              placeholder="12 meses pelo fabricante"
+              onChange={(e) => setPerfil((p) => ({ ...p, garantia: e.target.value }))}
+            />
+          </Field>
+          <Field label="Frete grátis" hint="o anúncio só promete o que você escolher aqui">
+            <select
+              value={perfil.freteGratis === null ? "" : perfil.freteGratis ? "sim" : "nao"}
+              onChange={(e) =>
+                setPerfil((p) => ({
+                  ...p,
+                  freteGratis: e.target.value === "" ? null : e.target.value === "sim",
+                }))
+              }
+              className="w-full rounded-lg border border-white/10 bg-surface-input px-3 py-2 text-sm text-zinc-200 outline-none transition-colors hover:border-white/20 focus:border-violet-500 [@media(pointer:coarse)]:min-h-11"
+            >
+              <option value="">Ainda não decidi</option>
+              <option value="sim">Sim — embuto o frete no preço</option>
+              <option value="nao">Não — o comprador paga o frete</option>
+            </select>
+          </Field>
+        </div>
         <Field label="Observações" hint="o que mais o assistente precisa saber">
           <TextArea rows={2} maxLength={LIMITES.texto} value={perfil.observacoes} onChange={(e) => setPerfil((p) => ({ ...p, observacoes: e.target.value }))} />
         </Field>

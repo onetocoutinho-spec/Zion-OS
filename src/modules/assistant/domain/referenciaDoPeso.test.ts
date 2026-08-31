@@ -21,6 +21,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import { lerFonte } from "../../../testing/lerFonte.ts";
 
 import { podeExecutar, type PropostaPersistida } from "./propostaPersistida.ts";
@@ -214,10 +215,55 @@ test("ausência da chave NÃO é tratada como precondição satisfeita", () => {
 });
 
 test("nada de schema, migration ou RLS entrou nesta correção", () => {
-  for (const proibido of ["create table", "alter table", "create policy", "rpc("]) {
+  for (const proibido of ["create table", "alter table", "create policy"]) {
     assert.ok(!PROPOSTA.toLowerCase().includes(proibido), `apareceu "${proibido}"`);
     assert.ok(!CONVERSA.toLowerCase().includes(proibido), `apareceu "${proibido}"`);
   }
+});
+
+// A PROIBIÇÃO DE `rpc(` VIROU UMA EXIGÊNCIA DE PROCEDÊNCIA — 25/08/2026.
+//
+// O teste acima bania a substring `rpc(` nas duas rotas. A intenção era boa e
+// está no título: esta correção não podia trazer superfície NOVA de banco.
+// Mas a letra proibia também CHAMAR o que já existe, e isso é diferente —
+// reusar uma função criada e revisada numa migração é o contrário de inventar
+// schema por fora dela.
+//
+// O que fez a diferença aparecer: `cotaRestanteNoBanco` passou a chamar
+// `quota_esteira(p_cliente_id)` para dimensionar o lote de anúncios. A
+// alternativa era refazer a soma com um `select` em `consumo_ia` — e o
+// PostgREST corta em 1.000 linhas sem erro, com `limite_esteira_mes` chegando a
+// 5.000 nesta base. O consumo sairia subestimado e a cota restante, inflada.
+// A função existe desde a migração 064, aplicada em 22/08/2026.
+//
+// Então a trava passa a medir o que ela queria dizer: toda RPC chamada nestas
+// rotas precisa existir em `database/migrations/`. Uma função inventada no
+// código, sem migração, continua sendo pega — que era o defeito real.
+test("toda RPC chamada nas rotas do assistente nasceu numa migração", () => {
+  const sql = readdirSync(new URL("../../../../database/migrations/", import.meta.url))
+    .filter((f) => f.endsWith(".sql"))
+    .map((f) => lerFonte(new URL(`../../../../database/migrations/${f}`, import.meta.url)))
+    .join("\n")
+    .toLowerCase();
+
+  const chamadas: string[] = [];
+  for (const fonte of [PROPOSTA, CONVERSA]) {
+    for (const [, nome] of fonte.matchAll(/\.rpc\(\s*["'`]([a-z0-9_]+)["'`]/gi)) {
+      chamadas.push(nome);
+      assert.ok(
+        sql.includes(`function public.${nome.toLowerCase()}(`),
+        `\`${nome}\` é chamada no código e não existe em nenhuma migração — ` +
+          `função de banco criada por fora da migração é schema que ninguém revisou`
+      );
+    }
+  }
+  // UM GUARD QUE NÃO ACHA NADA PASSA SOZINHO, e passaria para sempre no dia em
+  // que o regex deixasse de casar. Se as rotas ficarem mesmo sem RPC, é para
+  // apagar este teste — não para deixá-lo verde sem olhar nada.
+  assert.ok(
+    chamadas.length > 0,
+    "nenhuma chamada de RPC foi encontrada: o regex parou de casar e o guard virou decoração"
+  );
 });
 
 test("o `.lte(peso,0)` do INC-002 continua nos dois caminhos de escrita", () => {

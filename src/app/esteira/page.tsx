@@ -19,6 +19,7 @@ import { useLiveQuery } from "@/lib/hooks";
 import { useLojaAtual } from "@/lib/contexto/LojaAtualProvider";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { listarImagensDoProduto } from "@/lib/services/imagensProduto";
 import { montarContexto, resumoDoContexto } from "@/lib/contexto";
 import { rodarEsteira } from "@/lib/services/esteira";
 import { rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
@@ -106,6 +107,15 @@ export default function EsteiraPage() {
       // A grade cadastrada vai como DADO nos dois modos. Sem produto escolhido
       // ela fica vazia — e vazia vira pendência, nunca grade inventada.
       const variantes = produto ? await listarVariantesDoProduto(produto.id) : [];
+      // A CONTAGEM DE FOTOS SEGUE A MESMA REGRA DA GRADE, logo acima — e a
+      // ausência de produto é `null`, não zero.
+      //
+      // O comentário anterior dizia que "0 é o número certo" aqui. Não era: com
+      // 0, TODA execução desta tela voltava reprovada com "este produto não tem
+      // nenhuma imagem cadastrada" — sobre um produto que não existe. Um sinal
+      // que aparece em 100% das vezes deixa de ser sinal, e esta tela existe
+      // justamente para experimentar prompt sem produto.
+      const fotos = produto ? await listarImagensDoProduto(produto.id) : null;
       const r =
         modo === "aprofundado"
           ? await rodarCadeiaEsteira({
@@ -114,6 +124,7 @@ export default function EsteiraPage() {
               produto: produto?.nome,
               variantes,
               precoVenda: produto?.precoVenda ?? 0,
+              fotosDoProduto: fotos?.length ?? null,
               onPasso: setPassos,
             })
           : await rodarEsteira(briefing.trim(), {
@@ -121,6 +132,7 @@ export default function EsteiraPage() {
               produto: produto?.nome,
               variantes,
               precoVenda: produto?.precoVenda ?? 0,
+              fotosDoProduto: fotos?.length ?? null,
             });
       setAnuncio(r.anuncio);
       setTipo(r.tipo);

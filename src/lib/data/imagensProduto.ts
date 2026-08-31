@@ -14,6 +14,9 @@ export const imagensProduto: ImagemProduto[] = [
     url: "https://exemplo.com/tenis-principal.jpg",
     status: "Aprovada",
     observacoes: "Fundo branco, sapato de 3/4.",
+    largura: null,
+    altura: null,
+    cor: null,
   },
   {
     id: "img-02",
@@ -25,5 +28,8 @@ export const imagensProduto: ImagemProduto[] = [
     url: "https://exemplo.com/tenis-preto-lifestyle.jpg",
     status: "Em produção",
     observacoes: "Modelo usando o tênis preto.",
+    largura: null,
+    altura: null,
+    cor: null,
   },
 ];

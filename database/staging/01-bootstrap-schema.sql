@@ -30,6 +30,23 @@ insert into public.environment_metadata (environment)
 values ('staging')
 on conflict (environment) do nothing;
 
+-- A MARCA PRECISA SER LEGÍVEL PELA TELA, e não só pelos scripts.
+--
+-- Em 26/08/2026 a conta real foi operada por engano achando-se que era o
+-- ambiente de teste: o endereço parecia certo e o banco era o outro. A tela
+-- passou a mostrar uma faixa lendo ESTA linha — ver `faixaDeAmbiente`.
+--
+-- A RLS da base legada liga `enable row level security` em tudo, e sem política
+-- isso é negar por padrão: o navegador não conseguia ler. Aqui a leitura é
+-- aberta de propósito — a tabela guarda uma palavra ("staging") e sua função é
+-- justamente ser uma placa na porta. Escrever continua fechado.
+alter table public.environment_metadata enable row level security;
+drop policy if exists environment_metadata_leitura on public.environment_metadata;
+create policy environment_metadata_leitura
+  on public.environment_metadata for select
+  to anon, authenticated
+  using (true);
+
 -- 1) BASE LEGADA (tabelas clientes/produtos/anuncios/agentes/…, set_updated_at,
 --    RLS base e realtime). SEM o seed de demonstração.
 \ir ../_legado/supabase-schema.sql

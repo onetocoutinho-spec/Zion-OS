@@ -7,6 +7,12 @@
 // tempo da função.
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
+import {
+  COLUNAS_DO_PERFIL,
+  blocoDoPerfil,
+  perfilDaLinha,
+  type LinhaDoPerfil,
+} from "@/modules/assistant/domain/perfilDeConteudo";
 import { decidirAcessoDoCron, type DecisaoCron } from "@/lib/auth/autorizacaoDoCron";
 import {
   ESQUEMA_ANUNCIO,
@@ -22,9 +28,14 @@ import {
 import {
   atributosPorId,
   briefingDosAtributos,
-  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
+  type ExigenciaDaCategoria,
 } from "@/modules/publication/domain/atributosDoMarketplace";
+import {
+  obrigatoriosDoProduto,
+  type ProcedenciaDosObrigatorios,
+} from "@/modules/publication/domain/obrigatoriosDoProduto";
+import { atributosObrigatorios } from "@/lib/marketplaces/mercadolivre";
 import { chamarIAEstruturada, provedorConfigurado } from "@/lib/agentes/provedorIA";
 import { montarContexto } from "@/lib/contexto";
 import {
@@ -49,6 +60,29 @@ const PAUSA_MS = 2_000; // respiro entre itens (suaviza o rate limit)
 const ORCAMENTO_MS = 250_000; // para antes dos 300s
 const MAX_TENTATIVAS = 3;
 const STALE_MIN = 10; // "processando" preso volta pra fila
+/**
+ * Quantas voltas seguidas sem conseguir travar nada antes de desistir do ciclo.
+ *
+ * Perder a disputa é normal quando várias execuções se sobrepõem — a volta
+ * seguinte pega outra linha. O limite é só para a fila curta com muitos
+ * concorrentes, onde perder sempre queimaria os 250s em ida e volta ao banco.
+ *
+ * ERA 5, E 5 ERA POUCO. Medido em 27/08/2026, com dez execuções em paralelo
+ * sobre uma fila de 889 itens: uma delas voltou com `processados: 0` em 2,1s.
+ * Não faltava trabalho — faltava vez.
+ *
+ * A causa é `CONCORRENCIA = 1` com `limit(1)`: todas as execuções selecionam a
+ * MESMA linha (a mais antiga), uma ganha e as outras N-1 perdem. Perder N-1
+ * vezes seguidas é o comportamento esperado com N execuções, não um sinal de
+ * fila vazia — para essa, `lote.length === 0` já quebra o laço antes.
+ *
+ * E desistir custa caro: a execução volta na hora e fica ociosa até o ciclo
+ * seguinte, em vez de usar os 250s que tinha.
+ *
+ * 50 continua sendo um teto real — cada volta é um par de idas ao banco, uns
+ * 100ms, então o pior caso é ~5s de disputa contra um orçamento de 250s.
+ */
+const MAX_PERDIDAS = 50;
 
 type Resultado = "ok" | "erro" | "rate";
 
@@ -94,11 +128,17 @@ function autorizado(req: Request): DecisaoCron {
   });
 }
 
-function montarMensagem(contexto: string): string {
+function montarMensagem(contexto: string, perfil: string[]): string {
   return [
     "Dados cadastrados no Zion OS para este produto:",
     "",
     contexto,
+    // COMO ESTA LOJA VENDE — incluindo o que ela promete.
+    //
+    // A esteira era o único gerador que NÃO recebia o perfil: `agenteDeTitulo` e
+    // `agenteDeDescricao` já o usavam. E é a esteira que roda em lote, sem
+    // ninguém na tela — justamente onde uma promessa inventada passa despercebida.
+    ...(perfil.length ? ["", ...perfil] : []),
     "",
     "---",
     "",
@@ -117,7 +157,35 @@ async function gerarAnuncio(
   produto: Produto,
   variantes: ProdutoVariante[],
   tabelasMedidas: TabelaMedida[],
-  atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[]
+  atributosDoProduto: readonly { nomeAtributo: string; valorAtributo: string }[],
+  /** O bloco "como esta loja vende", já montado. Vazio quando não há perfil. */
+  perfil: string[],
+  /**
+   * O que a CATEGORIA deste produto exige. Ver INC-011: o retrato de calçado
+   * era cobrado de 118 anúncios que não são calçado, e em MLB23332 a exigência
+   * de tipo de calçado é uma pendência sobre um campo que não existe lá.
+   */
+  obrigatorios: readonly ExigenciaDaCategoria[],
+  /**
+   * Se a lista acima foi MEDIDA na categoria ou é a suposição de calçado. O
+   * briefing afirma coisas diferentes nos dois casos — e afirmava a forte nos
+   * dois até 26/08/2026.
+   */
+  procedencia: ProcedenciaDosObrigatorios,
+  /**
+   * Quantas fotos este produto JÁ tem no cadastro.
+   *
+   * A TERCEIRA VEZ DO MESMO DEFEITO NESTE ARQUIVO. `quantidadeFotos` existe em
+   * `montarContexto` desde que a esteira pediu "imagens reais do produto" de um
+   * item com 8 fotos cadastradas — porque ninguém lhe dizia que existiam.
+   * `/cliente/anunciar` passa (`quantidadeFotos: fotos.length`); o worker não
+   * passava, como não passava o briefing de atributos nem o rastro de custo.
+   *
+   * Medido em 27/08/2026: dos 299 reprovados sem pendência listada, 244 (82%)
+   * alegavam foto. O modelo não recebe imagem alguma — e recebia menos ainda:
+   * nem o NÚMERO delas.
+   */
+  quantidadeFotos: number
 ): Promise<AnuncioGerado> {
   // A grade sai do CADASTRO, não do modelo. Este caminho é o do lote — o mais
   // silencioso dos quatro: ninguém está olhando a tela quando ele roda.
@@ -141,16 +209,24 @@ async function gerarAnuncio(
         cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
         tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
       },
-      OBRIGATORIOS_CALCADO,
+      obrigatorios,
       atributosPorId(atributosDoProduto)
-    )
+    ),
+    procedencia
   );
 
   const mensagem = montarMensagem(
     [
-      montarContexto({ produto, variantes, tabelasMedidas, atributosObrigatorios: briefingAtributos }),
+      montarContexto({
+        produto,
+        variantes,
+        tabelasMedidas,
+        atributosObrigatorios: briefingAtributos,
+        quantidadeFotos,
+      }),
       briefingDaGrade(grade),
-    ].join("\n\n")
+    ].join("\n\n"),
+    perfil
   );
   let ultimoParse = "";
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
@@ -159,9 +235,25 @@ async function gerarAnuncio(
       mensagem,
       schema: ESQUEMA_ANUNCIO,
       maxTokens: 24000,
+      // O RASTRO ENTRA AQUI, E A RAZÃO PARA ELE NÃO ESTAR ERA FALSA.
+      //
+      // `rastro` é opcional "porque nem todo chamador tem sessão (o worker do
+      // cron, por exemplo)" — provedorIA.ts. Só que `ia_execucoes` nunca pediu
+      // sessão: pede `cliente_id`, e aceita `usuario_id` nulo. O worker sempre
+      // soube de quem é o produto.
+      //
+      // Medido em 27/08/2026, no staging: 12 anúncios gerados pela esteira e
+      // ZERO linhas em `ia_execucoes`. A maior consumidora de IA do produto era
+      // a única invisível para a tabela feita para responder "quanto custou".
+      //
+      // O `uso` que viaja no JSONB do anúncio (abaixo) não substitui isto: ele
+      // só existe quando o parse dá certo, e some quando o anúncio é
+      // regerado. As tentativas que falharam custaram e não apareciam em lugar
+      // nenhum — inclusive as 3 do laço de retentativa.
+      rastro: { origem: "esteira", clienteId: produto.clienteId, usuarioId: null },
     });
     try {
-      const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade);
+      const gerado = comAGradeDoCadastro(JSON.parse(json) as AnuncioDaIA, grade, quantidadeFotos);
       // O CUSTO VIAJA COM O ANÚNCIO.
       //
       // Vai no próprio JSONB porque é o único lugar em que ele sobrevive sem
@@ -226,7 +318,67 @@ async function processarUm(
     const atributosDoProduto = ((atrRows ?? []) as { nome_atributo: string; valor_atributo: string | null }[])
       .map((r) => ({ nomeAtributo: r.nome_atributo, valorAtributo: r.valor_atributo ?? "" }));
 
-    const anuncio = await gerarAnuncio(produto, variantes, tabelas, atributosDoProduto);
+    // A CATEGORIA MEDIDA, quando ela existe (INC-011).
+    //
+    // `anuncios_gerados.categoria_ml` guarda o `category_id` que o ML devolveu
+    // na importação — é leitura de banco, sem rede, e cobre os produtos que já
+    // têm anúncio no ar. Produto novo não tem, e cai no palpite de calçado, que
+    // é exatamente o comportamento de antes.
+    //
+    // Falha do ML não derruba a esteira, pela mesma razão do enriquecimento
+    // acima: `atributosObrigatorios` devolve [] quando não responde, e
+    // `obrigatoriosDoProduto` trata [] como "não sei", não como "não exige".
+    // A DECIDIDA DO PRODUTO VEM PRIMEIRO (migração 079).
+    //
+    // `anuncios_gerados.categoria_ml` só existe para quem já esteve no ar, e
+    // produto vindo de planilha nunca esteve — era 100% do catálogo caindo no
+    // palpite de calçado. `produtos.categoria_ml` é onde a decisão da lojista
+    // mora, e decisão vence importação vence suposição.
+    const { data: catRow } = await admin
+      .from("anuncios_gerados")
+      .select("categoria_ml")
+      .eq("produto_id", fila.produto_id)
+      .not("categoria_ml", "is", null)
+      .limit(1)
+      .maybeSingle();
+    const categoria = (produto.categoriaMl ?? "").trim() || (catRow?.categoria_ml ?? "").trim();
+    const daCategoria = categoria ? await atributosObrigatorios(categoria) : null;
+    // O PERFIL DA LOJA, que carrega tom, palavras e as condições comerciais.
+    //
+    // Sem `error` checado, pela mesma regra do enriquecimento acima: perfil que
+    // não chega deixa o briefing como era — pior contexto, nunca contexto errado.
+    const { data: perfilRow } = await admin
+      .from("perfis_de_conteudo")
+      .select(COLUNAS_DO_PERFIL)
+      .eq("cliente_id", fila.cliente_id)
+      .maybeSingle();
+    const perfil = blocoDoPerfil(perfilDaLinha((perfilRow as LinhaDoPerfil | null) ?? null));
+
+    const { exigencias, procedencia } = obrigatoriosDoProduto(categoria, daCategoria);
+
+    // QUANTAS FOTOS ESTE PRODUTO JÁ TEM.
+    //
+    // `head: true` com `count: "exact"`: só o número, sem trazer as linhas — o
+    // modelo não usa as URLs, e um produto da base chegou a ter 800 imagens.
+    //
+    // Sem `error` checado, pela mesma regra do perfil e do enriquecimento: uma
+    // contagem que não chega vira 0, e 0 é o que o worker já dizia (nada). Pior
+    // contexto, nunca contexto errado.
+    const { count: fotos } = await admin
+      .from("imagens_produto")
+      .select("id", { count: "exact", head: true })
+      .eq("produto_id", fila.produto_id);
+
+    const anuncio = await gerarAnuncio(
+      produto,
+      variantes,
+      tabelas,
+      atributosDoProduto,
+      perfil,
+      exigencias,
+      procedencia,
+      fotos ?? 0
+    );
     const passouA10 = anuncio.vereditoA10 === "aprovado" && anuncio.pendencias.length === 0;
 
     const registro = anuncioGeradoParaBanco({
@@ -235,6 +387,14 @@ async function processarUm(
       produto: produto.nome,
       auditoriaId: null,
       marketplace: produto.marketplace ?? "Mercado Livre",
+      // A CATEGORIA QUE SUSTENTOU ESTE ANÚNCIO FICA REGISTRADA NELE.
+      //
+      // Sem isto, `anuncios_gerados.categoria_ml` saía NULL mesmo quando a
+      // esteira tinha uma categoria em mãos — e depois não havia como responder
+      // "este anúncio foi feito cobrando os atributos de qual categoria?".
+      // Quando não há categoria, continua null: nulo é "ninguém decidiu", e é a
+      // resposta certa.
+      categoriaMl: categoria || null,
       origem: "esteira",
       tipoExecucao: "IA",
       notaDiagnostico: anuncio.notaDiagnostico,
@@ -344,6 +504,8 @@ async function rodar(): Promise<Response> {
   let ok = 0;
   let falhas = 0;
   let rate = false;
+  /** Quantas voltas seguidas perderam a disputa por TODOS os candidatos. */
+  let perdidasSeguidas = 0;
   const cacheTabelas = new Map<string, TabelaMedida[]>();
   while (Date.now() - inicio < ORCAMENTO_MS) {
     const { data: pend } = await admin
@@ -356,21 +518,42 @@ async function rodar(): Promise<Response> {
     const lote = (pend ?? []) as FilaRow[];
     if (lote.length === 0) break;
 
-    // Trava o lote como "processando" (evita processamento duplo entre execuções).
+    // A TRAVA DO LOTE — E ELA NÃO TRAVAVA.
     //
-    // Esta trava é LOAD-BEARING, e mais do que parece: o orçamento é de 250s e o
-    // cron dispara a cada 60s — até quatro execuções se sobrepõem. Sem a trava,
-    // todas selecionam os mesmos `pendente` e rodam a esteira sobre o mesmo
-    // produto.
+    // O texto que estava aqui descrevia, corretamente, o defeito que o código
+    // abaixo tinha: "o orçamento é de 250s e o cron dispara a cada 60s, até
+    // quatro execuções se sobrepõem. Sem a trava, todas selecionam os mesmos
+    // `pendente` e rodam a esteira sobre o mesmo produto."
     //
-    // Por isso, aqui, avisar não basta: se a trava não pegou, este ciclo PARA.
-    // Os itens continuam `pendente` e o próximo cron os retoma — nada se perde.
-    // É `break` e não `continue` de propósito: `continue` reselecionaria os
-    // mesmos itens e giraria até o orçamento acabar.
-    const { error: erroTravar } = await admin
+    // Era exatamente isso que acontecia. O par era:
+    //
+    //     select ... .eq("status", "pendente").limit(N)      <- lê
+    //     update({ status: "processando" }).in("id", ids)    <- escreve
+    //
+    // Um TOCTOU: entre ler e escrever, outra execução lê a MESMA linha. O
+    // `update` não dizia `where status = 'pendente'`, então as duas escritas
+    // davam certo e as duas seguiam adiante com o mesmo produto.
+    //
+    // MEDIDO em 27/08/2026, seis execuções simultâneas contra o staging:
+    //
+    //     6 execuções · 6 travaram · 1 item DISTINTO
+    //
+    // Todas as seis pegaram a mesma linha. Em produção isso é o cron pagando
+    // quatro vezes pelo mesmo anúncio e gravando quatro cópias dele.
+    //
+    // O CONSERTO é um compare-and-swap de verdade: o `eq("status","pendente")`
+    // vai no próprio UPDATE, e o `select()` devolve as linhas REALMENTE
+    // tomadas. Sob READ COMMITTED o Postgres serializa as escritas na mesma
+    // linha: a segunda espera a primeira, reavalia o WHERE contra a versão já
+    // gravada, vê `processando` e não casa. Quem perde recebe lista vazia.
+    //
+    // A partir daqui o lote que vale é `travados`, nunca `lote`.
+    const { data: travadosRaw, error: erroTravar } = await admin
       .from("fila_otimizacao_produto")
       .update({ status: "processando" })
-      .in("id", lote.map((f) => f.id));
+      .in("id", lote.map((f) => f.id))
+      .eq("status", "pendente")
+      .select("id, cliente_id, produto_id, tentativas");
     if (erroTravar) {
       erroDeEscrita(
         "travar o lote",
@@ -379,8 +562,20 @@ async function rodar(): Promise<Response> {
       );
       break;
     }
+    const travados = (travadosRaw ?? []) as FilaRow[];
+    if (travados.length === 0) {
+      // Perdemos a disputa por todos os candidatos. Não é erro: outra execução
+      // está cuidando deles. Voltar ao topo seleciona linhas DIFERENTES, já que
+      // as tomadas não são mais `pendente` — o laço não gira em falso.
+      //
+      // O contador existe para o caso patológico (muitas execuções, fila curta):
+      // sem ele, perder sempre queimaria os 250s em ida e volta ao banco.
+      if (++perdidasSeguidas >= MAX_PERDIDAS) break;
+      continue;
+    }
+    perdidasSeguidas = 0;
 
-    const res = await Promise.all(lote.map((f) => processarUm(admin, f, cacheTabelas)));
+    const res = await Promise.all(travados.map((f) => processarUm(admin, f, cacheTabelas)));
     for (const r of res) {
       if (r === "ok") ok++;
       else if (r === "erro") falhas++;

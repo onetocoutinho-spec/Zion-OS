@@ -67,7 +67,38 @@ export const AREAS_AGENTE: AreaAgente[] = [
 
 export const EQUIPE = ["Camila", "Lucas", "Amanda", "Rafael"] as const;
 
-export const PLANOS = ["Início", "Organiza", "Escala", "—"] as const;
+/**
+ * Os planos, no vocabulário do produto.
+ *
+ * "Essencial" entrou em 25/08/2026, e não é cosmético: `api/loja/provisionar`
+ * já criava TODA loja auto-provisionada com esse plano, e ele não existia
+ * aqui. `ClienteForm` monta um `<select>` com esta lista — valor fora dela não
+ * casa com opção nenhuma, e abrir e salvar a ficha reescrevia o plano da loja
+ * em silêncio. Os outros quatro são vocabulário da era agência.
+ */
+export const PLANOS = ["Essencial", "Início", "Organiza", "Escala", "—"] as const;
+
+export type Plano = (typeof PLANOS)[number];
+
+/**
+ * O plano de quem entra sozinho, sem falar com ninguém.
+ *
+ * Anotado como `Plano` de propósito: tirar "Essencial" de `PLANOS` deixa de
+ * compilar. O teste em `api/loja/oPlanoDaLojaNova.test.ts` guarda a outra
+ * metade — que a rota continue lendo daqui, em vez de escrever a string outra
+ * vez.
+ */
+export const PLANO_INICIAL: Plano = "Essencial";
+
+/**
+ * A cota mensal de esteira de quem entra sozinho.
+ *
+ * Mora ao lado do plano porque é a outra metade da mesma decisão comercial, e
+ * porque separar as duas foi como uma delas ficou fora do vocabulário. Medida
+ * em `cotaDaEsteira.ts`: é a pessoa que bate nesta parede — a conta grande usa
+ * 298 de 5.000.
+ */
+export const LIMITE_ESTEIRA_INICIAL = 30;
 
 export const IMPLANTACAO_STATUS = ["Ativo", "Em teste", "Planejado"] as const;
 

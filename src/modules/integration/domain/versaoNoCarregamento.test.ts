@@ -57,3 +57,63 @@ test("o aviso continua sem prometer recarga automática", () => {
   // operação. Vale para o banner tanto quanto valia para a faixa.
   assert.doesNotMatch(AVISO_ABA_DESATUALIZADA, /recarregando|aguarde|autom[áa]tic/i);
 });
+
+// ===========================================================================
+// A QUINTA VEZ — 26/08/2026, e a primeira que GRAVOU DADO
+// ===========================================================================
+//
+// A regra de decisão estava certa e o componente estava montado no layout
+// raiz. Faltava GATILHO: ele conferia no carregamento e em
+// `visibilitychange` — que só dispara quando a aba fica OCULTA.
+//
+// Trocar de JANELA não oculta a aba. Com o app numa janela e o terminal em
+// outra, o detector conferiu uma vez, quando servidor e pacote ainda
+// concordavam, e nunca mais. No meio disso uma importação de 1003 produtos
+// entrou com o pacote velho e gravou 7224 variações com PESO ZERO — o campo
+// de peso só existia no pacote novo.
+//
+// As quatro primeiras vezes foram tela errada. Esta foi BANCO errado.
+//
+// Os testes abaixo leem o fonte porque a regressão aqui é MUDA: tirar um
+// ouvinte não quebra nada visível, e o detector volta a olhar uma vez só.
+
+import { lerFonte } from "../../../testing/lerFonte.ts";
+
+const FONTE_DO_AVISO = lerFonte(
+  new URL("../../../components/layout/AvisoDeVersao.tsx", import.meta.url),
+  "utf8"
+);
+
+test("o detector reconfere quando a JANELA volta ao foco", () => {
+  assert.match(
+    FONTE_DO_AVISO,
+    /addEventListener\(\s*"focus"/,
+    "sem `focus`, trocar de janela não reconfere — foi assim que a quinta vez aconteceu"
+  );
+});
+
+test("o detector reconfere quando a ABA volta a aparecer", () => {
+  assert.match(FONTE_DO_AVISO, /addEventListener\(\s*"visibilitychange"/);
+});
+
+test("o detector reconfere sozinho, para quem nunca sai da tela", () => {
+  assert.match(
+    FONTE_DO_AVISO,
+    /setInterval\(\s*conferir/,
+    "uma hora de tela aberta sem trocar de janela também atravessa deploy"
+  );
+});
+
+test("os três gatilhos são desligados na saída", () => {
+  // Ouvinte e relógio sobrevivendo ao componente é vazamento — e um relógio
+  // vazado consulta a rota para sempre.
+  assert.match(FONTE_DO_AVISO, /removeEventListener\(\s*"focus"/);
+  assert.match(FONTE_DO_AVISO, /removeEventListener\(\s*"visibilitychange"/);
+  assert.match(FONTE_DO_AVISO, /clearInterval/);
+});
+
+test("a trava de um minuto continua valendo para todos os gatilhos", () => {
+  // O gatilho mudou; a frequência não. Sem a trava, três gatilhos viram três
+  // consultas por gesto.
+  assert.match(FONTE_DO_AVISO, /agora - ultima < ESPERA_ENTRE_CONSULTAS_MS/);
+});

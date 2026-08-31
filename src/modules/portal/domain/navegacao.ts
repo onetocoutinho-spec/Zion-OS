@@ -69,7 +69,23 @@ export const AREAS: readonly AreaDoPortal[] = [
       { href: "/cliente/produtos", label: "Produtos" },
       { href: "/cliente/imagens", label: "Fotos" },
       { href: "/cliente/peso", label: "Peso e caixa" },
+      // O codigo da variacao e a CHAVE de tudo que vem do ERP. Fica no
+      // Catalogo, ao lado de peso, porque e a mesma pergunta: o que sabemos
+      // deste produto? Doze produtos desta base ficaram fora de TODAS as
+      // importacoes de 18/08/2026 por nao terem codigo.
+      { href: "/cliente/codigos", label: "Códigos das variações" },
       { href: "/cliente/medidas", label: "Tabela de medidas" },
+      // A categoria do ML mora no Catalogo, e nao em Anuncios, porque ela e
+      // dado do PRODUTO: e ela que decide quais atributos o anuncio vai
+      // precisar. Sem ela o sistema cobra os obrigatorios de calcado por
+      // suposicao — 1003 de 1003 produtos numa base medida em 26/08/2026.
+      { href: "/cliente/categorias", label: "Categoria no Mercado Livre" },
+      // Ao lado da categoria, e pelo mesmo motivo: e a categoria que diz QUAIS
+      // atributos o anuncio precisa, e sao eles que a tela ao lado confirma. Ate
+      // 28/08/2026 a unica tela de atributos era a da equipe — entao um
+      // obrigatorio que so a lojista sabe responder exigia alguem da Zion, que e
+      // exatamente o que a intencao do produto diz que nao pode acontecer.
+      { href: "/cliente/atributos", label: "Atributos do produto" },
       { href: "/cliente/precificacao", label: "Precificação" },
     ],
   },

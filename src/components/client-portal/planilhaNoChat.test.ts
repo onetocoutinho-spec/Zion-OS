@@ -75,9 +75,17 @@ test("a gravação só acontece depois do `onConfirmar`", () => {
     !recebimento.includes("importarCustos("),
     "largar o arquivo no chat passou a gravar sozinho"
   );
+  // MODIFICADA EM 17/08/2026, com o motivo escrito: o padrão prendia a ARIDADE
+  // do arrow (`(mapa) =>`), e não a propriedade. Quando a conferência passou a
+  // devolver também as opções — o casamento por prefixo de SKU, que a lojista
+  // marca na tela — a assinatura virou `(mapa, opcoes)` e esta prova ficou
+  // vermelha sem que nada do que ela guarda tivesse mudado.
+  //
+  // A propriedade é: quem dispara `confirmarPlanilha` é o `onConfirmar` da
+  // conferência, e não outra coisa. É isso que o padrão abaixo verifica agora.
   assert.match(
     FONTE,
-    /onConfirmar=\{\(mapa\) => void confirmarPlanilha\(/,
+    /onConfirmar=\{\([^)]*\) => void confirmarPlanilha\(/,
     "a confirmação deixou de ser o gatilho da importação"
   );
 });

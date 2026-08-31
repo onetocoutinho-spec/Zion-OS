@@ -32,6 +32,7 @@
 
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://exemplo.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= "chave-de-teste-nao-e-segredo";
@@ -196,3 +197,28 @@ test("draft: erro de banco devolve null e não lança", async () => {
 // teste que afirma que o próprio arquivo contém uma frase prova a frase, não o
 // código — é teatro de rigor, e num repositório onde o verde tem peso isso
 // custa mais do que rende.
+
+test("o prompt PRENDE o modelo à frase do domínio", () => {
+  // A UNIFICAÇÃO NO FIO DAS FERRAMENTAS custa uma garantia, e esta regra é o
+  // que a devolve.
+  //
+  // No caminho local, quem redigia o número era o CÓDIGO: "50 de 80 produto(s)
+  // estão sem custo. Os primeiros são…" é texto nosso, palavra por palavra. No
+  // fio, quem redige é o modelo — e em 17/08/2026 ele parafraseou "tenho 2
+  // fotos, e as que têm cor são Amarelo" como "as duas são da cor Amarelo",
+  // sobre uma foto que não tinha cor nenhuma.
+  //
+  // As ressalvas SÃO o conteúdo: "e mais 45", "de 1 anúncio eu ainda não sei",
+  // "isso não garante que ele aceite". Cada uma existe porque a frase sem ela
+  // seria falsa.
+  const rota = readFileSync(
+    new URL("../../app/api/assistente/conversa/route.ts", import.meta.url),
+    "utf8"
+  );
+  const i = rota.indexOf("function system(");
+  assert.ok(i > 0, "o prompt do sistema mudou de forma");
+  const prompt = rota.slice(i, rota.indexOf("\n}", i));
+  assert.match(prompt, /REPASSA INTEIRA/, "sumiu a regra que prende o modelo à frase do domínio");
+  assert.match(prompt, /não pode reescrevê-la/, "a regra deixou de proibir a paráfrase");
+  assert.match(prompt, /ressalva/i, "a regra parou de nomear o que se perde na paráfrase");
+});

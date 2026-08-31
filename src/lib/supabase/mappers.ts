@@ -133,6 +133,7 @@ export function produtoParaApp(row: ProdutoRow): Produto {
     observacoes: row.observacoes ?? "",
     tipoProduto: (row.tipo_produto ?? "simples") as Produto["tipoProduto"],
     categoriaMarketplaceSugerida: row.categoria_marketplace_sugerida ?? "",
+    categoriaMl: row.categoria_ml ?? "",
     descricaoBase: row.descricao_base ?? "",
     beneficios: row.beneficios ?? "",
     cuidados: row.cuidados ?? "",
@@ -176,6 +177,7 @@ export function produtoParaBanco(d: Partial<Produto>): Record<string, unknown> {
   if (d.tipoProduto !== undefined) r.tipo_produto = d.tipoProduto;
   if (d.categoriaMarketplaceSugerida !== undefined)
     r.categoria_marketplace_sugerida = d.categoriaMarketplaceSugerida;
+  if (d.categoriaMl !== undefined) r.categoria_ml = d.categoriaMl;
   if (d.descricaoBase !== undefined) r.descricao_base = d.descricaoBase;
   if (d.beneficios !== undefined) r.beneficios = d.beneficios;
   if (d.cuidados !== undefined) r.cuidados = d.cuidados;
@@ -519,6 +521,14 @@ export function imagemParaApp(row: ImagemProdutoRow): ImagemProduto {
     url: row.url ?? "",
     status: row.status as ImagemProduto["status"],
     observacoes: row.observacoes ?? "",
+    // SEM `?? 0`. As 780+ fotos anteriores à 059 não têm medida, e zero as
+    // faria parecer inválidas — "não medimos" viraria "não tem". A mesma
+    // distinção que o resto deste sistema já paga caro para manter.
+    largura: row.largura ?? null,
+    altura: row.altura ?? null,
+    // Sem `?? ""`: string vazia passaria por preenchida em toda checagem e não
+    // casaria com variante nenhuma — a ausência disfarçada de resposta.
+    cor: row.cor ?? null,
   };
 }
 
@@ -532,6 +542,13 @@ export function imagemParaBanco(d: Partial<ImagemProduto>): Record<string, unkno
   if (d.url !== undefined) r.url = d.url;
   if (d.status !== undefined) r.status = d.status;
   if (d.observacoes !== undefined) r.observacoes = d.observacoes;
+  // `!== undefined` e não `if (d.largura)`: `null` precisa atravessar como o
+  // que é. A checagem por verdade transformaria "não medimos" em "não
+  // mandamos", e a coluna ficaria vazia sem ninguém saber por quê — que é
+  // exatamente a confusão que a 059 existe para acabar.
+  if (d.largura !== undefined) r.largura = d.largura;
+  if (d.altura !== undefined) r.altura = d.altura;
+  if (d.cor !== undefined) r.cor = d.cor;
   return r;
 }
 

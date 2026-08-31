@@ -11,6 +11,8 @@ import {
   CORTE_DE_PARECENCA,
   casarPastaComProduto,
   lerCaminhoDaFoto,
+  nivelDoProdutoPorProfundidade,
+  pastasDoCaminho,
   type ProdutoParaCasar,
 } from "./casarPastaComProduto.ts";
 
@@ -120,4 +122,531 @@ test("mais fundo que três: o primeiro nível ainda é o produto", () => {
 test("foto solta na raiz não inventa produto", () => {
   assert.equal(lerCaminhoDaFoto("Fotos/01.jpg").pastaProduto, "(raiz)");
   assert.equal(lerCaminhoDaFoto("01.jpg").pastaProduto, "(raiz)");
+});
+
+// ---------------------------------------------------------------------------
+// Referência do fabricante — a forma como a pasta de fotos chega de verdade
+// ---------------------------------------------------------------------------
+
+/** Nomes reais da base medida em 26/08/2026. */
+const CALCADOS = [
+  { id: "c1", nome: "Papete Slide Modare 7208.101 Nobuck", sku: "2344016", codErp: "2344016" },
+  { id: "c2", nome: "Sandália Molekinha 2312.260 Turim Fem", sku: "1969985", codErp: "1969985" },
+  { id: "c3", nome: "Tamanco Slide Modare 7142.101 Canelado", sku: "2100001", codErp: "2100001" },
+  { id: "c4", nome: "Tamanco Slide Modare 7142.101 Elástico", sku: "2100002", codErp: "2100002" },
+  { id: "c5", nome: "Bolsa de Praia Tote Bag MF9184 Poá", sku: "2200003", codErp: "2200003" },
+];
+
+test("a referência do fabricante casa, e casa como identidade", () => {
+  // Antes desta regra isto dava 2/6 = 0,33 de parecença e ficava ABAIXO do
+  // corte de 0,34 — o jeito mais provável de a pasta chegar era o que não
+  // funcionava. Medido: 10,8% de acerto contra 99,1% com o código do ERP.
+  const r = casarPastaComProduto("7208.101", CALCADOS);
+  assert.equal(r.produtoId, "c1");
+  assert.equal(r.via, "referencia");
+  assert.equal(r.confianca, 1);
+});
+
+test("referência com letras também é referência", () => {
+  assert.equal(casarPastaComProduto("MF9184", CALCADOS).produtoId, "c5");
+});
+
+test("a pontuação da pasta não precisa bater com a do nome", () => {
+  assert.equal(casarPastaComProduto("fotos 7208101", CALCADOS).produtoId, "c1");
+  assert.equal(casarPastaComProduto("7208-101", CALCADOS).produtoId, "c1");
+});
+
+test("referência REPETIDA não casa — escolher um dos dois seria chute", () => {
+  // "7142.101" é o mesmo modelo em dois acabamentos. Errar aqui põe a foto no
+  // anúncio errado, então "não casou" é o desfecho certo.
+  const r = casarPastaComProduto("7142.101", CALCADOS);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("o código do ERP continua vencendo a referência", () => {
+  // A pasta traz os dois; identidade do próprio cadastro vem primeiro.
+  const r = casarPastaComProduto("2344016 - 7142.101", CALCADOS);
+  assert.equal(r.produtoId, "c1");
+  assert.equal(r.via, "codigo");
+});
+
+test("palavra sem dígito nunca é referência", () => {
+  // "TAMANCO" tem 7 letras e casaria por comprimento se o dígito não fosse
+  // exigido — e viraria identidade de um produto qualquer.
+  const r = casarPastaComProduto("TAMANCO", CALCADOS);
+  assert.notEqual(r.via, "referencia");
+});
+
+test("número curto demais não vira referência", () => {
+  const curto = [{ id: "x", nome: "Chinelo 12 Basic", sku: "9", codErp: "9" }];
+  assert.equal(casarPastaComProduto("12", curto).via, null);
+});
+
+// ---------------------------------------------------------------------------
+// Em que NÍVEL de pasta mora o produto — o catálogo decide
+// ---------------------------------------------------------------------------
+
+test("todas as pastas saem, INCLUSIVE a escolhida", () => {
+  // A escolhida entra porque ela pode ser o produto: quem seleciona a pasta de
+  // um produto só teria o nome dele descartado.
+  assert.deepEqual(pastasDoCaminho("Fotos/CHINELO/Chinelo Klin 442127/4380 azul/01.png"), [
+    "Fotos", "CHINELO", "Chinelo Klin 442127", "4380 azul",
+  ]);
+  assert.deepEqual(pastasDoCaminho("Fotos/Produto/01.png"), ["Fotos", "Produto"]);
+  assert.deepEqual(pastasDoCaminho("01.png"), []);
+});
+
+test("selecionar a pasta de UM produto continua achando o produto", () => {
+  // O caso de 27/08/2026: a pessoa selecionou `Papete Slide Modare 7208101
+  // Nobuck` e a tela agrupou por "100983 verde luna nobu" — a COR — porque o
+  // nome do produto era o segmento descartado.
+  const catalogo = [
+    { id: "a", nome: "Papete Slide Modare 7208.101 Nobuck", sku: "1", codErp: "1" },
+  ];
+  const meios = [["Papete Slide Modare 7208101 Nobuck", "100983 verde luna nobu"]];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(2), 0);
+});
+
+test("com TIPO na frente, o nível do produto é o do meio", () => {
+  // A pasta real de uma loja, medida em 27/08/2026: TIPO/Produto/Cor. Contar do
+  // começo poria "CHINELO" no lugar do produto — e "CHINELO" não casa com
+  // nenhum dos 1003 produtos, enquanto o nome completo casa com 427 de 457.
+  const meios = [
+    ["Fotos", "CHINELO", "Chinelo Havaianas Top Logomania", "preto"],
+    ["Fotos", "CHINELO", "Chinelo Ipanema 27065 Disney", "rosa"],
+    ["Fotos", "BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+  ];
+  const catalogo = [
+    { id: "a", nome: "Chinelo Havaianas Top Logomania", sku: "1", codErp: "1" },
+    { id: "b", nome: "Chinelo Ipanema 27065 Disney", sku: "2", codErp: "2" },
+    { id: "c", nome: "Babuche Boaonda 1716 John", sku: "3", codErp: "3" },
+  ];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(4), 2);
+});
+
+test("sem TIPO, o produto é o nível logo abaixo da escolhida", () => {
+  // A forma que a tela sempre esperou. Ensinar o nível novo não pode quebrá-la.
+  const meios = [["Fotos", "Chinelo Havaianas Top Logomania", "preto"]];
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top Logomania", sku: "1", codErp: "1" }];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(3), 1);
+});
+
+test("cada profundidade decide sozinha — a mesma pasta mistura as duas formas", () => {
+  // 9.384 imagens em TIPO/Produto/Cor e 1.592 em ZZ/TIPO/Produto/Cor, no mesmo
+  // upload. Uma decisão global poria metade no lugar errado.
+  const catalogo = [{ id: "a", nome: "Babuche Boaonda 1716 John", sku: "1", codErp: "1" }];
+  const meios = [
+    ["Fotos", "BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+    ["Fotos", "ZZ_NAO_IDENTIFICADO", "BABUCHE", "Babuche Boaonda 1716 John", "azul"],
+  ];
+  const mapa = nivelDoProdutoPorProfundidade(meios, catalogo);
+  assert.equal(mapa.get(4), 2);
+  assert.equal(mapa.get(5), 3);
+});
+
+test("nenhum nível casando devolve 0 — o comportamento de antes", () => {
+  // Sem prova, nada muda. Inventar um nível seria pior que a regra fixa.
+  const meios = [["QUALQUER", "COISA", "AQUI"]];
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top", sku: "1", codErp: "1" }];
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo).get(3), 1);
+});
+
+test("a amostra não varre a pasta inteira", () => {
+  // 3.338 pastas × 3 níveis × 1003 produtos seriam 10 milhões de comparações,
+  // e a aba congelaria — que é o defeito que a importação de custos acabou de
+  // pagar. A decisão sai de uma amostra por profundidade.
+  const catalogo = [{ id: "a", nome: "Chinelo Havaianas Top", sku: "1", codErp: "1" }];
+  const meios = Array.from({ length: 500 }, (_, i) => ["Fotos", "TIPO", `Chinelo Havaianas Top`, `c${i}`]);
+  const t0 = Date.now();
+  assert.equal(nivelDoProdutoPorProfundidade(meios, catalogo, 30).get(4), 2);
+  assert.ok(Date.now() - t0 < 500, "a escolha do nível demorou demais");
+});
+
+
+// ---------------------------------------------------------------------------
+// PASTA COM CÓDIGO NÃO CAI NA PARECENÇA — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// O arquivo já dizia "Código vence nome sempre". A regra valia só quando o
+// código ACERTAVA: quando a pasta trazia um código que não resolvia — produto
+// fora do catálogo, ou referência repetida — o fluxo caía na parecença de nome
+// e casava por PALAVRA, ignorando o código que a própria pasta declarou.
+//
+// MEDIDO sobre os 992 grupos de foto da base real da lojista, comparando o
+// código da pasta com o do produto escolhido, dígito a dígito:
+//
+//     ANTES   código bate 403 · NÃO bate 53  ->  470 fotos no produto ERRADO
+//     DEPOIS  código bate 369 · NÃO bate  0
+//
+// E o erro tinha cara de acerto, porque a palavra em comum era boa. Casos
+// reais, todos de fotos que já tinham sido gravadas:
+//
+//     "Sandalia Beira Rio 8513113 Anel MT"  ->  8367.878 London
+//     "Sandalia Modare 7162219 Floather"    ->  MOCASSIM 7397.101 Floather
+//     "Sandalia Moleca 5504213 Napa Turim"  ->  5555.203 Napa Turim
+//
+// O custo é conhecido: 992 grupos casados viraram 759, e os 233 restantes
+// passam a exigir uma pessoa no seletor da tela. É a troca certa — pasta sem
+// produto aparece em amarelo e alguém resolve; foto no produto errado ninguém
+// revisa, porque ela parece certa.
+
+const SAPATOS: ProdutoParaCasar[] = [
+  { id: "s1", nome: "Sandália Beira Rio 8367.878 London", sku: "2301001" },
+  { id: "s2", nome: "Mocassim Modare 7397.101 Floather N", sku: "2301002" },
+  { id: "s3", nome: "Sandália Moleca 5555.203 Napa Turim", sku: "2301003" },
+  { id: "s4", nome: "Tamanco Slide Modare 7142.101 Canelado", sku: "2301004" },
+  { id: "s5", nome: "Tamanco Slide Modare 7142.101 Elástico", sku: "2301005" },
+];
+
+test("pasta com código que NÃO existe no catálogo não casa por palavra", () => {
+  // O caso da Beira Rio: a pasta diz 8513.113, que não está no catálogo. A
+  // parecença puxava para a 8367.878 porque "Sandalia Beira Rio" é igual.
+  const r = casarPastaComProduto("Sandalia Beira Rio 8513113 Anel MT Premium", SAPATOS);
+  assert.equal(r.produtoId, null, "voltou a casar por parecença apesar do código");
+  assert.equal(r.via, null);
+});
+
+test("uma sandália não vira mocassim por dividirem a palavra Floather", () => {
+  const r = casarPastaComProduto("Sandalia Modare 7162219 Floather Elastic", SAPATOS);
+  assert.equal(r.produtoId, null);
+});
+
+test("pasta com referência REPETIDA continua sem casar — e agora não desvia", () => {
+  // 7142.101 está em dois produtos. `referenciasUnicas` já o descartava, e o
+  // fluxo então caía na parecença e escolhia um dos dois por palavra. Escolher
+  // um de dois é chute, e chute aqui põe foto no anúncio errado.
+  const r = casarPastaComProduto("Tamanco Slide Modare 7142101 CaneladoElastico", SAPATOS);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("o código certo continua casando — a regra não fechou a porta boa", () => {
+  // Sem isto, o conserto teria trocado erro por inutilidade.
+  const r = casarPastaComProduto("Sandalia Beira Rio 8367878 London", SAPATOS);
+  assert.equal(r.produtoId, "s1");
+  assert.equal(r.via, "referencia");
+  assert.equal(casarPastaComProduto("fotos 2301003", SAPATOS).produtoId, "s3");
+});
+
+test("pasta SEM código nenhum continua casando por nome — a parecença sobreviveu", () => {
+  // A regra nova só vale onde há identidade declarada. Onde não há, a parecença
+  // continua sendo a melhor resposta possível — é o caso das pastas de móvel,
+  // que nomeiam o produto sem código.
+  const r = casarPastaComProduto("Cama - NAZARÉ", CATALOGO);
+  assert.equal(r.produtoId, "p2");
+  assert.equal(r.via, "nome");
+  assert.ok(r.confianca >= CORTE_DE_PARECENCA);
+});
+
+test("o SKU do ERP ganha do código que está no NOME do produto", () => {
+  // Caso real e contraintuitivo: a pasta "Tenis Molekinha 2588100 Mumbai" casa
+  // com um produto cujo NOME diz 2864.112 — porque o SKU dele é 2588100. O ERP
+  // é a identidade; o nome é texto, e às vezes o texto está desatualizado.
+  const comSkuDivergente: ProdutoParaCasar[] = [
+    { id: "t1", nome: "Tenis Infantil Molekinho 2864.112 Nylon Sleek", sku: "2588100" },
+    { id: "t2", nome: "Tenis Molekinha 2588.100 Mumbai", sku: "9999999" },
+  ];
+  const r = casarPastaComProduto("Tenis Molekinha 2588100 Mumbai", comSkuDivergente);
+  assert.equal(r.produtoId, "t1");
+  assert.equal(r.via, "codigo");
+});
+
+// ---------------------------------------------------------------------------
+// A AMOSTRA DO NÍVEL É ESPALHADA — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// `nivelDoProdutoPorProfundidade` olha uma amostra por profundidade e escolhe o
+// nível que mais casa com o catálogo. A amostra eram as N PRIMEIRAS pastas da
+// varredura — e a varredura é alfabética, então numa árvore TIPO/produto/cor as
+// 30 primeiras caem todas dentro do primeiro TIPO.
+//
+// MEDIDO na pasta ZZ_NAO_IDENTIFICADO: 1.592 fotos, 519 pastas de produto, e as
+// 30 amostradas eram todas de "BABUCHE", cujos códigos não estão neste
+// catálogo. Zero casamentos em TODOS os níveis, e a função caiu no padrão `1` —
+// que ali é a pasta de TIPO.
+//
+// O estrago não é sutil: o nível decide o que é PRODUTO e o que é COR. Com o 1,
+// 543 grupos viraram 18, e os 11 que casaram foram todos para o mesmo produto.
+// Com o 2, 543 grupos e 74 casamentos.
+
+test("o nível certo é achado mesmo quando o começo da varredura não casa", () => {
+  // 40 pastas de um tipo que o catálogo não conhece, e DEPOIS as que casam.
+  // Com amostra do começo, as boas nunca são vistas.
+  const caminhos: string[][] = [];
+  for (let i = 0; i < 40; i++) caminhos.push(["Fotos", "DESCONHECIDO", `item-sem-catalogo-${i}`]);
+  for (let i = 0; i < 10; i++) caminhos.push(["Fotos", "CAMAS", "Cama - NAZARÉ"]);
+  const nivel = nivelDoProdutoPorProfundidade(caminhos, CATALOGO);
+  assert.equal(nivel.get(3), 2, "voltou a amostrar só o começo da varredura");
+});
+
+test("com tudo casando no mesmo nível, a escolha não muda", () => {
+  // A correção não pode mexer no caso simples, que é o comum.
+  const caminhos = Array.from({ length: 12 }, () => ["Fotos", "Cama - BELLA", "Castanho"]);
+  assert.equal(nivelDoProdutoPorProfundidade(caminhos, CATALOGO).get(3), 1);
+});
+
+test("sem casamento nenhum, o padrão continua sendo o segundo nível", () => {
+  // Sem prova, nada muda — é o comportamento que a função já documentava.
+  const caminhos = Array.from({ length: 20 }, (_, i) => ["Fotos", `nada-${i}`, "cor"]);
+  assert.equal(nivelDoProdutoPorProfundidade(caminhos, CATALOGO).get(3), 1);
+});
+
+// ---------------------------------------------------------------------------
+// MEDIDA NÃO É CÓDIGO — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// "152g" normaliza para "152G": quatro caracteres com dígito, o mínimo para
+// virar código. E como só um produto tinha esse peso no nome, ele virou uma
+// REFERÊNCIA ÚNICA — identidade, no critério desta função.
+//
+// MEDIDO na pasta SLIME:
+//
+//     "Slime Gelele Color 152g"        -> "Slime Gelelé Tradicional Pote 152g"
+//     "Slime Gelele Glitter Pote 152g" -> o MESMO produto
+//
+// Dois produtos diferentes casando num terceiro, os dois "por identidade", pelo
+// peso. Peso é atributo, e atributo se repete de propósito — é o oposto de
+// identidade.
+//
+// No catálogo inteiro, das 664 referências únicas, exatamente UMA era medida.
+// O estrago é pequeno em número e total em natureza: casar por peso é casar por
+// coincidência, com confiança 1.
+
+const GELELE: ProdutoParaCasar[] = [
+  { id: "g1", nome: "Slime Gelelé Tradicional Pote 152g", sku: "3001" },
+  { id: "g2", nome: "Slime Gelele Kit Laboratório", sku: "3002" },
+];
+
+test("peso no nome NÃO vira referência — 152g não identifica produto", () => {
+  const r = casarPastaComProduto("Slime Gelele Color 152g", GELELE);
+  assert.notEqual(r.via, "referencia", "o peso voltou a valer como identidade");
+});
+
+test("dois produtos com o mesmo peso não colapsam no mesmo id", () => {
+  const a = casarPastaComProduto("Slime Gelele Color 152g", GELELE);
+  const b = casarPastaComProduto("Slime Gelele Glitter Pote 152g", GELELE);
+  assert.ok(
+    !(a.via === "referencia" && b.via === "referencia" && a.produtoId === b.produtoId),
+    "duas pastas diferentes casaram no mesmo produto, por identidade, pelo peso"
+  );
+});
+
+test("código de verdade que acaba em dígito continua valendo", () => {
+  // A regra rejeita o TOKEN INTEIRO como número+unidade. "4931103" não é medida
+  // por acabar em dígito, e "010.012" também não.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "c1", nome: "Tênis Actvitta 4931.103 Loc Oregon", sku: "9001" },
+    { id: "c2", nome: "Sapatênis Kids Casual Mimoflex 010.012", sku: "9002" },
+  ];
+  assert.equal(casarPastaComProduto("Tenis Actvitta 4931103 Loc Oregon", catalogo).produtoId, "c1");
+  assert.equal(casarPastaComProduto("Sapatenis Kids Casual Mimoflex 010012", catalogo).produtoId, "c2");
+});
+
+test("as unidades cobertas são as que aparecem em embalagem", () => {
+  // Lista curta de propósito: cada unidade a mais é um código de verdade a
+  // menos. "M" e "L" sozinhas ficaram de fora — "1234M" pode ser modelo.
+  const catalogo: ProdutoParaCasar[] = [{ id: "u1", nome: "Pote 500ml Gel", sku: "7001" }];
+  const r = casarPastaComProduto("Outro Produto 500ml", catalogo);
+  assert.notEqual(r.via, "referencia");
+});
+
+// ---------------------------------------------------------------------------
+// TAMANHO TAMBÉM NÃO É CÓDIGO — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// A grade infantil se escreve 24/25, 25/26, 33/34. Sem pontuação viram 2425,
+// 2526, 3334 — quatro dígitos, o bastante para virar "código".
+//
+// O estrago apareceu DEPOIS do conserto de hoje, e por causa dele: pasta com
+// código não cai mais na parecença, então uma pasta cujo único "código" era o
+// tamanho parou de casar. Medido nas pastas reais: 23 grupos, 198 fotos,
+// travados só por isso — e sem o número o nome casa a 1,00.
+//
+// Segurança da regra, medida no catálogo: dos 2.006 SKUs e das 664 referências
+// únicas, ZERO seriam excluídos. Só existem dois tokens assim — 2425 e 2526 —,
+// ambos em mais de um produto, ou seja, nunca serviram de identidade.
+
+const HAVAIANAS: ProdutoParaCasar[] = [
+  { id: "h1", nome: "Chinelo Havaianas Baby Classics 25/26", sku: "5001" },
+  { id: "h2", nome: "Chinelo Havaianas Disney Personagens Stylish 24/25", sku: "5002" },
+  { id: "h3", nome: "Chinelo Havaianas Slim Mickey & Minnie Disney 24/25", sku: "5003" },
+];
+
+test("tamanho na pasta não bloqueia o nome — ele não é identidade", () => {
+  const r = casarPastaComProduto("Chinelo Havaianas Baby Classics 2526", HAVAIANAS);
+  assert.equal(r.produtoId, "h1");
+  // A confiança é 0,80, não 1, e a razão fica escrita porque ela surpreende:
+  // `palavrasDe` guarda tokens com MAIS de 2 caracteres. A pasta escreve "2526"
+  // e isso conta como palavra; o produto escreve "25/26", que vira "25" e "26"
+  // e some. Sobra uma palavra a mais de um lado — 4 comuns em 5.
+  //
+  // Não é defeito a consertar aqui: o tamanho não deveria pesar na parecença de
+  // jeito nenhum, e mexer em `palavrasDe` mudaria TODOS os casamentos por nome
+  // do repositório. Fica medido e à vista.
+  assert.ok(r.confianca >= 0.75, `confiança caiu para ${r.confianca}`);
+  assert.equal(r.via, "nome");
+});
+
+test("o produto certo entre dois do MESMO tamanho — o nome decide, não o número", () => {
+  // Este é o caso que mais ensinou. Um desempate por COR mandou esta pasta para
+  // "Slim Mickey & Minnie Disney 24/25" — outro produto, mesmo tamanho. Sem o
+  // tamanho no caminho, ela acha o próprio nome.
+  const r = casarPastaComProduto("Chinelo Havaianas Disney Personagens Stylish 2425", HAVAIANAS);
+  assert.equal(r.produtoId, "h2");
+});
+
+test("a regra é o par CONSECUTIVO, e só ele", () => {
+  // "1319" (modelo Boaonda) e "2402" não são tamanho: 19 não é 14, 02 não é 25.
+  // Se virassem, dois modelos reais sairiam do casamento por identidade.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "b1", nome: "Chinelo Boaonda 1319 Lilly", sku: "6001" },
+    { id: "b2", nome: "Babuche Boaonda 2402-110 Easy Kids", sku: "6002" },
+  ];
+  assert.equal(casarPastaComProduto("fotos 1319 Lilly", catalogo).produtoId, "b1");
+  assert.equal(casarPastaComProduto("Babuche Boaonda 2402-110 Easy Kids", catalogo).produtoId, "b2");
+});
+
+test("SKU que por acaso pareça tamanho continua valendo pelo ERP", () => {
+  // `casaPorCodigo` compara o SKU direto com o texto da pasta, sem passar por
+  // `codigosNoTexto` — então a exclusão não alcança a identidade do ERP.
+  const catalogo: ProdutoParaCasar[] = [{ id: "s1", nome: "Produto Qualquer", sku: "2425" }];
+  assert.equal(casarPastaComProduto("pasta 2425", catalogo).via, "codigo");
+});
+
+// ---------------------------------------------------------------------------
+// REFERÊNCIA REPETIDA: O CÓDIGO ESTREITA, O NOME ESCOLHE — 27/08/2026
+// ---------------------------------------------------------------------------
+//
+// "7142.101 está em dois produtos, escolher um seria chute" estava certo sobre
+// o CÓDIGO SOZINHO e errado sobre o par código+nome. Quando a referência se
+// repete, os candidatos são o MESMO MODELO em acabamentos diferentes — e o
+// catálogo os distingue no nome, que é o que a pasta também traz.
+//
+// MEDIDO nas pastas reais: dos 122 grupos travados por referência repetida, 96
+// têm um vencedor exato e único — 928 fotos. Os 26 restantes são empate.
+//
+// A diferença para a parecença de nome, que pôs 470 fotos no sapato errado: lá
+// o universo é o CATÁLOGO INTEIRO e o erro possível é sandália virar mocassim.
+// Aqui o universo já é o do modelo, e o pior erro é trocar um acabamento por
+// outro do mesmo par.
+
+const IPANEMA: ProdutoParaCasar[] = [
+  { id: "i1", nome: "Chinelo Baby Dedo Ipanema 27046 Brasil", sku: "8001" },
+  { id: "i2", nome: "Chinelo Baby Dedo Feminino Ipanema 27046 Brasil", sku: "8002" },
+  { id: "i3", nome: "Chinelo Baby Dedo Ipanema 27247 Sporty", sku: "8003" },
+];
+
+test("referência repetida + nome exato escolhe o produto certo", () => {
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27046 Brasil", IPANEMA);
+  assert.equal(r.produtoId, "i1");
+  assert.equal(r.via, "referencia+nome");
+  assert.equal(r.confianca, 1);
+});
+
+test("a palavra a mais leva para o OUTRO produto do mesmo código", () => {
+  // "Feminino" é a única diferença entre i1 e i2, e é ela que decide. Se o
+  // desempate ignorasse palavras, os dois cairiam no mesmo lugar — que era o
+  // comportamento antigo, só que sem casar nenhum.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Feminino Ipanema 27046 Brasil", IPANEMA);
+  assert.equal(r.produtoId, "i2");
+  assert.equal(r.via, "referencia+nome");
+});
+
+test("EMPATE em nome continua sem casar — dois iguais não se decidem", () => {
+  // O catálogo escreve os dois igual; não há o que decidir sem uma pessoa.
+  // Deixar passar aqui seria escolher no par ou ímpar.
+  const gemeos: ProdutoParaCasar[] = [
+    { id: "g1", nome: "Babuche Boaonda 2402.110 Easy Kids", sku: "9001" },
+    { id: "g2", nome: "Babuche Boaonda 2402.110 Easy Kids", sku: "9002" },
+  ];
+  const r = casarPastaComProduto("Babuche Boaonda 2402110 Easy Kids", gemeos);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("nome PARECIDO não basta — o desempate quer o conjunto inteiro", () => {
+  // 0,80 de parecença é o que a parecença comum aceitaria. Aqui não: ou as
+  // palavras são as mesmas, ou fica para a pessoa.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27046 Havaiana", IPANEMA);
+  assert.equal(r.produtoId, null);
+});
+
+test("o número sai da comparação — quem estreitou foi ele", () => {
+  // A pasta escreve "202425" e o produto "2024/25", que vira dois tokens curtos
+  // e some. Com o número na conta, um casamento perfeito no que importa perdia
+  // a nota. E no desempate o número é justamente o que NÃO distingue: todos os
+  // candidatos o têm.
+  const havaianas: ProdutoParaCasar[] = [
+    { id: "h1", nome: "Chinelo Havaianas Slim Princess 2024/25", sku: "7001" },
+    { id: "h2", nome: "Chinelo Havaianas Star Wars 2024/25", sku: "7002" },
+  ];
+  const r = casarPastaComProduto("Chinelo Havaianas Slim Princess 202425", havaianas);
+  assert.equal(r.produtoId, "h1");
+  assert.equal(r.via, "referencia+nome");
+});
+
+test("referência ÚNICA continua ganhando do desempate — a ordem importa", () => {
+  // Se o desempate rodasse primeiro, uma referência única com nome divergente
+  // poderia ser desviada. Identidade sozinha vem antes.
+  const r = casarPastaComProduto("Chinelo Baby Dedo Ipanema 27247 Outro Nome", IPANEMA);
+  assert.equal(r.produtoId, "i3");
+  assert.equal(r.via, "referencia");
+});
+
+test("dois códigos apontando para produtos DIFERENTES não casam", () => {
+  // A primeira versão do desempate retornava no primeiro código com vencedor
+  // único, sem olhar os outros — e aí a ORDEM das palavras no nome da pasta
+  // decidia o produto. Renomear a pasta mudava o resultado, sem nada indicar.
+  //
+  // Ordem não é evidência. Dois códigos discordando é a pasta dizendo duas
+  // coisas, e a resposta é a mesma de todo empate: "não casou".
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "a1", nome: "Sandalia Modare 7208.101 Nobuck", sku: "1" },
+    { id: "a2", nome: "Sandalia Modare 7208.101 Verniz", sku: "2" },
+    { id: "b1", nome: "Tamanco Slide 7142.101 Canelado", sku: "3" },
+    { id: "b2", nome: "Tamanco Slide 7142.101 Elastico", sku: "4" },
+  ];
+  // A pasta bate exatamente com "a1" pelo primeiro código e com "b1" pelo
+  // segundo — dois vencedores, nenhum escolhido.
+  const r = casarPastaComProduto("Sandalia Modare 7208.101 Nobuck 7142.101 Canelado", catalogo);
+  assert.equal(r.produtoId, null);
+  assert.equal(r.via, null);
+});
+
+test("dois códigos apontando para o MESMO produto casam", () => {
+  // Concordância não é ambiguidade. Se os dois códigos levam ao mesmo lugar,
+  // não há o que decidir — e recusar aqui seria perder um casamento certo.
+  const catalogo: ProdutoParaCasar[] = [
+    { id: "x1", nome: "Papete Modare 7208.101 ref 7300.500 Nobuck", sku: "1" },
+    { id: "x2", nome: "Papete Modare 7208.101 Verniz", sku: "2" },
+    { id: "x3", nome: "Outra Coisa 7300.500 Qualquer", sku: "3" },
+  ];
+  const r = casarPastaComProduto("Papete Modare 7208.101 ref 7300.500 Nobuck", catalogo);
+  assert.equal(r.produtoId, "x1");
+  assert.equal(r.via, "referencia+nome");
+});
+
+test("lista MUTADA no lugar refaz o índice — produto novo não fica invisível", () => {
+  // O índice é memorizado pela IDENTIDADE do array. Hoje todos os chamadores
+  // criam array novo e nada quebra, mas nada impede `produtos.push(...)` — e aí
+  // o índice velho responderia, o produto recém-importado ficaria invisível, e
+  // o sintoma seria "a foto não casa com um produto que está na tela".
+  const lista: ProdutoParaCasar[] = [{ id: "u1", nome: "Chinelo Alfa 1111.222", sku: "9001" }];
+  assert.equal(casarPastaComProduto("Chinelo Alfa 1111.222", lista).produtoId, "u1");
+
+  lista.push({ id: "u2", nome: "Chinelo Beta 3333.444", sku: "9002" });
+  const r = casarPastaComProduto("Chinelo Beta 3333.444", lista);
+  assert.equal(r.produtoId, "u2", "o índice velho respondeu e o produto novo sumiu");
+});
+
+test("remover do meio também refaz — o tamanho denuncia", () => {
+  const lista: ProdutoParaCasar[] = [
+    { id: "v1", nome: "Chinelo Alfa 1111.222", sku: "9001" },
+    { id: "v2", nome: "Chinelo Beta 3333.444", sku: "9002" },
+    { id: "v3", nome: "Chinelo Gama 5555.666", sku: "9003" },
+  ];
+  assert.equal(casarPastaComProduto("Chinelo Beta 3333.444", lista).produtoId, "v2");
+  lista.splice(1, 1);
+  assert.equal(casarPastaComProduto("Chinelo Beta 3333.444", lista).produtoId, null);
 });

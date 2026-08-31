@@ -61,6 +61,7 @@ export interface ProdutoRow {
   // v1.7 (ausentes em bancos anteriores — rodar a migração 001)
   tipo_produto?: string | null;
   categoria_marketplace_sugerida?: string | null;
+  categoria_ml?: string | null;
   descricao_base?: string | null;
   beneficios?: string | null;
   cuidados?: string | null;
@@ -217,6 +218,11 @@ export interface ImagemProdutoRow {
   url: string | null;
   status: string;
   observacoes: string | null;
+  /** Migração 059. `null` = não medimos — nunca "não tem". */
+  largura: number | null;
+  altura: number | null;
+  /** Migração 060. `null` = não sabemos a cor — nunca "serve para todas". */
+  cor: string | null;
 }
 
 // ---- v1.8: Auditoria em massa ----

@@ -72,7 +72,25 @@ next-env.d.ts
 # Obsidian (estado do app na raiz — pessoal, nao versionar)
 /.obsidian/
 
+# E o RASCUNHO que o Obsidian cria na raiz do cofre: "Sem titulo.canvas",
+# "Sem titulo.base", a nota do dia que ficou vazia. Sao 0 a 40 bytes cada e
+# apareciam em todo `git status`, ensinando a passar o olho pela lista de
+# untracked — que e onde um arquivo que IMPORTA se esconde.
+/Sem t*.canvas
+/Sem t*.base
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9].md
+
 # Exportacoes locais do Mercado Livre (CSV/JSON de conferencia). Sao retrato de
 # conta real, refeito por medicao quando precisa — nao e fonte, e nao deve
 # viajar entre maquinas.
 /backup/
+
+# Rascunho de sessao na raiz: log de corrida (`.tmp-fotos.log`), script de uma
+# vez so (`.tmp-rodar.sh`), medicao que se refaz com um comando. Pelo MESMO
+# motivo dos rascunhos do Obsidian acima: seis linhas de entulho em todo
+# `git status` ensinam a passar o olho pela lista de untracked, e e ali que um
+# arquivo que IMPORTA se esconde.
+#
+# O prefixo `.tmp-` e a marca de "nao versionar" — quem quiser guardar um
+# resultado, tira o prefixo e ele volta a aparecer.
+/.tmp-*

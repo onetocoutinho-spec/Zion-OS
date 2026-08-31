@@ -93,6 +93,36 @@ export function ConferirCatalogo({
         </p>
       )}
 
+      {/* PESO IMPLAUSÍVEL — mesma disciplina do alçapão: avisa, não corrige.
+          Peso errado não é detalhe: sem ele o frete sai errado, e o preço
+          mínimo vai junto. */}
+      {analise.avisoDePeso && (
+        <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-sm text-amber-200">
+          {analise.avisoDePeso.texto}
+        </p>
+      )}
+
+      {/* PALAVRA NO LUGAR DO CÓDIGO — "inativoo", "iinnattivo", "inatt". É um
+          recado do ERP, e o importador lia como SKU. Sem este aviso, 22 linhas
+          viravam produto normal e iam pedir foto e preço. */}
+      {analise.avisoDeCodigo && (
+        <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-sm text-amber-200">
+          {analise.avisoDeCodigo.texto}
+        </p>
+      )}
+
+      {/* O ALÇAPÃO DA GRADE — aqui o aviso é só aviso: esta tela não tem
+          mapeamento para ajustar, porque a planilha chegou pelo clipe do chat.
+          Dizer só "aponte a coluna" sem dizer ONDE seria mandar procurar. */}
+      {analise.avisoDeGrade && (
+        <p className="mt-3 rounded border border-amber-500/30 bg-amber-500/5 p-2 text-sm text-amber-200">
+          {analise.avisoDeGrade.texto}{" "}
+          <span className="text-amber-200/70">
+            Para apontar a coluna, importe por Meus Produtos → Importar base de produtos.
+          </span>
+        </p>
+      )}
+
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead>

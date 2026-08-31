@@ -7,6 +7,16 @@
 // app ML (ML_CLIENT_SECRET), que vive só no .env do servidor. É consumido
 // apenas pela rota /api/ml/publicar.
 
+// A leitura de `/categories/{id}/attributes` é PURA e mora no domínio
+// (`exigenciasDaResposta`). Aqui fica só a rede: as duas funções que liam esse
+// endpoint montavam `{id, nome}` cada uma por conta própria, e as duas
+// descartavam `values`, `value_type` e `hint` — o vocabulário que o ML publica.
+import {
+  exigenciasDaResposta,
+  type AtributoCruDoML,
+  type ExigenciaDaCategoria,
+} from "../../modules/publication/domain/atributosDoMarketplace.ts";
+
 const API = "https://api.mercadolibre.com";
 const TOKEN_URL = `${API}/oauth/token`;
 
@@ -240,8 +250,11 @@ function texto(v: unknown): string {
 export interface RecorteDaCategoria {
   /** ids `hidden` ou `variation_attribute` — não são ficha do lojista. */
   foraDaFicha: Record<string, string[]>;
-  /** ids `required` — o que a categoria EXIGE, por categoria. */
-  obrigatorios: Record<string, { id: string; nome: string }[]>;
+  /**
+   * O que a categoria EXIGE, por categoria — com o que o ML publica sobre
+   * cada exigência: tipo, valores aceitos e dica.
+   */
+  obrigatorios: Record<string, ExigenciaDaCategoria[]>;
 }
 
 /**
@@ -264,7 +277,7 @@ export async function recorteDaCategoria(
 ): Promise<RecorteDaCategoria> {
   const unicas = [...new Set(categorias.filter(Boolean))];
   const foraDaFicha: Record<string, string[]> = {};
-  const obrigatorios: Record<string, { id: string; nome: string }[]> = {};
+  const obrigatorios: Record<string, ExigenciaDaCategoria[]> = {};
   await Promise.all(
     unicas.map(async (categoria) => {
       foraDaFicha[categoria] = [];
@@ -272,19 +285,13 @@ export async function recorteDaCategoria(
       try {
         const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
         if (!r.ok) return;
-        const lista = (await r.json()) as {
-          id?: string;
-          name?: string;
-          tags?: Record<string, unknown>;
-        }[];
+        const lista = (await r.json()) as AtributoCruDoML[];
         if (!Array.isArray(lista)) return;
         foraDaFicha[categoria] = lista
           .filter((a) => a.tags && ("hidden" in a.tags || "variation_attribute" in a.tags))
           .map((a) => a.id ?? "")
           .filter(Boolean);
-        obrigatorios[categoria] = lista
-          .filter((a) => a.tags && "required" in a.tags && a.id)
-          .map((a) => ({ id: a.id as string, nome: (a.name ?? a.id) as string }));
+        obrigatorios[categoria] = exigenciasDaResposta(lista);
       } catch {
         // Rede/ML fora: nada escondido, nada exigido.
       }
@@ -302,16 +309,12 @@ export async function recorteDaCategoria(
  */
 export async function atributosObrigatorios(
   categoria: string
-): Promise<{ id: string; nome: string }[]> {
+): Promise<ExigenciaDaCategoria[]> {
   if (!categoria) return [];
   try {
     const r = await fetch(`${API}/categories/${encodeURIComponent(categoria)}/attributes`);
     if (!r.ok) return [];
-    const lista = (await r.json()) as { id?: string; name?: string; tags?: Record<string, unknown> }[];
-    if (!Array.isArray(lista)) return [];
-    return lista
-      .filter((a) => a.tags && "required" in a.tags && a.id)
-      .map((a) => ({ id: a.id as string, nome: a.name || (a.id as string) }));
+    return exigenciasDaResposta((await r.json()) as AtributoCruDoML[]);
   } catch {
     return [];
   }
@@ -645,6 +648,166 @@ export async function definirFotosDoItem(
   if (!r.ok) throw new Error(`ML recusou trocar as fotos de ${itemId}: ${await extrairErro(r)}`);
   const j = (await r.json()) as { id: string; pictures?: unknown[] };
   return { id: j.id, quantasFotos: (j.pictures ?? []).length };
+}
+
+// ---- Escrita de TEXTO no anúncio que já está no ar ------------------------
+//
+// ===========================================================================
+// A LACUNA QUE ESTAS TRÊS FUNÇÕES FECHAM
+// ===========================================================================
+//
+// Até 19/08/2026 o cliente do ML tinha TRÊS escritas em anúncio existente:
+// encerrar, pausar/reativar e fotos. Nenhuma tocava título, descrição ou ficha.
+//
+// O efeito, medido: o chat oferecia "melhorar o título", rodava o agente da
+// Zion, a lojista confirmava — e o anúncio no ar continuava idêntico. A
+// mensagem chegou a dizer isso em voz alta ("o anúncio que já está no ar não
+// muda com isso"), que é honesto e não resolve: 480 anúncios ativos, e a
+// otimização era ensaio.
+//
+// O texto sempre existiu — quem o escreve é o Opus 5 na esteira. Faltava a
+// entrega.
+
+/**
+ * TROCA O TÍTULO de um anúncio no ar.
+ *
+ * O ML recusa em dois casos que valem ser distinguidos na mensagem, porque o
+ * remédio é diferente: anúncio de CATÁLOGO não tem título próprio (o título é
+ * do catálogo, e mudar exige sair dele), e anúncio COM VENDAS tem o título
+ * congelado — quem comprou comprou aquilo.
+ */
+export async function definirTituloDoItem(
+  accessToken: string,
+  itemId: string,
+  titulo: string
+): Promise<{ id: string; titulo: string }> {
+  const limpo = titulo.trim();
+  if (!limpo) throw new Error("Título vazio: não mando isso ao Mercado Livre.");
+  // 60 é o teto do ML. Cortar aqui em silêncio publicaria um título truncado no
+  // meio de uma palavra — recusar devolve a decisão a quem escreveu.
+  if (limpo.length > 60) {
+    throw new Error(
+      `O título tem ${limpo.length} caracteres e o Mercado Livre aceita 60. Encurte antes.`
+    );
+  }
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ title: limpo }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar o título de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; title?: string };
+  // Devolvemos o título que o ML CONFIRMOU, não o que mandamos. Em 03/08/2026
+  // alguém deu uma capa como trocada com base no 200 e ela era a antiga.
+  return { id: j.id, titulo: j.title ?? "" };
+}
+
+/**
+ * TROCA A DESCRIÇÃO — e é um ENDPOINT SEPARADO, não um campo do item.
+ *
+ * `PUT /items/{id}` com `description` é ignorado em silêncio: a descrição mora
+ * em `/items/{id}/description`. Mandar pelo caminho errado devolveria 200 com
+ * o texto antigo no ar — o formato de falha que este repositório mais persegue.
+ *
+ * `plain_text` e não `text`: `text` é o campo HTML legado, que o ML desativou
+ * para categorias novas.
+ */
+export async function definirDescricaoDoItem(
+  accessToken: string,
+  itemId: string,
+  descricao: string
+): Promise<{ ok: true; tamanho: number }> {
+  const limpo = descricao.trim();
+  if (!limpo) throw new Error("Descrição vazia: não mando isso ao Mercado Livre.");
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}/description`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ plain_text: limpo }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar a descrição de ${itemId}: ${await extrairErro(r)}`);
+  return { ok: true, tamanho: limpo.length };
+}
+
+/**
+ * PREENCHE ATRIBUTOS da ficha — e ACRESCENTA, nunca substitui o conjunto.
+ *
+ * Diferença que custou caro em `pictures`: lá o ML SUBSTITUI a lista inteira, e
+ * mandar uma lista parcial apagou fotos. Em `attributes` ele faz merge por
+ * `id` — os que não vão continuam lá. Mas a assimetria é fácil de esquecer, e
+ * por isso está escrita aqui.
+ *
+ * Atributo com `value_id` DEVE ir com `value_id`: mandar só `value_name` num
+ * atributo de lista faz o ML criar um valor livre que não casa com o filtro de
+ * busca — o comprador que filtra por "Preto" não acha o anúncio.
+ */
+export async function definirAtributosDoItem(
+  accessToken: string,
+  itemId: string,
+  atributos: readonly { id: string; value_id?: string | null; value_name?: string | null }[]
+): Promise<{ id: string; quantosVieram: number }> {
+  const uteis = atributos.filter((a) => a.id && (a.value_id || a.value_name));
+  if (uteis.length === 0) throw new Error("Nenhum atributo preenchido para enviar.");
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      attributes: uteis.map((a) =>
+        a.value_id ? { id: a.id, value_id: a.value_id } : { id: a.id, value_name: a.value_name }
+      ),
+    }),
+  });
+  if (!r.ok) throw new Error(`ML recusou a ficha de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; attributes?: unknown[] };
+  return { id: j.id, quantosVieram: (j.attributes ?? []).length };
+}
+
+/**
+ * TROCA O PREÇO de um anúncio no ar.
+ *
+ * ===========================================================================
+ * POR QUE ESTA FUNÇÃO NASCEU, E O QUE ELA RECUSA
+ * ===========================================================================
+ *
+ * Em 20/08/2026 a lojista pausou 15 anúncios da Actvitta e escolheu manter o
+ * preço de R$ 244,90. Sobraram dois anúncios do tamanho 39 a R$ 169,32 — não
+ * porque eram melhores, mas porque eu só tinha olhado duplicidade e eles eram
+ * únicos. O 39 ficaria R$ 75 mais barato que o 38 na mesma página.
+ *
+ * Eu disse a ela "a rota de preço existe". Não existia: o cliente do ML tinha
+ * escrita de foto, de estado, e — desde hoje de manhã — de texto. Preço não.
+ *
+ * A TRAVA DO FATOR. O ML aceita qualquer preço, inclusive um que multiplique o
+ * atual por 100 num erro de vírgula — e um anúncio a R$ 24.490 não é recusado,
+ * é só nunca vendido. `fatorMaximo` recusa a troca ANTES de sair daqui.
+ *
+ * Não é paranoia: esta base já gravou R$ 30.277.872,00 como custo por uma
+ * coluna ambígua. Lá o estrago ficou no nosso banco; aqui ficaria na vitrine.
+ */
+export async function definirPrecoDoItem(
+  accessToken: string,
+  itemId: string,
+  preco: number,
+  opcoes: { precoAtual: number; fatorMaximo?: number } = { precoAtual: 0 }
+): Promise<{ id: string; preco: number }> {
+  if (!(preco > 0)) throw new Error("Preço tem de ser maior que zero.");
+  const fator = opcoes.fatorMaximo ?? 3;
+  const atual = opcoes.precoAtual;
+  if (atual > 0 && (preco > atual * fator || preco < atual / fator)) {
+    throw new Error(
+      `Recusei trocar o preço de ${itemId}: de R$ ${atual.toFixed(2)} para ` +
+        `R$ ${preco.toFixed(2)} é mais de ${fator}x de diferença. Se for mesmo isso, ` +
+        `faça em dois passos ou confirme no painel do Mercado Livre.`
+    );
+  }
+  const r = await fetch(`${API}/items/${encodeURIComponent(itemId)}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ price: preco }),
+  });
+  if (!r.ok) throw new Error(`ML recusou trocar o preço de ${itemId}: ${await extrairErro(r)}`);
+  const j = (await r.json()) as { id: string; price?: number };
+  // O preço que o ML CONFIRMOU, não o que mandamos — a regra de 03/08/2026.
+  return { id: j.id, preco: Number(j.price ?? 0) };
 }
 
 // ---- Custos e reputação (a fonte da verdade sobre o que o ML cobra) ---------
@@ -1063,19 +1226,27 @@ const SEM_MEDIDAS: MedidasDaEmbalagem = {
  *   2. os atributos PACKAGE_HEIGHT / _WIDTH / _LENGTH / _WEIGHT, que alguns
  *      itens trazem no lugar.
  *
- * ⚠️ A FONTE (1) NUNCA EXECUTOU EM PRODUÇÃO. Descoberto em 24/08/2026: o
- * multiget filtra por campo e `shipping` NÃO está em `CAMPOS_PEDIDOS_AO_ML`,
- * então o objeto nunca chega. Todo peso que a importação conseguiu até hoje
- * veio da fonte (2). Produto cujas medidas só existem em `shipping.dimensions`
- * entra zerado — e zero aqui vira `envio: "ausente"` na precificação, ou seja,
- * margem sem frete.
+ * ⚠️ ESTE AVISO ESTAVA ERRADO, e o erro custou o CI vermelho — corrigido em
+ * 25/08/2026.
  *
- * Acrescentar "shipping" à lista é provavelmente a correção, e ela NÃO foi
- * feita porque o mesmo arquivo já ensinou o preço de chutar: se o ML recusar o
- * campo no filtro, o pedido inteiro degrada para `CAMPOS_MINIMOS_AO_ML` e a
- * importação perde de uma vez health, sold_quantity e listing_type_id. O
- * caminho é `scripts/medicoes/camposDoMercadoLivre.ts` contra a conta real —
- * e `camposDoMercadoLivre.test.ts` segura o achado até lá.
+ * Ele dizia que a fonte (1) nunca executou porque `shipping` não estava em
+ * `CAMPOS_PEDIDOS_AO_ML`. Estava: entrou em 14/08/2026, dez dias antes deste
+ * aviso ser escrito, pelo commit "o frete nunca chegou porque nunca foi
+ * pedido". O aviso de 24/08 nasceu de uma leitura desatualizada da constante,
+ * e `camposDoMercadoLivre.test.ts` foi escrito para PROIBIR o que já estava
+ * lá — então a suíte ficou vermelha desde então, por um achado que já tinha
+ * sido resolvido.
+ *
+ * A confirmação que faltava, medida no banco de produção em 25/08/2026:
+ * `vendedor_paga_frete` (que sai de `shipping.free_shipping`) está preenchido
+ * em 72 de 72 produtos, contra "80 de 80 nulos" antes de 14/08. O ML aceita o
+ * campo no filtro. E a degradação temida não aconteceu: `vendidos_ml` e
+ * `tipo_anuncio_ml` estão em 792 de 792 anúncios, o que os 14 campos mínimos
+ * não dariam.
+ *
+ * A fonte (1) EXECUTA. Produto cujas medidas só existem em
+ * `shipping.dimensions` já entra medido; o que sobra sem medida caiu para a
+ * fonte (2) e nem lá encontrou nada.
  *
  * Zero em tudo quando nenhuma fonte responde — e zero significa "não sei",
  * tratado como pendência pela precificação, nunca como "não pesa nada".
@@ -1257,6 +1428,15 @@ export const CAMPOS_PEDIDOS_AO_ML = [
   "descriptions",                        // SE existe descrição (o texto é outra rota)
   "warranty","condition","video_id","tags",
   "base_price","original_price",
+  // ---- acrescentado em 14/08/2026 ----
+  // `shipping` — QUEM PAGA O FRETE. O mapeador lia `it.shipping?.free_shipping`
+  // desde sempre, e este campo nunca esteve na lista: o ML nunca foi
+  // perguntado. Resultado medido: 80 de 80 produtos com `vendedor_paga_frete`
+  // nulo, e o botão respondendo "Nenhum anúncio informou o frete" — culpando a
+  // fonte por omissão nossa, que é o pecado que o comentário de `falhaFoiNossa`
+  // logo abaixo descreve. Sem frete não há preço mínimo, e sem preço mínimo a
+  // precificação inteira fica parada.
+  "shipping",
   // NÃO entraram, de propósito: geolocation, seller_address, coverage_areas,
   // channels, deal_ids, thumbnail, site_id, currency_id, accepts_mercadopago,
   // non_mercado_pago_payment_methods. São dado de conta e de plataforma, não de
@@ -1385,6 +1565,10 @@ export interface LeituraDoVendedor {
    * manda quem lê para o lugar errado.
    */
   falhaDaLeituraFoiNossa: boolean;
+  /** Itens que vieram com o objeto `shipping` no multiget. */
+  itensComShipping?: number;
+  /** Itens com `shipping.free_shipping` booleano — quem paga o frete. */
+  itensComFreteInformado?: number;
 }
 
 /**
@@ -1499,16 +1683,51 @@ export async function buscarAnunciosDoVendedor(
    * não explicar: manda procurar no lugar errado.
    */
   let falhaFoiNossa = false;
+  /** Quantos itens vieram COM o objeto `shipping` — ver a medição em `buscarLote`. */
+  let itensComShipping = 0;
+  /** E quantos trouxeram `free_shipping` booleano dentro dele. */
+  let itensComFreteInformado = 0;
 
   async function buscarLote(lote: string, campos: string): Promise<AnuncioML[] | "recusado"> {
     try {
-      const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}`, { headers });
+      // `include_attributes=all` OU AS VARIAÇÕES VÊM SEM SKU.
+      //
+      // MEDIDO EM 18/08/2026. Sete anúncios de grade, 96 variações, e o SKU
+      // chegava vazio em todas. A lojista mandou o print do painel dela:
+      // `00895337` na variação 37 BR, preenchido, visível. O ML respondia 200,
+      // com o array `variations` completo — e `variations[].attributes` VAZIO.
+      //
+      // Pedir `attributes` na lista de campos traz os atributos DO ITEM. Os da
+      // VARIAÇÃO, onde moram SELLER_SKU e GTIN, só vêm com este parâmetro. Sem
+      // ele o ML não recusa nem avisa: entrega o silêncio como se fosse a
+      // resposta.
+      //
+      // Com o parâmetro: 96 de 96. Sem ele: 0 de 96.
+      const r = await fetch(`${API}/items?ids=${lote}&attributes=${campos}&include_attributes=all`, {
+        headers,
+      });
       if (!r.ok) {
         registrar(`HTTP ${r.status} — ${await extrairErro(r)}`);
         return "recusado";
       }
       const arr = (await r.json()) as { code?: number; body?: ItemRaw }[];
-      return arr.filter((x) => x.code === 200 && x.body?.id).map((x) => mapearItem(x.body!));
+      const corpos = arr.filter((x) => x.code === 200 && x.body?.id).map((x) => x.body!);
+      // MEDIÇÃO NO PONTO DA DÚVIDA, 14/08/2026.
+      //
+      // `shipping` entrou na lista de campos hoje e o frete continuou chegando
+      // nulo nos 780. Provamos com `GET /items/{id}` que `shipping.free_shipping`
+      // EXISTE no item inteiro — o que não se sabia é se o MULTIGET, com o
+      // filtro `attributes=`, devolve o objeto aninhado.
+      //
+      // Contar aqui responde isso de uma vez e para sempre, em vez de a próxima
+      // pessoa refazer a mesma investigação. Se `comShipping` for 0 com
+      // `shipping` na lista, o filtro do multiget é que não entrega, e o
+      // caminho do frete precisa de outra fonte — não de mais um campo pedido.
+      for (const b of corpos) {
+        if (b.shipping && typeof b.shipping === "object") itensComShipping++;
+        if (typeof b.shipping?.free_shipping === "boolean") itensComFreteInformado++;
+      }
+      return corpos.map((b) => mapearItem(b));
     } catch (e) {
       // `fetch failed` do undici traz o motivo real em `cause` — e é ele que
       // diz se foi tempo, conexão ou DNS. Sem isso, "lote com falha" de novo.
@@ -1553,6 +1772,9 @@ export async function buscarAnunciosDoVendedor(
     filtroDeCamposRecusado: filtroRecusado,
     // A falha foi nossa (exceção) ou do ML (HTTP)? Muda onde procurar.
     falhaDaLeituraFoiNossa: falhaFoiNossa,
+    // O FRETE, medido na fonte. Ver o comentário em `buscarLote`.
+    itensComShipping,
+    itensComFreteInformado,
   };
 }
 

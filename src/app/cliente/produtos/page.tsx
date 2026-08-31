@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Package, Search, Wand2, Upload, X, Store, Loader2, CheckCircle2, AlertTriangle, Ruler, Save, Boxes, Plus, Trash2, Gift, Truck, Gauge } from "lucide-react";
 import { Table, Td, TdMain, TdSelecao, EmptyRow } from "@/components/ui/Table";
@@ -33,6 +34,7 @@ import { montarTabelaMedidas } from "@/modules/catalog/domain/tabelasMedidas";
 import { importarAnunciosDoCliente } from "@/lib/services/importarAnunciosML";
 import {
   importarCustos,
+  type OpcoesDeImportacao,
   definirCustoEscolhido,
   type AmbiguidadeCusto,
 } from "@/lib/services/importacaoCustos";
@@ -47,7 +49,7 @@ import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 import { importarPeso } from "@/lib/services/importacaoPeso";
 import { atualizarFreteDosProdutos } from "@/lib/services/atualizarFreteML";
-import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { lerPlanilha, trocarTabela, type PlanilhaLida } from "@/lib/planilha";
 import { listarResumoDeAnunciosDoCliente } from "@/lib/services/anunciosGerados";
 import { inventariarItemDoML, textoDoInventario } from "@/lib/services/inventarioDoML";
 import { diagnosticarEGravar, textoDoDiagnostico } from "@/lib/services/diagnosticoDeInfracoes";
@@ -93,6 +95,16 @@ const MESTRE_INERTE = {
 };
 
 export default function ClienteProdutos() {
+  // `useSearchParams` exige Suspense no App Router — mesmo padrão de
+  // `/cliente/anunciar` e `/cliente/conectar-ml`.
+  return (
+    <Suspense fallback={null}>
+      <Produtos />
+    </Suspense>
+  );
+}
+
+function Produtos() {
   const { clienteId, nome } = useClientPortal();
   /** O que o chat desta tela pode responder e sobre quais produtos. */
   const chat = useContextoDaPergunta(clienteId);
@@ -106,6 +118,23 @@ export default function ClienteProdutos() {
     () => listarResumoDeAnunciosDoCliente(clienteId),
     [clienteId]
   );
+  /**
+   * QUANDO O MERCADO LIVRE FOI LIDO PELA ÚLTIMA VEZ.
+   *
+   * O máximo entre os anúncios: cada leitura carimba `statusMarketplaceEm` em
+   * quem mudou, então o mais recente é a data da última conferida.
+   *
+   * `null` quando nenhum anúncio tem carimbo — e aí a tela não afirma data
+   * nenhuma, em vez de mostrar "01/01/1970" ou a data de hoje por engano.
+   */
+  const ultimaLeituraDoML = useMemo(() => {
+    const carimbos = (anuncios ?? [])
+      .map((a) => a.statusMarketplaceEm)
+      .filter((d): d is string => Boolean(d));
+    if (carimbos.length === 0) return null;
+    return carimbos.reduce((a, b) => (a > b ? a : b));
+  }, [anuncios]);
+
   const { data: auditorias } = useLiveQuery(listarAuditorias);
   // Peso e foto NÃO vivem no produto: peso está nas variantes, foto na tabela de
   // imagens. A lista precisava dos dois para dizer o que falta em cada linha —
@@ -151,7 +180,25 @@ export default function ClienteProdutos() {
   );
 
   const [fMarket, setFMarket] = useState("Todos");
-  const [fStatus, setFStatus] = useState("Todos");
+  // O FILTRO PODE CHEGAR PELA URL — foi assim que a Visão geral passou a
+  // entregar o que promete.
+  //
+  // O cartão "Produtos no ar, sem otimização: 36" virou link em 24/08/2026, e
+  // um link que larga a lojista na lista inteira de 72 devolve para ela o
+  // garimpo que o número deveria ter poupado. Com `?status=`, o clique chega
+  // nos 36.
+  //
+  // SÓ VALORES DA LISTA ENTRAM. Um `?status=qualquer-coisa` não casaria com
+  // produto nenhum e produziria uma tela vazia sem explicação — pior que
+  // ignorar o parâmetro, porque parece base vazia.
+  //
+  // Semente de `useState`, não efeito: o filtro é dela a partir daqui. Um
+  // efeito que reescrevesse o estado a cada render desfaria a escolha que ela
+  // fizesse no seletor.
+  const statusDaUrl = useSearchParams().get("status") ?? "";
+  const [fStatus, setFStatus] = useState(
+    (STATUS as readonly string[]).includes(statusDaUrl) ? statusDaUrl : "Todos"
+  );
   const [fScore, setFScore] = useState("Todos");
   const [busca, setBusca] = useState("");
   // O menu "o que você tem?" — uma porta para as cinco fontes de importação.
@@ -264,13 +311,13 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function gravarCustos(mapa: Mapeamento) {
+  async function gravarCustos(mapa: Mapeamento, opcoes?: OpcoesDeImportacao) {
     if (!conferindo || importandoCusto) return;
     setImportandoCusto(true);
     setMsgML(null);
     try {
       const planilha = conferindo;
-      const r = await importarCustos(clienteId, planilha, mapa);
+      const r = await importarCustos(clienteId, planilha, mapa, opcoes);
 
       // O aviso pode vir JUNTO com um resultado bom (ex.: casou 800 produtos e
       // 12 ficaram ambíguos). Tratar todo aviso como erro escondia o que deu
@@ -278,6 +325,9 @@ export default function ClienteProdutos() {
       const partes = [
         `${r.produtos} produto(s) e ${r.variantes} variação(ões) atualizados de ${r.linhasCsv} linha(s)`,
       ];
+      // Só quando veio: "0 com preço" numa planilha sem coluna de preço é ruído.
+      if (r.precos > 0) partes.push(`${r.precos} com preço de venda`);
+      if (r.estoques > 0) partes.push(`${r.estoques} com estoque recalculado`);
       if (r.naoEncontrados > 0) partes.push(`${r.naoEncontrados} linha(s) sem produto correspondente`);
       if (r.ambiguos > 0) partes.push(`${r.ambiguos} produto(s) ambíguo(s), deixados de fora`);
 
@@ -461,14 +511,20 @@ export default function ClienteProdutos() {
     }
   }
 
-  async function importarDoML(modo: "substituir" | "novos" | "medir" | "enriquecer") {
+  async function importarDoML(
+    modo: "substituir" | "novos" | "medir" | "enriquecer" | "completar-sku"
+  ) {
     if (importandoML) return;
     setEscolhendoML(false);
     setImportandoML(true);
     setMsgML(null);
     try {
       const r = await importarAnunciosDoCliente(clienteId, nome, modo);
-      // MEDIR não grava e não recarrega a lista: não há o que recarregar.
+      // MEDIR não recarrega a LISTA porque não mexe no catálogo — produto,
+      // variante e imagem ficam intocados. Ele grava, sim, desde 10/08/2026:
+      // o eixo do marketplace (estado, capa, estoque) do que o ML acabou de
+      // informar. Este comentário dizia "não grava" e envelheceu junto com o
+      // rótulo do botão — as duas frases mentiam pelo mesmo motivo.
       // A COBERTURA vai em todos os três ramos, e é dita mesmo quando dá certo.
       // "Li os 561 da conta" é uma afirmação conferível; o silêncio anterior
       // afirmava a mesma coisa sem nunca ter verificado.
@@ -486,7 +542,11 @@ export default function ClienteProdutos() {
           .map((a) => `${a.nome} (${a.anuncios})`)
           .join(" · ");
         setMsgML(juntar(
-            `${m.anuncios} anúncios lidos, NADA foi gravado. ` +
+            // "NADA foi gravado" era a segunda mentira do mesmo fluxo: desde
+            // 10/08 este modo grava o eixo do marketplace. O que ele preserva —
+            // e é o que importa dizer — é o CATÁLOGO dela.
+            `${m.anuncios} anúncios lidos. Atualizei o estado deles aqui; ` +
+            `seus produtos, custos, pesos e fotos não foram tocados. ` +
             `${m.comFichaPropria} têm ficha própria · média de ${m.mediaDaFicha} atributos.` +
             (topo ? ` Mais comuns: ${topo}.` : " Nenhum atributo de ficha veio preenchido.") +
             // O status vem ANTES da ficha em importância: um anúncio encerrado
@@ -843,6 +903,25 @@ export default function ClienteProdutos() {
             <Store size={15} className="text-violet-400" /> Importar anúncios do Mercado Livre
           </p>
           <p className="mt-0.5 text-xs text-zinc-500">Como você quer importar?</p>
+          {/* DE QUANDO É O QUE ESTÁ NA TELA.
+              `status_marketplace_em` já vinha no resumo — a informação existia e
+              ninguém mostrava. Sem ela, um retrato de sete dias atrás tem a
+              mesma cara de um de agora, e foi exatamente o que aconteceu: a
+              lojista decidia o dia com número de uma semana antes. */}
+          {ultimaLeituraDoML && (
+            <p className="mt-1 text-xs text-zinc-400">
+              O que você vê aqui do Mercado Livre foi lido em{" "}
+              <strong className="text-zinc-300">
+                {new Date(ultimaLeituraDoML).toLocaleString("pt-BR", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </strong>
+              .
+            </p>
+          )}
           {/* SEIS opções: 5 colunas deixaria uma sozinha na linha, e card
               solitário lê como "esta é diferente" quando não é. 2 e 3 fecham,
               então o xl deixa de ser 5 e passa a repetir o lg — duas fileiras
@@ -852,10 +931,19 @@ export default function ClienteProdutos() {
               onClick={() => importarDoML("medir")}
               className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-sky-500/40"
             >
-              <p className="text-sm font-medium text-sky-300">Só conferir (não grava)</p>
+              {/* O RÓTULO DIZIA "Só conferir (não grava)" E ISSO VIROU MENTIRA.
+                  Desde 10/08/2026 o modo `medir` GRAVA o eixo do marketplace —
+                  estado, capa, estoque — porque antes disso a lojista conferia,
+                  via o retrato de hoje, e no F5 seguinte a tela voltava para a
+                  leitura de sete dias atrás.
+                  A mudança de comportamento foi certa; ninguém trocou o texto.
+                  Resultado medido em 13/08: o dono apertou, TODOS os números se
+                  mexeram de uma vez, e pareceu que o sistema tinha bugado. */}
+              <p className="text-sm font-medium text-sky-300">Reler minha conta no Mercado Livre</p>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Lê os anúncios no Mercado Livre e mostra quais informações já estão lá — material, palmilha,
-                salto. Não altera nada aqui.
+                Pergunta ao Mercado Livre como estão seus anúncios agora e atualiza aqui o estado deles —
+                no ar ou pausado, capa, estoque. <strong className="text-zinc-400">Seus produtos, custos,
+                pesos e fotos não são tocados.</strong> Os números da tela vão mudar: passam a ser os de agora.
               </p>
             </button>
             <button
@@ -886,6 +974,26 @@ export default function ClienteProdutos() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Copia para cá o que você já preencheu no Mercado Livre — material, palmilha, solado. Só
                 acrescenta: custo, peso e fotos ficam como estão.
+              </p>
+            </button>
+            {/* COMPLETAR O SKU.
+                Fica ao lado de "Trazer as informações" porque é o mesmo gesto:
+                copiar para cá o que já está preenchido lá. Separado dela
+                porque atributo e código não são a mesma coisa para quem lê —
+                ela procura "SKU", não "informações do anúncio".
+
+                Existe desde 18/08/2026, quando 108 variações estavam sem SKU
+                aqui e COM SKU no painel dela. Reimportar não resolvia: o modo
+                "novos" pula anúncio conhecido, e "substituir" apagaria custo,
+                peso e fotos para consertar um campo. */}
+            <button
+              onClick={() => importarDoML("completar-sku")}
+              className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-left transition-colors hover:border-violet-500/40"
+            >
+              <p className="text-sm font-medium text-violet-300">Trazer os SKUs</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Copia o código (SKU) e o código de barras que você já cadastrou em cada variação no
+                Mercado Livre. Só preenche o que está vazio — nunca sobrescreve o que já tem.
               </p>
             </button>
             <button
@@ -942,7 +1050,11 @@ export default function ClienteProdutos() {
           nomesDoCatalogo={(produtos ?? []).map((p) => p.nome)}
           ocupado={importandoCusto}
           onCancelar={() => setConferindo(null)}
-          onConfirmar={(mapa) => void gravarCustos(mapa)}
+          onTrocarTabela={(aba, linha) =>
+            setConferindo((p) => (p ? trocarTabela(p, aba, linha) : p))
+          }
+          clienteId={clienteId}
+          onConfirmar={(mapa, opcoes) => void gravarCustos(mapa, opcoes)}
         />
       )}
 

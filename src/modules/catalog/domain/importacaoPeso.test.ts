@@ -149,3 +149,97 @@ test("normalizarChave preserva zeros à esquerda", () => {
   assert.equal(normalizarChave("abc-1"), "ABC-1");
   assert.equal(normalizarChave(""), "");
 });
+
+// ===========================================================================
+// AS DUAS PORTAS — 18/08/2026
+// ===========================================================================
+//
+// O export de derivação do LINX tem `Código` E `EAN`. A detecção escolhia uma
+// (`sku ?? ean`) e descartava a outra.
+//
+// Medido na base real depois da primeira importação: 84 variações receberam
+// peso e 7 ficaram de fora. As 7 tinham SKU vazio ou de teste
+// ("01044525_TEST", "01029625_T3") — e EAN válido, que o arquivo conhecia.
+// O dado existia dos dois lados e o leitor usava uma porta só.
+
+const CABECALHO_DO_LINX = [
+  "Id Derivação", "Código", "Id Produto", "Marca", "EAN",
+  "Peso (kg)", "Largura (cm)", "Altura (cm)", "Comprimento (cm)",
+];
+
+test("reconhece as DUAS chaves quando a planilha traz as duas", () => {
+  const d = detectarColunas(CABECALHO_DO_LINX);
+  assert.ok(d.ok);
+  // O SKU manda: ele identifica a variação no ERP.
+  assert.equal(d.colunas.chave, "Código");
+  assert.equal(d.colunas.tipoChave, "sku");
+  assert.equal(d.colunas.chaveAlternativa, "EAN");
+  assert.equal(d.colunas.tipoAlternativa, "ean");
+  // E as medidas do LINX entram, o que traz cubagem para o frete.
+  assert.equal(d.colunas.altura, "Altura (cm)");
+  assert.equal(d.colunas.comprimento, "Comprimento (cm)");
+});
+
+test("a linha SEM sku e COM ean deixa de ser descartada", () => {
+  const d = detectarColunas(CABECALHO_DO_LINX);
+  assert.ok(d.ok);
+  const r = lerLinha(
+    { "Código": "", "EAN": "7900350581385", "Peso (kg)": "0,450" },
+    d.colunas
+  );
+  assert.ok(r.ok, "a linha só com EAN continuou recusada — são 7 variações reais");
+  assert.equal(r.linha.chave, "");
+  assert.equal(r.linha.alternativa, "7900350581385");
+  assert.equal(r.linha.pesoKg, 0.45);
+});
+
+test("sem NENHUMA das duas continua sendo linha sem chave", () => {
+  const d = detectarColunas(CABECALHO_DO_LINX);
+  assert.ok(d.ok);
+  const r = lerLinha({ "Código": "", "EAN": "", "Peso (kg)": "0,450" }, d.colunas);
+  assert.ok(!r.ok);
+  assert.equal(r.motivo, "sem_chave");
+});
+
+test("planilha com UMA coluna de chave não ganha alternativa fantasma", () => {
+  const d = detectarColunas(["sku", "peso_kg"]);
+  assert.ok(d.ok);
+  assert.equal(d.colunas.chaveAlternativa, undefined);
+  assert.equal(d.colunas.tipoAlternativa, undefined);
+});
+
+test("a recusa de peso SEM UNIDADE continua valendo com duas chaves", () => {
+  // A segunda porta não pode afrouxar a regra que existe para não confundir
+  // 800 gramas com 800 quilos.
+  const d = detectarColunas(["Código", "EAN", "Peso"]);
+  assert.ok(!d.ok);
+  assert.equal(d.motivo, "peso_sem_unidade");
+});
+
+test("as DUAS chaves SOMAM, e uma variação recebe peso UMA vez", async () => {
+  // MODIFICADA EM 18/08/2026, com o motivo escrito. A versão anterior cobrava
+  // "SKU manda; EAN só se o SKU não alcançar" — e essa ordem custou três
+  // variações sem peso na base real:
+  //
+  //   sku 01044525  e  sku 01044525_TEST   → a MESMA peça, duplicada. A linha
+  //                                          casava pelo primeiro e parava.
+  //   sem sku, ean 7900377004201           → a linha casou pelo sku de OUTRA
+  //                                          variação e nunca olhou o EAN.
+  //
+  // Uma linha do ERP identifica UM item físico, e as duas chaves apontam para
+  // ele. A propriedade que continua valendo — e que este teste guarda — é que
+  // NINGUÉM recebe peso duas vezes.
+  const { readFileSync } = await import("node:fs");
+  const servico = readFileSync(
+    new URL("../../../lib/services/importacaoPeso.ts", import.meta.url),
+    "utf8"
+  );
+  const i = servico.indexOf("const porSku = porChave.get(");
+  assert.ok(i > 0, "o casamento por chave sumiu do laço");
+  const laco = servico.slice(i, i + 600);
+  assert.match(laco, /\[\.\.\.porSku, \.\.\.porEan\]/, "as duas chaves voltaram a competir");
+  assert.match(servico, /if \(variantesFeitas\.has\(v\.id\)\) continue;/);
+  // A marca de "já vista" é a LINHA inteira: com a soma, ela pode atingir alvos
+  // pelos dois caminhos ao mesmo tempo.
+  assert.match(servico, /const marca = `\$\{leitura\.linha\.chave\}\|\$\{leitura\.linha\.alternativa\}`/);
+});
