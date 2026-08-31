@@ -162,9 +162,11 @@ Usuário sem perfil não entra — desde a 016 isso é o comportamento correto, 
 ## Deploy (Vercel + Cloudflare)
 
 1. **Vercel** — importar o repo, framework Next.js. Adicionar todas as variáveis de ambiente acima (Production). Cada push na `master` deploya.
-2. **Domínio próprio via Cloudflare** — o cliente acessa por um domínio seu (ex.: `www.zioncompany.online`), com o **proxy do Cloudflare ligado (laranja)** e SSL **Full**. Isso evita problemas de rota/ISP com o `*.vercel.app` e dá uma URL profissional. Cadastre o domínio no Vercel (Settings → Domains) e crie o CNAME no Cloudflare.
+2. **Domínio próprio via Cloudflare** — **um domínio para todo mundo**: lojas, agências e equipe entram pelo mesmo endereço (ex.: `www.zioncompany.online`), com o **proxy do Cloudflare ligado (laranja)** e SSL **Full**. Isso evita problemas de rota/ISP com o `*.vercel.app` e dá uma URL profissional. Cadastre o domínio no Vercel (Settings → Domains) e crie o CNAME no Cloudflare.
 3. **Redirect do ML** — `ML_REDIRECT_URI` (Vercel) **e** o Redirect URI do app ML devem ser **idênticos** ao domínio em uso (`https://SEU-DOMINIO/cliente/conectar-ml`).
 4. **Supabase → Auth → URL Configuration** — Site URL = o domínio do deploy.
+
+> **Por que um domínio só, e não um por inquilino.** A sessão vive no `localStorage` (`createClient` sem opções, em `src/lib/supabase/client.ts`), que é escopado por **origem**. Se o operador entra por um domínio e o Mercado Livre devolve o código em outro, a página de callback roda numa origem sem sessão: `cabecalhoAutenticacao()` volta vazio e `/api/ml/conectar` responde 401 — a conexão não fecha. Dar um domínio a cada inquilino também multiplicaria os Redirect URIs registrados no DevCenter, e **um app ML por domínio é pior ainda**: o `refresh_token` é emitido atado ao `client_id`, então trocar de app obriga *toda* loja conectada a reconectar (foi o incidente `the client_id does not match the original`, 06/08/2026 — ver `src/modules/integration/domain/credencialRecusada.ts`). Domínio de vaidade por inquilino, se um dia for pedido, é redirect de marketing para este endereço — nunca a origem onde o app roda.
 
 > **Gotcha do Vercel:** o deploy é bloqueado se o **autor do commit** não for uma conta GitHub ligada à Vercel. Use o e-mail (ou o `…@users.noreply.github.com`) da conta conectada como `git config user.email`.
 
