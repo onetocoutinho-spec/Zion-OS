@@ -41,6 +41,7 @@
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { lerTudoPaginado } from "../supabase/paginado";
 import { atributosObrigatorios } from "../marketplaces/mercadolivre";
+import { criarAtributosBulk } from "./produtoAtributos";
 import type {
   ExigenciaDaCategoria,
   ValorAceito,
@@ -185,4 +186,37 @@ export function agruparPerguntas(entrada: {
     }
   }
   return [...grupos.values()].sort((a, b) => b.produtos.length - a.produtos.length);
+}
+
+/**
+ * A RESPOSTA DELA — vira linha em `produto_atributos`, com a origem da tela.
+ *
+ * `Manual` e não `Importação`: isto não é proposta, é o que ela escolheu de uma
+ * lista que o Mercado Livre publicou. `fichaDoCadastro` aceita, e a publicação
+ * passa a ter o obrigatório.
+ *
+ * Uma linha por produto, com o MESMO valor: a pergunta é do grupo, a resposta é
+ * de cada produto. Guardar por grupo economizaria linhas e perderia a única
+ * coisa que importa depois — de quem é a resposta quando ela mudar um só.
+ */
+export async function responderPergunta(entrada: {
+  clienteId: string;
+  produtoIds: readonly string[];
+  /** O nome exibido do atributo, como o ML o chama. */
+  atributo: string;
+  valor: string;
+}): Promise<void> {
+  const valor = entrada.valor.trim();
+  if (!valor || entrada.produtoIds.length === 0) return;
+  await criarAtributosBulk(
+    entrada.produtoIds.map((produtoId) => ({
+      produtoId,
+      clienteId: entrada.clienteId,
+      nomeAtributo: entrada.atributo,
+      valorAtributo: valor,
+      tipoAtributo: "texto" as const,
+      obrigatorio: true,
+      origem: "Manual" as const,
+    }))
+  );
 }

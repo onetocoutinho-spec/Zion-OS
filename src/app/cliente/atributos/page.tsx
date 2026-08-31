@@ -21,6 +21,8 @@ import {
   confirmarPropostas,
   descartarProposta,
 } from "@/lib/services/propostasDeAtributo";
+import { ResponderAtributos } from "@/components/client-portal/ResponderAtributos";
+import { perguntasEmAberto, responderPergunta } from "@/lib/services/perguntasDaCategoria";
 
 export default function ClienteAtributos() {
   const { clienteId } = useClientPortal();
@@ -30,8 +32,20 @@ export default function ClienteAtributos() {
     { tabelas: ["produto_atributos"] }
   );
 
+  // AS PERGUNTAS SÃO OUTRA CONSULTA, e não um campo da primeira.
+  //
+  // As duas respondem coisas diferentes — "o que lemos" e "o que o ML exige e
+  // ninguém respondeu" — e uma falhar não pode apagar a outra da tela. Foi o que
+  // a lição do `estado` da tela de Pendências deixou escrito: consulta que falha
+  // e consulta vazia não são a mesma coisa, e nem duas consultas são uma.
+  const perguntas = useLiveQuery(() => perguntasEmAberto(clienteId), [clienteId], {
+    tabelas: ["produto_atributos", "anuncios_gerados"],
+  });
+
   const grupos = data ?? [];
+  const emAberto = perguntas.data ?? [];
   const total = grupos.reduce((n, g) => n + g.produtos.length, 0);
+  const totalPerguntas = emAberto.reduce((n, g) => n + g.produtos.length, 0);
 
   return (
     <>
@@ -59,11 +73,44 @@ export default function ClienteAtributos() {
         </div>
       )}
 
-      {estado === "vazio" && (
+      {/* O QUE O ML EXIGE E NINGUÉM RESPONDEU — antes das confirmações.
+          Vem primeiro porque é o que TRAVA a publicação: a confirmação melhora
+          um anúncio que já pode subir; a pergunta destrava um que não pode. */}
+      {perguntas.estado === "sucesso" && emAberto.length > 0 && (
+        <section className="mb-6" aria-labelledby="perguntas-abertas">
+          <h2 id="perguntas-abertas" className="mb-2 text-sm font-semibold text-zinc-200">
+            O Mercado Livre precisa saber
+          </h2>
+          <p className="mb-3 text-xs text-zinc-400">
+            {totalPerguntas} produto{totalPerguntas > 1 ? "s" : ""} em {emAberto.length} pergunta
+            {emAberto.length > 1 ? "s" : ""}. Sem isto eles não publicam — e as opções são as que
+            eles mesmos aceitam.
+          </p>
+          <ResponderAtributos
+            grupos={emAberto}
+            onResponder={async (g, valor) => {
+              await responderPergunta({
+                clienteId,
+                produtoIds: g.produtos.map((p) => p.produtoId),
+                atributo: g.atributo,
+                valor,
+              });
+              perguntas.reload();
+            }}
+          />
+        </section>
+      )}
+
+      {/* VAZIO SÓ QUANDO AS DUAS ESTÃO VAZIAS.
+          Sem esta conjunção, uma base com zero propostas e nove perguntas
+          mostraria "Nada esperando você" logo abaixo das nove — a tela negando
+          o que ela mesma acabou de pedir. É a terceira vez hoje que "vazio" e
+          "não sei ainda" tentam se passar um pelo outro. */}
+      {estado === "vazio" && emAberto.length === 0 && perguntas.estado !== "carregando" && (
         <VazioAmigavel
           icon={CheckCircle2}
           titulo="Nada esperando você"
-          descricao="Quando uma importação ler gênero ou tipo de calçado das suas palavras-chave, a pergunta aparece aqui antes de qualquer anúncio subir."
+          descricao="Quando uma importação ler algo das suas palavras-chave, ou o Mercado Livre exigir um campo que ninguém respondeu, a pergunta aparece aqui antes de qualquer anúncio subir."
         />
       )}
 
