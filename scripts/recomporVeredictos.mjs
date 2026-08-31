@@ -85,7 +85,7 @@ const doCliente = (q) => q.eq("cliente_id", clienteId);
 
 const anuncios = await tudo(
   "anuncios_gerados",
-  "id, produto_id, veredito_a10, qtd_pendencias, status, anuncio",
+  "id, produto_id, veredito_a10, qtd_pendencias, status, ml_item_id, anuncio",
   doCliente
 );
 const produtos = await tudo("produtos", "id, preco_venda", doCliente);
@@ -146,7 +146,21 @@ for (const a of anuncios) {
   const daIA = { ...(a.anuncio ?? {}), sugestoes: semOsConselhosDaGrade(a.anuncio?.sugestoes) };
   const novo = comAGradeDoCadastro(daIA, grade, fotosPorProduto.get(a.produto_id) ?? 0);
   const passou = novo.vereditoA10 === "aprovado" && novo.pendencias.length === 0;
-  const status = passou ? "aguardando_aprovacao" : "rascunho";
+  // O STATUS NAO ANDA PARA TRAS — 31/08/2026, e custou a loja parecer vazia.
+  //
+  // Esta linha era `passou ? "aguardando_aprovacao" : "rascunho"`, sem olhar se
+  // o anuncio JA ESTAVA NO AR. Rodado numa base com 792 publicados, ela
+  // rebaixou 791 deles para "aguardando_aprovacao" — e a tela de Anuncios conta
+  // publicados como `status === "publicado" && mlItemId`. A lojista abriu o
+  // portal e viu ZERO anuncios cadastrados.
+  //
+  // `ml_item_id` so existe porque alguem PUBLICOU. O estado no marketplace
+  // (ativo, pausado, fechado) mora em `status_marketplace`, que e outra coluna:
+  // `status` conta a jornada dentro do Zion, e publicar e o fim dela.
+  //
+  // Recompor o VEREDITO nunca foi motivo para desfazer uma publicacao que
+  // aconteceu. Anuncio com MLB mantem o status que tem.
+  const status = a.ml_item_id ? a.status : passou ? "aguardando_aprovacao" : "rascunho";
   if (
     novo.vereditoA10 !== a.veredito_a10 ||
     novo.pendencias.length !== a.qtd_pendencias ||
