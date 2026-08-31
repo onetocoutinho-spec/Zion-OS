@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 
 import {
   briefingDaGrade,
+  ehConselhoDaGrade,
   gradePublicavel,
   montarVariacoes,
   pendenciasDaGrade,
@@ -174,4 +175,80 @@ test("cor vazia na base vira marca, não string vazia", () => {
   // String vazia num campo do ML passa como valor válido e some do relatório.
   const g = montarVariacoes([{ ...BABUCHE[0], cor: "  " }], 118);
   assert.ok(g[0].cor.startsWith(FALTA));
+});
+
+// ===========================================================================
+// O EIXO QUE NÃO EXISTE — medido em 31/08/2026 na base de produção
+// ===========================================================================
+//
+// Três Bolsas Moleca, oito anúncios NO AR, carregando "tamanho — nenhuma das 3
+// variações tem". Bolsa não tem tamanho, e o Mercado Livre concorda: em
+// `MLB7022` o atributo `SIZE` não existe — 88 atributos na categoria e ele não
+// é um deles.
+//
+// Mas nas outras quatro categorias desta base ele é EXIGIDO (Sandálias, Tênis,
+// Sapatilhas, Meias). Então a regra não pode ser "nunca exigir tamanho": ela é
+// a do eixo em uso, e estes testes guardam as duas metades dela.
+
+/** A grade real das Bolsas Moleca: cor em todas, tamanho em nenhuma. */
+const BOLSA: VarianteDaBase[] = [
+  { cor: "Preto", tamanho: "", sku: "01019101", ean: "789", estoque: 2, precoBase: 149.9 },
+  { cor: "Caramelo", tamanho: "", sku: "01019102", ean: "790", estoque: 1, precoBase: 149.9 },
+  { cor: "Off White", tamanho: "", sku: "01019103", ean: "791", estoque: 3, precoBase: 149.9 },
+];
+
+test("eixo que NENHUMA variação tem não é pendência — bolsa não tem tamanho", () => {
+  const p = pendenciasDaGrade(montarVariacoes(BOLSA, 149.9));
+  assert.deepEqual(p, [], `bolsa completa não deveria ter pendência, veio: ${p.join(" | ")}`);
+  assert.ok(gradePublicavel(montarVariacoes(BOLSA, 149.9)), "a bolsa tem de publicar");
+});
+
+test("mas o eixo ausente vira CONSELHO — calçado sem grade não pode sumir", () => {
+  const s = sugestoesDaGrade(montarVariacoes(BOLSA, 149.9));
+  assert.equal(s.length, 1, `esperava só o conselho do tamanho, veio: ${s.join(" | ")}`);
+  assert.match(s[0], /^tamanho:/);
+  assert.match(s[0], /Não impede publicar/);
+  // A frase serve às duas leituras: quem vende bolsa ignora, quem vende sapato
+  // vê que a grade está incompleta ANTES de o ML recusar.
+  assert.match(s[0], /o ML vai recusar/);
+});
+
+test("eixo PARCIAL continua pendência — metade sem tamanho não publica em lugar nenhum", () => {
+  const meio = montarVariacoes([...BOLSA.slice(0, 2), { ...BOLSA[2], tamanho: "U" }], 149.9);
+  const p = pendenciasDaGrade(meio);
+  assert.equal(p.length, 1, `esperava a pendência do tamanho, veio: ${p.join(" | ")}`);
+  assert.match(p[0], /tamanho — falta em 2 de 3/);
+});
+
+test("a regra do eixo NÃO afrouxa SKU, estoque nem preço", () => {
+  // Estes travam a publicação em qualquer categoria: eles não são eixo, são
+  // identidade e oferta. Nenhuma variação com SKU continua sendo pendência.
+  const semNada = montarVariacoes(
+    BOLSA.map((v) => ({ ...v, sku: "", estoque: 0, precoBase: 0 })),
+    0
+  );
+  const p = pendenciasDaGrade(semNada);
+  assert.ok(p.some((x) => /SKU — nenhuma/.test(x)), `SKU deveria travar: ${p.join(" | ")}`);
+  assert.ok(p.some((x) => /preço — nenhuma/.test(x)), `preço deveria travar: ${p.join(" | ")}`);
+  assert.ok(!p.some((x) => /tamanho/.test(x)), "tamanho não deveria estar aqui");
+});
+
+test("calçado com grade inteira não ganhou conselho novo nenhum", () => {
+  // A guarda contra o conserto ter afrouxado o caso comum: o Babuche tem cor e
+  // tamanho em todas, então nenhum eixo está ausente e o único conselho segue
+  // sendo o do EAN.
+  const s = sugestoesDaGrade(montarVariacoes(BABUCHE, 118));
+  assert.equal(s.length, 1);
+  assert.match(s[0], /^EAN/);
+});
+
+test("ehConselhoDaGrade reconhece os DOIS conselhos, e não os do modelo", () => {
+  // Quem recompõe anúncio gravado tira os conselhos do domínio antes de pedir os
+  // novos. Enquanto isso era um `startsWith` do EAN escrito à mão em
+  // `recomporVeredictos`, o conselho do eixo teria duplicado a cada rodada.
+  for (const c of [...sugestoesDaGrade(montarVariacoes(BOLSA, 149.9)), ...sugestoesDaGrade(montarVariacoes(BABUCHE, 118))]) {
+    assert.ok(ehConselhoDaGrade(c), `deveria reconhecer como seu: ${c}`);
+  }
+  assert.ok(!ehConselhoDaGrade("Inclua a palavra 'antiderrapante' no título."));
+  assert.ok(!ehConselhoDaGrade("A descrição não menciona a garantia."));
 });

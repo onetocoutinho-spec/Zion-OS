@@ -52,7 +52,10 @@
 
 import { clienteDaBase } from "./aBaseDoComando.mjs";
 import { comAGradeDoCadastro } from "../src/lib/agentes/esteira.ts";
-import { montarVariacoes } from "../src/modules/publication/domain/variacoesDoAnuncio.ts";
+import {
+  ehConselhoDaGrade,
+  montarVariacoes,
+} from "../src/modules/publication/domain/variacoesDoAnuncio.ts";
 
 const [clienteId] = process.argv.slice(2);
 const SIMULAR = process.argv.includes("--simular");
@@ -114,14 +117,19 @@ console.log(
 );
 
 /**
- * A sugestão do EAN é REGERADA por `comAGradeDoCadastro`.
+ * Os conselhos da GRADE são REGERADOS por `comAGradeDoCadastro`.
  *
- * Sem tirar a antiga, recompor duas vezes deixaria a mesma frase duplicada na
+ * Sem tirar os antigos, recompor duas vezes deixaria a mesma frase duplicada na
  * tela — e uma terceira vez, triplicada. As sugestões do MODELO ficam intactas;
- * só sai a que o domínio acrescenta, para ele acrescentar de novo.
+ * só saem as que o domínio acrescenta, para ele acrescentar de novo.
+ *
+ * QUEM RECONHECE É O DOMÍNIO, e isto aqui já foi um `startsWith` do EAN escrito
+ * à mão. Funcionou enquanto o EAN era o único conselho da grade; em 31/08/2026
+ * o eixo ausente (cor ou tamanho que nenhuma variação tem) virou o segundo, e a
+ * lista à mão teria deixado ESSE duplicar em silêncio.
  */
-function semASugestaoDaGrade(sugestoes) {
-  return (sugestoes ?? []).filter((s) => !String(s).startsWith("EAN (código de barras):"));
+function semOsConselhosDaGrade(sugestoes) {
+  return (sugestoes ?? []).filter((s) => !ehConselhoDaGrade(String(s)));
 }
 
 const mudancas = [];
@@ -135,7 +143,7 @@ for (const a of anuncios) {
     variantesPorProduto.get(a.produto_id) ?? [],
     precoDoProduto.get(a.produto_id) ?? 0
   );
-  const daIA = { ...(a.anuncio ?? {}), sugestoes: semASugestaoDaGrade(a.anuncio?.sugestoes) };
+  const daIA = { ...(a.anuncio ?? {}), sugestoes: semOsConselhosDaGrade(a.anuncio?.sugestoes) };
   const novo = comAGradeDoCadastro(daIA, grade, fotosPorProduto.get(a.produto_id) ?? 0);
   const passou = novo.vereditoA10 === "aprovado" && novo.pendencias.length === 0;
   const status = passou ? "aguardando_aprovacao" : "rascunho";
