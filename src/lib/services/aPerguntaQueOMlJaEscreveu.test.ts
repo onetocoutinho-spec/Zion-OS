@@ -64,6 +64,24 @@ test("o obrigatório de LISTA vira pergunta, com as opções do ML", () => {
   assert.equal(meias?.dica, "Escolha o tipo");
 });
 
+test("`boolean` TAMBÉM é fechado — Sim e Não são a lista inteira", () => {
+  // "É kit de fábrica" (MLB455517) chega como `boolean` com os dois valores
+  // publicados. Deixá-lo de fora por causa do nome do tipo travaria a
+  // publicação num campo com exatamente duas respostas possíveis. Foi a
+  // medição da fatia 3 que achou: era o único produto que sobrava sem pergunta.
+  const kit: ExigenciaDaCategoria[] = [
+    {
+      id: "IS_FACTORY_KIT",
+      nome: "É kit de fábrica",
+      tipo: "boolean",
+      valoresAceitos: [{ id: "n", nome: "Não" }, { id: "s", nome: "Sim" }],
+    },
+  ];
+  const g = agruparPerguntas(entrada({ exigencias: new Map([["MLB108791", kit]]) }));
+  assert.equal(g.length, 1);
+  assert.deepEqual(g[0].opcoes.map((o) => o.nome), ["Não", "Sim"]);
+});
+
 test("`string` NÃO vira pergunta fechada, mesmo trazendo valores", () => {
   // `BRAND` é `string` e vem com "opções" que são sugestão, não a lista inteira.
   // Oferecer "escolha entre estas" esconderia dela a marca que ela vende.

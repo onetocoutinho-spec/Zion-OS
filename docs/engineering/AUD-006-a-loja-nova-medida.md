@@ -1418,3 +1418,56 @@ não é calçado, o que é outra coisa que só aparece quando alguém olha.
 **Continua sem verificação visual.** A rota compila e responde 200; onde a marca
 aparece está medido contra os 1.061 nomes reais. A cor na tela eu não vi — o
 portal exige login e eu não digito credenciais.
+
+### T3 — o obrigatório sem resposta vira pergunta (28/08)
+
+`/cliente/atributos` mostrava só o que a IMPORTAÇÃO propôs. Um obrigatório que
+ninguém propôs — "Tipo de meias" numa meia, "Tipo de mochila" numa mochila —
+nunca aparecia, e a lojista não tinha onde responder. Mesmo laço fechado de
+antes, um nível acima.
+
+**A base da T3 já estava feita**, e conferi antes de construir:
+`exigenciasDaResposta` já preserva `values`, `value_type`, `hint` e
+`value_max_length`. O plano dizia que eram descartados; não são mais.
+
+**Aqui não se deduz nada.** O ML publica as opções:
+
+    Tipo de meias        10   Tipo de mochila      6
+    Tipo de comprimento   3   É kit de fábrica     2
+
+**Só o que é FECHADO vira escolha.** `BRAND` é `string` e traz 11 "opções" em
+MLB273770 — em `string` os valores são sugestão, e oferecer "escolha entre
+estas" afirmaria um fechamento que o ML não declarou, escondendo dela a marca
+que realmente vende. `boolean` entra junto com `list`: "É kit de fábrica" chega
+como `boolean` com Sim e Não publicados, fechamento igual declarado com outra
+palavra. Foi a medição da fatia 3 que achou — era o único produto que sobrava
+sem pergunta.
+
+**E o que já tem linha não é perguntado**, nem resposta nem proposta. Contando a
+proposta como ausência dariam 479 perguntas, com a tela pedindo confirmação numa
+seção e resposta na outra para a mesma coisa. Contando como já perguntado, 111.
+
+    10 grupos · 111 produtos
+    46 MLB273770 Gênero      26 MLB273770 Tipo de calçado
+    11 MLB23332 Gênero       10 MLB1400 Gênero
+     5 MLB108791 Tipo de meias    5 Tipo de comprimento    4 Gênero
+     2 MLB3127 Tipo de mochila    1 MLB272202 Gênero
+     1 MLB455517 É kit de fábrica
+
+**Efeito medido no caminho clássico:** +12 anúncios quando ela responde, e
+`SOCKS_TYPE`, `LENGTH_TYPE` e `BACKPACK_TYPE` somem da lista de faltantes. O que
+resta é GENDER — e esses têm PROPOSTA esperando confirmação, não pergunta.
+
+**Três coisas que a fatia ensinou:**
+
+1. Meu script de conferência foi recusado pela RLS, porque o serviço usa o
+   cliente da sessão. A saída fácil seria reimplementar a regra no script — que é
+   responder por um sistema que não existe. A regra virou `agruparPerguntas`,
+   pura e testável em qualquer lugar.
+2. A própria fatia criou um defeito: com zero propostas e nove perguntas, a tela
+   mostraria "Nada esperando você" logo abaixo das nove. Terceira vez no dia em
+   que "vazio" e "não sei ainda" tentam se passar um pelo outro.
+3. A sentinela `rotasCompletas` me acusou, e estava errada — pela terceira vez
+   no arquivo dela. `{estado === "carregando" && …}` é tão exclusivo quanto o
+   ternário, porque `estado` é um valor discriminado. Ensinei a forma em vez de
+   contorcer o código para agradar o regex.

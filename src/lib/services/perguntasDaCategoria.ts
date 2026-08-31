@@ -37,6 +37,12 @@
 // `BRAND` é `string` e vem com 11 "opções" em MLB273770 — oferecer "escolha
 // entre estas 11" ali seria afirmar um fechamento que o ML não declarou, e
 // esconder da lojista a marca que ela realmente vende.
+//
+// `boolean` ENTRA JUNTO, e a medição é que trouxe. "É kit de fábrica"
+// (MLB455517) chega com `value_type: "boolean"` e os dois valores publicados,
+// Sim e Não — fechamento igual ao de `list`, declarado com outra palavra.
+// Deixá-lo de fora por causa do nome do tipo travaria a publicação num campo
+// que tem exatamente duas respostas possíveis.
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { lerTudoPaginado } from "../supabase/paginado";
@@ -54,6 +60,9 @@ function semAcento(s: string): string {
     .toLowerCase()
     .trim();
 }
+
+/** Os `value_type` em que os valores publicados são a lista INTEIRA do aceito. */
+const TIPOS_FECHADOS = new Set(["list", "boolean"]);
 
 export interface ProdutoDaPergunta {
   produtoId: string;
@@ -168,8 +177,9 @@ export function agruparPerguntas(entrada: {
   const grupos = new Map<string, GrupoDePergunta>();
   for (const [pid, cat] of categoriaDo) {
     for (const e of exigencias.get(cat) ?? []) {
-      // `list` com opções: só aí a pergunta é fechada. Ver o topo do arquivo.
-      if (e.tipo !== "list" || !e.valoresAceitos?.length) continue;
+      // Fechado E com opções publicadas: só aí a pergunta é de escolha. Ver o
+      // topo do arquivo para por que `string` fica de fora e `boolean` entra.
+      if (!TIPOS_FECHADOS.has(e.tipo ?? "") || !e.valoresAceitos?.length) continue;
       if (jaTem.has(`${pid}|${semAcento(e.nome)}`)) continue;
       const chave = `${cat}|${e.nome}`;
       const grupo =
