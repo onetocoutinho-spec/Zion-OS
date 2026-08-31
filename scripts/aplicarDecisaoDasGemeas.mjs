@@ -146,6 +146,34 @@ const REGRAS = [
     motivo: "o ERP confirma o código de quem fica; sem código a linha não concilia",
     escolher: porCriterio,
   },
+  {
+    produto: /Zaxy 19359 Mood/i,
+    motivo: "o ERP confirma o código de quem fica; sem código a linha não concilia",
+    escolher: porCriterio,
+  },
+  {
+    produto: /Modare 7016\.461/i,
+    motivo: "o desempate do critério era arbitrário aqui; fica a linha mais perto do ERP",
+    // O ÚNICO CASO DESTE PRODUTO, e o critério não tinha o que decidir: as duas
+    // linhas têm o MESMO código, então ele caía no desempate por data/id — que
+    // é arbitrário em relação ao valor.
+    //
+    // Só o estoque difere: 2 e 1, e o ERP diz 3. Nenhuma das duas está certa.
+    // Quando o desempate é arbitrário, ficar com a mais perto da verdade custa
+    // nada e erra menos.
+    //
+    // E VALE REGISTRAR O QUE NÃO SE SABE: 2 + 1 = 3, exatamente o número do
+    // ERP. Pode ser que o estoque tenha sido PARTIDO entre as duas linhas em
+    // vez de duplicado — com um caso só, coincidência e partição são
+    // indistinguíveis. Em qualquer das duas leituras a duplicata está errada e
+    // sai; o estoque exato a próxima importação do ERP acerta.
+    escolher: (grupo) => {
+      const alvo = 3; // o que o ERP diz para 7909766285627
+      const so = [...grupo].sort((a, b) => Math.abs((a.estoque ?? 0) - alvo) - Math.abs((b.estoque ?? 0) - alvo));
+      // Empate na distância não decide: seria escolher no escuro de novo.
+      return Math.abs((so[0].estoque ?? 0) - alvo) === Math.abs((so[1].estoque ?? 0) - alvo) ? null : so[0];
+    },
+  },
 ];
 
 // ---- monta o plano ---------------------------------------------------------
