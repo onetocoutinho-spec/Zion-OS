@@ -1707,3 +1707,79 @@ renderizada** — o portal exige a sessão da lojista, e credencial eu não digi
 
 Três telas construídas para ela, nenhuma vista por olho humano antes de ir ao
 ar. É a dívida que este documento leva para amanhã, e ela não se paga com teste.
+
+---
+
+## ADENDO AO FECHAMENTO — a tarde de 31/08, e o número que ela produziu
+
+O fechamento acima foi escrito com 11 gêmeas ainda em conflito e 5 SKUs
+faltando. A tarde fechou os dois, e o resultado merece ficar ao lado.
+
+### O que aconteceu
+
+    gêmeas               142 linhas excedentes  →  0
+    variantes            974  →  827
+    estoque fantasma     ~1.140 peças removidas
+    variantes sem SKU    21  →  0
+    códigos repetidos    5  →  0
+
+Sete resgates em `backup/`, cada um gravado e **relido** antes do primeiro
+delete.
+
+### O número que o dia inteiro perseguia
+
+    recompor de manhã ..... 724 publicáveis · quebraria 141
+    recompor à tarde ...... 878 publicáveis · quebrou 0
+
+A mesma função, o mesmo comando. **O que mudou foi a ordem.** Rodar de manhã
+teria entregue 724 contra os 793 que estavam no ar — uma piora — e derrubado 141
+anúncios. Limpar primeiro, preencher os códigos, depois recompor: 878, sem
+derrubar nenhum.
+
+Isto é o achado mais transferível do dia. A operação estava certa nas duas
+vezes; a sequência é que decidia se ela somava ou subtraía.
+
+### O que isso pôs na mão da lojista
+
+    878 anúncios aprovados sem pendência
+        792  já no Mercado Livre
+         86  PRONTOS e ainda fora do ar
+
+De manhã eram **1 pronto e 87 travados**. E os 86 estão exatamente onde o
+estoque está parado: 1.117 peças na Papete Modare 7208.101, 395 no Havaianas
+Brasil, 350 no Top Liso.
+
+### O critério automático errou três vezes, sempre pelo mesmo motivo
+
+Ele mantém a linha que "tem" o campo preenchido — e não olha o VALOR:
+
+    "37 - 37"          é um par de numeração impossível, e ele o preferiu
+    "01044525_TEST"    é uma linha de teste, e ele a preferiu
+    estoque 2          contra 10 que o ERP confirma, e ele preferiu o 2
+
+**Ele confere presença, não sentido.** Nas três vezes foi o ERP que desempatou,
+e nas três o certo era inverter o critério. As regras que fazem isso só decidem
+quando sobra UMA linha sadia — duas, ou nenhuma, elas recusam e reportam.
+
+### E a lição de método, que não é sobre gêmeas
+
+Depois de gravar os 5 SKUs, a conferência final acusou **5 códigos repetidos**.
+Nenhum era meu: eram pares que a chave nunca tinha visto, porque `(produto,
+EAN)` não alcança as 53 linhas sem EAN.
+
+Só apareceram porque a conferência conta o banco INTEIRO, não só o que o script
+acabou de escrever. Se ela olhasse apenas o próprio trabalho, teria dito
+"5 gravados, 0 falhas" — verdade completa sobre a escrita, e silêncio sobre os
+cinco pares que continuariam ali.
+
+**Conferir mais do que se fez é o que transforma escrita em medição.**
+
+### O que continua esperando
+
+1. **As capas** — 75 anúncios em `waiting_for_patch`, com as 22 fotos no acervo
+   e a tela no ar. Depende de um clique da lojista.
+2. **Os 86 prontos** — publicar é outro passo, e é dela.
+3. **Os 3 do Actvitta** em branco: a cor não existe no catálogo do fabricante.
+4. **596 fechados**, 502 apagados. Não voltam.
+5. **As três telas que ninguém viu.** Continua valendo, e continua sendo a
+   dívida que não se paga com teste.
