@@ -119,6 +119,33 @@ const REGRAS = [
     motivo: "o ERP confirma o código de quem fica; sem código a linha não concilia",
     escolher: porCriterio,
   },
+  {
+    produto: /Ipanema 27403/i,
+    motivo: "a linha que o critério manteria tem código de TESTE; o ERP confirma o código real",
+    // INVERTE o critério, e é a SEGUNDA vez que ele erra pelo mesmo motivo.
+    //
+    // Ele guarda quem "tem código" — e `01044525_TEST` É uma string não vazia,
+    // então ele a prefere. A mesma cegueira do `37 - 37` do Havaianas: o
+    // critério confere PRESENÇA, não sentido.
+    //
+    // Num dos dois casos a linha de teste também traz a cor errada (Preto onde
+    // o ERP diz rosa/dourado) e estoque 43 onde a verdade é 15. As duas
+    // nasceram em 08/07, no dia da importação, e são as ÚNICAS duas da base
+    // inteira com marca de teste — conferido em sku, codigo_interno e
+    // observações de 853 variantes, mais o nome e o código de 72 produtos.
+    escolher: (grupo) => {
+      const teste = (v) => /_test|teste|dummy|fake/i.test(`${v.sku ?? ""} ${v.codigo_interno ?? ""}`);
+      const reais = grupo.filter((v) => !teste(v));
+      // Só decide quando sobra UMA real. Duas, ou nenhuma, esta regra não
+      // previu — e não previsto não se apaga.
+      return reais.length === 1 ? reais[0] : null;
+    },
+  },
+  {
+    produto: /Zaxy Air 19419/i,
+    motivo: "o ERP confirma o código de quem fica; sem código a linha não concilia",
+    escolher: porCriterio,
+  },
 ];
 
 // ---- monta o plano ---------------------------------------------------------
