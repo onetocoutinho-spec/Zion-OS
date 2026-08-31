@@ -458,7 +458,17 @@ function doCadastroDela(
   return null;
 }
 
-function semAcentoNemCaixa(s: string): string {
+/**
+ * A normalização que decide se dois nomes de atributo são O MESMO.
+ *
+ * EXPORTADA em 28/08 porque virou a terceira cópia. `composicaoConteudo` tem a
+ * sua e `perguntasDaCategoria` tinha ganhado outra — e a chave de "já
+ * perguntado" compara o resultado de uma contra o da outra. Duas normalizações
+ * para a mesma chave foi o defeito que custou uma revisão inteira neste dia,
+ * em `fichaDoCadastro`: o mesmo produto publicava por um caminho e era recusado
+ * pelo outro.
+ */
+export function semAcentoNemCaixa(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")

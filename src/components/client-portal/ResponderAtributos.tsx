@@ -66,6 +66,7 @@ export function ResponderAtributos({ grupos, onResponder }: Props) {
         const escolhido = respondidos[chave];
         const aberto = abertos.has(chave);
         const ocultos = g.produtos.length - VISIVEIS;
+        const unica = g.opcoes.length === 1;
 
         if (escolhido) {
           return (
@@ -88,14 +89,30 @@ export function ResponderAtributos({ grupos, onResponder }: Props) {
               <HelpCircle size={16} className="mt-0.5 shrink-0 text-sky-400" aria-hidden />
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-zinc-100">
-                  {g.produtos.length} produto{g.produtos.length > 1 ? "s" : ""}: qual é o{" "}
-                  <span className="text-sky-300">{g.atributo.toLowerCase()}</span>?
+                  {/* UMA OPÇÃO NÃO É ESCOLHA. `MLB1400 · Gênero` chega com um
+                      único valor aceito, e 10 produtos caem nesse grupo:
+                      perguntar "qual é o gênero?" com um botão só faz a lojista
+                      procurar as outras opções que não existem. É confirmação,
+                      e a tela ao lado já sabe pedir confirmação. */}
+                  {unica ? (
+                    <>
+                      {g.produtos.length} produto{g.produtos.length > 1 ? "s" : ""}: o Mercado Livre
+                      só aceita <span className="text-sky-300">{g.opcoes[0].nome}</span> aqui
+                    </>
+                  ) : (
+                    <>
+                      {g.produtos.length} produto{g.produtos.length > 1 ? "s" : ""}: qual é o{" "}
+                      <span className="text-sky-300">{g.atributo.toLowerCase()}</span>?
+                    </>
+                  )}
                 </h3>
                 <p className="mt-0.5 text-xs text-zinc-400">
                   {/* A dica é do ML, quando ele escreve uma. Não invento a minha:
                       quem conhece o campo é quem o exige. */}
                   {g.dica ??
-                    "O Mercado Livre exige este campo nesta categoria, e só aceita as opções abaixo."}
+                    (unica
+                      ? `${g.atributo} é exigido nesta categoria e tem um valor só. Confirmando, eles publicam.`
+                      : "O Mercado Livre exige este campo nesta categoria, e só aceita as opções abaixo.")}
                 </p>
               </div>
             </div>
@@ -139,7 +156,7 @@ export function ResponderAtributos({ grupos, onResponder }: Props) {
                 com o desenho em vez de com o código. */}
             <div
               role="group"
-              aria-label={`${g.atributo} — escolha uma opção`}
+              aria-label={unica ? `${g.atributo} — confirmar` : `${g.atributo} — escolha uma opção`}
               className="mt-3 flex flex-wrap gap-2"
             >
               {g.opcoes.map((o) => (
@@ -150,7 +167,7 @@ export function ResponderAtributos({ grupos, onResponder }: Props) {
                   disabled={ocupado !== null}
                   className="rounded-lg border border-sky-500/25 bg-sky-500/10 px-3 py-2 text-xs text-sky-100 transition-colors hover:border-sky-500/60 hover:bg-sky-500/20 disabled:opacity-50"
                 >
-                  {o.nome}
+                  {unica ? `Confirmar ${o.nome}` : o.nome}
                 </button>
               ))}
               {ocupado === chave && (

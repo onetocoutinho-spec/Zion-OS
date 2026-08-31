@@ -46,20 +46,76 @@
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
 import { lerTudoPaginado } from "../supabase/paginado";
-import { atributosObrigatorios } from "../marketplaces/mercadolivre";
+import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { criarAtributosBulk } from "./produtoAtributos";
-import type {
-  ExigenciaDaCategoria,
-  ValorAceito,
+import {
+  semAcentoNemCaixa,
+  type ExigenciaDaCategoria,
+  type ValorAceito,
 } from "@/modules/publication/domain/atributosDoMarketplace";
 
-function semAcento(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
+/**
+ * AS EXIGÊNCIAS VÊM PELO SERVIDOR — a CSP não deixa este código falar com o ML.
+ *
+ * ===========================================================================
+ * O DEFEITO, ACHADO NA REVISÃO DE 28/08/2026
+ * ===========================================================================
+ *
+ * A primeira versão chamava `atributosObrigatorios` daqui, e este arquivo roda
+ * no NAVEGADOR. `next.config.ts` declara
+ * `connect-src 'self' *.supabase.co static.cloudflareinsights.com vercel.live`
+ * — `api.mercadolibre.com` não está lá.
+ *
+ * O navegador recusava a requisição, o `catch` daquela função devolvia `[]`
+ * ("sem confirmação, não se bloqueia nada", que é a regra certa PARA ELA), e a
+ * tela mostrava ZERO perguntas. Sempre, sem erro e sem log. As três fatias da
+ * T3 não funcionavam, e a medição que as validou rodou em Node, onde não há CSP.
+ *
+ * Os outros cinco chamadores de `atributosObrigatorios` são de servidor. Este
+ * era o primeiro do navegador — e a restrição já tinha sido medida no mesmo dia,
+ * ao decidir onde pôr o enriquecimento do caminho clássico.
+ *
+ * `/api/ml/categoria` já existia e já tinha o caminho sem token: id conhecido,
+ * atributos públicos, sem precisar da credencial do ML.
+ *
+ * ===========================================================================
+ * AQUI A FALHA SOBE, e é o oposto da regra de lá
+ * ===========================================================================
+ *
+ * `atributosObrigatorios` engole o erro porque na PUBLICAÇÃO não conseguir
+ * perguntar não pode virar bloqueio. Nesta tela o efeito seria inverso: a
+ * lojista veria "nada esperando você" enquanto 111 obrigatórios seguem travando
+ * anúncios. Então a exceção SOBE, `useLiveQuery` a transforma em `estado: erro`,
+ * e a tela diz que não conseguiu perguntar.
+ */
+async function exigenciasDaCategoria(
+  clienteId: string,
+  categoria: string
+): Promise<ExigenciaDaCategoria[]> {
+  const cacheada = CACHE_DE_EXIGENCIAS.get(categoria);
+  if (cacheada) return cacheada;
+
+  const r = await fetch("/api/ml/categoria", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+    body: JSON.stringify({ clienteId, categoriaId: categoria }),
+  });
+  if (!r.ok) throw new Error(`não consegui ler as exigências de ${categoria} (${r.status})`);
+  const corpo = (await r.json()) as { obrigatorios?: ExigenciaDaCategoria[] };
+  const exigencias = corpo.obrigatorios ?? [];
+  CACHE_DE_EXIGENCIAS.set(categoria, exigencias);
+  return exigencias;
 }
+
+/**
+ * O que o ML exige numa categoria não muda entre dois cliques.
+ *
+ * Sem isto, cada resposta da lojista dispara `useLiveQuery` de novo e o
+ * navegador refaz UMA ida por categoria — nove no T1, e noventa para responder
+ * as dez perguntas. O cache vive enquanto a aba viver: recarregar a página o
+ * esvazia, que é a janela certa para um dado que muda em meses.
+ */
+const CACHE_DE_EXIGENCIAS = new Map<string, ExigenciaDaCategoria[]>();
 
 /** Os `value_type` em que os valores publicados são a lista INTEIRA do aceito. */
 const TIPOS_FECHADOS = new Set(["list", "boolean"]);
@@ -117,23 +173,6 @@ export async function perguntasEmAberto(clienteId: string): Promise<GrupoDePergu
         .range(de, ate)
   );
 
-  const jaPerguntado = await lerTudoPaginado<{ produto_id: string | null; nome_atributo: string | null }>(
-    "atributos do produto",
-    (de, ate) =>
-      getSupabase()
-        .from("produto_atributos")
-        .select("produto_id, nome_atributo")
-        .eq("cliente_id", clienteId)
-        .order("id", { ascending: true })
-        .range(de, ate)
-  );
-
-  const tem = new Set(
-    jaPerguntado
-      .filter((a) => a.produto_id && a.nome_atributo)
-      .map((a) => `${a.produto_id}|${semAcento(a.nome_atributo as string)}`)
-  );
-
   // Um produto pode ter vários anúncios; a categoria é do produto, e o primeiro
   // que a declarar responde pelos demais — é a mesma escolha de
   // `categoriasDosProdutos`, e pelo mesmo motivo.
@@ -147,13 +186,53 @@ export async function perguntasEmAberto(clienteId: string): Promise<GrupoDePergu
     nomeDo.set(pid, nomeDoProduto(l) || pid);
   }
 
-  // UMA ida ao ML por categoria, não por produto.
-  const exigencias = new Map<string, Awaited<ReturnType<typeof atributosObrigatorios>>>();
-  for (const cat of new Set(categoriaDo.values())) {
-    exigencias.set(cat, await atributosObrigatorios(cat));
-  }
+  // UMA ida por categoria, e as categorias EM PARALELO: elas não dependem uma
+  // da outra, e em série a tela espera nove viagens somadas.
+  const respostas = await Promise.all(
+    [...new Set(categoriaDo.values())].map(
+      async (cat) => [cat, await exigenciasDaCategoria(clienteId, cat)] as const
+    )
+  );
+  const exigencias = new Map<string, readonly ExigenciaDaCategoria[]>(respostas);
+
+  // SÓ AS LINHAS DOS ATRIBUTOS QUE PODEM VIRAR PERGUNTA — e por isso esta
+  // leitura vem DEPOIS das exigências, e não antes.
+  //
+  // A versão anterior trazia `produto_atributos` inteira: 1.341 linhas no T1, e
+  // dezenas de milhares numa loja de 10 mil produtos, para responder "o que
+  // falta". Só interessam os nomes que alguma categoria exige em lista fechada,
+  // e eles são poucos — Gênero, Tipo de calçado, Tipo de meias, o que vier.
+  const nomesQuePodemFaltar = [
+    ...new Set(
+      [...exigencias.values()].flatMap((lista) => lista.filter(ehFechada).map((e) => e.nome))
+    ),
+  ];
+  const jaPerguntado = nomesQuePodemFaltar.length
+    ? await lerTudoPaginado<{ produto_id: string | null; nome_atributo: string | null }>(
+        "atributos do produto",
+        (de, ate) =>
+          getSupabase()
+            .from("produto_atributos")
+            .select("produto_id, nome_atributo")
+            .eq("cliente_id", clienteId)
+            .in("nome_atributo", nomesQuePodemFaltar)
+            .order("id", { ascending: true })
+            .range(de, ate)
+      )
+    : [];
+
+  const tem = new Set(
+    jaPerguntado
+      .filter((a) => a.produto_id && a.nome_atributo)
+      .map((a) => `${a.produto_id}|${semAcentoNemCaixa(a.nome_atributo as string)}`)
+  );
 
   return agruparPerguntas({ categoriaDo, nomeDo, jaTem: tem, exigencias });
+}
+
+/** Fechada E com opções publicadas: a única forma que vira múltipla escolha. */
+function ehFechada(e: ExigenciaDaCategoria): boolean {
+  return TIPOS_FECHADOS.has(e.tipo ?? "") && !!e.valoresAceitos?.length;
 }
 
 /**
@@ -179,8 +258,8 @@ export function agruparPerguntas(entrada: {
     for (const e of exigencias.get(cat) ?? []) {
       // Fechado E com opções publicadas: só aí a pergunta é de escolha. Ver o
       // topo do arquivo para por que `string` fica de fora e `boolean` entra.
-      if (!TIPOS_FECHADOS.has(e.tipo ?? "") || !e.valoresAceitos?.length) continue;
-      if (jaTem.has(`${pid}|${semAcento(e.nome)}`)) continue;
+      if (!ehFechada(e)) continue;
+      if (jaTem.has(`${pid}|${semAcentoNemCaixa(e.nome)}`)) continue;
       const chave = `${cat}|${e.nome}`;
       const grupo =
         grupos.get(chave) ??
@@ -225,6 +304,11 @@ export async function responderPergunta(entrada: {
       nomeAtributo: entrada.atributo,
       valorAtributo: valor,
       tipoAtributo: "texto" as const,
+      // `true` AQUI e `false` na importação, e a diferença tem razão: esta
+      // linha nasce da lista de OBRIGATÓRIOS da categoria, então o campo é
+      // verdade. A importação deduz das palavras-chave sem consultar categoria
+      // nenhuma — ela não sabe se aquilo é exigido, e gravar `true` ali seria
+      // afirmar o que não se mediu. Igualar os dois apagaria a informação.
       obrigatorio: true,
       origem: "Manual" as const,
     }))

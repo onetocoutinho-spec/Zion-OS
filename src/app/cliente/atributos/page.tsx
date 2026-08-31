@@ -76,6 +76,28 @@ export default function ClienteAtributos() {
       {/* O QUE O ML EXIGE E NINGUÉM RESPONDEU — antes das confirmações.
           Vem primeiro porque é o que TRAVA a publicação: a confirmação melhora
           um anúncio que já pode subir; a pergunta destrava um que não pode. */}
+      {perguntas.estado === "erro" && (
+        <div
+          role="alert"
+          className="mb-6 rounded-xl border border-red-500/20 bg-red-500/[0.04] p-4 text-sm text-red-200"
+        >
+          {/* SEM ISTO A SEÇÃO SOME CALADA. O comentário ao lado dizia "uma
+              falhar não pode apagar a outra da tela" — e era exatamente o que
+              acontecia, porque a segunda consulta não tinha onde falhar. */}
+          <p>Não consegui perguntar ao Mercado Livre o que ele exige nas suas categorias.</p>
+          <p className="mt-1 text-xs text-red-200/70">{perguntas.erro?.message}</p>
+          <button
+            type="button"
+            onClick={perguntas.reload}
+            className="mt-3 rounded-lg border border-red-500/30 px-3 py-1.5 text-xs text-red-100 hover:bg-red-500/10"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
+
+      {perguntas.estado === "carregando" && <EsqueletoDeTabela linhas={2} />}
+
       {perguntas.estado === "sucesso" && emAberto.length > 0 && (
         <section className="mb-6" aria-labelledby="perguntas-abertas">
           <h2 id="perguntas-abertas" className="mb-2 text-sm font-semibold text-zinc-200">
