@@ -89,7 +89,7 @@ As `NEXT_PUBLIC_*` e o `ML_*`/`GEMINI_*` são lidos no **build/deploy** — ao a
 
 ## Banco de dados (Supabase)
 
-As migrações ficam em **`database/migrations/`** — hoje **75 arquivos**, de `001` a `074`. Uma tabela com as 75 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
+As migrações ficam em **`database/migrations/`** — hoje **76 arquivos**, de `001` a `075`. Uma tabela com as 76 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
 
 ### Quem manda: o ledger
 
@@ -101,7 +101,7 @@ select numero, nome, aplicada_em from public.migracoes_aplicadas order by numero
 
 `supabase_migrations.schema_migrations` **não** é a fonte da verdade: é log da plataforma, só conhece o que passou pelo `apply_migration` e nada sabe do que foi rodado à mão no SQL Editor.
 
-> ⚠️ **A regra está furada hoje:** as migrações **071, 072, 073 e 074 não registram a própria linha**. Até isso ser corrigido, o ledger está atrasado em quatro — e a lição da 035 vale de novo: confira o schema em vez de acreditar no registro.
+A regra é conteúdo de arquivo, mas por um tempo nada conferia o conteúdo — e ela furou nas **071 a 074**, que rodaram sem se registrar. O buraco está fechado dos dois lados: o **pre-commit** recusa migração nova sem a própria linha (`scripts/hooks/ledgerDaMigracao.mjs`), e a **075** repõe as quatro linhas nos bancos onde elas já rodaram. A 075 só insere a linha cuja marca ela encontra no schema: linha afirmando o que não rodou é pior que linha ausente.
 
 ### Nem tudo em `migrations/` é migração de schema
 
@@ -125,7 +125,7 @@ Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingên
 | 001–015 | a base: produto pai × variação × anúncio, auditoria em massa, esteira, portal do cliente, canal do ML, imagens, medidas, kits |
 | **016** | **o RLS passa a negar por padrão** — sem perfil, sem acesso |
 | 022–028 | o Zion observando a si mesmo: decisões, padrões, ofertas, delegação |
-| 024 · 043 | o ledger de migrações, e a regra que o mantém honesto |
+| 024 · 043 · 075 | o ledger de migrações, a regra que o mantém honesto, e a guarda que faltava para a regra valer |
 | 033 · 034 | os custos do lojista e quem paga o frete — a base do lucro líquido |
 | 035–040 · 044–048 | o Copilot: conversa, propostas e execução atômica (peso, custo, preço, título) |
 | 041 | fecha o RLS que a 005 tinha deixado aberto |

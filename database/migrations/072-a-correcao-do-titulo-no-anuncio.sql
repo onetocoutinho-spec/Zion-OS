@@ -53,3 +53,12 @@ alter table public.copilot_propostas
 
 -- Sem tabela nova: não há política para escrever, e a varredura
 -- database/verificacoes/alcance-da-agencia.sql não muda.
+
+-- ============================================================
+-- O LEDGER (regra da 043: a propria migracao registra a propria linha)
+-- ============================================================
+
+insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
+values ('072', '072-a-correcao-do-titulo-no-anuncio', now(),
+        'Check de copilot_propostas.tipo ganha titulo_no_ml — o primeiro caminho para mudar o CONTEUDO de um anuncio ja no ar (antes so criar, encerrar, pausar, reativar e trocar foto). Distinto de titulo, que muda so o catalogo do Zion. Sem tabela nova.')
+on conflict do nothing;

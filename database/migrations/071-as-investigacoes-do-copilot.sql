@@ -110,3 +110,12 @@ revoke insert, update, delete on public.copilot_investigacoes from anon, authent
 -- Depois de aplicar: rodar database/verificacoes/alcance-da-agencia.sql.
 -- A tabela está classificada lá como operação da agência (ela opera a loja e
 -- precisa ver o que o Copilot investigou nela).
+
+-- ============================================================
+-- O LEDGER (regra da 043: a propria migracao registra a propria linha)
+-- ============================================================
+
+insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
+values ('071', '071-as-investigacoes-do-copilot', now(),
+        'copilot_investigacoes: a investigacao vira rascunho que atravessa turnos (como copilot_cadastros/037), porque dez a vinte operacoes nao cabem num turno HTTP de 45s. RLS: cliente a propria, agencia o escopo, equipe tudo.')
+on conflict do nothing;

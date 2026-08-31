@@ -82,3 +82,12 @@ comment on column public.anuncios_gerados.tem_descricao_ml is
 create index if not exists anuncios_gerados_tipo_anuncio_ml_idx
   on public.anuncios_gerados (cliente_id, tipo_anuncio_ml)
   where tipo_anuncio_ml is not null;
+
+-- ============================================================
+-- O LEDGER (regra da 043: a propria migracao registra a propria linha)
+-- ============================================================
+
+insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
+values ('074', '074-o-que-o-ml-diz-e-o-zion-descartava', now(),
+        'anuncios_gerados ganha sete campos que o ML ja mandava e a importacao descartava: tipo_anuncio_ml, criado_em_ml, atualizado_em_ml, vendidos_ml, saude_ml, do_catalogo_ml, tem_descricao_ml. O mais caro e tipo_anuncio_ml — a comissao saia da configuracao da loja inteira, e o ML informa por anuncio.')
+on conflict do nothing;
