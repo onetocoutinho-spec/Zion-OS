@@ -1471,3 +1471,76 @@ resta é GENDER — e esses têm PROPOSTA esperando confirmação, não pergunta
    no arquivo dela. `{estado === "carregando" && …}` é tão exclusivo quanto o
    ternário, porque `estado` é um valor discriminado. Ensinei a forma em vez de
    contorcer o código para agradar o regex.
+
+---
+
+# FECHAMENTO DO DIA 28/08/2026
+
+21 commits. 4.138 testes verdes, `typecheck` limpo, e os dois números herdados
+sem mexer: 13 erros de `typecheck:test` e 68 avisos de lint, os mesmos de ontem.
+
+## Onde o percurso T1 está
+
+    publicáveis                        361
+      User Products      189  passa 159 · sem gênero 7 · sem medida 23
+      clássico           172  passa 131
+
+    atributos no cadastro            1.341
+      propostas esperando confirmação  1.061
+      confirmados por ela                280
+
+    perguntas em aberto (múltipla escolha do ML)   111 em 10 grupos
+
+**290 de 361 atravessam os dois portões hoje.** Com ela confirmando as 1.061 e
+respondendo as 111, chega a ~333. E nenhum foi ao ar: continua faltando **a
+conta ML de teste**, que é a mesma parede de todo dia e não é código.
+
+## O que mudou no caminho
+
+O dia começou com a publicação recusando por dados que o sistema já tinha, e
+terminou com três portas abertas e uma tela onde ela responde:
+
+- **o cadastro completa a ficha** que o modelo esqueceu de escrever;
+- **o título que vai ao ar** responde o que ele já declara — publicar "Chinelo
+  Infantil" e recusar por não saber o gênero era publicar a afirmação e negá-la;
+- **a importação lê as palavras-chave do ERP** e PROPÕE, abrindo o laço que
+  fechava toda loja nova: atributo vinha de anúncio publicado, e publicar exigia
+  atributo;
+- **`/cliente/atributos`** — ela confirma o que foi lido e responde o que o ML
+  exige, com as opções que ele mesmo publica.
+
+## O que este dia ensinou, e é a parte que vale
+
+**Quem achou os defeitos mais caros foi uma pessoa olhando a tela.**
+
+    três revisões automáticas   27 achados
+    uma lojista abrindo a tela   4 achados
+
+Os 27 são reais e dois eram graves. Mas os 4 dela — babuche dividido entre
+sandálias e chinelos, 44 valores confirmados errados, o gênero perdendo
+especificidade, a marca âmbar invertida — nenhum teste pegaria: cada grupo
+estava certo por dentro, e o defeito só existe quando alguém vê dois lado a
+lado.
+
+**E os meus dois erros grandes têm a mesma forma: verifiquei por um caminho que
+o usuário real não percorre.**
+
+- Seis medições rodaram em **produção** achando ser o catálogo do T1. O dia
+  inteiro saiu contado sobre 792 anúncios que já estavam no ar. Virou código:
+  todo comando anuncia a base antes de qualquer consulta.
+- As três fatias da T3 foram validadas em **Node**, onde não existe CSP — e no
+  navegador a chamada ao ML era bloqueada, devolvendo zero perguntas em
+  silêncio. A restrição já estava medida e escrita por mim, doze horas antes.
+
+Para o primeiro existe guarda. Para o segundo, **não existe ainda** — e é a
+dívida que este documento leva para amanhã.
+
+## O que falta, em ordem
+
+1. **A conta ML de teste.** Única coisa entre "321 passariam" e "321 no ar".
+2. **Ela confirmar e responder** na tela — que também é a única verificação real
+   que aquelas duas telas já tiveram.
+3. **23 sem medida de marca** — 15 Ipanema infantil e 8 par-contra-tabela; pedem
+   tabela do fabricante, e `/cliente/medidas` já chega até a publicação.
+4. **Uma guarda para "medi no ambiente errado"**, que é o defeito que mais me
+   custou hoje e o único sem conserto.
