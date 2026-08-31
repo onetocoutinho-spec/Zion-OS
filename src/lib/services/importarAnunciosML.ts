@@ -1028,10 +1028,26 @@ export async function importarAnunciosDoCliente(
         doGrupo.push(varianteDeItem(prod.id, clienteId, a));
       }
     }
+    // A DEDUPLICAÇÃO NÃO É PRIVILÉGIO DO PRODUTO CASADO — medido em 31/08/2026.
+    //
+    // Até aqui, produto NOVO entrava com `doGrupo` cru. E `doGrupo` é montado
+    // percorrendo TODOS os anúncios do grupo: quando dois anúncios do mesmo
+    // produto anunciam o mesmo par cor+tamanho — o que é a regra, não a exceção,
+    // porque é assim que se anuncia a mesma sandália em duas fotos — cada par
+    // repetido virava uma linha a mais.
+    //
+    // Na base da Chinelaria isso deixou 142 linhas excedentes em 17 produtos, e
+    // 1.171 peças de estoque contadas duas vezes. A assinatura é inconfundível:
+    // as duas linhas têm `created_at` igual até o microssegundo, porque são o
+    // mesmo insert. Os afetados têm 22,1 anúncios de média contra 9,1 do resto —
+    // quanto mais anúncios, mais chance de dois colidirem no mesmo tamanho.
+    //
+    // `variantesInexistentes` já resolvia os dois casos: ela deduplica contra o
+    // que existe E dentro do próprio lote. Só não era chamada neste caminho.
+    // Para produto novo o mapa não tem entrada, sobra a segunda metade — que é
+    // exatamente a que faltava.
     variantes.push(
-      ...(casado
-        ? variantesInexistentes(doGrupo, variantesJaExistentes.get(prod.id) ?? [])
-        : doGrupo)
+      ...variantesInexistentes(doGrupo, variantesJaExistentes.get(prod.id) ?? [])
     );
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
