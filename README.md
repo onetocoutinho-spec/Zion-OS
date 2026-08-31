@@ -1,27 +1,38 @@
 # Zion OS
 
-Sistema da **Zion Company** — agência que ajuda empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee, Amazon).
+**Zion OS** é o produto da **Zion**, empresa de software. É um sistema **multi-inquilino** para vender em marketplaces (Mercado Livre, TikTok Shop, Shopee, Amazon): importar a base, gerar e otimizar anúncios com IA, publicar e acompanhar as vendas.
 
-São **dois ambientes** no mesmo app, separados por papel do usuário:
+Quem compra:
 
-- **Painel da equipe** — a Zion gerencia clientes, produtos, anúncios, esteira de IA, auditoria em massa, tarefas, vendas, relatórios e financeiro.
-- **Portal do Cliente** (`/cliente/*`) — cada cliente opera a própria loja: importa a base, otimiza anúncios com IA, gere fotos, conecta o Mercado Livre, publica e acompanha as vendas. É **isolado** do painel interno (o `AuthGate` redireciona o cliente).
+- **Lojas com equipe própria** — uma loja, operada por quem é dono dela.
+- **Agências** — operam a carteira de várias lojas na mesma conta. Inclusive agências que antes concorriam com a Zion.
+
+Por isso o app tem **dois formatos de conta** — não dois ambientes de uma agência:
+
+- **Conta de loja** (`/cliente/*`, papel `cliente`) — a loja opera a si mesma: importa a base, otimiza anúncios com IA, gera fotos, conecta o Mercado Livre, publica e acompanha as vendas. É **isolada** da casca de operador (o `AuthGate` redireciona).
+- **Conta de agência** (papel `agencia`) — a casca de carteira, que responde "quais lojas eu opero?": lista de lojas, esteira, auditoria em massa, produtos, pendências, vendas e relatórios. A agência alcança **só as lojas dela** (`clientes.agencia_id`), e quem decide isso é o servidor, não o navegador (`avaliarAcesso` em `src/lib/auth/serverAuthorization.ts` + RLS).
+
+O papel `equipe` é a **Zion como fornecedora do software**, não como agência: divide a casca de operador com a agência e vê a mais o grupo **Zion** do menu — agentes de IA, modelos de categoria, agências, usuários, configurações (`src/components/layout/nav.ts`). A decisão de rota por papel é pura e testável (`src/lib/auth/roteamentoPapel.ts`); a segurança real é o RLS + a autorização no servidor.
+
+> **Estado hoje:** existe **uma única conta pagante**, herdada da época em que a Zion operava como agência. A agência acabou; o que se vende é o software.
 
 ---
 
 ## Principais recursos
 
+O que muda entre os formatos de conta é **quem opera** — a lista de recursos é a mesma.
+
 **Esteira de Anúncio (IA).** Os prompts reais dos agentes **A0–A12** vivem em `src/lib/agentes/catalogo.ts` (fonte única) e alimentam:
 - a esteira em **modo rápido** (uma passada) e **aprofundado** (multi-agente, um agente por chamada, com barra de progresso);
-- as **ferramentas do Portal** (`/cliente/otimizar`) — cada ferramenta roda o agente correspondente;
-- a tela **Agentes IA** da equipe.
+- as **ferramentas da conta de loja** (`/cliente/otimizar`) — cada ferramenta roda o agente correspondente;
+- a tela **Agentes IA** (`/agentes`), que é do grupo Zion.
 Produz o anúncio completo (título ≤60, descrição, ficha, medidas, variações, imagens, FAQ) + pendências + **veredito A10** (trava: só aprova sem pendências).
 
-**Integração Mercado Livre (`src/lib/marketplaces/`, `/api/ml/*`).**
-- **Conectar** — OAuth: o cliente autoriza a própria conta; o `refresh_token` fica no `canais_marketplace`. O segredo do app ML vive só no servidor.
-- **Publicar** — dry-run local (a equipe revê o payload) + envio real. Suporta o modelo **User Products** (`mlUserProducts.ts`) exigido por categorias de calçado, com criação da guia de tamanhos.
+**Integração Mercado Livre (`src/lib/marketplaces/`, `src/modules/integration/`, `/api/ml/*`).**
+- **Conectar** — OAuth: a loja autoriza a própria conta do ML; o `refresh_token` fica no `canais_marketplace`. O segredo do app ML vive só no servidor.
+- **Publicar** — **dry-run 100% local** e depois envio real. O payload é montado no navegador por um builder puro e sem segredo (`montarItemML`, em `src/modules/integration/domain/mlPayload.ts`), então quem opera a conta revê **o mesmo payload que vai subir** antes de subir — a equipe da lojista ou a da agência que atende aquela loja, nunca a Zion. O envio real vai para `/api/ml/publicar`, a única ponta que conhece o segredo do app ML e lê o `refresh_token` do canal (que nunca trafega pelo navegador). Suporta o modelo **User Products** (`mlUserProducts.ts`) exigido por categorias de calçado, com criação da guia de tamanhos: o bundle vai junto sempre que dá para montá-lo, e o servidor só o usa se a categoria prevista exigir esse modelo.
 - **Vendas** — puxa os pedidos pagos reais e calcula faturamento, lucro líquido (cruzando com os custos), taxas, ticket médio, mais vendidos (`/cliente/vendas` e `/vendas`).
-- **Vinculação** — exporta o CSV **SKU ↔ MLB** para o cliente importar no ERP dele.
+- **Vinculação** — exporta o CSV **SKU ↔ MLB** para a loja importar no ERP dela.
 
 **Base de produtos.** Assistente de importação por planilha com **mapeamento de ERP** (presets Bling/Tiny/Magazord + ajuste manual). Produto pai × variações × anúncio; precificação pelo modelo Zion.
 
@@ -115,19 +126,20 @@ Depois: **Auth → Users** para criar contas da equipe; para clientes, criar o u
 ```
 src/
   app/          # rotas (App Router)
-    cliente/    # Portal do Cliente (/cliente/*)
+    cliente/    # conta de loja (/cliente/*)
     api/        # rotas de servidor (agentes, ml)
-    ...         # painel da equipe (clientes, produtos, esteira, vendas…)
+    ...         # casca de operador — agência/equipe (lojas, produtos, esteira, vendas…)
   components/
-    client-portal/  # casca + componentes do portal
-    layout/         # AppShell + nav da equipe
+    client-portal/  # casca + componentes da conta de loja
+    layout/         # AppShell + nav do operador (por papel)
     ui/             # primitivas (Card, Button, StatCard, Table…)
   lib/
     agentes/     # catalogo (prompts A0–A12), esteira, provedorIA/Imagem
-    marketplaces/# mercadolivre, mlPayload, mlUserProducts
+    marketplaces/# mercadolivre (cliente HTTP do ML)
     services/    # camada de dados (repositório → Supabase/localStorage)
     supabase/    # client + mappers + tipos das linhas
     types.ts, store.ts, format.ts, csv.ts, ...
+  modules/       # domínio por área (integration: mlPayload/mlUserProducts; publication; assistant…)
 database/
   migrations/   # 001…011 (fonte da verdade)
   _legado/      # setup antigo v1.x (histórico)
@@ -150,6 +162,6 @@ O **SKU único** (código do ERP) atravessa ERP ↔ ML ↔ TikTok — é a chave
 
 ## Limitações conhecidas
 
-- Proteção de rota é client-side (adequada para ferramenta interna; os dados são protegidos pelo RLS no servidor).
+- A proteção de rota no navegador é só experiência de UI. As camadas reais são a autorização no servidor (`src/lib/auth/serverAuthorization.ts`) e o RLS do Supabase — o que importa num produto multi-inquilino, onde a conta de agência e a conta de loja compartilham o mesmo banco.
 - No modo demo (sem Supabase) não há login nem realtime; a IA só roda com `OPENAI_API_KEY` (ou `ANTHROPIC_API_KEY`/`GEMINI_API_KEY`) no servidor.
-- A publicação no modelo **User Products** está estruturada; a ativação no fluxo de publicar + teste de item real é o próximo passo.
+- A publicação no modelo **User Products** já vai junto no fluxo de publicar (o servidor a usa quando a categoria prevista exige); o teste de item real em produção é o próximo passo.
