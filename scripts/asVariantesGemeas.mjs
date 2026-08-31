@@ -153,10 +153,44 @@ function sobrevivente(g) {
 
 /** Os campos que decidem se duas linhas são a MESMA linha. */
 const DECIDEM = ["sku", "codigo_interno", "cor", "tamanho", "custo", "preco_base", "estoque", "peso", "status"];
+
+/**
+ * "33 - 34" e "33-34 BR" são o MESMO tamanho — medido em 31/08/2026.
+ *
+ * Seis pares do Chinelo Havaianas Top divergiam SÓ nisso, com estoque idêntico
+ * nas duas linhas (4/4, 20/20, 3/3, 24/24, 26/26, 27/27): 104 peças contadas em
+ * dobro por causa de um espaço e um sufixo.
+ *
+ * A recusa por divergência existe para não escolher entre dois DADOS quando os
+ * dois são plausíveis. Aqui não há dois dados: há um, escrito de duas formas.
+ * Tratá-lo como conflito é a guarda protegendo o que não precisa de proteção.
+ *
+ * A NORMALIZAÇÃO É ESTREITA DE PROPÓSITO. Ela tira espaços, hífens, barras e o
+ * sufixo "BR" — e nada mais. "33/34" e "33 - 34" passam a ser o mesmo; "33" e
+ * "34" continuam diferentes, que é o que importa.
+ *
+ * E A GRAFIA DE QUEM FICA É ARBITRÁRIA, em 3 dos 6: o critério de sobrevivência
+ * (tem código, depois mais velha) não olha grafia, e o produto está 13/13 entre
+ * as duas formas. Isto REMOVE estoque fantasma; NÃO uniformiza o catálogo. São
+ * duas decisões, e esta faz só a primeira.
+ */
+const mesmoTamanho = (a, b) => {
+  const n = (t) =>
+    String(t ?? "")
+      .toLowerCase()
+      .replace(/\s*br\s*$/, "")
+      .replace(/[\s\-/]/g, "");
+  const x = n(a);
+  return x !== "" && x === n(b);
+};
+
 function divergencias(a, b) {
-  return DECIDEM.filter((c) => String(a[c] ?? "") !== String(b[c] ?? "")).map(
-    (c) => `${c}: "${a[c] ?? ""}" ≠ "${b[c] ?? ""}"`
-  );
+  return DECIDEM.filter((c) => {
+    if (String(a[c] ?? "") === String(b[c] ?? "")) return false;
+    // Tamanho igual escrito diferente não é divergência. Ver acima.
+    if (c === "tamanho" && mesmoTamanho(a[c], b[c])) return false;
+    return true;
+  }).map((c) => `${c}: "${a[c] ?? ""}" ≠ "${b[c] ?? ""}"`);
 }
 
 // ---- 3. quem aponta para elas ---------------------------------------------
