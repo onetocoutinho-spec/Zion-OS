@@ -1542,5 +1542,33 @@ dívida que este documento leva para amanhã.
    que aquelas duas telas já tiveram.
 3. **23 sem medida de marca** — 15 Ipanema infantil e 8 par-contra-tabela; pedem
    tabela do fabricante, e `/cliente/medidas` já chega até a publicação.
-4. **Uma guarda para "medi no ambiente errado"**, que é o defeito que mais me
-   custou hoje e o único sem conserto.
+4. ~~Uma guarda para "medi no ambiente errado"~~ — **feita**, ver abaixo.
+
+## A guarda que faltava — `oNavegadorNaoAlcancaEssaOrigem`
+
+A dívida acima virou sentinela no mesmo dia. Ela lê o `connect-src` do
+`next.config.ts`, monta o grafo de imports a partir de cada `"use client"`, e
+reprova qualquer origem externa nomeada num arquivo que chega ao navegador E
+chama `fetch`.
+
+**A transitividade é o ponto.** O `fetch` proibido estava dois saltos abaixo do
+Client Component:
+
+    page.tsx ("use client")  ->  perguntasDaCategoria.ts  ->  mercadolivre.ts
+
+Uma checagem que olhasse só arquivos marcados não veria nada.
+
+**E `import type` não é aresta.** A primeira versão acusou duas telas que só
+tinham emprestado um tipo (`PedidoML` em vendas, `Fala` no chat). O TypeScript
+apaga esses imports; nenhuma linha daqueles módulos vai ao navegador. Sentinela
+que acusa quem não fez nada é a que se aprende a ignorar — foi o falso positivo
+que quase fez a guarda nascer inútil.
+
+**A auto-verificação também teve de mudar.** A primeira tentativa tirava o
+Supabase da lista permitida e esperava acusação; não veio, porque a URL do
+Supabase chega por variável de ambiente e não por literal. Provar a regra pela
+parte que ela realmente decide (`permitida()` contra as origens reais) é mais
+honesto que inventar um caso que ela nunca veria.
+
+**O que ela não pega, dito no próprio arquivo:** URL montada em pedaços, origem
+vinda de env, import dinâmico.
