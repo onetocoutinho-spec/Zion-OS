@@ -89,24 +89,73 @@ As `NEXT_PUBLIC_*` e o `ML_*`/`GEMINI_*` são lidos no **build/deploy** — ao a
 
 ## Banco de dados (Supabase)
 
-As migrações ficam em **`database/migrations/`** e são a fonte da verdade. Rode **em ordem** no SQL Editor (aditivas e não destrutivas):
+As migrações ficam em **`database/migrations/`** — hoje **75 arquivos**, de `001` a `074`. Uma tabela com as 75 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
 
-| # | Arquivo | O que traz |
+### Quem manda: o ledger
+
+`public.migracoes_aplicadas` é a **fonte da verdade** sobre o que já rodou — criada na **024**, com a regra estabelecida na **043**: cada migração insere a própria linha como **última instrução do próprio arquivo**. Se rodou, a linha existe; não é disciplina de processo, é conteúdo do arquivo.
+
+```sql
+select numero, nome, aplicada_em from public.migracoes_aplicadas order by numero;
+```
+
+`supabase_migrations.schema_migrations` **não** é a fonte da verdade: é log da plataforma, só conhece o que passou pelo `apply_migration` e nada sabe do que foi rodado à mão no SQL Editor.
+
+> ⚠️ **A regra está furada hoje:** as migrações **071, 072, 073 e 074 não registram a própria linha**. Até isso ser corrigido, o ledger está atrasado em quatro — e a lição da 035 vale de novo: confira o schema em vez de acreditar no registro.
+
+### Nem tudo em `migrations/` é migração de schema
+
+Três tipos de arquivo dividem a mesma pasta e a mesma numeração:
+
+- **Migrações de schema** — a maioria; idempotentes (`if not exists`) e aditivas.
+- **Reparos de dado, uma vez só** — **030**, **031** e **032** consertam a base do **primeiro lojista**, com números medidos naquela base específica (`1.733 de 1.806 produtos`). Não fazem parte da montagem de um banco novo. A **032 se declara `DESTRUTIVA E IRREVERSÍVEL`**: apaga os produtos que entraram por planilha, sem lixeira.
+- **Provas de isolamento** — `054-verificacao-do-isolamento.sql` e `055-verificacao-do-ticket.sql` não alteram nada: rodam dentro de uma transação que termina em `rollback`. São seguras em produção, e é para rodá-las **depois** da migração homônima.
+
+### Ordem de aplicação, e as duas armadilhas
+
+Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingênua:
+
+1. **A 016 exige os perfis ANTES.** Ela inverte o RLS para **negar por padrão** — antes, "usuário sem perfil" era lido como equipe, com acesso total. Rodar a 016 antes de cadastrar os perfis **tira o acesso da equipe**. A ordem correta está no cabeçalho do arquivo: `database/checks/check-users-without-profile.sql` (diagnóstico) → cadastrar todos os perfis com `fix-missing-profiles-template.sql` → conferir que não sobrou ninguém → só então a 016.
+2. **A numeração pula de 016 para 022, de propósito.** As **017–021** (a fundação canônica "Produto Mestre") estão em `database/migrations/arquivadas/`: nada ali foi aplicado, e nada deve ser aplicado sem reabrir a decisão. Os números estão gastos e não são reciclados — reciclar faria duas migrações responderem pelo mesmo número, que é o problema que a 043 fechou. Razão completa no [ADR-011](docs/decisions/ADR-011-arquivar-a-fundacao-canonica-017-021.md).
+
+### Os marcos
+
+| # | O que mudou |
+| --- | --- |
+| 001–015 | a base: produto pai × variação × anúncio, auditoria em massa, esteira, portal do cliente, canal do ML, imagens, medidas, kits |
+| **016** | **o RLS passa a negar por padrão** — sem perfil, sem acesso |
+| 022–028 | o Zion observando a si mesmo: decisões, padrões, ofertas, delegação |
+| 024 · 043 | o ledger de migrações, e a regra que o mantém honesto |
+| 033 · 034 | os custos do lojista e quem paga o frete — a base do lucro líquido |
+| 035–040 · 044–048 | o Copilot: conversa, propostas e execução atômica (peso, custo, preço, título) |
+| 041 | fecha o RLS que a 005 tinha deixado aberto |
+| **054 · 054a · 055a · 055b** | **a agência como inquilino**: tabela `agencias`, `clientes.agencia_id`, `perfis.agencia_id` — e financeiro, tarefas e reuniões **fora** do alcance dela |
+| 055 | o `state` do OAuth do ML vira ticket verificável |
+| 059 · 061 · 062 | a credencial do ML sai do alcance do navegador e passa a ser cifrada em repouso |
+| 060 · 063 | a cota de IA é cobrada no servidor — por mês e por minuto |
+| 064–074 | a loja em operação: tarefas, perfil de conteúdo, versões de imagem, execuções de IA, investigações do Copilot |
+
+### O resto de `database/`
+
+| Pasta | O que é |
+| --- | --- |
+| `checks/` | diagnóstico e backfill de perfis; diagnóstico das migrações em produção |
+| `verificacoes/` | `alcance-da-agencia.sql` — a varredura que confere, tabela a tabela, o que a agência alcança |
+| `staging/` | bootstrap de um banco de staging, com guardrail que aborta se o banco não estiver marcado como `staging` (ver `database/staging/README.md`) |
+| `manutencao/` | correções pontuais e datadas |
+| `_legado/` | o setup v1.x — histórico; a fonte atual é `migrations/` |
+
+### Depois das migrações: as contas
+
+**Auth → Users** cria o usuário; o acesso vem da linha correspondente em **`perfis`**, e a 054 impõe por `check` uma das três formas:
+
+| Papel | Exige | É |
 | --- | --- | --- |
-| 001 / 001b | modelagem-produtos-marketplace · seed | produto pai × variação × anúncio, templates |
-| 002 | auditoria-em-massa | auditorias, problemas, fila, execuções |
-| 003 | modelo-marketplace-real | `cod_erp`, preço mínimo, margem |
-| 004 | anuncios-gerados | fila de aprovação da esteira |
-| 005 | portal-cliente | `perfis`, RLS por papel (equipe × cliente), RPCs do portal |
-| 006 / 007 | self-service (fase 1 e 2) | cota mensal + cliente importa/audita a própria base |
-| 008 | portal-cliente-leituras | pendências/relatórios do cliente |
-| 009 | marketplace-ml | `canais_marketplace` + colunas do resultado da publicação |
-| 010 | imagens-storage | bucket `produtos-imagens` + políticas |
-| 011 | canal-cliente-conecta | cliente cria/edita o próprio canal (OAuth) |
+| `cliente` | `cliente_id`, sem `agencia_id` | conta de loja |
+| `agencia` | `agencia_id`, sem `cliente_id` | conta de agência (alcança as lojas com aquele `clientes.agencia_id`) |
+| `equipe` | nenhum dos dois | a Zion, fornecedora do software |
 
-Depois: **Auth → Users** para criar contas da equipe; para clientes, criar o usuário + o registro em `perfis` (papel `cliente`, `cliente_id`).
-
-> Os scripts do setup antigo (v1.x) ficam em **`database/_legado/`** — não são mais usados; a fonte atual é `migrations/`.
+Usuário sem perfil não entra — desde a 016 isso é o comportamento correto, não um defeito.
 
 ---
 
@@ -141,7 +190,10 @@ src/
     types.ts, store.ts, format.ts, csv.ts, ...
   modules/       # domínio por área (integration: mlPayload/mlUserProducts; publication; assistant…)
 database/
-  migrations/   # 001…011 (fonte da verdade)
+  migrations/   # 001…074 (+ arquivadas/ 017–021, não aplicadas)
+  checks/       # diagnóstico e backfill de perfis
+  verificacoes/ # provas de alcance por papel
+  staging/      # bootstrap de um banco de staging
   _legado/      # setup antigo v1.x (histórico)
 docs/           # notas (ex.: publicacao-mercado-livre.md)
 ```
