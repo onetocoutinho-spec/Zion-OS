@@ -96,7 +96,7 @@ As `NEXT_PUBLIC_*` e o `ML_*`/`GEMINI_*` são lidos no **build/deploy** — ao a
 
 ## Banco de dados (Supabase)
 
-As migrações ficam em **`database/migrations/`** — hoje **78 arquivos**, de `001` a `077`. Uma tabela com as 78 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
+As migrações ficam em **`database/migrations/`** — hoje **87 arquivos**, de `001` a `086`. Uma tabela com as 87 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
 
 ### Quem manda: o ledger
 
@@ -108,7 +108,10 @@ select numero, nome, aplicada_em from public.migracoes_aplicadas order by numero
 
 `supabase_migrations.schema_migrations` **não** é a fonte da verdade: é log da plataforma, só conhece o que passou pelo `apply_migration` e nada sabe do que foi rodado à mão no SQL Editor.
 
-A regra é conteúdo de arquivo, mas por um tempo nada conferia o conteúdo — e ela furou nas **071 a 074**, que rodaram sem se registrar. O buraco está fechado dos dois lados: o **pre-commit** recusa migração nova sem a própria linha (`scripts/hooks/ledgerDaMigracao.mjs`), e a **075** repõe as quatro linhas nos bancos onde elas já rodaram. A 075 só insere a linha cuja marca ela encontra no schema: linha afirmando o que não rodou é pior que linha ausente.
+A regra é conteúdo de arquivo, mas por um tempo **nada conferia o conteúdo** — e ela furou em **catorze**: 035–042 e 071–076. O ledger de produção parava na 070 enquanto o banco estava na 076 (INC-012). O buraco está fechado dos dois lados:
+
+- a **078** recuperou as catorze por **baseline**, e recusou editar os arquivos porque a 024 já dizia que "migrações anteriores são DOCUMENTOS HISTÓRICOS — não são alteradas retroativamente". Cada linha só entrou onde o artefato dela existe no banco: afirmar o que não rodou é pior que a linha ausente;
+- o **pre-commit** passou a recusar migração nova sem a própria linha (`scripts/hooks/ledgerDaMigracao.mjs`), com as catorze dispensadas por uma lista fechada e escrita à mão — dispensa que cresce sozinha é a conferência se desligando em silêncio.
 
 ### Nem tudo em `migrations/` é migração de schema
 
@@ -132,7 +135,7 @@ Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingên
 | 001–015 | a base: produto pai × variação × anúncio, auditoria em massa, esteira, portal do cliente, canal do ML, imagens, medidas, kits |
 | **016** | **o RLS passa a negar por padrão** — sem perfil, sem acesso |
 | 022–028 | o Zion observando a si mesmo: decisões, padrões, ofertas, delegação |
-| 024 · 043 · 075 | o ledger de migrações, a regra que o mantém honesto, e a guarda que faltava para a regra valer |
+| 024 · 043 · 078 | o ledger de migrações, a regra que o mantém honesto, e a baseline que recuperou as catorze que a ignoraram |
 | 033 · 034 | os custos do lojista e quem paga o frete — a base do lucro líquido |
 | 035–040 · 044–048 | o Copilot: conversa, propostas e execução atômica (peso, custo, preço, título) |
 | 041 | fecha o RLS que a 005 tinha deixado aberto |
@@ -141,8 +144,9 @@ Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingên
 | 059 · 061 · 062 | a credencial do ML sai do alcance do navegador e passa a ser cifrada em repouso |
 | 060 · 063 | a cota de IA é cobrada no servidor — por mês e por minuto |
 | 064–074 | a loja em operação: tarefas, perfil de conteúdo, versões de imagem, execuções de IA, investigações do Copilot |
-| 076 | **uma conta de marketplace pertence a uma loja só** — índice único parcial em `(marketplace, seller_id)`, e a recusa nomeia a loja que já tem a conta |
-| **077** | **a loja enxerga a própria equipe** — o `select` em `perfis` que faltava para convidar sem ser às cegas |
+| 075–084 | a foto com dimensão e cor, a categoria decidida, frete e garantia por loja, e o ledger recuperado (078) |
+| 085 | **uma conta de marketplace pertence a uma loja só** — índice único parcial em `(marketplace, seller_id)`, e a recusa nomeia a loja que já tem a conta |
+| **086** | **a loja enxerga a própria equipe** — o `select` em `perfis` que faltava para convidar sem ser às cegas |
 
 ### O resto de `database/`
 
@@ -203,7 +207,7 @@ src/
     types.ts, store.ts, format.ts, csv.ts, ...
   modules/       # domínio por área (integration: mlPayload/mlUserProducts; onboarding: quemPodeConvidar; publication; assistant…)
 database/
-  migrations/   # 001…077 (+ arquivadas/ 017–021, não aplicadas)
+  migrations/   # 001…086 (+ arquivadas/ 017–021, não aplicadas)
   checks/       # diagnóstico e backfill de perfis
   verificacoes/ # provas de alcance por papel
   staging/      # bootstrap de um banco de staging

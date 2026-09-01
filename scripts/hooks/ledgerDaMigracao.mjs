@@ -1,4 +1,4 @@
-// A regra da migração 043, virada conferência — porque ela falhou quatro vezes.
+// A regra da migração 043, virada conferência — porque ela falhou catorze vezes.
 //
 // ===========================================================================
 // A REGRA
@@ -17,16 +17,42 @@
 // POR QUE ISSO NÃO BASTOU
 // ===========================================================================
 //
-// A 071, a 072, a 073 e a 074 saíram sem o insert. A regra era conteúdo de
+// Catorze saíram sem o insert: 035–042 e 071–076. A regra era conteúdo de
 // arquivo, mas NADA CONFERIA O CONTEÚDO — então ela falhou do mesmo jeito
-// silencioso que existia para impedir. A própria 043 avisa que documentar
+// silencioso que existia para impedir, e o ledger de produção parou na 070
+// enquanto o banco estava na 076 (INC-012). A própria 043 avisa que documentar
 // "lembre-se do ledger" seria repetir o erro com mais palavras.
 //
 // Daí este módulo, no mesmo lugar e no mesmo formato da classificação da
 // agência: função pura aqui, commit barrado no `preCommit.mjs`, teste ao lado.
+//
+// ===========================================================================
+// AS CATORZE NÃO SÃO CONSERTADAS AQUI
+// ===========================================================================
+//
+// A migração 078 recuperou as catorze por BASELINE, e recusou editar os
+// arquivos por uma razão que a 024 já tinha escrito:
+//
+//     "Migrações anteriores são DOCUMENTOS HISTÓRICOS — não são alteradas
+//      retroativamente."
+//
+// Editá-las faria o arquivo mentir sobre o que rodou naquele dia, e ainda
+// assim não consertaria banco nenhum. Então elas ficam como estão, e esta
+// conferência as dispensa NOMEANDO CADA UMA — uma lista fechada, que não cresce
+// sozinha. Migração nova sem insert continua barrada.
 
 /** A regra vale a partir da migração que a criou. */
 export const PRIMEIRA_SOB_A_REGRA = 43;
+
+/**
+ * As que a 078 recuperou por baseline, e que por isso NÃO se registram sozinhas.
+ *
+ * Lista fechada e escrita à mão, de propósito: derivar "quem já está no
+ * baseline" de algum lugar faria a dispensa crescer sozinha, e uma dispensa que
+ * cresce sozinha é a conferência se desligando em silêncio. As de 035 a 042
+ * ficam abaixo de `PRIMEIRA_SOB_A_REGRA` e nem chegam aqui.
+ */
+export const BASELINADAS_PELA_078 = new Set(["071", "072", "073", "074", "075", "076"]);
 
 /**
  * `database/migrations/054a-alinhar-….sql` → `{ numero: "054a", ordem: 54 }`.
@@ -81,6 +107,7 @@ export function oQueNaoRegistra(migracoes) {
   for (const { nome, sql } of migracoes) {
     const id = identidade(nome);
     if (!id || id.ordem < PRIMEIRA_SOB_A_REGRA || ehVerificacao(nome)) continue;
+    if (BASELINADAS_PELA_078.has(id.numero)) continue;
 
     const corpo = semComentarios(sql);
     if (!/insert\s+into\s+public\.migracoes_aplicadas/i.test(corpo)) {

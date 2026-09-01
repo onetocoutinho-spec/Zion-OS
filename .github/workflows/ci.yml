@@ -34,6 +34,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Os TESTES também são type-checkados, e por um motivo medido: um contrato
+      # ganhou campo obrigatório, o fixture ficou inválido, `tsc` seguiu VERDE e
+      # três testes só quebraram em runtime (ver o cabeçalho de tsconfig.test.json).
+      # O passo existia no `npm run gate` e não aqui — então a checagem rodava só
+      # na máquina de quem lembrasse, e treze erros sobreviveram no master.
+      - name: Typecheck dos testes
+        run: npm run typecheck:test
+
       - name: Lint
         run: npm run lint
 

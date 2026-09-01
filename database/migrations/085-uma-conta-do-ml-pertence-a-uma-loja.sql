@@ -1,4 +1,4 @@
--- 076 — uma conta do Mercado Livre pertence a UMA loja
+-- 085 — uma conta do Mercado Livre pertence a UMA loja
 --
 -- INCREMENTAL. NÃO destrutiva: não apaga nem altera linha nenhuma. Cria um
 -- índice e ensina uma frase a `ml_credencial_gravar`.
@@ -110,7 +110,7 @@ create unique index if not exists canais_marketplace_conta_ativa_unica
   where seller_id is not null and ativo;
 
 comment on index public.canais_marketplace_conta_ativa_unica is
-  'Uma conta ATIVA de marketplace pertence a uma loja so (076). Parcial: canal desconectado (ativo=false) guarda o seller_id como historico e nao ocupa o lugar.';
+  'Uma conta ATIVA de marketplace pertence a uma loja so (085). Parcial: canal desconectado (ativo=false) guarda o seller_id como historico e nao ocupa o lugar.';
 
 -- ============================================================
 -- 3) A FRASE
@@ -193,6 +193,6 @@ grant  execute on function public.ml_credencial_gravar(uuid, text, text, text) t
 -- ============================================================
 
 insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
-values ('076', '076-uma-conta-do-ml-pertence-a-uma-loja', now(),
+values ('085', '085-uma-conta-do-ml-pertence-a-uma-loja', now(),
         'Indice unico parcial (marketplace, seller_id) where seller_id is not null and ativo: uma conta ATIVA de marketplace pertence a uma loja so. Parcial para nao travar a troca legitima (desconectar de A, conectar em B). ml_credencial_gravar passa a recusar antes, nomeando a loja que ja tem a conta, em vez de deixar vazar a prosa do Postgres.')
 on conflict do nothing;

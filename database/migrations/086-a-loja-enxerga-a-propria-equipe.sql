@@ -1,4 +1,4 @@
--- 077 — a loja enxerga a própria equipe
+-- 086 — a loja enxerga a própria equipe
 --
 -- INCREMENTAL e ADITIVA. Cria UMA política de `select`. Nenhuma existente é
 -- tocada, e políticas do mesmo comando se combinam com OR: quem já via, segue
@@ -83,6 +83,6 @@ comment on policy perfil_da_propria_loja on public.perfis is
 -- ============================================================
 
 insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
-values ('077', '077-a-loja-enxerga-a-propria-equipe', now(),
+values ('086', '086-a-loja-enxerga-a-propria-equipe', now(),
         'Politica perfil_da_propria_loja em perfis: select onde cliente_id = cliente_do_usuario(). Sem ela a loja podia convidar (rota /api/usuarios aberta ao papel cliente) e nao via quem ja tinha acesso. Somente select; escrita segue so por /api/usuarios. A agencia NAO ganha leitura de perfis — a regra da 054 continua de pe.')
 on conflict do nothing;

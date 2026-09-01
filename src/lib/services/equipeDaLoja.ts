@@ -1,8 +1,8 @@
 // A equipe da loja — quem tem acesso a ESTA loja.
 //
-// Lê `perfis` pelo RLS. Antes da migração 077 a lojista só enxergava a própria
+// Lê `perfis` pelo RLS. Antes da migração 086 a lojista só enxergava a própria
 // linha (`perfil_proprio`), e a lista voltava com uma pessoa só; a política
-// `perfil_da_propria_loja` é o que faz esta consulta ter sentido.
+// `perfil_da_propria_loja` (086) é o que faz esta consulta ter sentido.
 //
 // Não há e-mail aqui: `perfis` guarda id, cliente_id, papel, nome e ativo. O
 // e-mail mora no Auth e só o servidor o vê — quem convida sabe para qual

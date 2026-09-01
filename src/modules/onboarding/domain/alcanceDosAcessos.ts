@@ -26,7 +26,7 @@
 //
 //   equipe   tudo — é a Zion, fornecedora do software.
 //   agencia  as pessoas DA agência dela + as das lojas da carteira dela.
-//   cliente  as pessoas da própria loja (o que a 077 já dá por RLS; aqui é a
+//   cliente  as pessoas da própria loja (o que a 086 já dá por RLS; aqui é a
 //            mesma resposta, para a tela não precisar de dois caminhos).
 //
 // Ninguém vê e-mail: ele mora no Auth, e esta rota lê `perfis`, que guarda

@@ -25,12 +25,3 @@ alter table public.ia_execucoes
 
 comment on column public.ia_execucoes.ms_ferramentas is
   'Milissegundos gastos DENTRO das ferramentas neste turno (soma). `ms` menos este valor é o tempo em modelo e rede do provedor. NULL = turno anterior à medição, não zero.';
-
--- ============================================================
--- O LEDGER (regra da 043: a propria migracao registra a propria linha)
--- ============================================================
-
-insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
-values ('073', '073-o-tempo-gasto-em-ferramenta', now(),
-        'ia_execucoes.ms_ferramentas: separa o turno em tempo DENTRO de ferramenta e tempo de modelo. Sem esse eixo, ms sozinho escondia a causa e a leitura de que latencia e volume de saida nao se sustentou. NULL = turno anterior a medicao, nao zero.')
-on conflict do nothing;

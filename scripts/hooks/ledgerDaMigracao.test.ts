@@ -2,8 +2,11 @@
 //
 // Os testes de unidade provam que a função reconhece cada modo de falha. A
 // varredura do fim prova que `database/migrations/` está limpo AGORA — é ela
-// que teria pego a 071, a 072, a 073 e a 074, que passaram porque a regra da
+// que teria pego as catorze (035–042 e 071–076), que passaram porque a regra da
 // 043 era conteúdo de arquivo sem ninguém conferir o conteúdo.
+//
+// Os exemplos usam números ALTOS e livres (089, 090). Usar os das catorze faria
+// o teste bater na dispensa da baseline e provar o contrário do que quer.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,17 +18,20 @@ import {
   oQueNaoRegistra,
   explicarLedger,
   PRIMEIRA_SOB_A_REGRA,
+  BASELINADAS_PELA_078,
 } from "./ledgerDaMigracao.mjs";
 
 const REGISTRO = (numero: string, base: string) =>
   `insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)\n` +
   `values ('${numero}', '${base}', now(), 'o que ela faz')\non conflict do nothing;`;
 
+const SEM_INSERT = "alter table public.x add column y int;\n";
+
 test("identidade separa o número (com sufixo) da ordem", () => {
-  assert.deepEqual(identidade("database/migrations/074-o-que-o-ml.sql"), {
-    numero: "074",
-    base: "074-o-que-o-ml",
-    ordem: 74,
+  assert.deepEqual(identidade("database/migrations/090-o-que-seja.sql"), {
+    numero: "090",
+    base: "090-o-que-seja",
+    ordem: 90,
   });
   // O sufixo entra no `numero` gravado no ledger, mas não na ordem.
   assert.deepEqual(identidade("055b-tarefas-e-reunioes.sql"), {
@@ -42,7 +48,7 @@ test("identidade separa o número (com sufixo) da ordem", () => {
 test("os arquivos de verificação não são migrações", () => {
   assert.equal(ehVerificacao("database/migrations/054-verificacao-do-isolamento.sql"), true);
   assert.equal(ehVerificacao("database/verificacoes/alcance-da-agencia.sql"), true);
-  assert.equal(ehVerificacao("database/migrations/074-o-que-o-ml-diz.sql"), false);
+  assert.equal(ehVerificacao("database/migrations/090-o-que-seja.sql"), false);
 });
 
 test("o modelo dentro de um comentário não conta como registro", () => {
@@ -56,25 +62,25 @@ test("o modelo dentro de um comentário não conta como registro", () => {
     "alter table public.x add column if not exists y integer;\n";
   assert.doesNotMatch(semComentarios(sql), /insert\s+into/i);
   assert.deepEqual(
-    oQueNaoRegistra([{ nome: "074-so-o-modelo.sql", sql }]).map((p) => p.motivo),
+    oQueNaoRegistra([{ nome: "090-so-o-modelo.sql", sql }]).map((p) => p.motivo),
     ["ausente"]
   );
 });
 
 test("migração sob a regra sem insert é acusada", () => {
   const achados = oQueNaoRegistra([
-    { nome: "database/migrations/074-sem-ledger.sql", sql: "alter table public.x add column y int;\n" },
+    { nome: "database/migrations/090-sem-ledger.sql", sql: SEM_INSERT },
   ]);
   assert.equal(achados.length, 1);
   assert.equal(achados[0].motivo, "ausente");
-  assert.equal(achados[0].numero, "074");
+  assert.equal(achados[0].numero, "090");
 });
 
 test("bloco copiado da migração anterior é acusado", () => {
   // O modo de falha natural: copiar o rodapé e esquecer de trocar os valores.
   // A linha nasce com a identidade errada — pior que não nascer.
   const achados = oQueNaoRegistra([
-    { nome: "074-a-nova.sql", sql: `alter table public.x add column y int;\n${REGISTRO("073", "073-a-anterior")}` },
+    { nome: "090-a-nova.sql", sql: SEM_INSERT + REGISTRO("089", "089-a-anterior") },
   ]);
   assert.equal(achados.length, 1);
   assert.equal(achados[0].motivo, "identidade");
@@ -83,30 +89,47 @@ test("bloco copiado da migração anterior é acusado", () => {
 test("migração que registra direito passa", () => {
   assert.deepEqual(
     oQueNaoRegistra([
-      { nome: "074-a-nova.sql", sql: `alter table public.x add column y int;\n${REGISTRO("074", "074-a-nova")}` },
+      { nome: "090-a-nova.sql", sql: SEM_INSERT + REGISTRO("090", "090-a-nova") },
     ]),
     []
   );
 });
 
 test("o que está fora da regra não é cobrado", () => {
-  const semInsert = "alter table public.x add column y int;\n";
   assert.deepEqual(
     oQueNaoRegistra([
       // Anterior à 043: exigir seria reescrever história já aplicada.
-      { nome: "042-folgas-de-superficie.sql", sql: semInsert },
+      { nome: "042-folgas-de-superficie.sql", sql: SEM_INSERT },
       // Prova em transação com rollback: não muda schema, não rodou nada.
-      { nome: "054-verificacao-do-isolamento.sql", sql: semInsert },
+      { nome: "054-verificacao-do-isolamento.sql", sql: SEM_INSERT },
       // Nem sequer é migração numerada.
-      { nome: "database/migrations/README.md", sql: semInsert },
+      { nome: "database/migrations/README.md", sql: SEM_INSERT },
     ]),
     []
   );
 });
 
+test("as catorze da baseline da 078 não são cobradas — e a dispensa é FECHADA", () => {
+  // A 078 recuperou as catorze por baseline e recusou editar os arquivos,
+  // citando a 024: "migrações anteriores são DOCUMENTOS HISTÓRICOS — não são
+  // alteradas retroativamente". Cobrá-las aqui empurraria alguém a editar um
+  // arquivo já aplicado, que é o oposto do que o programa decidiu.
+  for (const n of BASELINADAS_PELA_078) {
+    assert.deepEqual(
+      oQueNaoRegistra([{ nome: `${n}-qualquer-coisa.sql`, sql: SEM_INSERT }]),
+      [],
+      `${n} deveria estar dispensada pela baseline`
+    );
+  }
+  // E a lista é fechada: quem está fora dela continua sendo cobrado. Sem esta
+  // asserção, uma dispensa larga demais passaria despercebida.
+  assert.equal(oQueNaoRegistra([{ nome: "077-fora-da-lista.sql", sql: SEM_INSERT }]).length, 1);
+  assert.equal(oQueNaoRegistra([{ nome: "079-fora-da-lista.sql", sql: SEM_INSERT }]).length, 1);
+});
+
 test("a mensagem entrega o bloco pronto, com a identidade certa", () => {
-  const texto = explicarLedger(oQueNaoRegistra([{ nome: "074-a-nova.sql", sql: "select 1;" }]));
-  assert.match(texto, /values \('074', '074-a-nova', now\(\)/);
+  const texto = explicarLedger(oQueNaoRegistra([{ nome: "090-a-nova.sql", sql: "select 1;" }]));
+  assert.match(texto, /values \('090', '090-a-nova', now\(\)/);
   assert.match(texto, /on conflict do nothing/);
 });
 
