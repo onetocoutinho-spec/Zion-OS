@@ -1,12 +1,20 @@
 // Criação de usuário (agência ou cliente) + perfil — SOMENTE SERVIDOR.
 //
-// F-01: um único fluxo consistente. Autoriza (só EQUIPE), valida o payload,
-// e usa o Supabase Admin (service_role, server-only) para criar o usuário no
-// Auth e o perfil, com compensação se o perfil falhar. NUNCA retorna senha,
-// token, sessão ou service_role ao navegador.
+// F-01: um único fluxo consistente. Autoriza, valida o payload, e usa o
+// Supabase Admin (service_role, server-only) para criar o usuário no Auth e o
+// perfil, com compensação se o perfil falhar. NUNCA retorna senha, token,
+// sessão ou service_role ao navegador.
+//
+// A rota exigia `equipe`, e por isso uma conta de loja era MONOUSUÁRIO: a
+// segunda pessoa da loja virava um chamado para a Zion, num produto vendido a
+// "lojas com equipe própria". Agora a sessão basta, e QUEM pode convidar QUEM é
+// `decidirConvite` — que tira a loja do perfil do autor, nunca do corpo. Sem
+// essa troca, abrir a rota seria criar acesso em qualquer loja mudando um
+// parâmetro; ver `src/modules/onboarding/domain/quemPodeConvidar.ts`.
 
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
-import { exigirEquipe, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { exigirAutenticado, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
+import { decidirConvite } from "@/modules/onboarding/domain/quemPodeConvidar";
 import {
   validarPayloadNovoUsuario,
   criarUsuarioComPerfil,
@@ -65,9 +73,12 @@ export async function POST(request: Request) {
     return Response.json({ erro: "Servidor não configurado para criar usuários." }, { status: 503 });
   }
 
-  // 1) Autorização: só usuário de EQUIPE cria usuários (cliente → 403; sem sessão → 401).
+  // 1) Autorização: sessão com perfil. Quem pode convidar QUEM é decidido no
+  //    passo 2.b, depois de saber o que o corpo pediu — a equipe cria qualquer
+  //    acesso, e o lojista só dentro da própria loja.
+  let ctx;
   try {
-    await exigirEquipe(request);
+    ctx = await exigirAutenticado(request);
   } catch (e) {
     return respostaErroAutorizacao(e);
   }
@@ -83,6 +94,21 @@ export async function POST(request: Request) {
   if (!validacao.ok) {
     return Response.json({ erro: validacao.erro, campo: validacao.campo }, { status: 400 });
   }
+
+  // 2.b) O VÍNCULO EFETIVO sai do perfil do autor, não do corpo.
+  //
+  // Enquanto só equipe chegava aqui, confiar no `clienteId` do corpo era
+  // seguro. Não é mais: seria a vulnerabilidade da 055 de novo — criar acesso
+  // em qualquer loja trocando um parâmetro. `decidirConvite` devolve o alvo, e
+  // é ele que segue daqui para baixo.
+  const decisao = decidirConvite(
+    { papel: ctx.perfil.papel, clienteId: ctx.perfil.clienteId, agenciaId: ctx.perfil.agenciaId },
+    validacao.dados
+  );
+  if (!decisao.ok) {
+    return Response.json({ erro: decisao.motivo }, { status: decisao.status });
+  }
+  const dados = { ...validacao.dados, ...decisao.alvo };
 
   // 3) URL de convite server-side OBRIGATÓRIA (APP_URL, https). Sem ela, NÃO
   //    enviamos convite (nada de cair silenciosamente no Site URL) e NÃO criamos
@@ -100,17 +126,17 @@ export async function POST(request: Request) {
   const admin = getSupabaseAdmin();
   let resultado;
   try {
-    resultado = await criarUsuarioComPerfil(montarDeps(admin, redirectConvite), validacao.dados);
+    resultado = await criarUsuarioComPerfil(montarDeps(admin, redirectConvite), dados);
   } catch {
     // Erro inesperado (ex.: convite/SMTP, rede). Mensagem genérica — sem detalhe do Supabase.
-    console.error("[usuarios] falha inesperada na criação", { papel: validacao.dados.papel });
+    console.error("[usuarios] falha inesperada na criação", { papel: dados.papel });
     return Response.json({ erro: "Não foi possível criar o usuário agora. Tente novamente." }, { status: 500 });
   }
 
   // 5) Resposta sanitizada por tipo (nunca senha/token/sessão/APP_URL).
   switch (resultado.tipo) {
     case "convidado":
-      console.info("[usuarios] convite criado", { papel: validacao.dados.papel });
+      console.info("[usuarios] convite criado", { papel: dados.papel });
       return Response.json({ ok: true, status: "convidado" }, { status: 201 });
     case "ja_existe":
       return Response.json(
