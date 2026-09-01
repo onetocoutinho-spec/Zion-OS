@@ -128,6 +128,7 @@ export const AREAS: readonly AreaDoPortal[] = [
     principal: "/cliente/configuracoes",
     telas: [
       { href: "/cliente/configuracoes", label: "Configurações" },
+      { href: "/cliente/equipe", label: "Equipe" },
       { href: "/cliente/conectar-ml", label: "Conexão com o Mercado Livre" },
       { href: "/cliente/ajuda", label: "Ajuda" },
     ],

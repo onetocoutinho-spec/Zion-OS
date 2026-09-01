@@ -37,6 +37,7 @@ const ESCRITOS_PARA_A_PESSOA: ReadonlySet<string> = new Set([
   "JaPublicadoError",        // src/lib/services/publicacaoML.ts
   "CapaNaoAplicavelError",   // src/lib/services/quadrarCapaML.ts
   "ReconectarCanalError",    // src/modules/integration/domain/credencialRecusada.ts
+  "ContaEmOutraLojaError",   // src/modules/integration/domain/contaEmOutraLoja.ts
 ]);
 
 /** `true` quando a mensagem deste erro pode ir para o navegador como está. */

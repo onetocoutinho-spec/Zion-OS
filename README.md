@@ -1,27 +1,45 @@
 # Zion OS
 
-Sistema da **Zion Company** — agência que ajuda empresários a iniciar, organizar e escalar vendas em marketplaces (Mercado Livre, TikTok Shop, Shopee, Amazon).
+**Zion OS** é o produto da **Zion**, empresa de software. É um sistema **multi-inquilino** para vender em marketplaces (Mercado Livre, TikTok Shop, Shopee, Amazon): importar a base, gerar e otimizar anúncios com IA, publicar e acompanhar as vendas.
 
-São **dois ambientes** no mesmo app, separados por papel do usuário:
+Quem compra:
 
-- **Painel da equipe** — a Zion gerencia clientes, produtos, anúncios, esteira de IA, auditoria em massa, tarefas, vendas, relatórios e financeiro.
-- **Portal do Cliente** (`/cliente/*`) — cada cliente opera a própria loja: importa a base, otimiza anúncios com IA, gere fotos, conecta o Mercado Livre, publica e acompanha as vendas. É **isolado** do painel interno (o `AuthGate` redireciona o cliente).
+- **Lojas com equipe própria** — uma loja, operada por quem é dono dela.
+- **Agências** — operam a carteira de várias lojas na mesma conta. Inclusive agências que antes concorriam com a Zion.
+
+Por isso o app tem **dois formatos de conta** — não dois ambientes de uma agência:
+
+- **Conta de loja** (`/cliente/*`, papel `cliente`) — a loja opera a si mesma: importa a base, otimiza anúncios com IA, gera fotos, conecta o Mercado Livre, publica e acompanha as vendas. É **isolada** da casca de operador (o `AuthGate` redireciona).
+- **Conta de agência** (papel `agencia`) — a casca de carteira, que responde "quais lojas eu opero?": lista de lojas, esteira, auditoria em massa, produtos, pendências, vendas e relatórios. A agência alcança **só as lojas dela** (`clientes.agencia_id`), e quem decide isso é o servidor, não o navegador (`avaliarAcesso` em `src/lib/auth/serverAuthorization.ts` + RLS).
+
+**Os dois formatos se viram sozinhos.** A loja se cadastra pelo próprio app (`signUp` → `/api/loja/provisionar`) e convida a própria equipe; a agência traz operadores, põe lojas novas na carteira e dá acesso a quem trabalha nelas. A Zion não está no caminho de nenhum dos dois — ela só cria a linha em `agencias` quando um contrato de agência é assinado.
+
+O papel `equipe` é a **Zion como fornecedora do software**, não como agência: divide a casca de operador com a agência e vê a mais o grupo **Zion** do menu — agentes de IA, modelos de categoria, agências, usuários, configurações (`src/components/layout/nav.ts`). A decisão de rota por papel é pura e testável (`src/lib/auth/roteamentoPapel.ts`); a segurança real é o RLS + a autorização no servidor.
+
+> **Estado hoje:** existe **uma única conta pagante**, herdada da época em que a Zion operava como agência. A agência acabou; o que se vende é o software.
 
 ---
 
 ## Principais recursos
 
+O que muda entre os formatos de conta é **quem opera** — a lista de recursos é a mesma.
+
 **Esteira de Anúncio (IA).** Os prompts reais dos agentes **A0–A12** vivem em `src/lib/agentes/catalogo.ts` (fonte única) e alimentam:
 - a esteira em **modo rápido** (uma passada) e **aprofundado** (multi-agente, um agente por chamada, com barra de progresso);
-- as **ferramentas do Portal** (`/cliente/otimizar`) — cada ferramenta roda o agente correspondente;
-- a tela **Agentes IA** da equipe.
+- as **ferramentas da conta de loja** (`/cliente/otimizar`) — cada ferramenta roda o agente correspondente;
+- a tela **Agentes IA** (`/agentes`), que é do grupo Zion.
 Produz o anúncio completo (título ≤60, descrição, ficha, medidas, variações, imagens, FAQ) + pendências + **veredito A10** (trava: só aprova sem pendências).
 
-**Integração Mercado Livre (`src/lib/marketplaces/`, `/api/ml/*`).**
-- **Conectar** — OAuth: o cliente autoriza a própria conta; o `refresh_token` fica no `canais_marketplace`. O segredo do app ML vive só no servidor.
-- **Publicar** — dry-run local (a equipe revê o payload) + envio real. Suporta o modelo **User Products** (`mlUserProducts.ts`) exigido por categorias de calçado, com criação da guia de tamanhos.
+**Integração Mercado Livre (`src/lib/marketplaces/`, `src/modules/integration/`, `/api/ml/*`).**
+- **Conectar** — OAuth: a loja autoriza a própria conta do ML; o `refresh_token` fica no `canais_marketplace`. O segredo do app ML vive só no servidor.
+- **Publicar** — **dry-run 100% local** e depois envio real. O payload é montado no navegador por um builder puro e sem segredo (`montarItemML`, em `src/modules/integration/domain/mlPayload.ts`), então quem opera a conta revê **o mesmo payload que vai subir** antes de subir — a equipe da lojista ou a da agência que atende aquela loja, nunca a Zion. O envio real vai para `/api/ml/publicar`, a única ponta que conhece o segredo do app ML e lê o `refresh_token` do canal (que nunca trafega pelo navegador). Suporta o modelo **User Products** (`mlUserProducts.ts`) exigido por categorias de calçado, com criação da guia de tamanhos: o bundle vai junto sempre que dá para montá-lo, e o servidor só o usa se a categoria prevista exigir esse modelo.
 - **Vendas** — puxa os pedidos pagos reais e calcula faturamento, lucro líquido (cruzando com os custos), taxas, ticket médio, mais vendidos (`/cliente/vendas` e `/vendas`).
-- **Vinculação** — exporta o CSV **SKU ↔ MLB** para o cliente importar no ERP dele.
+- **Vinculação** — exporta o CSV **SKU ↔ MLB** para a loja importar no ERP dela.
+
+**Entrada e acessos.** A loja **se cadastra sozinha** — `signUp` no navegador e `/api/loja/provisionar`, que cria a loja e o perfil com o papel decidido no servidor (plano Essencial, cota 30, idempotente). Dali em diante:
+- **Loja › Equipe** (`/cliente/equipe`) — a lojista convida quem trabalha com ela;
+- **Acessos** (`/acessos`) — a agência convida operadores para si e pessoas para as lojas da carteira, e vê quem tem acesso ao quê.
+Quem pode convidar quem é `decidirConvite` (`src/modules/onboarding/domain/quemPodeConvidar.ts`), **puro e testado**: a loja sai do perfil do autor e nunca do corpo da requisição; só `equipe` cria `equipe`; e o único caso em que o corpo escolhe a loja — a agência, que opera várias — é conferido no banco antes, negando por omissão.
 
 **Base de produtos.** Assistente de importação por planilha com **mapeamento de ERP** (presets Bling/Tiny/Magazord + ajuste manual). Produto pai × variações × anúncio; precificação pelo modelo Zion.
 
@@ -78,33 +96,92 @@ As `NEXT_PUBLIC_*` e o `ML_*`/`GEMINI_*` são lidos no **build/deploy** — ao a
 
 ## Banco de dados (Supabase)
 
-As migrações ficam em **`database/migrations/`** e são a fonte da verdade. Rode **em ordem** no SQL Editor (aditivas e não destrutivas):
+As migrações ficam em **`database/migrations/`** — hoje **87 arquivos**, de `001` a `086`. Uma tabela com as 87 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
 
-| # | Arquivo | O que traz |
-| --- | --- | --- |
-| 001 / 001b | modelagem-produtos-marketplace · seed | produto pai × variação × anúncio, templates |
-| 002 | auditoria-em-massa | auditorias, problemas, fila, execuções |
-| 003 | modelo-marketplace-real | `cod_erp`, preço mínimo, margem |
-| 004 | anuncios-gerados | fila de aprovação da esteira |
-| 005 | portal-cliente | `perfis`, RLS por papel (equipe × cliente), RPCs do portal |
-| 006 / 007 | self-service (fase 1 e 2) | cota mensal + cliente importa/audita a própria base |
-| 008 | portal-cliente-leituras | pendências/relatórios do cliente |
-| 009 | marketplace-ml | `canais_marketplace` + colunas do resultado da publicação |
-| 010 | imagens-storage | bucket `produtos-imagens` + políticas |
-| 011 | canal-cliente-conecta | cliente cria/edita o próprio canal (OAuth) |
+### Quem manda: o ledger
 
-Depois: **Auth → Users** para criar contas da equipe; para clientes, criar o usuário + o registro em `perfis` (papel `cliente`, `cliente_id`).
+`public.migracoes_aplicadas` é a **fonte da verdade** sobre o que já rodou — criada na **024**, com a regra estabelecida na **043**: cada migração insere a própria linha como **última instrução do próprio arquivo**. Se rodou, a linha existe; não é disciplina de processo, é conteúdo do arquivo.
 
-> Os scripts do setup antigo (v1.x) ficam em **`database/_legado/`** — não são mais usados; a fonte atual é `migrations/`.
+```sql
+select numero, nome, aplicada_em from public.migracoes_aplicadas order by numero;
+```
+
+`supabase_migrations.schema_migrations` **não** é a fonte da verdade: é log da plataforma, só conhece o que passou pelo `apply_migration` e nada sabe do que foi rodado à mão no SQL Editor.
+
+A regra é conteúdo de arquivo, mas por um tempo **nada conferia o conteúdo** — e ela furou em **catorze**: 035–042 e 071–076. O ledger de produção parava na 070 enquanto o banco estava na 076 (INC-012). O buraco está fechado dos dois lados:
+
+- a **078** recuperou as catorze por **baseline**, e recusou editar os arquivos porque a 024 já dizia que "migrações anteriores são DOCUMENTOS HISTÓRICOS — não são alteradas retroativamente". Cada linha só entrou onde o artefato dela existe no banco: afirmar o que não rodou é pior que a linha ausente;
+- o **pre-commit** passou a recusar migração nova sem a própria linha (`scripts/hooks/ledgerDaMigracao.mjs`), com as catorze dispensadas por uma lista fechada e escrita à mão — dispensa que cresce sozinha é a conferência se desligando em silêncio.
+
+### Nem tudo em `migrations/` é migração de schema
+
+Três tipos de arquivo dividem a mesma pasta e a mesma numeração:
+
+- **Migrações de schema** — a maioria; idempotentes (`if not exists`) e aditivas.
+- **Reparos de dado, uma vez só** — **030**, **031** e **032** consertam a base do **primeiro lojista**, com números medidos naquela base específica (`1.733 de 1.806 produtos`). Não fazem parte da montagem de um banco novo. A **032 se declara `DESTRUTIVA E IRREVERSÍVEL`**: apaga os produtos que entraram por planilha, sem lixeira.
+- **Provas de isolamento** — `054-verificacao-do-isolamento.sql` e `055-verificacao-do-ticket.sql` não alteram nada: rodam dentro de uma transação que termina em `rollback`. São seguras em produção, e é para rodá-las **depois** da migração homônima.
+
+### Ordem de aplicação, e as duas armadilhas
+
+Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingênua:
+
+1. **A 016 exige os perfis ANTES.** Ela inverte o RLS para **negar por padrão** — antes, "usuário sem perfil" era lido como equipe, com acesso total. Rodar a 016 antes de cadastrar os perfis **tira o acesso da equipe**. A ordem correta está no cabeçalho do arquivo: `database/checks/check-users-without-profile.sql` (diagnóstico) → cadastrar todos os perfis com `fix-missing-profiles-template.sql` → conferir que não sobrou ninguém → só então a 016.
+2. **A numeração pula de 016 para 022, de propósito.** As **017–021** (a fundação canônica "Produto Mestre") estão em `database/migrations/arquivadas/`: nada ali foi aplicado, e nada deve ser aplicado sem reabrir a decisão. Os números estão gastos e não são reciclados — reciclar faria duas migrações responderem pelo mesmo número, que é o problema que a 043 fechou. Razão completa no [ADR-011](docs/decisions/ADR-011-arquivar-a-fundacao-canonica-017-021.md).
+
+### Os marcos
+
+| # | O que mudou |
+| --- | --- |
+| 001–015 | a base: produto pai × variação × anúncio, auditoria em massa, esteira, portal do cliente, canal do ML, imagens, medidas, kits |
+| **016** | **o RLS passa a negar por padrão** — sem perfil, sem acesso |
+| 022–028 | o Zion observando a si mesmo: decisões, padrões, ofertas, delegação |
+| 024 · 043 · 078 | o ledger de migrações, a regra que o mantém honesto, e a baseline que recuperou as catorze que a ignoraram |
+| 033 · 034 | os custos do lojista e quem paga o frete — a base do lucro líquido |
+| 035–040 · 044–048 | o Copilot: conversa, propostas e execução atômica (peso, custo, preço, título) |
+| 041 | fecha o RLS que a 005 tinha deixado aberto |
+| **054 · 054a · 055a · 055b** | **a agência como inquilino**: tabela `agencias`, `clientes.agencia_id`, `perfis.agencia_id` — e financeiro, tarefas e reuniões **fora** do alcance dela |
+| 055 | o `state` do OAuth do ML vira ticket verificável |
+| 059 · 061 · 062 | a credencial do ML sai do alcance do navegador e passa a ser cifrada em repouso |
+| 060 · 063 | a cota de IA é cobrada no servidor — por mês e por minuto |
+| 064–074 | a loja em operação: tarefas, perfil de conteúdo, versões de imagem, execuções de IA, investigações do Copilot |
+| 075–084 | a foto com dimensão e cor, a categoria decidida, frete e garantia por loja, e o ledger recuperado (078) |
+| 085 | **uma conta de marketplace pertence a uma loja só** — índice único parcial em `(marketplace, seller_id)`, e a recusa nomeia a loja que já tem a conta |
+| **086** | **a loja enxerga a própria equipe** — o `select` em `perfis` que faltava para convidar sem ser às cegas |
+
+### O resto de `database/`
+
+| Pasta | O que é |
+| --- | --- |
+| `checks/` | diagnóstico e backfill de perfis; diagnóstico das migrações em produção |
+| `verificacoes/` | `alcance-da-agencia.sql` — a varredura que confere, tabela a tabela, o que a agência alcança |
+| `staging/` | bootstrap de um banco de staging, com guardrail que aborta se o banco não estiver marcado como `staging` (ver `database/staging/README.md`) |
+| `manutencao/` | correções pontuais e datadas |
+| `_legado/` | o setup v1.x — histórico; a fonte atual é `migrations/` |
+
+### Depois das migrações: as contas
+
+O acesso é a linha em **`perfis`**, e a 054 impõe por `check` uma das três formas:
+
+| Papel | Exige | É | Quem cria |
+| --- | --- | --- | --- |
+| `cliente` | `cliente_id`, sem `agencia_id` | conta de loja | o próprio cadastro, a lojista, a agência que opera a loja, ou a Zion |
+| `agencia` | `agencia_id`, sem `cliente_id` | conta de agência (alcança as lojas com aquele `clientes.agencia_id`) | a própria agência, ou a Zion |
+| `equipe` | nenhum dos dois | a Zion, fornecedora do software | só a Zion |
+
+Nada disso é feito à mão no console. A primeira conta de uma loja nasce do **autocadastro**; as demais saem de `/api/usuarios`, que manda convite por e-mail (`inviteUserByEmail` → `/definir-senha`) e decide o vínculo no servidor. Criar a linha em **`agencias`** é o único passo que segue com a Zion — é evento de contrato, não de operação.
+
+Usuário sem perfil não entra — desde a 016 isso é o comportamento correto, não um defeito.
 
 ---
 
 ## Deploy (Vercel + Cloudflare)
 
 1. **Vercel** — importar o repo, framework Next.js. Adicionar todas as variáveis de ambiente acima (Production). Cada push na `master` deploya.
-2. **Domínio próprio via Cloudflare** — o cliente acessa por um domínio seu (ex.: `www.zioncompany.online`), com o **proxy do Cloudflare ligado (laranja)** e SSL **Full**. Isso evita problemas de rota/ISP com o `*.vercel.app` e dá uma URL profissional. Cadastre o domínio no Vercel (Settings → Domains) e crie o CNAME no Cloudflare.
+2. **Domínio próprio via Cloudflare** — **um domínio para todo mundo**: lojas, agências e equipe entram pelo mesmo endereço (ex.: `www.zioncompany.online`), com o **proxy do Cloudflare ligado (laranja)** e SSL **Full**. Isso evita problemas de rota/ISP com o `*.vercel.app` e dá uma URL profissional. Cadastre o domínio no Vercel (Settings → Domains) e crie o CNAME no Cloudflare.
 3. **Redirect do ML** — `ML_REDIRECT_URI` (Vercel) **e** o Redirect URI do app ML devem ser **idênticos** ao domínio em uso (`https://SEU-DOMINIO/cliente/conectar-ml`).
 4. **Supabase → Auth → URL Configuration** — Site URL = o domínio do deploy.
+
+> **Por que um domínio só, e não um por inquilino.** A sessão vive no `localStorage` (`createClient` sem opções, em `src/lib/supabase/client.ts`), que é escopado por **origem**. Se o operador entra por um domínio e o Mercado Livre devolve o código em outro, a página de callback roda numa origem sem sessão: `cabecalhoAutenticacao()` volta vazio e `/api/ml/conectar` responde 401 — a conexão não fecha. Dar um domínio a cada inquilino também multiplicaria os Redirect URIs registrados no DevCenter, e **um app ML por domínio é pior ainda**: o `refresh_token` é emitido atado ao `client_id`, então trocar de app obriga *toda* loja conectada a reconectar (foi o incidente `the client_id does not match the original`, 06/08/2026 — ver `src/modules/integration/domain/credencialRecusada.ts`). Domínio de vaidade por inquilino, se um dia for pedido, é redirect de marketing para este endereço — nunca a origem onde o app roda.
 
 > **Gotcha do Vercel:** o deploy é bloqueado se o **autor do commit** não for uma conta GitHub ligada à Vercel. Use o e-mail (ou o `…@users.noreply.github.com`) da conta conectada como `git config user.email`.
 
@@ -115,21 +192,25 @@ Depois: **Auth → Users** para criar contas da equipe; para clientes, criar o u
 ```
 src/
   app/          # rotas (App Router)
-    cliente/    # Portal do Cliente (/cliente/*)
+    cliente/    # conta de loja (/cliente/*)
     api/        # rotas de servidor (agentes, ml)
-    ...         # painel da equipe (clientes, produtos, esteira, vendas…)
+    ...         # casca de operador — agência/equipe (lojas, produtos, esteira, vendas…)
   components/
-    client-portal/  # casca + componentes do portal
-    layout/         # AppShell + nav da equipe
+    client-portal/  # casca + componentes da conta de loja
+    layout/         # AppShell + nav do operador (por papel)
     ui/             # primitivas (Card, Button, StatCard, Table…)
   lib/
     agentes/     # catalogo (prompts A0–A12), esteira, provedorIA/Imagem
-    marketplaces/# mercadolivre, mlPayload, mlUserProducts
+    marketplaces/# mercadolivre (cliente HTTP do ML)
     services/    # camada de dados (repositório → Supabase/localStorage)
     supabase/    # client + mappers + tipos das linhas
     types.ts, store.ts, format.ts, csv.ts, ...
+  modules/       # domínio por área (integration: mlPayload/mlUserProducts; onboarding: quemPodeConvidar; publication; assistant…)
 database/
-  migrations/   # 001…011 (fonte da verdade)
+  migrations/   # 001…086 (+ arquivadas/ 017–021, não aplicadas)
+  checks/       # diagnóstico e backfill de perfis
+  verificacoes/ # provas de alcance por papel
+  staging/      # bootstrap de um banco de staging
   _legado/      # setup antigo v1.x (histórico)
 docs/           # notas (ex.: publicacao-mercado-livre.md)
 ```
@@ -150,6 +231,8 @@ O **SKU único** (código do ERP) atravessa ERP ↔ ML ↔ TikTok — é a chave
 
 ## Limitações conhecidas
 
-- Proteção de rota é client-side (adequada para ferramenta interna; os dados são protegidos pelo RLS no servidor).
+- A proteção de rota no navegador é só experiência de UI. As camadas reais são a autorização no servidor (`src/lib/auth/serverAuthorization.ts`) e o RLS do Supabase — o que importa num produto multi-inquilino, onde a conta de agência e a conta de loja compartilham o mesmo banco.
 - No modo demo (sem Supabase) não há login nem realtime; a IA só roda com `OPENAI_API_KEY` (ou `ANTHROPIC_API_KEY`/`GEMINI_API_KEY`) no servidor.
-- A publicação no modelo **User Products** está estruturada; a ativação no fluxo de publicar + teste de item real é o próximo passo.
+- A publicação no modelo **User Products** já vai junto no fluxo de publicar (o servidor a usa quando a categoria prevista exige); o teste de item real em produção é o próximo passo.
+- A agência cria lojas **novas** na carteira, mas não **reivindica** loja que já existe. É deliberado: deixá-la apontar para uma loja em operação poria a carteira alheia a um `update` de distância. Trazer uma loja self-service para uma agência exige o consentimento da loja, e isso ainda não existe.
+- Não há cobrança no código — nenhum provedor de pagamento, nenhum estado de assinatura. `clientes.limite_esteira_mes` (padrão 30) é a cota de IA, e a 006 já a descrevia como "a base de cobrança por plano"; a cobrança em si não foi construída.

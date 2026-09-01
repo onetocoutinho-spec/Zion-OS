@@ -27,7 +27,7 @@ const linha = (p: Partial<LinhaDaFila> & { mlItemId: string }): LinhaDaFila => (
 });
 
 const monta = (quantos: number, p: Partial<LinhaDaFila>) =>
-  Array.from({ length: quantos }, (_, i) => linha({ mlItemId: `${p.produtoId ?? "p"}-${p.statusMarketplace ?? "a"}-${i}`, ...p }));
+  Array.from({ length: quantos }, (_, i) => linha({ ...p, mlItemId: `${p.produtoId ?? "p"}-${p.statusMarketplace ?? "a"}-${i}` }));
 
 test("o caso Papete: 16 anúncios, 1 no ar — a grade está partida, não duplicada", () => {
   const g = gradesDosProdutos([

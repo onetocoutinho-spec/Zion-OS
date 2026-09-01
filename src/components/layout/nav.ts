@@ -12,6 +12,7 @@ import {
   Workflow,
   Users,
   Building2,
+  KeyRound,
   Activity,
   type LucideIcon,
 } from "lucide-react";
@@ -107,6 +108,16 @@ export const GRUPOS: readonly NavGrupo[] = [
     pergunta: "O que entregamos?",
     papeis: OPERADORES,
     itens: [{ label: "Relatórios", href: "/relatorios", icon: BarChart3 }],
+  },
+  {
+    // A agência precisa trazer gente sozinha: cada operador novo e cada pessoa
+    // de loja era um chamado para a Zion, e isso crescia junto com a carteira.
+    // A equipe também vê — `/usuarios`, no grupo Zion, continua sendo a lista
+    // sem recorte; aqui é a de quem opera.
+    titulo: "Quem entra",
+    pergunta: "Quem tem acesso ao quê?",
+    papeis: OPERADORES,
+    itens: [{ label: "Acessos", href: "/acessos", icon: KeyRound }],
   },
   {
     titulo: "Zion",
