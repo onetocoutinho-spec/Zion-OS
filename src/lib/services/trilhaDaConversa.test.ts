@@ -34,6 +34,16 @@ function comFetch(resposta: Response, f: () => Promise<void>): Promise<void> {
   });
 }
 
+/**
+ * Os ponteiros mínimos de um turno.
+ *
+ * Nenhum teste daqui olha o corpo da requisição — o `fetch` é dublado. Mas
+ * `lojaId` é obrigatório em `PonteirosDaConversa` desde a auditoria do Copilot
+ * (2026-08-22), e um fixture `{}` fazia o contrato mentir em silêncio: o tipo
+ * dizia que a loja sempre vai, e o teste provava o contrário sem ninguém ver.
+ */
+const PONTEIROS = { lojaId: "loja-1" };
+
 const FIM = JSON.stringify({ tipo: "fim", texto: "pronto", conversaId: "c1" });
 
 test("etapa + ferramenta_fim viram uma trilha com passo, teto e desfecho de cada consulta", async () => {
@@ -49,7 +59,7 @@ test("etapa + ferramenta_fim viram uma trilha com passo, teto e desfecho de cada
     FIM,
   ]);
   await comFetch(resposta, async () => {
-    await conversar("oi", {}, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => capturadas.push(t.map((p) => ({ ...p }))) });
+    await conversar("oi", PONTEIROS, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => capturadas.push(t.map((p) => ({ ...p }))) });
   });
   // Quatro eventos mexem na trilha: duas etapas e dois desfechos. Os eventos
   // `ferramenta` (começo) não a remontam — a etapa já os declarou.
@@ -78,7 +88,7 @@ test("a trilha continua chegando DEPOIS do texto começar — era aqui que a tel
     FIM,
   ]);
   await comFetch(resposta, async () => {
-    await conversar("oi", {}, {
+    await conversar("oi", PONTEIROS, {
       aoTexto: () => {
         jaVeioTexto = true;
       },
@@ -99,7 +109,7 @@ test("duas consultas do MESMO nome no mesmo passo terminam na ordem em que come�
     FIM,
   ]);
   await comFetch(resposta, async () => {
-    await conversar("oi", {}, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
+    await conversar("oi", PONTEIROS, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
   });
   assert.deepEqual(ultima[0].consultas, [
     { nome: "achar_produto", estado: "falhou" },
@@ -115,7 +125,7 @@ test("evento partido pela rede não perde a etapa — o leitor já junta as linh
     FIM,
   ];
   await comFetch(respostaComLinhas(linhas, 30), async () => {
-    await conversar("oi", {}, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
+    await conversar("oi", PONTEIROS, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
   });
   assert.deepEqual(ultima, [{ passo: 1, de: 6, consultas: [{ nome: "pendencias", estado: "ok" }] }]);
 });
@@ -129,7 +139,7 @@ test("sem `aoTrilha`, e sem os eventos novos, nada quebra — o caminho antigo c
   ]);
   await comFetch(resposta, async () => {
     // `aoTrilha` é opcional de propósito: quem já chamava `conversar` não muda.
-    const r = await conversar("oi", {}, { aoTexto: () => {}, aoFerramenta: (n) => nomes.push(n) });
+    const r = await conversar("oi", PONTEIROS, { aoTexto: () => {}, aoFerramenta: (n) => nomes.push(n) });
     assert.equal(r.texto, "pronto");
   });
   assert.deepEqual(nomes, ["pendencias"]);
@@ -140,7 +150,7 @@ test("etapa sem teto não inventa um teto — repete o próprio passo", async ()
   await comFetch(
     respostaComLinhas([JSON.stringify({ tipo: "etapa", passo: 3, ferramentas: [] }), FIM]),
     async () => {
-      await conversar("oi", {}, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
+      await conversar("oi", PONTEIROS, { aoTexto: () => {}, aoFerramenta: () => {}, aoTrilha: (t) => { ultima = t.map((p) => ({ ...p })); } });
     }
   );
   assert.deepEqual(ultima, [{ passo: 3, de: 3, consultas: [] }]);
