@@ -34,6 +34,19 @@ export interface ColunasPeso {
   /** Cabeçalho original da coluna que identifica a variante. */
   chave: string;
   tipoChave: TipoChave;
+  /**
+   * A SEGUNDA chave, quando a planilha traz as duas.
+   *
+   * O export do LINX tem `Código` E `EAN`. Até 18/08/2026 a detecção escolhia
+   * uma (`sku ?? ean`) e descartava a outra — e 7 variações desta base ficaram
+   * sem peso porque o SKU delas está vazio ou é de teste (`01044525_TEST`),
+   * enquanto o EAN estava lá, e o arquivo o conhecia.
+   *
+   * O dado existia dos dois lados e o leitor usava uma porta só. `undefined`
+   * quando a planilha só tem uma coluna de chave.
+   */
+  chaveAlternativa?: string;
+  tipoAlternativa?: TipoChave;
   /** Cabeçalho original da coluna de peso. */
   peso: string;
   unidade: UnidadePeso;
@@ -110,6 +123,9 @@ export function detectarColunas(headers: readonly string[]): DeteccaoColunas {
     colunas: {
       chave,
       tipoChave: sku ? "sku" : "ean",
+      // A OUTRA porta, quando existe. O SKU continua mandando: ele identifica a
+      // variação no ERP. O EAN entra só para quem o SKU não alcançou.
+      ...(sku && ean ? { chaveAlternativa: ean, tipoAlternativa: "ean" as const } : {}),
       peso: kg ?? g!,
       unidade: kg ? "kg" : "g",
       altura: acharColuna(headers, ALTURA),
@@ -156,6 +172,8 @@ export function normalizarChave(v: string): string {
 
 export interface LinhaPeso {
   chave: string;
+  /** A segunda chave desta linha, quando a planilha traz as duas. "" se não. */
+  alternativa: string;
   pesoKg: number;
   /** 0 = não informado. A cubagem só entra quando as três medidas existem. */
   alturaCm: number;
@@ -173,7 +191,11 @@ export function lerLinha(
   colunas: ColunasPeso
 ): LeituraLinha {
   const chave = normalizarChave(registro[colunas.chave] ?? "");
-  if (!chave) return { ok: false, motivo: "sem_chave" };
+  const alternativa = colunas.chaveAlternativa
+    ? normalizarChave(registro[colunas.chaveAlternativa] ?? "")
+    : "";
+  // Sem NENHUMA das duas não há como saber de quem é a linha.
+  if (!chave && !alternativa) return { ok: false, motivo: "sem_chave" };
 
   const bruto = parseNumero(registro[colunas.peso] ?? "");
   if (bruto === null || bruto <= 0) return { ok: false, motivo: "sem_peso" };
@@ -189,6 +211,7 @@ export function lerLinha(
     ok: true,
     linha: {
       chave,
+      alternativa,
       pesoKg,
       alturaCm: medida(colunas.altura),
       larguraCm: medida(colunas.largura),

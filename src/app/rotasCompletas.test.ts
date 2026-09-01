@@ -248,6 +248,17 @@ function trataCarregando(texto: string): boolean {
     // resolveu o problema de outro jeito. Era esse mesmo erro, invertido, que
     // deixou quatro telas passarem.
     /\{\s*\w+ && [^}]*\.length === 0/.test(texto) || //                  guarda de nulo
+    // A TERCEIRA FORMA, e o mesmo erro pela terceira vez (28/08).
+    //
+    // A tela `atributos` escreve `{estado === "carregando" && <Esqueleto />}` em
+    // vez do ternário, e a sentinela a acusou. Estava errada de novo: `estado` é
+    // UM valor discriminado, então `=== "carregando"` e `=== "vazio"` são
+    // mutuamente exclusivos por construção — a exclusividade vem do tipo, não da
+    // sintaxe do ternário. Aceitar esta forma não afrouxa nada.
+    //
+    // Terceira vez que este arquivo aprende que "a forma que eu escrevi por
+    // último" não é a regra. Ficou dito nas três.
+    /\{\s*estado === "carregando" &&/.test(texto) || //                   `&&` sobre estado discriminado
     /carregando \?[^:]*:\s*carregouUmaVez/.test(texto) || //             estado local
     // A FORMA DA VISÃO GERAL, e ela é melhor que as minhas.
     //

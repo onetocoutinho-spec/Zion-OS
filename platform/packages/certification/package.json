@@ -1,0 +1,33 @@
+{
+  "name": "@zion/certification",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zion/shared": "workspace:*",
+    "@zion/compiler": "workspace:*",
+    "@zion/runtime": "workspace:*",
+    "@zion/cli": "workspace:*",
+    "@zion/lsp": "workspace:*",
+    "@zion/generator-css": "workspace:*",
+    "@zion/generator-documentation": "workspace:*",
+    "@zion/generator-figma": "workspace:*",
+    "@zion/generator-json": "workspace:*",
+    "@zion/generator-react": "workspace:*",
+    "@zion/generator-typescript": "workspace:*"
+  }
+}

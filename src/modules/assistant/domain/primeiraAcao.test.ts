@@ -47,19 +47,71 @@ const COM_EFEITO = FERRAMENTAS.filter((f) => f.efeito !== "le").map((f) => f.nom
 // T2 · T3 — o conjunto da primeira ação
 // ---------------------------------------------------------------------------
 
-test("T2: a primeira ação admite exatamente as 21 ferramentas de leitura", () => {
+test("T2: a primeira ação admite exatamente as 24 ferramentas de leitura", () => {
   // As duas igualdades dizem coisas diferentes, e as duas importam: o número
   // trava o tamanho, e a comparação com FERRAMENTAS_DE_LEITURA trava a
   // IDENTIDADE — as dez são as que leem, não dez quaisquer.
   //
   // Este teste reprovou em 03/08/2026 e apontou o defeito certo: `executa`
   // dentro da lista de leitura. O conserto foi na fonte, não aqui.
-  assert.equal(PRIMEIRA_ACAO.length, 21);
+  // 24 apos a mescla de 24/08/2026 — e DERIVADO de `efeito === "le"`.
+  assert.equal(PRIMEIRA_ACAO.length, 24);
   assert.deepEqual([...PRIMEIRA_ACAO].sort(), [...FERRAMENTAS_DE_LEITURA.map((f) => f.nome)].sort());
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1, "o catálogo ganhou ação sem passar por T3");
 });
 
-test("T2: são exatamente estas vinte e uma — a matriz que autorizou a decisão", () => {
+test("T2: são exatamente estas vinte e quatro — a matriz que autorizou a decisão", () => {
+  // A DÉCIMA QUINTA entrou em 19/08/2026: `duplicatas_e_faltantes`.
+  //
+  // A DECISÃO. A lojista pediu ao chat "analise os skus de cada anúncio, pois
+  // temos alguns que estão repetidos e outros faltando derivações". O
+  // assistente respondeu, corretamente, que não tinha ferramenta para isso e
+  // que não ia inventar um "escaneei tudo". A recusa foi o comportamento certo
+  // — e a resposta errada, porque o dado existia: a mesma pergunta em SQL
+  // achou 143 códigos de barras repetidos em 296 linhas, 17 em produtos
+  // diferentes e 9 com SKUs divergentes para o mesmo código.
+  //
+  // `pendencias` não cobre isso: ela olha custo, peso e conflito. Uma
+  // ferramenta que quase serve é pior que nenhuma — o modelo a chama, não acha
+  // e conclui pela ausência. Era o caso.
+  //
+  // Ela lê o MESMO porto de `pendencias` (`analise.catalogo`), não fala com o
+  // Mercado Livre, e não escreve. Sem porto, ela DIZ que não olhou em vez de
+  // devolver lista vazia — vazio sem ter olhado é a afirmação de ausência que
+  // este repositório passou o mês arrancando.
+  //
+  // Por que pode ser a PRIMEIRA ação: o pior caso de um "obrigado" disparando-a
+  // é a lojista ver quais códigos estão repetidos sem ter pedido. Mesmo dano de
+  // `estado_da_loja` — nenhum.
+  //
+  // A DÉCIMA QUARTA entrou em 14/08/2026: `fotos_do_produto`.
+  //
+  // Ela responde, por produto, se as capas dos anúncios estão fora do padrão e
+  // se o cadastro já tem foto que serviria — a diferença entre um clique e uma
+  // viagem ao fabricante. Sem escrita, sem chamada externa (lê o nosso banco,
+  // que a rota de troca de capa mantém anotado), e o tenant vem da sessão.
+  //
+  // Por que pode ser a PRIMEIRA ação: o pior caso de um "obrigado" disparando-a
+  // é a lojista ver o estado das fotos de um produto sem ter pedido. Mesmo
+  // dano de `estado_da_loja` — nenhum.
+  //
+  // A DÉCIMA TERCEIRA entrou em 11/08/2026: `pendencias_da_conta`.
+  //
+  // Ela lê o que o Mercado Livre disse sobre os anúncios DESTA conta —
+  // infração com motivo e remédio, pausa, revisão, bloqueio. Sem escrita, sem
+  // chamada externa (a leitura do ML já aconteceu e está no banco), e o tenant
+  // vem da sessão como nas outras doze.
+  //
+  // Por que ela pode ser a PRIMEIRA ação: o pior caso de um "obrigado"
+  // disparando-a é a lojista ver o que o ML está cobrando dela sem ter
+  // pedido. Mesmo dano de `estado_da_loja` — nenhum.
+  //
+  // E há razão para ela estar entre as primeiras, a mesma de `meus_custos`:
+  // 460 dos anúncios têm infração e 131 estão pausados. Quando a lojista
+  // pergunta por que algo não vende, esta é a causa mais provável, e obrigá-la
+  // a uma pergunta preliminar para chegar nela seria esconder a resposta atrás
+  // de um passo.
+  //
   // A DÉCIMA PRIMEIRA entrou em 10/08/2026: `meus_custos`.
   //
   // Ela lê a configuração da PRÓPRIA lojista — margem mínima, imposto,
@@ -211,13 +263,16 @@ test("T2: são exatamente estas vinte e uma — a matriz que autorizou a decisã
     "contar",
     "diagnostico_de_agrupamento",
     "diagnostico_do_anuncio",
+    "duplicatas_e_faltantes",
     "estado_da_loja",
+    "fotos_do_produto",
     "meu_perfil_de_conteudo",
     "meus_custos",
     "o_que_eu_consigo",
     "o_que_falta_no_produto",
     "o_que_impede",
     "pendencias",
+    "pendencias_da_conta",
     "preparacao_de_anuncio",
     "pricing",
     "procedencia",
@@ -408,6 +463,57 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
   //
+  // De 22 para 23 em 11/08/2026: `pendencias_da_conta`, LEITURA. O poder de
+  // agir não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão: o Mercado Livre já tinha dito o que está errado em 460 anúncios
+  // e o Zion já tinha guardado — 1.060 motivos e 1.034 remédios na 052, mais
+  // 131 anúncios `paused` e 155 `under_review` na 050. Perguntado sobre isso,
+  // o chat respondia "tenho a contagem, mas não tenho acesso ao conteúdo
+  // delas". A informação estava dentro de casa e a porta, fechada.
+  //
+  // Ela lê o DOMÍNIO: `pendenciasDaConta` já classificava gravidade, tipo e o
+  // que fazer para as duas telas — inclusive o ramo grave de propriedade
+  // intelectual, onde editar-e-republicar conta como reincidência. Nenhuma
+  // regra nova nasceu com a ferramenta, e é por isso que ela é `le`: dizer o
+  // que o ML mandou não é agir sobre o anúncio.
+  //
+  // De 23 para 24 em 14/08/2026: `fotos_do_produto`, LEITURA. O poder de agir
+  // não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão: 310 anúncios ativos com capa fora do padrão, em 54 produtos, e
+  // o Mercado Livre cobrando "a foto de capa não cumpre os requisitos". O chat
+  // sabia CONTAR isso pela conta inteira e não sabia responder a pergunta que
+  // ela faz produto a produto — preciso fotografar este, ou já tenho foto boa
+  // aqui dentro? A diferença entre as duas respostas é uma viagem ao
+  // fabricante, e o software tinha o dado para separá-las.
+  //
+  // A varredura completa do mesmo dia (391 de 391 anúncios lidos) mostrou
+  // `trocariam` ZERO: a foto boa quase nunca está dentro do anúncio. Ou seja,
+  // a resposta honesta na maioria dos casos É "precisa fotografar" — e dizer
+  // isso cedo vale mais que oferecer um conserto que não existe.
+  //
+  // Ela lê o DOMÍNIO e o NOSSO banco: `lerMaxSize` é o mesmo juiz da tela de
+  // conferência e do relatório do ML, e `foto_capa_max_size` é anotado pela
+  // rota que troca a capa. NÃO fala com o Mercado Livre de propósito — cada
+  // chamada de lá renova o refresh_token da lojista, e uma ferramenta de chat
+  // que faz isso a cada pergunta derruba a conexão dela.
+  //
+  // Entra na PRIMEIRA AÇÃO porque é leitura pura: o pior caso de um "obrigado"
+  // dispará-la é a lojista ver o estado das fotos de um produto sem ter
+  // pedido. Mesmo dano de `estado_da_loja` — nenhum.
+  // De 24 para 25 em 19/08/2026: `duplicatas_e_faltantes`, LEITURA. O poder de
+  // agir não mudou — continuam 1 rascunho, 8 propostas e 1 ação.
+  //
+  // A decisão está registrada em T2. Em resumo: o chat recusou uma varredura de
+  // SKUs repetidos que ele não tinha como fazer, e a recusa foi correta; o dado
+  // existia (143 EANs repetidos em 296 linhas) e faltava a ferramenta.
+  //
+  // Ela RELATA e não apaga, e isso é decisão, não omissão: em 18/08/2026 onze
+  // linhas que pareciam duplicatas do banco carregavam, cada uma, o MLB de um
+  // anúncio VIVO diferente. Apagá-las teria deixado 11 anúncios no ar sem
+  // variante. O que parece linha repetida pode ser anúncio repetido, e o
+  // remédio é oposto — então a ferramenta não ganha poder de apagar.
   // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA. Só a leitura
   // subiu — continuam 1 rascunho, 8 propostas e 1 ação. Ver a matriz do T2.
   //
@@ -475,8 +581,19 @@ test("T12: nenhuma ferramenta foi removida, acrescentada ou reclassificada sem d
   // O que mudou no banco para isto ser possível é a 074: sete campos que o ML
   // já mandava no MESMO multiget e a importação descartava — o mais caro deles
   // sendo `listing_type_id`, que decide se a comissão é 14% ou 19%.
-  assert.equal(FERRAMENTAS.length, 35);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 21);
+  // AS CONTAGENS SAO A UNIAO DAS DUAS LINHAS DE TRABALHO — mescla de 24/08/2026.
+  //
+  // A `master` somou 13 ferramentas e a `feat/portal-da-lojista` somou 3.
+  // Nenhum nome colidiu, e NENHUM DOS DOIS LADOS mexeu no tipo `Efeito` nem em
+  // `EXECUCOES_REVERSIVEIS` — a fronteira de seguranca atravessou a mescla sem
+  // ser tocada, e continua com UMA execucao nomeada (`reativar_anuncio`).
+  //
+  // Cada acrescimo tem a decisao escrita no historico do lado que o trouxe;
+  // repetir as dezesseis aqui faria deste comentario um changelog. O que esta
+  // linha guarda e o TAMANHO: uma 39a ferramenta reprova aqui e obriga alguem
+  // a assinar.
+  assert.equal(FERRAMENTAS.length, 38);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 24);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);

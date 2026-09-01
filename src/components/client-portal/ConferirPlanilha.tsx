@@ -16,12 +16,18 @@
 // salta aos olhos de quem conhece o próprio catálogo, e não saltaria nunca de
 // dentro de um relatório de "1374 linhas processadas".
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatBRLExato } from "@/lib/format";
 import type { PlanilhaLida } from "@/lib/planilha";
-import { alcancePorNome } from "@/lib/services/importacaoCustos";
+import {
+  alcancePorNome,
+  type OpcoesDeImportacao,
+} from "@/lib/services/importacaoCustos";
+import { preverCasamentoPorSku, type CasamentoPorPrefixo } from "@/lib/services/casamentoDeSku";
+import { fraseDoCasamento } from "@/modules/catalog/domain/casamentoPorPrefixo";
+import { cabecalhoDesalinhado } from "@/modules/catalog/domain/cabecalhoDesalinhado";
 import {
   colunaDoPapel,
   montarPrevia,
@@ -43,19 +49,66 @@ interface Props {
    * espalhamento. Melhor isso do que uma tela que não abre.
    */
   nomesDoCatalogo?: readonly string[];
+  /**
+   * Quem é a loja — para medir se os códigos da planilha são os SKUs sem o
+   * tamanho. Opcional: sem ele a oferta simplesmente não aparece.
+   */
+  clienteId?: string;
   onCancelar: () => void;
-  onConfirmar: (mapa: Mapeamento) => void;
+  onConfirmar: (mapa: Mapeamento, opcoes?: OpcoesDeImportacao) => void;
+  /**
+   * Trocar a tabela aberta por outra do mesmo arquivo.
+   *
+   * Opcional: sem ele a conferência funciona como antes, só não deixa trocar.
+   * Quem passa é a tela que guarda a planilha em estado — a troca é pura
+   * (`trocarTabela`), então ninguém relê o arquivo.
+   */
+  onTrocarTabela?: (aba: string, linhaDoCabecalho: number) => void;
   ocupado?: boolean;
 }
 
 export function ConferirPlanilha({
   planilha,
   nomesDoCatalogo,
+  clienteId,
   onCancelar,
   onConfirmar,
+  onTrocarTabela,
   ocupado,
 }: Props) {
-  const [mapa, setMapa] = useState<Mapeamento>(() => sugerirMapeamento(planilha.headers));
+  // O MAPA SEGUE A TABELA. Trocar de aba troca os cabeçalhos, e um mapa da aba
+  // anterior apontaria papéis para colunas que não existem mais — a tela diria
+  // "custo" apontando para o nada, que é exatamente o tipo de silêncio que esta
+  // conferência existe para acabar. Estado derivado, recalculado no render em
+  // que a identidade muda.
+  const identidade = `${planilha.origem?.aba ?? ""}#${planilha.origem?.linhaDoCabecalho ?? 0}#${planilha.headers.join("|")}`;
+
+  /**
+   * O primeiro valor NÃO VAZIO daquela coluna, para a pessoa ver o que ela traz.
+   *
+   * Não o da primeira linha: relatório de ERP costuma ter linha de cabeçalho de
+   * grupo, ou um primeiro item incompleto, e um exemplo vazio não ajuda ninguém.
+   * Olha até 20 linhas — passar disso é procurar agulha para mostrar palheiro.
+   */
+  const desalinhamento = cabecalhoDesalinhado(planilha.headers, planilha.camposPorLinha ?? []);
+
+  const exemplo = (h: string): string => {
+    for (const l of planilha.linhas.slice(0, 20)) {
+      const v = (l[h] ?? "").trim();
+      if (v) return v.length > 28 ? `${v.slice(0, 28)}…` : v;
+    }
+    return "";
+  };
+  const [estado, setEstado] = useState(() => ({
+    identidade,
+    mapa: sugerirMapeamento(planilha.headers),
+  }));
+  if (estado.identidade !== identidade) {
+    setEstado({ identidade, mapa: sugerirMapeamento(planilha.headers) });
+  }
+  const mapa = estado.mapa;
+  const setMapa = (f: (m: Mapeamento) => Mapeamento) =>
+    setEstado((e) => ({ ...e, mapa: f(e.mapa) }));
 
   const previa = useMemo(() => montarPrevia(planilha.linhas, mapa), [planilha.linhas, mapa]);
 
@@ -74,6 +127,36 @@ export function ConferirPlanilha({
     [planilha.linhas, mapa, nomesDoCatalogo]
   );
   const linhasQueEspalham = alcance.size;
+  // A OFERTA DO CASAMENTO POR PREFIXO.
+  //
+  // Medida contra o catálogo real, e só oferecida quando o padrão existe. A
+  // decisao e dela: "tira os dois ultimos digitos" e a convencao do ERP dela,
+  // nao uma verdade sobre SKUs. Ver `casamentoPorPrefixo`.
+  const colunaSku = colunaDoPapel(mapa, "sku");
+  const codigosDaPlanilha = useMemo(
+    () => (colunaSku ? planilha.linhas.map((r) => r[colunaSku] ?? "") : []),
+    [planilha.linhas, colunaSku]
+  );
+  const [prefixo, setPrefixo] = useState<CasamentoPorPrefixo | null>(null);
+  const [usarPrefixo, setUsarPrefixo] = useState(false);
+  useEffect(() => {
+    if (!clienteId || codigosDaPlanilha.length === 0) {
+      setPrefixo(null);
+      return;
+    }
+    let ativo = true;
+    void preverCasamentoPorSku(clienteId, codigosDaPlanilha).then((a) => {
+      if (!ativo) return;
+      setPrefixo(a);
+      // Trocar de coluna ou de aba invalida a decisao anterior: ela confirmou
+      // um padrao que talvez nao seja mais o que esta na tela.
+      setUsarPrefixo(false);
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [clienteId, codigosDaPlanilha]);
+
   const alertas = useMemo(() => sinaisDaPlanilha(planilha.linhas, mapa), [planilha.linhas, mapa]);
   const liberado = podeImportar(alertas);
 
@@ -100,12 +183,81 @@ export function ConferirPlanilha({
         </p>
       </div>
 
+      {/* ── DE ONDE ESTA TABELA SAIU ───────────────────────────────────────
+          Um leitor que escolhe a aba em silêncio é a mesma coisa que um leitor
+          que adivinha a coluna. Aparece só quando houve escolha a fazer: uma
+          aba com cabeçalho na linha 1 não tem nada a declarar. */}
+      {planilha.origem &&
+        ((planilha.tabelas?.length ?? 0) > 1 || planilha.origem.linhaDoCabecalho > 1) && (
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs text-white/60">
+              Li a aba <span className="font-medium text-white/85">{planilha.origem.aba}</span>, com
+              o cabeçalho na linha {planilha.origem.linhaDoCabecalho}.
+            </p>
+            {(planilha.tabelas?.length ?? 0) > 1 && (
+              <label className="mt-2 flex flex-col gap-1">
+                <span className="text-xs text-white/45">
+                  Este arquivo tem {planilha.tabelas!.length} tabelas. Cada uma se importa
+                  separadamente — nenhuma entra junto.
+                </span>
+                {/* O valor é o ÍNDICE, e não "aba+linha" em texto: nome de
+                    aba tem espaço ("Produtos novos"), e qualquer separador de
+                    texto quebraria exatamente no arquivo que motivou a tela. */}
+                <select
+                  value={planilha.tabelas!.findIndex(
+                    (t) =>
+                      t.aba === planilha.origem!.aba &&
+                      t.linhaDoCabecalho === planilha.origem!.linhaDoCabecalho
+                  )}
+                  onChange={(e) => {
+                    const t = planilha.tabelas![Number(e.target.value)];
+                    if (t) onTrocarTabela?.(t.aba, t.linhaDoCabecalho);
+                  }}
+                  disabled={ocupado || !onTrocarTabela}
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-violet-500"
+                >
+                  {planilha.tabelas!.map((t, i) => (
+                    <option key={`${t.aba}#${t.linhaDoCabecalho}`} value={i}>
+                      {t.aba} — {t.linhas.length} linha(s), colunas:{" "}
+                      {t.headers.filter(Boolean).slice(0, 4).join(", ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+
+      {/* O CABEÇALHO MAIS LARGO QUE OS DADOS — cabecalhoDesalinhado.
+          Avisa e NÃO conserta: deslocar sozinho seria adivinhar qual coluna
+          sobra, e um alinhamento adivinhado grava com confiança. */}
+      {desalinhamento.desalinhado && (
+        <p className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+          <AlertTriangle size={14} className="mt-px shrink-0" />
+          <span>{desalinhamento.texto}</span>
+        </p>
+      )}
+
       {/* ── As colunas e seus papéis ────────────────────────────────────── */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {planilha.headers.map((h) => (
           <label key={h} className="flex flex-col gap-1">
             <span className="truncate text-xs text-white/60" title={h}>
               {h || "(coluna sem nome)"}
+            </span>
+            {/*
+              O VALOR DE EXEMPLO, e ele não é enfeite.
+
+              Em 27/08/2026 um relatório do Linx chegou com 11 nomes no
+              cabeçalho e 9 campos nas linhas: a coluna "PRECO" trazia 25,13, que
+              era o CUSTO, e "QUANTIDADE" trazia 46,90, que era o preço. Só o
+              nome estava na tela, então não havia como ver.
+
+              Uma linha de exemplo resolve o caso inteiro: quem mapeia LÊ o valor
+              e percebe que ele não combina com o nome.
+            */}
+            <span className="truncate text-[11px] text-zinc-500" title={exemplo(h)}>
+              {exemplo(h) || "(vazio)"}
             </span>
             <select
               value={mapa[h] ?? "ignorar"}
@@ -122,6 +274,23 @@ export function ConferirPlanilha({
           </label>
         ))}
       </div>
+
+      {/* ── A OFERTA: os códigos são os seus SKUs sem o tamanho? ─────────
+          Aparece só quando o padrão foi MEDIDO no catálogo. Vem desmarcada:
+          gravar dinheiro por um padrão que o software deduziu sozinho é
+          exatamente o que a conferência existe para impedir. */}
+      {prefixo && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-500/25 bg-violet-500/5 p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={usarPrefixo}
+            onChange={(e) => setUsarPrefixo(e.target.checked)}
+            disabled={ocupado}
+            className="mt-0.5 size-4 shrink-0 accent-violet-500"
+          />
+          <span className="text-white/75">{fraseDoCasamento(prefixo)}</span>
+        </label>
+      )}
 
       {/* ── O que a planilha denuncia sobre si mesma ────────────────────── */}
       {alertas.map((a) => (
@@ -226,7 +395,12 @@ export function ConferirPlanilha({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button onClick={() => onConfirmar(mapa)} disabled={!liberado || ocupado}>
+        <Button
+          onClick={() =>
+            onConfirmar(mapa, usarPrefixo && prefixo ? { sufixoDoSku: prefixo.sufixo } : undefined)
+          }
+          disabled={!liberado || ocupado}
+        >
           <Check size={15} /> {ocupado ? "Gravando…" : "Está certo, pode gravar"}
         </Button>
         <Button variant="ghost" onClick={onCancelar} disabled={ocupado}>

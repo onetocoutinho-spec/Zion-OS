@@ -1,0 +1,11 @@
+# O compilador Zion Platform é OUTRO workspace (pnpm), com tsconfig próprio e
+# dependências próprias (@zion/shared e irmãos). A Vercel instala só a raiz,
+# então esses pacotes não existem lá — e o type check do Next, que inclui
+# `**/*.ts`, quebrava o build inteiro num arquivo que não é do app.
+#
+# Medido em 20/08/2026: "Cannot find module '@zion/shared'" em
+# platform/packages/certification/src/fixtures.ts derrubou o deploy de uma
+# mudança que só tocava src/app/api/ml/.
+platform
+experiments
+docs

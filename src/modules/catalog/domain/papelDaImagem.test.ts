@@ -7,7 +7,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { capaAtual, papelDaFotoNova, type ImagemExistente } from "./papelDaImagem.ts";
+import {
+  capaAtual,
+  papelDaFotoNova,
+  sucessoraDaCapa,
+  type ImagemExistente,
+  type ImagemComTamanho,
+} from "./papelDaImagem.ts";
 
 const capa: ImagemExistente = { tipoImagem: "Principal" };
 const galeria: ImagemExistente = { tipoImagem: "Secundária" };
@@ -70,4 +76,98 @@ test("capaAtual devolve o registro inteiro, para poder desfazer", () => {
   assert.equal(capaAtual(existentes)?.id, "b");
   assert.equal(capaAtual([{ tipoImagem: "Secundária" as const, id: "a" }]), null);
   assert.equal(capaAtual([]), null);
+});
+
+// ===========================================================================
+// A SUCESSÃO DA CAPA — medida em 14/08/2026
+// ===========================================================================
+//
+// `Chinelo Havaianas Top Liso` era o único dos 80 produtos SEM foto Principal.
+// As duas telas que apagam foto chamavam `excluirImagem` direto, sem olhar se
+// a foto apagada era a capa. Apagar a capa deixava o produto sem capa, calado
+// — e `urlsDoProduto` passava a mandar ao Mercado Livre a primeira foto que a
+// consulta devolvesse.
+
+const foto = (
+  id: string,
+  tipoImagem: "Principal" | "Secundária",
+  largura?: number,
+  altura?: number
+): ImagemComTamanho => ({ id, tipoImagem, largura, altura });
+
+test("apagar uma SECUNDÁRIA não mexe na capa", () => {
+  const acervo = [foto("capa", "Principal", 1200, 1200), foto("b", "Secundária", 900, 900)];
+  assert.equal(sucessoraDaCapa(acervo, "b"), null);
+});
+
+test("apagar a CAPA elege a sucessora — pela regra que a lojista já leu", () => {
+  // "Serve de capa: quadrada e com 1200 ou mais de lado" é o que a tela de
+  // conferência diz a ela. A sucessão não pode usar outra régua.
+  const acervo = [
+    foto("capa", "Principal", 1200, 1200),
+    foto("grandeMasTorta", "Secundária", 2000, 1000),
+    foto("quadradaBoa", "Secundária", 1200, 1200),
+  ];
+  assert.equal(sucessoraDaCapa(acervo, "capa")?.id, "quadradaBoa");
+});
+
+test("sem nenhuma que sirva, a MAIOR assume — capa ruim é melhor que nenhuma", () => {
+  // Produto com fotos e sem capa manda ao ML a primeira foto que a consulta
+  // devolver. Sorteio é pior que a maior.
+  const acervo = [
+    foto("capa", "Principal", 1200, 1200),
+    foto("pequena", "Secundária", 300, 400),
+    foto("media", "Secundária", 800, 900),
+  ];
+  assert.equal(sucessoraDaCapa(acervo, "capa")?.id, "media");
+});
+
+test("foto sem dimensão não é promovida na frente de quem tem", () => {
+  // Importação antiga não media (migração 075 é de 13/08). Sem número, a foto
+  // não pode ganhar de uma que provou o tamanho.
+  const acervo = [
+    foto("capa", "Principal", 1200, 1200),
+    foto("semMedida", "Secundária"),
+    foto("medida", "Secundária", 600, 600),
+  ];
+  assert.equal(sucessoraDaCapa(acervo, "capa")?.id, "medida");
+});
+
+test("empate desfaz pela ordem da lista — a escolha é previsível", () => {
+  // Duas chamadas seguidas têm que eleger a MESMA foto. Sucessão sorteada
+  // faria a capa do produto mudar sozinha entre um clique e outro.
+  const acervo = [
+    foto("capa", "Principal", 1200, 1200),
+    foto("primeira", "Secundária", 1200, 1200),
+    foto("segunda", "Secundária", 1200, 1200),
+  ];
+  assert.equal(sucessoraDaCapa(acervo, "capa")?.id, "primeira");
+  assert.equal(sucessoraDaCapa(acervo, "capa")?.id, "primeira");
+});
+
+test("apagar a ÚNICA foto não inventa sucessora", () => {
+  // Produto sem foto nenhuma é estado legítimo. O que não é legítimo é
+  // produto COM fotos e SEM capa.
+  assert.equal(sucessoraDaCapa([foto("capa", "Principal", 1200, 1200)], "capa"), null);
+});
+
+test("id que não está no acervo não elege ninguém", () => {
+  const acervo = [foto("capa", "Principal", 1200, 1200), foto("b", "Secundária", 900, 900)];
+  assert.equal(sucessoraDaCapa(acervo, "inexistente"), null);
+});
+
+test("a sucessora NUNCA é a própria apagada, em qualquer arranjo", () => {
+  // A regra geral, sobre todos os casos: promover a foto que está sendo
+  // apagada deixaria o produto sem capa de novo, e o defeito voltaria calado.
+  const arranjos: ImagemComTamanho[][] = [
+    [foto("a", "Principal", 1200, 1200), foto("b", "Secundária", 1200, 1200)],
+    [foto("a", "Principal", 300, 300), foto("b", "Secundária"), foto("c", "Secundária", 1200, 1200)],
+    [foto("a", "Secundária"), foto("b", "Principal", 900, 1200), foto("c", "Secundária", 400, 400)],
+  ];
+  for (const acervo of arranjos) {
+    for (const alvo of acervo) {
+      const s = sucessoraDaCapa(acervo, alvo.id);
+      if (s) assert.notEqual(s.id, alvo.id, `${alvo.id} elegeu a si mesma`);
+    }
+  }
 });

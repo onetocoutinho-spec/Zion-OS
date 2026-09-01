@@ -8,13 +8,11 @@ import {
   ListChecks,
   FileText,
   Sparkles,
-  ArrowRight,
   Gauge,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/StatCard";
 import { EsqueletoDeBloco } from "@/components/ui/Skeleton";
-import { Card } from "@/components/ui/Card";
-import { Section, Pill } from "@/components/client-portal/ui";
+import { Pill } from "@/components/client-portal/ui";
 import { OQueImportaAgora } from "@/components/client-portal/OQueImportaAgora";
 import { TarefasDaLoja } from "@/components/client-portal/TarefasDaLoja";
 import { useClientPortal } from "@/components/client-portal/context";
@@ -31,7 +29,7 @@ import { listarAnunciosGeradosDoCliente } from "@/lib/services/anunciosGerados";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarPendenciasDoCliente } from "@/lib/services/pendencias";
 import { listarRelatoriosDoCliente } from "@/lib/services/relatorios";
-import { portalProximasAcoes, quotaEsteira } from "@/lib/services/perfil";
+import { quotaEsteira } from "@/lib/services/perfil";
 
 export default function ClienteHome() {
   const { clienteId, nome } = useClientPortal();
@@ -79,7 +77,6 @@ export default function ClienteHome() {
     () => infracoesPorAnuncioDoCliente(clienteId),
     [clienteId]
   );
-  const { data: proximas } = useLiveQuery(portalProximasAcoes);
   const { data: quota } = useLiveQuery(quotaEsteira);
 
   // ==========================================================================
@@ -137,6 +134,22 @@ export default function ClienteHome() {
     const semEstadoConhecido = ans.filter(
       (a) => a.mlItemId && !a.statusMarketplace
     ).length;
+    // O QUE ESTE NÚMERO MEDE DE VERDADE — e por que o rótulo mudou (24/08/2026).
+    //
+    // `qtdPendencias` é `anuncio.pendencias.length`: a lista que a ESTEIRA
+    // produz quando gera o anúncio (o que o A10 achou faltando). Não tem
+    // relação nenhuma com o que o Mercado Livre cobra — isso é
+    // `pendenciasDaConta`, e é o cartão "Pendências abertas".
+    //
+    // As duas metades daqui são a mesma pergunta: a esteira terminou este
+    // anúncio? `status ∉ (aprovado, publicado)` é "ainda em revisão";
+    // `qtdPendencias > 0` é "gerado com item faltando".
+    //
+    // O RÓTULO DIZIA "Anúncios com problemas", e ao lado de "Anúncios no ar:
+    // 26" ele mostrava 90. Nenhuma lojista lê isso como duas populações
+    // diferentes — lê como "26 no ar e 90 deles com problema", que é
+    // impossível e destrói a confiança nos dois números. O denominador vai na
+    // dica justamente para a conta fechar na cabeça de quem lê.
     const comProblema = ans.filter(
       (a) => a.qtdPendencias > 0 || (a.status !== "aprovado" && a.status !== "publicado")
     ).length;
@@ -168,10 +181,29 @@ export default function ClienteHome() {
       ativos,
       semEstadoConhecido,
       comProblema,
+      /** O denominador de `comProblema` — a população que ele conta. */
+      gerados: ans.length,
       semOtimizacao,
       score,
       pendencias: daConta ? daConta.grupos.length : pendsInternas.length,
       pecasParadas: daConta?.estoqueTravado ?? 0,
+      // O MESMO FATO QUE OS CARTÕES MOSTRAM, agora indo também para as lacunas.
+      //
+      // Esta tela já contava tudo isto e passava para `montarEstadoDaLoja` um
+      // estado que não o continha — então `lacunasDaLoja` devolvia `[]` e a
+      // abertura dizia "Nada travado" acima de 70 pendências e 2708 peças
+      // paradas. O número não faltava; faltava chegar.
+      //
+      // `null` quando não há retrato do marketplace: sem leitura gravada não se
+      // afirma nem que há pendência nem que não há. As internas ficam de fora
+      // de propósito — o menu "Pendências" que a lojista abre é o do ML.
+      noAr: daConta
+        ? {
+            pendenciasAbertas: daConta.grupos.length,
+            pecasParadas: daConta.estoqueTravado,
+            noArSemOtimizacao: semOtimizacao,
+          }
+        : null,
       relatorios: (relatorios ?? []).length,
       auditados: auds.length,
     };
@@ -192,10 +224,14 @@ export default function ClienteHome() {
       produtos ?? [],
       anuncios ?? [],
       imagens ?? [],
-      Boolean(canal?.ativo)
+      Boolean(canal?.ativo),
+      // As infrações entram DENTRO de `m.noAr`, já dobradas nos grupos por
+      // `pendenciasDaConta`. Passá-las aqui de novo as contaria duas vezes.
+      null,
+      m.noAr
     );
     return { lista: lacunasDaLoja(estado), estado };
-  }, [produtos, anuncios, imagens, canal]);
+  }, [produtos, anuncios, imagens, canal, m.noAr]);
 
   return (
     <>
@@ -215,18 +251,39 @@ export default function ClienteHome() {
         * A frase nomeia a consequência, não a contagem: "4 coisas estão
         * travando sua loja" é um fato sobre a loja dela; "4 pontos a resolver"
         * é um número sobre a nossa lista. */}
-      <OQueImportaAgora
-        lacunas={lacunas.lista}
-        estado={lacunas.estado}
-        nome={nome}
-        acao={
-          quota ? (
-            <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
-              <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
-            </Pill>
-          ) : undefined
-        }
-      />
+      {/* A ABERTURA ESPERA O DADO — senão ela abre MENTINDO.
+        *
+        * `montarEstadoDaLoja(produtos ?? [], …)` transforma "ainda não chegou"
+        * em `produtos: 0`, e zero produtos é a lacuna `sem_produtos`, que é
+        * `bloqueiaTudo`. O resultado, medido em 24/08/2026 nesta conta de 72
+        * produtos: por um instante o `h1` da tela dizia **"Sua base está
+        * vazia"**, com o botão "Trazer produtos".
+        *
+        * O erro é o mesmo que `useContextoDaPergunta` já resolve para o chat,
+        * e pela mesma razão escrita lá: "meio segundo de número errado
+        * continua sendo número errado". Só que aqui ele saía no texto MAIOR da
+        * página, e o conselho era importar uma base que já existe.
+        *
+        * Os cartões abaixo já esperavam por `carregandoOsNumeros`; a abertura
+        * não. É o par de sempre neste arquivo — a regra aplicada num lugar e
+        * esquecida no vizinho. O esqueleto reserva a altura para a página não
+        * pular quando a frase chega. */}
+      {carregandoOsNumeros ? (
+        <EsqueletoDeBloco altura="h-[132px]" className="rounded-xl" />
+      ) : (
+        <OQueImportaAgora
+          lacunas={lacunas.lista}
+          estado={lacunas.estado}
+          nome={nome}
+          acao={
+            quota ? (
+              <Pill tone={quota.restante > 0 ? "violet" : "yellow"}>
+                <Gauge size={12} /> {quota.usado}/{quota.limite} otimizações no mês
+              </Pill>
+            ) : undefined
+          }
+        />
+      )}
 
       {/* O que a LOJA decidiu fazer — nasce do Copilot, some quando vazio. */}
       <TarefasDaLoja />
@@ -281,18 +338,32 @@ export default function ClienteHome() {
           icon={Megaphone}
           tone="green"
           hint={m.semEstadoConhecido > 0 ? `${m.semEstadoConhecido} sem estado conhecido` : undefined}
+          href="/cliente/anuncios"
         />
         <StatCard
-          label="Anúncios com problemas"
+          label="Anúncios que a esteira não fechou"
           value={m.comProblema}
           icon={AlertTriangle}
           tone={m.comProblema > 0 ? "yellow" : "gray"}
+          // A POPULAÇÃO, na dica: é ela que resolve o "90 de 26".
+          hint={m.gerados > 0 ? `de ${m.gerados} anúncios gerados` : undefined}
+          href="/cliente/anuncios"
         />
+        {/* "PRODUTOS", e não "anúncios" — o mesmo conserto do cartão acima.
+            `estadoDeOtimizacao` devolve um Map por `produtoId`: um produto com
+            cinco anúncios conta uma vez. O rótulo dizia "Anúncios" e mostrava
+            36 ao lado de "Anúncios no ar: 26" — outra conta impossível na
+            leitura de quem passa o olho. */}
         <StatCard
-          label="Anúncios no ar, sem otimização"
+          label="Produtos no ar, sem otimização"
           value={m.semOtimizacao}
           icon={Package}
           tone={m.semOtimizacao > 0 ? "orange" : "gray"}
+          hint={m.total > 0 ? `de ${m.total} produtos` : undefined}
+          // COM O FILTRO JÁ APLICADO. Mandar para a lista inteira de 72 e
+          // esperar que ela ache o seletor de Status é devolver a ela o
+          // trabalho de garimpo que o número deveria ter poupado.
+          href={`/cliente/produtos?status=${encodeURIComponent("No ar, sem otimização")}`}
         />
         {/* A NOTA MÉDIA SAIU DA PRIMEIRA TELA.
           *
@@ -313,10 +384,38 @@ export default function ClienteHome() {
           icon={ListChecks}
           tone={m.pendencias > 0 ? "yellow" : "gray"}
           hint={m.pecasParadas > 0 ? `${m.pecasParadas} peças paradas` : undefined}
+          href="/cliente/pendencias"
         />
-        <StatCard label="Relatórios" value={m.relatorios} icon={FileText} tone="blue" />
+        <StatCard
+          label="Relatórios"
+          value={m.relatorios}
+          icon={FileText}
+          tone="blue"
+          href="/cliente/relatorios"
+        />
+        {/* SEM `href`, e é decisão: o destino deste número seria esta mesma
+            tela. Os pontos já estão abertos no topo dela, com a consequência
+            de cada um e o link de cada um. Um cartão que rola a página 300px
+            para cima é pior que um cartão que não promete nada. */}
         <StatCard label="Pontos a resolver" value={lacunas.lista.length} icon={Sparkles} tone="violet" />
-        <StatCard label="Próximas ações" value={(proximas ?? []).length} icon={ArrowRight} tone="cyan" />
+        {/* "PRÓXIMAS AÇÕES" SAIU DAQUI — o conserto que faltou terminar.
+          *
+          * Ele lia `portal_proximas_acoes`, um RPC sobre a tabela `tarefas`,
+          * que SÓ a equipe preenche. A seção "Recados" logo abaixo lia o mesmo
+          * RPC e já foi consertada: ela só aparece quando existe recado. O
+          * cartão ficou para trás e continuou afirmando "Próximas ações: 0" —
+          * permanentemente, num produto onde ninguém preenche aquela tabela.
+          *
+          * É o mesmo par de sempre neste arquivo: uma regra em dois lugares,
+          * consertada num deles. E o efeito era o pior possível — um zero fixo
+          * ao lado de "Pontos a resolver: 2", os dois prometendo responder
+          * "o que eu faço agora?" com números que se contradizem.
+          *
+          * NÃO virou um cartão de lacunas: "Pontos a resolver" já é esse
+          * número, e a abertura da tela já lista os pontos com a consequência
+          * de cada um. Três lugares para o mesmo fato é como se perde a
+          * confiança nos três. Os recados continuam existindo — na seção que
+          * já sabe sumir quando não há nenhum. */}
       </div>
       )}
 
@@ -331,35 +430,21 @@ export default function ClienteHome() {
         * frase que a resume, dentro de . Mantê-la nos dois
         * lugares seria dizer a mesma coisa duas vezes na mesma tela. */}
 
-        {/* Recados.
-            Esta seção vinha de um RPC que SÓ a equipe preenche. Num produto sem
-            equipe no caminho crítico ela ficava vazia para sempre, dizendo "o
-            que a equipe planejou para você" — uma promessa que ninguém ia
-            cumprir. Agora ela só existe quando existe recado; quem diz o que
-            fazer é "O que falta", que se deriva dos dados. */}
-        {(proximas ?? []).length > 0 && (
-        <Section titulo="Recados" descricao="Avisos deixados para a sua loja.">
-          <Card>
-            {(
-              <ul className="space-y-3">
-                {(proximas ?? []).slice(0, 6).map((a, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <div className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-zinc-300">{a.proxima_acao || a.tarefa}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {a.tarefa}
-                        {a.prazo ? ` · prazo ${a.prazo}` : ""}
-                      </p>
-                    </div>
-                    <Pill tone="gray">{a.status}</Pill>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </Section>
-      )}
+      {/* "RECADOS" SAIU DAQUI — migração 077, INC-012.
+        *
+        * A seção lia `portal_proximas_acoes`, um RPC sobre a tabela `tarefas`,
+        * que SÓ a equipe da Zion preenchia. A agência não existe mais, e o
+        * comentário que ficou aqui em 24/08 já dizia metade disso: ela "só
+        * existe quando existe recado". Em produção nunca existia — a função
+        * tinha sido removida do banco sem migração, e o wrapper transformava a
+        * falha em lista vazia.
+        *
+        * Então a seção não estava condicional. Estava morta, e parecia
+        * condicional. As duas coisas somem juntas: a função (077) e o que a
+        * chamava.
+        *
+        * Quem diz o que fazer na loja é "O que falta", que se deriva dos
+        * dados — e "Pontos a resolver", acima, é o mesmo número. */}
     </>
   );
 }

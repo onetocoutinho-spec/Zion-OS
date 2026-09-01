@@ -118,11 +118,29 @@ export function pendenciasDaGrade(variacoes: readonly VariacaoDoAnuncio[]): stri
     ];
   }
 
+  // O EAN NÃO ESTÁ AQUI, E ISSO FOI MEDIDO — 27/08/2026.
+  //
+  // Estes campos TRAVAM a publicação: sem cor, tamanho, SKU, estoque ou preço, o
+  // anúncio não sobe. O EAN não trava, e o próprio Mercado Livre diz isso:
+  //
+  //     GET /categories/MLB273770/attributes
+  //     GTIN: required=false · catalog_required=false · conditional_required
+  //     EMPTY_GTIN_REASON: "O produto não tem código cadastrado", ...
+  //
+  // Ou seja: o ML aceita publicar sem código de barras, declarando o motivo. Os
+  // obrigatórios da categoria são outros seis (BRAND, MODEL, GENDER, COLOR,
+  // SIZE, FOOTWEAR_TYPE) e GTIN não é um deles.
+  //
+  // Enquanto ele estava nesta lista, um produto pronto era reprovado por 2 EANs
+  // faltando em 15 variações — nota 86, tudo no lugar, barrado por uma exigência
+  // que o marketplace não faz. É a mesma forma do INC-011: cobrar o que o ML não
+  // cobra.
+  //
+  // O EAN ausente vira SUGESTÃO, em `sugestoesDaGrade`: conselho, nunca trava.
   const campos: { chave: keyof VariacaoDoAnuncio; nome: string }[] = [
     { chave: "cor", nome: "cor" },
     { chave: "tamanho", nome: "tamanho" },
     { chave: "sku", nome: "SKU" },
-    { chave: "ean", nome: "EAN" },
     { chave: "estoque", nome: "estoque" },
     { chave: "preco", nome: "preço" },
   ];
@@ -131,6 +149,38 @@ export function pendenciasDaGrade(variacoes: readonly VariacaoDoAnuncio[]): stri
   for (const { chave, nome } of campos) {
     const faltando = variacoes.filter((v) => String(v[chave]).startsWith(FALTA)).length;
     if (faltando === 0) continue;
+    // COR E TAMANHO SÃO EIXOS, E EIXO QUE NÃO EXISTE NÃO FALTA — 31/08/2026.
+    //
+    // Bolsa não tem tamanho. Esta lista exigia `tamanho` de toda grade, e o
+    // resultado eram três Bolsas Moleca — oito anúncios NO AR — carregando
+    // "tamanho — nenhuma das 3 variações tem" para sempre.
+    //
+    // O ML é explícito, e a resposta dele é a mesma forma do EAN vinte linhas
+    // acima: em `MLB7022` (Bolsas) o atributo `SIZE` NÃO EXISTE — 88 atributos
+    // na categoria e ele não é um deles; obrigatórios são só BRAND e MODEL.
+    // Cobrar o que o marketplace não cobra é o INC-011 outra vez.
+    //
+    // Mas não dá para simplesmente parar de exigir. Medido nas cinco categorias
+    // desta base, no mesmo dia:
+    //
+    //     MLB273770 Sandálias .. SIZE exigido      MLB7022   Bolsas ... ausente
+    //     MLB23332  Tênis ...... SIZE exigido      MLB275574 Sapatilhas exigido
+    //     MLB108791 Meias ...... SIZE exigido
+    //
+    // Quatro de cinco exigem. Um calçado cadastrado sem grade é pendência de
+    // verdade, e apagá-la trocaria um erro por outro.
+    //
+    // A REGRA QUE SEPARA OS DOIS CASOS É A DO EIXO EM USO. Se ALGUMA variação
+    // tem o campo, ele é eixo daquela grade e faltar nas outras é defeito —
+    // metade das variações sem tamanho não publica em categoria nenhuma. Se
+    // NENHUMA tem, não há eixo, e sem saber a categoria eu não posso afirmar
+    // que deveria haver: vira conselho em `sugestoesDaGrade`, nunca trava.
+    //
+    // Isso não é palpite disfarçado — é a distinção que este arquivo já paga
+    // caro para manter: ausente por natureza não é ausente por descuido. E o
+    // caso perigoso (uns têm, outros não) continua sendo pendência.
+    const ehEixo = chave === "cor" || chave === "tamanho";
+    if (ehEixo && faltando === variacoes.length) continue;
     pendencias.push(
       faltando === variacoes.length
         ? `${FALTA}: ${nome} — nenhuma das ${variacoes.length} variações tem.`
@@ -138,6 +188,75 @@ export function pendenciasDaGrade(variacoes: readonly VariacaoDoAnuncio[]): stri
     );
   }
   return pendencias;
+}
+
+/**
+ * O que MELHORARIA a grade, sem impedir a publicação.
+ *
+ * Eram duas coisas diferentes que caem na mesma prateleira:
+ *
+ *   EAN — não é obrigatório em nenhuma das categorias medidas. O ML o marca
+ *         `conditional_required` e oferece `EMPTY_GTIN_REASON` no lugar.
+ *   EIXO AUSENTE — cor ou tamanho que NENHUMA variação tem. Em Bolsas o ML nem
+ *         oferece o campo `SIZE`; em Sandálias ele o exige. Sem saber a
+ *         categoria, o honesto é dizer e deixar quem lê decidir.
+ *
+ * O que as une é a regra do arquivo: só trava o que o marketplace trava. O
+ * resto é conselho, e conselho diz o que fazer.
+ */
+export function sugestoesDaGrade(variacoes: readonly VariacaoDoAnuncio[]): string[] {
+  if (variacoes.length === 0) return [];
+  const conselhos: string[] = [];
+
+  const semEan = variacoes.filter((v) => String(v.ean).startsWith(FALTA)).length;
+  if (semEan > 0) {
+    const quantas =
+      semEan === variacoes.length
+        ? `nenhuma das ${variacoes.length} variações tem`
+        : `falta em ${semEan} de ${variacoes.length} variações`;
+    conselhos.push(
+      `EAN (código de barras): ${quantas}. Não impede publicar — o Mercado Livre ` +
+        `aceita o motivo no lugar do código ("O produto não tem código cadastrado"). ` +
+        `Com o EAN, o anúncio ganha o catálogo do ML e aparece em mais buscas.`
+    );
+  }
+
+  // O EIXO QUE SUMIU INTEIRO. Ver o porquê em `pendenciasDaGrade`: ele saiu das
+  // pendências porque bolsa não tem tamanho, e ficou aqui porque calçado tem.
+  // A frase serve às duas leituras sem escolher nenhuma — quem conhece o
+  // produto sabe qual delas é a sua num relance.
+  for (const { chave, nome } of [
+    { chave: "cor", nome: "cor" },
+    { chave: "tamanho", nome: "tamanho" },
+  ] as const) {
+    if (!variacoes.every((v) => String(v[chave]).startsWith(FALTA))) continue;
+    conselhos.push(
+      `${nome}: nenhuma das ${variacoes.length} variações tem. Não impede publicar — ` +
+        `há categorias em que o Mercado Livre nem oferece este campo (em Bolsas não ` +
+        `existe tamanho). Mas se este produto tem ${nome}, a grade está incompleta e ` +
+        `o ML vai recusar na hora de publicar.`
+    );
+  }
+
+  return conselhos;
+}
+
+/**
+ * Este conselho foi escrito por `sugestoesDaGrade`?
+ *
+ * Quem recompõe um anúncio já gravado precisa TIRAR o conselho antigo antes de
+ * pedir o novo — sem isso, recompor duas vezes deixa a frase duplicada na tela,
+ * e três vezes, triplicada. `recomporVeredictos` fazia isso comparando com o
+ * prefixo do EAN, à mão.
+ *
+ * Enquanto o EAN era o único conselho da grade, funcionava. Em 31/08/2026 o
+ * eixo ausente virou o segundo, e a filtragem à mão passou a deixar ESSE
+ * duplicar — o defeito que ela existia para evitar, agora invisível porque
+ * ninguém pensaria em olhar. Saber quais frases são suas é do domínio, não de
+ * quem chama.
+ */
+export function ehConselhoDaGrade(conselho: string): boolean {
+  return /^(EAN \(código de barras\)|cor|tamanho):/.test(String(conselho));
 }
 
 /**

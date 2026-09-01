@@ -91,10 +91,20 @@ export const FONTES_DE_IMPORTACAO: readonly FonteDeImportacao[] = [
   },
   {
     id: "custos",
-    titulo: "Só os custos",
-    frase: "Para quem já tem os produtos aqui e quer preencher quanto paga em cada um.",
+    // O PREÇO ENTROU EM 26/08/2026, E O TÍTULO PRECISOU MUDAR JUNTO.
+    //
+    // A importação sempre aceitou mapear "Preço de venda" na tela e sempre
+    // jogou fora o valor. Agora ela grava — e enquanto o título dissesse "só os
+    // custos", quem precisava do preço não abriria esta porta.
+    //
+    // O preço trava a publicação: os 1003 produtos de uma base recém-importada
+    // estavam com preço zero, e a exportação de derivações do ERP não tem
+    // coluna de preço. Ele vem em outro relatório, e é aqui que ele entra.
+    titulo: "Custos e preços",
+    frase:
+      "Para quem já tem os produtos aqui e quer preencher quanto paga e por quanto vende.",
     formato: "arquivo",
-    exige: "CSV ou Excel com custo + SKU (ou nome do produto)",
+    exige: "CSV ou Excel com custo e/ou preço de venda + SKU (ou nome do produto)",
     cria: false,
   },
   {

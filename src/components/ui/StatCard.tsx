@@ -71,7 +71,11 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "violet", href
           <p className="mt-1.5 text-xl font-semibold tracking-tight text-white sm:text-2xl">
             {value}
           </p>
-          {hint && <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>}
+          {/* 12px, e nao 11: a dica carrega o DENOMINADOR ("de 880 anuncios
+              gerados"), sem o qual "90" ao lado de "26 no ar" e conta
+              impossivel. Informacao que resolve contradicao nao pode ser o
+              menor texto da tela. */}
+          {hint && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
         </div>
         <div
           aria-hidden="true"

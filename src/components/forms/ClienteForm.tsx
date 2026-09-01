@@ -28,6 +28,16 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
     observacoes: inicial?.observacoes ?? "",
   });
 
+  // O plano que a loja TEM entra na lista mesmo que não esteja no vocabulário.
+  //
+  // Um `<select>` com `value` que não casa com opção nenhuma não mostra nada, e
+  // salvar grava o que está aparecendo — reescrevendo em silêncio o plano de
+  // quem veio de fora da lista. Foi o que aconteceu com "Essencial", que agora
+  // está em `PLANOS`; isto guarda o PRÓXIMO valor que aparecer antes da lista.
+  const planosComOAtual = PLANOS.includes(form.plano as (typeof PLANOS)[number])
+    ? [...PLANOS]
+    : [form.plano, ...PLANOS];
+
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
@@ -104,7 +114,7 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
             <Input value={form.segmento} onChange={(e) => set("segmento", e.target.value)} placeholder="Ex.: Eletrônicos / Áudio" />
           </Field>
           <Field label="Plano contratado">
-            <Select options={PLANOS} value={form.plano} onChange={(e) => set("plano", e.target.value)} />
+            <Select options={planosComOAtual} value={form.plano} onChange={(e) => set("plano", e.target.value)} />
           </Field>
           <Field label="Status">
             <Select options={CLIENTE_STATUS} value={form.status} onChange={(e) => set("status", e.target.value as Cliente["status"])} />

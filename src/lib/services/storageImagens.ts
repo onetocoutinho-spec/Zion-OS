@@ -5,8 +5,18 @@
 // publicação no ML consome (o ML não aceita prompts, só imagens por URL).
 
 import { getSupabase, supabaseConfigurado } from "../supabase/client";
-import { atualizarImagem, criarImagem, listarImagensDoProduto } from "./imagensProduto";
-import { capaAtual, papelDaFotoNova } from "../../modules/catalog/domain/papelDaImagem";
+import {
+  atualizarImagem,
+  criarImagem,
+  excluirImagem,
+  listarImagensDoProduto,
+} from "./imagensProduto";
+import {
+  capaAtual,
+  papelDaFotoNova,
+  sucessoraDaCapa,
+} from "../../modules/catalog/domain/papelDaImagem";
+import { dimensaoParaGravar } from "../imagens/medirArquivo";
 import type { ImagemProduto, TipoImagem } from "../types";
 
 const BUCKET = "produtos-imagens";
@@ -49,6 +59,12 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     throw new Error("O upload de imagens precisa do Supabase configurado.");
   }
   const { clienteId, produtoId, file } = opcoes;
+
+  // ANTES DE SUBIR, porque depois de subir a única referência é uma url — e
+  // url do CDN do ML serve variante, não original. Medir aqui é o único
+  // momento em que a dimensão é a verdade sem ressalva. Ver migração 075.
+  const dimensao = await dimensaoParaGravar(file);
+
   const caminho = `${clienteId}/${produtoId}/${Date.now()}-${slugArquivo(file.name)}`;
 
   const sb = getSupabase();
@@ -74,6 +90,12 @@ export async function uploadImagemProduto(opcoes: OpcoesUpload): Promise<ImagemP
     url,
     status: "Aprovada",
     observacoes: opcoes.cor ? `Cor: ${opcoes.cor}` : opcoes.observacoes ?? "",
+    // A COR VIRA COLUNA. Ela já chegava aqui e ia parar em `observacoes`, texto
+    // livre que não casa com variante nenhuma — a informação existia e não era
+    // consultável. `null` quando ninguém disse: foto de cor desconhecida não é
+    // candidata a capa de anúncio colorido. Migração 060.
+    cor: opcoes.cor?.trim() || null,
+    ...dimensao,
   });
 }
 
@@ -133,6 +155,35 @@ export async function promoverImagemACapa(produtoId: string, imagemId: string): 
     if (anterior && !jaEraACapa) await atualizarImagem(anterior.id, { tipoImagem: "Principal" });
     throw e;
   }
+}
+
+/**
+ * Apaga uma foto — e não deixa o produto sem capa.
+ *
+ * ===========================================================================
+ * O DEFEITO QUE ISTO FECHA — medido em 14/08/2026
+ * ===========================================================================
+ *
+ * As duas telas que apagam foto chamavam `excluirImagem` direto. Nenhuma
+ * olhava se a foto apagada era a capa. `Chinelo Havaianas Top Liso` era o
+ * único dos 80 produtos SEM foto Principal, e foi assim que ficou.
+ *
+ * Nada avisava. `urlsDoProduto` põe a Principal primeiro; sem Principal, a
+ * capa do anúncio vira a primeira foto que a consulta devolver — sorteio,
+ * decidido no servidor do Mercado Livre.
+ *
+ * A ORDEM: a sucessão acontece ANTES do apagamento. Se `promoverImagemACapa`
+ * falhar, nada é apagado e a capa continua a de antes — a lojista tenta de
+ * novo. Apagar primeiro e falhar na promoção deixaria exatamente o buraco que
+ * esta função existe para fechar.
+ */
+export async function excluirImagemDoProduto(
+  produtoId: string,
+  imagemId: string
+): Promise<void> {
+  const sucessora = sucessoraDaCapa(await listarImagensDoProduto(produtoId), imagemId);
+  if (sucessora) await promoverImagemACapa(produtoId, sucessora.id);
+  await excluirImagem(imagemId);
 }
 
 /**

@@ -10,6 +10,7 @@ const repo = criarRepositorio<ProdutoVariante, ProdutoVarianteRow>({
   selecao: "*, produtos(nome)",
   paraApp: varianteParaApp,
   paraBanco: varianteParaBanco,
+  rpcDeLote: "atualizar_variantes_em_lote",
 });
 
 export async function listarVariantesDoProduto(produtoId: string): Promise<ProdutoVariante[]> {

@@ -126,7 +126,7 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "contar",
     efeito: "le",
     descricao:
-      "Quantos produtos estão em alguma condição. Use SEMPRE que precisar de um número — você não tem acesso aos dados e qualquer número seu seria inventado.",
+      "Quantos produtos estão em alguma condição. Use SEMPRE que precisar de um número — você não tem acesso aos dados e qualquer número seu seria inventado. `infracao` responde quantas infrações o Mercado Livre registrou na conta e em quantos anúncios — NÃO diga que não enxerga isso.",
     parametros: {
       type: "object",
       properties: {
@@ -139,7 +139,16 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
         // que o pegava veio junto.
         assunto: {
           type: "string",
-          enum: ["peso", "custo", "foto", "anuncio", "aprovacao", "publicacao", "precificacao", "infracao"],
+          enum: [
+            "peso",
+            "custo",
+            "foto",
+            "anuncio",
+            "aprovacao",
+            "publicacao",
+            "precificacao",
+            "infracao",
+          ],
         },
       },
       required: ["assunto"],
@@ -156,6 +165,108 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     nome: "estado_da_loja",
     efeito: "le",
     descricao: "Todos os pontos a resolver na loja, em ordem. Use para dar um panorama.",
+    parametros: { type: "object", properties: {} },
+  },
+  {
+    // =====================================================================
+    // A 23ª FERRAMENTA — 11/08/2026, e ela é um ATO
+    // =====================================================================
+    //
+    // `contar` com assunto `infracao` diz QUANTAS. Esta diz O QUÊ, EM QUAL
+    // ANÚNCIO e O QUE O ML MANDA FAZER — que é o que a lojista precisa para
+    // consertar.
+    //
+    // Medido em produção antes de existir: perguntado o remédio, o chat
+    // respondeu "tenho a contagem, mas não tenho acesso ao conteúdo delas".
+    // Era verdade, e o banco tinha 1.034 remédios escritos pelo próprio ML,
+    // mais 131 anúncios pausados e 155 em revisão, todos com MLB.
+    //
+    // Nenhuma regra nova nasceu com ela: `pendenciasDaConta` já classificava
+    // gravidade, tipo e o que fazer — inclusive o ramo grave de propriedade
+    // intelectual — e as duas telas já a usavam. O que faltava era a porta.
+    nome: "pendencias_da_conta",
+    efeito: "le",
+    descricao:
+      "O que o Mercado Livre disse sobre os anúncios DESTA conta: infrações com o motivo e o remédio na palavra dele, anúncios pausados, em revisão e bloqueados — cada um com o MLB e o que fazer. Use para \"o que o ML está cobrando?\", \"por que meu anúncio caiu?\", \"quais estão pausados?\" e sempre que for propor conserto de anúncio. ATENÇÃO: acusação de propriedade intelectual (categoria PI_*) NÃO se resolve editando — editar e republicar conta como reincidência e arrisca a conta. Nesses casos, diga isso e não proponha edição.",
+    parametros: {
+      type: "object",
+      properties: {
+        tipo: {
+          type: "string",
+          description:
+            "Filtra por um tipo só. Omita para o panorama. Valores: bloqueado, propriedade-intelectual, infracao-do-ml, pausado-por-voce, em-revisao, capa-pequena, capa-nao-quadrada, sem-estoque, sem-motivo.",
+        },
+      },
+    },
+  },
+  {
+    // A 24ª FERRAMENTA — e a decisão, escrita, de por que ela existe.
+    //
+    // MEDIDO EM 14/08/2026: 310 anúncios ativos com capa fora do padrão, em 54
+    // produtos, com o Mercado Livre cobrando "a foto de capa não cumpre os
+    // requisitos". O chat sabia CONTAR isso pela conta inteira e não sabia
+    // responder a pergunta que ela faz produto a produto: preciso fotografar
+    // este, ou já tenho foto boa aqui dentro?
+    //
+    // A varredura completa do mesmo dia — 391 de 391 anúncios lidos — provou
+    // que a resposta quase nunca está dentro do anúncio (`trocariam`: ZERO).
+    // O gargalo são as fotos dela. Então o que o software pode fazer de útil é
+    // dizer, por produto, se a viagem ao fabricante é necessária ou se o
+    // conserto é um clique.
+    //
+    // `le` e não `executa`: ela não escreve em lugar nenhum, e não fala com o
+    // Mercado Livre — cada chamada ao ML renova o refresh_token da lojista, e
+    // uma ferramenta de chat que faz isso a cada pergunta derruba a conexão
+    // dela. Responde do nosso banco, que a rota de troca de capa passou a
+    // manter anotado.
+    nome: "fotos_do_produto",
+    efeito: "le",
+    // A DESCRIÇÃO NÃO PODE PROMETER O QUE NÃO EXISTE.
+    //
+    // A primeira versão dizia "ofereça aplicar". Testada em produção no mesmo
+    // dia, o modelo terminou a resposta com "Quer que eu aplique essas fotos
+    // nos anúncios?" — e o chat NÃO TEM como aplicar: a troca de capa só
+    // acontece quando a lojista larga a foto no chat, por `aplicar-capa`. Um
+    // "sim" dela cairia no vazio.
+    //
+    // É o defeito que este repositório passou o mês arrancando, cometido na
+    // descrição de uma ferramenta: prometer o que o software não faz. A
+    // descrição agora diz o caminho que EXISTE.
+    descricao:
+      "As fotos de UM produto: quantos anúncios dele estão com a capa fora do padrão do Mercado Livre, e se o cadastro já tem foto que serviria de capa (quadrada, 1200 ou mais de lado) ou se é preciso fotografar. Use para \"preciso fotografar este produto?\", \"as fotos deste anúncio estão boas?\" e sempre que a lojista perguntar o que fazer com a capa. NÃO diga que não enxerga isso. NUNCA se ofereça para aplicar ou trocar a capa: você não tem ferramenta para isso. O caminho que existe é UM só, e é ela quem faz — arrastar a foto para esta conversa, escolher a cor e confirmar; aí o Zion troca a capa dos anúncios daquela cor. Diga isso, tanto quando já existe foto boa quanto quando não existe nenhuma.",
+    parametros: {
+      type: "object",
+      properties: {
+        produto: {
+          type: "string",
+          description:
+            "Nome ou parte do nome do produto. Omita quando há um produto aberto na tela — aí é sobre ele.",
+        },
+      },
+    },
+  },
+  {
+    nome: "duplicatas_e_faltantes",
+    efeito: "le",
+    // A FERRAMENTA QUE FALTAVA — e a recusa que provou a falta.
+    //
+    // Em 19/08/2026 a lojista pediu: "antes de tudo analise os skus de cada
+    // anúncio, pois temos alguns que estão repetidos e outros faltando
+    // derivações". O assistente respondeu, corretamente:
+    //
+    //   "eu não tenho uma ferramenta que varra o catálogo inteiro procurando
+    //    SKUs duplicados ou variações sem SKU de uma vez. Não quero inventar um
+    //    'escaneei tudo' que a ferramenta não me deu."
+    //
+    // A recusa foi o comportamento certo. Mas o DADO existia: a mesma pergunta,
+    // em SQL, achou 143 códigos de barras repetidos em 296 linhas — 17 deles em
+    // produtos diferentes e 9 com SKUs divergentes.
+    //
+    // `pendencias` não responde isso: ela olha custo, peso e conflito. Uma
+    // ferramenta que quase serve é pior que nenhuma, porque o modelo a chama e
+    // conclui pela ausência.
+    descricao:
+      "Varre o catálogo INTEIRO atrás do que está repetido e do que falta: códigos de barras (EAN) que aparecem em mais de uma variação, SKUs repetidos, cor+tamanho duplicado dentro do mesmo produto (rótulo de tamanho que mudou entre importações), e quais variações estão sem SKU ou sem EAN — com o nome do produto e exemplos de cor/tamanho. Use SEMPRE que a lojista falar em \"SKU repetido\", \"duplicado\", \"faltando derivação\", \"variação faltando\" ou pedir para conferir os códigos. O EAN é a chave porque é o código do fabricante: se repete, é fisicamente o mesmo sapato. NÃO diga que não consegue varrer — esta ferramenta varre. E NÃO se ofereça para apagar linha: o que parece linha repetida no Zion pode ser ANÚNCIO repetido no Mercado Livre, e o remédio é oposto — relate e deixe a decisão com ela.",
     parametros: { type: "object", properties: {} },
   },
   {
@@ -215,10 +326,28 @@ export const FERRAMENTAS_DE_LEITURA: readonly Ferramenta[] = [
     },
   },
   {
+    // ESTA FERRAMENTA NÃO ATENDE O VERBO "PREPARE" — e atendia, o que matou a
+    // ação central do produto.
+    //
+    // MEDIDO EM 25/08/2026, em `copilot_mensagens`: 93 turnos de assistente,
+    // 37 conversas, 31/07 a 24/08. `preparacao_de_anuncio` foi chamada 13
+    // vezes. `propor_anuncio` — a ferramenta que de fato prepara o anúncio, e
+    // que o prompt manda usar — foi chamada ZERO vezes. Ela está implementada
+    // e alcançável no executor; o modelo nunca a escolheu.
+    //
+    // A causa estava escrita aqui: a descrição dizia "use para 'quais produtos
+    // já podem virar anúncio?' E ANTES DE 'prepare todos que estiverem
+    // prontos'" — e o prompt de sistema repetia a mesma frase. O verbo de AÇÃO
+    // apontava para a ferramenta de LEITURA. O modelo obedecia, relatava o
+    // estado, e o turno acabava. A lojista pedia para preparar e recebia um
+    // relatório.
+    //
+    // Uma descrição de ferramenta de leitura não pode reivindicar um verbo de
+    // ação, nem "para depois" — o modelo não lê "antes de", lê o exemplo.
     nome: "preparacao_de_anuncio",
     efeito: "le",
     descricao:
-      "O estado REAL da preparação de anúncio. Sem produtoId: quantos produtos já podem virar anúncio, quantos estão travados e por quê — use para \"quais produtos já podem virar anúncio?\" e antes de \"prepare todos que estiverem prontos\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
+      "SÓ RELATA O ESTADO — não prepara nada. Sem produtoId: quantos produtos já podem virar anúncio e quantos estão travados, com o motivo — use para \"quais produtos já podem virar anúncio?\". Com produtoId: as etapas daquele produto (identidade, conteúdo, imagens, pricing, publicação), o que cada uma trava e o que falta — use para \"o que falta para esse anúncio?\" e \"por que esse não foi?\". Os números vêm daqui; nunca escreva um que esta ferramenta não devolveu. Quando o lojista mandar PREPARAR (\"prepara esse\", \"prepare os que estiverem prontos\", \"gera o anúncio\"), a ferramenta é propor_anuncio, não esta — se você só relatar o estado, ele pediu uma ação e recebeu um relatório. PREPARAR NÃO É PUBLICAR: nada aqui coloca anúncio no ar.",
     parametros: {
       type: "object",
       properties: {
@@ -396,7 +525,7 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_gravacao",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm.",
+      "Monta uma proposta de preenchimento para o lojista confirmar. NÃO grava nada — quem grava é o lojista, clicando. Só use com ids que vieram de achar_produto e um valor que o lojista DISSE nesta conversa. Nunca proponha um valor que você deduziu ou que ele não falou. Para VÁRIOS produtos de uma vez (\"essas Havaianas pesam 420 g\"), passe produtoIds com todos os ids — eu conto quem está sem o dado e mostro o escopo ao lojista antes de qualquer gravação. CUSTO só aceita um produto por vez: produtos parecidos não têm o mesmo custo, e eu não posso supor que têm. SKU e EAN são de UMA VARIAÇÃO, nunca do produto: passe `cor` e `tamanho` junto, e se você não souber qual variação é, PERGUNTE em vez de chutar — o mesmo código em duas variações é o pior defeito que a varredura acusa. EAN precisa ter 8, 12, 13 ou 14 dígitos. Nunca em lote.",
     parametros: {
       type: "object",
       properties: {
@@ -406,7 +535,24 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
           items: { type: "string" },
           description: "Vários produtos, para aplicar peso em lote. Todos vindos de achar_produto.",
         },
-        campo: { type: "string", enum: ["peso", "custo"] },
+        campo: { type: "string", enum: ["peso", "custo", "sku", "ean"] },
+        // SKU E EAN EXIGEM A VARIAÇÃO — e a exigência não é burocracia.
+        //
+        // Peso e custo são do PRODUTO: uma Havaiana pesa 420 g nas 39 variações.
+        // SKU e EAN IDENTIFICAM UMA UNIDADE. Aceitá-los sem cor e tamanho faria
+        // o chat gravar o mesmo código em 24 variações — que é exatamente o
+        // defeito mais grave que a varredura de 19/08/2026 acusa: 128 SKUs em
+        // mais de uma variação.
+        cor: {
+          type: "string",
+          description:
+            "A COR da variação. Obrigatória para sku e ean; ignorada em peso e custo.",
+        },
+        tamanho: {
+          type: "string",
+          description:
+            "O TAMANHO da variação, como ele disse. Obrigatório para sku e ean; ignorado em peso e custo.",
+        },
         valor: {
           type: "string",
           description:
@@ -505,7 +651,7 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     nome: "propor_titulo",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de MELHORAR O TÍTULO de um anúncio que já existe. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título de um anúncio. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
+      "Monta uma proposta de MELHORAR O TÍTULO NO CATÁLOGO DO ZION. NÃO troca o título do anúncio que está no ar: o comprador continua vendo o antigo — para trocar no ar é propor_titulo_no_anuncio, e confundir as duas faz o lojista achar que corrigiu o que continua errado vendendo. Roda o agente de título da Zion e devolve o título ATUAL e o PROPOSTO, lado a lado. NÃO grava: o lojista lê os dois e confirma clicando. Precisa de um produtoId cujo anúncio já tenha sido gerado — não existe título para melhorar num produto sem anúncio. Use quando ele pedir para melhorar, revisar ou reescrever o título e NÃO estiver falando do que está publicado. Quando ele pedir um AJUSTE num título já proposto (\"deixa mais curto\", \"tira a marca\", \"mais premium\"), chame de novo com a instrução em `instrucao` — o resto é preservado.",
     parametros: {
       type: "object",
       properties: { produtoId: { type: "string" }, instrucao: {
@@ -578,14 +724,40 @@ export const FERRAMENTAS_DE_PROPOSTA: readonly Ferramenta[] = [
     },
   },
   {
+    // A FERRAMENTA QUE NUNCA DISPAROU — ver o cabeçalho de
+    // `preparacao_de_anuncio`. Zero chamadas em 93 turnos, estando
+    // implementada, porque a ferramenta de leitura vizinha reivindicava o verbo
+    // "preparar". Esta descrição agora reivindica o verbo de volta, e diz as
+    // palavras que o lojista usa.
+    //
+    // FALTA AINDA O LOTE. "prepare todos que estiverem prontos" é a frase que o
+    // prompt anuncia e que esta ferramenta não executa: ela leva UM produtoId.
+    // `propor_gravacao` já resolveu o mesmo problema com `produtoIds` no
+    // plural; enquanto isto não existir aqui, o caminho honesto para o lote é
+    // um produto por vez, dito ao lojista como tal.
     nome: "propor_anuncio",
     efeito: "propoe",
     descricao:
-      "Monta uma proposta de GERAR O ANÚNCIO de um produto — título, descrição e ficha técnica. NÃO gera nada: quem dispara é o lojista, clicando, e leva alguns minutos. Antes de propor, ela confere se o produto tem tudo que o anúncio precisa; se faltar algo, devolve o que falta em vez de propor. Use com um produtoId que veio de achar_produto.",
+      "PREPARA O ANÚNCIO — título, descrição e ficha técnica. É esta a ferramenta quando o lojista MANDA fazer: \"prepara esse\", \"prepare todos que estiverem prontos\", \"gera o anúncio dele\", \"pode fazer\". Não confunda com preparacao_de_anuncio, que só relata o estado. NÃO gera na hora: monta o cartão, e quem dispara é o lojista clicando. Dois modos, e você escolhe pelo que ele disse: UM produto, com produtoId vindo de achar_produto; ou TODOS os que estiverem prontos, com todosOsProntos=true e SEM produtoId — aí eu mesmo seleciono no catálogo, com a mesma régua de preparacao_de_anuncio, e devolvo quantos entraram, quantos ficaram de fora e por quê. Nunca monte a lista você: passar ids que você juntou de uma leitura anterior deixaria o escopo desatualizado. Antes de propor, confiro se cada produto tem tudo que o anúncio precisa; se faltar, devolvo o que falta em vez de propor.",
     parametros: {
       type: "object",
-      properties: { produtoId: { type: "string" } },
-      required: ["produtoId"],
+      properties: {
+        produtoId: {
+          type: "string",
+          description: "UM produto — o id que veio de achar_produto. Vazio quando for todosOsProntos.",
+        },
+        // BOOLEANO EXPLÍCITO, e não "produtoId vazio = todos".
+        //
+        // `preparacao_de_anuncio` usa a ausência do id para significar "o
+        // catálogo", e ali isso é barato: ela só lê. Aqui a mesma convenção
+        // faria um `produtoId` esquecido virar um lote de dezenas de
+        // otimizações. O modo caro pede uma afirmação, não um esquecimento.
+        todosOsProntos: {
+          type: "boolean",
+          description:
+            "true para preparar TODOS os produtos prontos do catálogo. Use só quando ele pedir vários (\"prepare todos que estiverem prontos\", \"faz os que dá\"). Deixe produtoId vazio quando usar isto.",
+        },
+      },
     },
   },
 ];

@@ -16,7 +16,15 @@ import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
 import { lerJson } from "../http/respostaJson";
 import { criarProdutos, excluirProdutosImportadosML, listarProdutosDoCliente } from "./produtos";
-import { criarVariantesBulk, listarTodasVariantes } from "./produtoVariantes";
+import {
+  criarVariantesBulk,
+  listarTodasVariantes,
+  atualizarVariantesBulk,
+} from "./produtoVariantes";
+import {
+  planejarCompletarSku,
+  fraseDoCompletarSku,
+} from "@/modules/integration/domain/completarSkuDoMarketplace";
 import {
   atualizarEstadoNoMarketplaceBulk,
   criarAnunciosGeradosBulk,
@@ -90,7 +98,16 @@ const MAX_FOTOS = 10;
  * A busca no ML é a mesma nos três — a rota só LÊ, e toda a escrita acontece
  * deste lado. Então medir é devolver antes de escrever, e custa uma leitura.
  */
-export type ModoImportacao = "substituir" | "novos" | "medir" | "enriquecer";
+export type ModoImportacao =
+  | "substituir"
+  | "novos"
+  | "medir"
+  | "enriquecer"
+  // COMPLETAR-SKU: preenche o SKU/EAN das variantes que estão vazias, com o
+  // que o ML já tem. Existe porque `novos` pula anúncio conhecido antes de
+  // olhar as variações, e `substituir` apaga o catálogo para consertar um
+  // campo. Medido em 18/08/2026: a lojista importou e zero linha foi tocada.
+  | "completar-sku";
 
 /** Quantos anúncios informaram cada atributo, sem tocar em nada. */
 export interface MedicaoDaFicha {
@@ -783,6 +800,58 @@ export async function importarAnunciosDoCliente(
   // O vínculo anúncio→produto já existe em `anuncios_gerados` (`ml_item_id` →
   // `produto_id`). Não é preciso reagrupar por família nem adivinhar: quem já
   // sabe qual MLB é de qual produto é a própria base.
+  // COMPLETAR O SKU — só preenche vazio, não cria e não apaga.
+  //
+  // Fica ANTES de `enriquecer` e, como ele, sai antes das operações
+  // destrutivas. A regra posicional que o teste guarda continua inteira:
+  // perguntar ao ML nunca pode apagar o catálogo.
+  if (modo === "completar-sku") {
+    const registros = await listarResumoDeAnunciosDoCliente(clienteId);
+    const produtoPorMlb = new Map<string, string>();
+    for (const r of registros) {
+      if (r.mlItemId && r.produtoId) produtoPorMlb.set(r.mlItemId, r.produtoId);
+    }
+
+    const plano = planejarCompletarSku(
+      todos.map((a) => ({
+        mlItemId: a.mlb,
+        sku: a.sku ?? "",
+        ean: a.ean ?? "",
+        cor: a.cor ?? "",
+        tamanho: a.tamanho ?? "",
+        variacoes: (a.variacoes ?? []).map((v) => ({
+          cor: v.cor ?? "",
+          tamanho: v.tamanho ?? "",
+          sku: v.sku ?? "",
+          ean: v.ean ?? "",
+        })),
+      })),
+      produtoPorMlb,
+      (await listarTodasVariantes()).map((v) => ({
+        id: v.id,
+        produtoId: v.produtoId,
+        cor: v.cor ?? "",
+        tamanho: v.tamanho ?? "",
+        sku: v.sku ?? "",
+        ean: v.ean ?? "",
+      }))
+    );
+
+    // UMA escrita, não um laço. O mesmo motivo de `enriquecer`: cada gravação
+    // dispara `notificarMudanca()` e recarrega as `useLiveQuery` da tela.
+    if (plano.paraGravar.length > 0) await atualizarVariantesBulk(plano.paraGravar);
+
+    return {
+      produtos: 0,
+      anuncios: 0,
+      variacoes: plano.comSku,
+      imagens: 0,
+      pulados: 0,
+      leitura,
+      aviso: fraseDoCompletarSku(plano),
+    };
+  }
+
   if (modo === "enriquecer") {
     const registros = await listarResumoDeAnunciosDoCliente(clienteId);
     const produtoPorMlb = new Map<string, string>();
@@ -959,10 +1028,26 @@ export async function importarAnunciosDoCliente(
         doGrupo.push(varianteDeItem(prod.id, clienteId, a));
       }
     }
+    // A DEDUPLICAÇÃO NÃO É PRIVILÉGIO DO PRODUTO CASADO — medido em 31/08/2026.
+    //
+    // Até aqui, produto NOVO entrava com `doGrupo` cru. E `doGrupo` é montado
+    // percorrendo TODOS os anúncios do grupo: quando dois anúncios do mesmo
+    // produto anunciam o mesmo par cor+tamanho — o que é a regra, não a exceção,
+    // porque é assim que se anuncia a mesma sandália em duas fotos — cada par
+    // repetido virava uma linha a mais.
+    //
+    // Na base da Chinelaria isso deixou 142 linhas excedentes em 17 produtos, e
+    // 1.171 peças de estoque contadas duas vezes. A assinatura é inconfundível:
+    // as duas linhas têm `created_at` igual até o microssegundo, porque são o
+    // mesmo insert. Os afetados têm 22,1 anúncios de média contra 9,1 do resto —
+    // quanto mais anúncios, mais chance de dois colidirem no mesmo tamanho.
+    //
+    // `variantesInexistentes` já resolvia os dois casos: ela deduplica contra o
+    // que existe E dentro do próprio lote. Só não era chamada neste caminho.
+    // Para produto novo o mapa não tem entrada, sobra a segunda metade — que é
+    // exatamente a que faltava.
     variantes.push(
-      ...(casado
-        ? variantesInexistentes(doGrupo, variantesJaExistentes.get(prod.id) ?? [])
-        : doGrupo)
+      ...variantesInexistentes(doGrupo, variantesJaExistentes.get(prod.id) ?? [])
     );
   });
   if (variantes.length > 0) await criarVariantesBulk(variantes);
@@ -1067,6 +1152,16 @@ export async function importarAnunciosDoCliente(
         url,
         status: "Aprovada", // é a foto real que já está no anúncio
         observacoes: "Importada do Mercado Livre.",
+        // NÃO MEDIMOS, e o par nulo diz isso. Aqui só existe a url do CDN, e
+        // ela serve a variante de 500px — medi-la gravaria 500x500 sobre um
+        // original de 1200 e faria a foto boa parecer imprestável. A medida
+        // honesta destas viria de outra leitura, contra o sufixo `-F`.
+        largura: null,
+        altura: null,
+        // A importação traz as fotos DO ANÚNCIO, e o anúncio é por cor — mas o
+        // ML não diz de que cor é cada foto. `null` guarda essa ignorância;
+        // adivinhar pela ordem poria a foto amarela no anúncio azul.
+        cor: null,
       });
     });
     imagens.push(...doProduto);

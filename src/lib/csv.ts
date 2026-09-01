@@ -7,6 +7,15 @@
 export interface CsvParsed {
   headers: string[];
   linhas: Record<string, string>[];
+  /**
+   * Quantos campos cada linha de DADOS tinha, antes de virar registro.
+   *
+   * Depois do `zip` com os nomes essa informação some — e é ela que denuncia o
+   * cabeçalho desalinhado. Um relatório do Linx medido em 27/08/2026 trazia 11
+   * nomes e 9 campos em todas as 1505 linhas: o preço caía na coluna de estoque
+   * e o custo na de preço, calado. Ver `cabecalhoDesalinhado`.
+   */
+  camposPorLinha: number[];
 }
 
 /** Descobre o delimitador olhando a primeira linha. Excel BR costuma usar ";". */
@@ -19,6 +28,19 @@ export function detectarDelimitador(texto: string): "," | ";" | "\t" {
   if (ponto >= virgula && ponto >= tab) return ";";
   if (tab > virgula) return "\t";
   return ",";
+}
+
+/**
+ * O CSV como matriz de células, antes de qualquer linha virar cabeçalho.
+ *
+ * Exposta para o leitor de planilha poder PROCURAR onde está o cabeçalho, em
+ * vez de assumir a primeira linha. Um CSV exportado de uma aba de relatório
+ * carrega o título e a procedência em cima da tabela, igualzinho ao Excel de
+ * onde ele saiu — e assumir a linha 1 ali dá o mesmo "não achei coluna de
+ * custo" sobre um arquivo cheio de custo.
+ */
+export function matrizDoCsv(texto: string, delimitador?: string): string[][] {
+  return dividirEmCampos(texto, delimitador ?? detectarDelimitador(texto));
 }
 
 function dividirEmCampos(texto: string, delim: string): string[][] {
@@ -66,7 +88,7 @@ function dividirEmCampos(texto: string, delim: string): string[][] {
 export function parseCsv(texto: string, delimitador?: string): CsvParsed {
   const delim = delimitador ?? detectarDelimitador(texto);
   const linhas = dividirEmCampos(texto, delim);
-  if (linhas.length === 0) return { headers: [], linhas: [] };
+  if (linhas.length === 0) return { headers: [], linhas: [], camposPorLinha: [] };
 
   const headers = linhas[0].map((h) => h.trim());
   const registros = linhas.slice(1).map((cols) => {
@@ -76,7 +98,7 @@ export function parseCsv(texto: string, delimitador?: string): CsvParsed {
     });
     return rec;
   });
-  return { headers, linhas: registros };
+  return { headers, linhas: registros, camposPorLinha: linhas.slice(1).map((c) => c.length) };
 }
 
 /** Normaliza um cabeçalho: minúsculo, sem acento, só [a-z0-9_]. */

@@ -48,6 +48,32 @@ function TelaLogin() {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** Ligado quando o login falha por e-mail não confirmado — só então o reenvio aparece. */
+  const [precisaConfirmar, setPrecisaConfirmar] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
+
+  /**
+   * Reenvia a confirmação. Não diz se o e-mail existe.
+   *
+   * A resposta é a mesma com e sem conta, de propósito: um reenvio que
+   * respondesse "esse e-mail não tem conta" viraria um verificador de cadastro
+   * para quem quisesse descobrir quem usa o produto.
+   */
+  async function reenviarConfirmacao() {
+    setReenviando(true);
+    setErro(null);
+    const { error } = await getSupabase().auth.resend({
+      type: "signup",
+      email: email.trim(),
+    });
+    setReenviando(false);
+    setPrecisaConfirmar(false);
+    setAviso(
+      error
+        ? "Não deu para reenviar agora. Tente de novo em alguns minutos."
+        : "Reenviado. Procure a mensagem na sua caixa — e no spam."
+    );
+  }
   const [enviando, setEnviando] = useState(false);
   /**
    * Entrar ou criar conta.
@@ -93,6 +119,29 @@ function TelaLogin() {
     });
     setEnviando(false);
     if (error) {
+      // "EMAIL NOT CONFIRMED" ERA UM BECO SEM SAÍDA — medido em 26/08/2026.
+      //
+      // Só "Invalid login credentials" era traduzido; o resto caía no
+      // `${error.message}` cru, em inglês. Quem cadastrou e tentou entrar antes
+      // de confirmar lia "Não foi possível entrar: Email not confirmed" e não
+      // tinha o que fazer: nenhuma instrução, nenhum botão.
+      //
+      // E não é hipótese. Na base de produção havia um cadastro parado nesse
+      // ponto havia 27 DIAS — nunca entrou, nunca virou perfil, e ninguém
+      // percebeu. O e-mail de confirmação some no spam, ou o Supabase segura
+      // pelo limite do serviço embutido, e a pessoa fica olhando uma frase em
+      // inglês.
+      //
+      // A saída é o reenvio, e ele mora aqui do lado: a frase sem o botão
+      // continuaria sendo uma parede, só que em português.
+      if (/email not confirmed/i.test(error.message)) {
+        setPrecisaConfirmar(true);
+        setErro(
+          "Sua conta existe, mas o e-mail ainda não foi confirmado. " +
+            "Procure a mensagem que enviamos (confira o spam) — ou reenvie abaixo."
+        );
+        return;
+      }
       setErro(
         error.message === "Invalid login credentials"
           ? "E-mail ou senha incorretos."
@@ -143,9 +192,19 @@ function TelaLogin() {
           </div>
 
           {erro && (
-            <p className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {erro}
-            </p>
+            <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <p>{erro}</p>
+              {precisaConfirmar && (
+                <button
+                  type="button"
+                  onClick={reenviarConfirmacao}
+                  disabled={reenviando || !email.trim()}
+                  className="mt-2 font-medium underline underline-offset-2 hover:text-red-300 disabled:opacity-50"
+                >
+                  {reenviando ? "Reenviando…" : "Reenviar o e-mail de confirmação"}
+                </button>
+              )}
+            </div>
           )}
           {aviso && (
             <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">

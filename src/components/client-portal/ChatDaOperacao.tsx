@@ -30,6 +30,9 @@ import {
   Paperclip,
 } from "lucide-react";
 import { conversar, confirmarProposta } from "@/lib/services/conversaDoAssistente";
+// A MESMA fila do "Otimizar tudo" da tela de otimização — não uma segunda.
+// Duas filas divergiriam no dia em que uma ganhasse retentativa e a outra não.
+import { enfileirarProdutos } from "@/lib/services/filaOtimizacaoProduto";
 import { Markdown } from "@/components/client-portal/Markdown";
 import type { PropostaDeAnuncio } from "@/modules/assistant/domain/propostaDeAnuncio";
 import type { Fala } from "@/lib/agentes/conversaComFerramentas";
@@ -94,6 +97,7 @@ import {
 import {
   POSSO_RESPONDER,
   type ContextoDaPergunta,
+  type CriterioDaPergunta,
   type RespostaDaOperacao,
 } from "@/modules/assistant/domain/perguntaDaOperacao";
 import {
@@ -105,6 +109,18 @@ import { importarPeso } from "@/lib/services/importacaoPeso";
 import { useClientPortal } from "./context";
 import { ConferirCatalogo } from "./ConferirCatalogo";
 import { ConferirFoto, medirFoto, type FotoMedida } from "./ConferirFoto";
+import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
+import { coresDoProduto } from "@/modules/catalog/domain/corDaFoto";
+import {
+  fraseDoDesfecho,
+  fraseDoDesfazer,
+  podeDesfazer,
+  type EnvioAoML,
+} from "@/modules/catalog/domain/desfechoDaFoto";
+import {
+  enviarCapaAoMercadoLivre,
+  tirarFotoDoMercadoLivre,
+} from "@/lib/services/capaNoMercadoLivre";
 import { uploadImagemProduto, promoverImagemACapa } from "@/lib/services/storageImagens";
 import { decodificarTexto } from "@/lib/textoDeArquivo";
 import {
@@ -113,11 +129,15 @@ import {
   type AnaliseProdutos,
 } from "@/lib/services/importacaoProdutos";
 import { oQueEssaPlanilhaE } from "@/modules/catalog/domain/oQueEssaPlanilhaE";
-import { lerPlanilha, type PlanilhaLida } from "@/lib/planilha";
+import { lerPlanilha, trocarTabela, type PlanilhaLida } from "@/lib/planilha";
 import { ConferirPeso } from "./ConferirPeso";
 import { ImportarCatalogoPdf } from "./ImportarCatalogoPdf";
 import { ConferirPlanilha } from "@/components/client-portal/ConferirPlanilha";
-import { importarCustos, type ResultadoCustos } from "@/lib/services/importacaoCustos";
+import {
+  importarCustos,
+  type ResultadoCustos,
+  type OpcoesDeImportacao,
+} from "@/lib/services/importacaoCustos";
 import type { Mapeamento } from "@/modules/catalog/domain/mapeamentoPlanilha";
 
 /**
@@ -135,8 +155,23 @@ function ResultadoDaPlanilha({ r }: { r: ResultadoCustos }) {
   return (
     <div className="space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm">
       <p className="text-zinc-200">
-        Gravei o custo em <strong>{r.produtos}</strong> produto(s) e{" "}
-        <strong>{r.variantes}</strong> variação(ões), de {r.linhasCsv} linha(s) na planilha.
+        Gravei em <strong>{r.produtos}</strong> produto(s) e <strong>{r.variantes}</strong>{" "}
+        variação(ões), de {r.linhasCsv} linha(s) na planilha.
+        {/* O preço aparece SÓ quando veio: dizer "0 com preço de venda" numa
+            planilha que nunca teve essa coluna é ruído, não informação. */}
+        {r.precos > 0 && (
+          <>
+            {" "}
+            Destes, <strong>{r.precos}</strong> receberam preço de venda.
+          </>
+        )}
+        {r.estoques > 0 && (
+          <>
+            {" "}
+            O estoque foi recalculado em <strong>{r.estoques}</strong> produto(s), somando as
+            variações.
+          </>
+        )}
       </p>
       {r.naoEncontrados > 0 && (
         <p className="text-amber-300">
@@ -186,8 +221,28 @@ interface Turno {
   pdf?: File;
   /** A análise do catálogo em planilha — a única importação que CRIA. */
   catalogo?: AnaliseProdutos;
-  /** Uma foto largada no clipe, já medida — o veredicto vem antes de subir. */
-  foto?: { arquivo: File; medida: FotoMedida };
+  /**
+   * Uma foto largada no clipe, já medida — o veredicto vem antes de subir.
+   *
+   * `cores` são as do PRODUTO aberto, para o cartão perguntar de qual é.
+   * Vazia quando o produto não tem grade de cor — e aí o cartão não pergunta,
+   * porque perguntar cor de quem não tem cor é ruído.
+   */
+  foto?: { arquivo: File; medida: FotoMedida; cores: string[] };
+  /**
+   * A VOLTA da troca de capa, presa ao turno que a fez.
+   *
+   * Fica aqui, e não numa ferramenta nova, porque o lugar do desfazer é onde
+   * a pessoa está quando percebe o erro — não numa frase que ela precisaria
+   * saber formular. Em 14/08/2026 uma foto de Havaianas amarelo virou capa de
+   * 10 anúncios azul-marinho e só o desenvolvedor tinha como voltar.
+   *
+   * Só existe quando o Mercado Livre CONFIRMOU pelo menos uma troca — ver
+   * `podeDesfazer`. Botão de desfazer sobre nada desfeito ensina a lojista a
+   * desconfiar do botão.
+   */
+  desfazerCapa?: { produtoId: string; fotoNoML: string; quantos: number };
+  desfazendo?: boolean;
   /** O que a importação fez. Presente = já gravou, e a conferência sai. */
   custosImportados?: ResultadoCustos;
   importandoPlanilha?: boolean;
@@ -748,6 +803,22 @@ export function ChatDaOperacao({
         //
         // O que sobrou aqui em cima é a saudação: "oi" não vale uma chamada
         // de rede, e continua respondida sem sair da tela.
+        //
+        // ===================================================================
+        // A MESMA DECISÃO, TOMADA DUAS VEZES — nota da mescla de 24/08/2026
+        // ===================================================================
+        //
+        // A `feat/portal-da-lojista` apagou esta mesma porta em 17/08, por
+        // medição própria: 4 chamadas na janela observada, ZERO escaladas, e
+        // uma pergunta simples levando 5,9 s na via "rápida".
+        //
+        // E ela registrou o argumento que NÃO é de custo, e por isso fica: a
+        // ferramenta `fotos_do_produto` foi SOMBREADA. "Preciso fotografar
+        // este produto?" caiu na lista fechada e foi respondida por
+        // `o_que_falta_no_produto`. Duas listas fechadas disputando a mesma
+        // frase é defeito estrutural — toda ferramenta nova entra na disputa,
+        // e ganha quem foi escrita primeiro. Nenhuma medição de latência
+        // conserta isso; só a remoção de uma das listas.
         await responderConversando(pergunta);
         return;
       } catch (e) {
@@ -945,9 +1016,23 @@ export function ChatDaOperacao({
         ]);
         return;
       }
+      // AS CORES DO PRODUTO, carregadas AQUI e não dentro do cartão.
+      //
+      // Os anúncios desta base são um por cor e tamanho. Sem dizer a cor, a
+      // foto entra sem saber a que anúncio serve — e usá-la depois num anúncio
+      // de outra cor é infração pior que a atual (migração 076).
+      //
+      // A lista sai das VARIANTES, então ela oferece só cores que existem.
+      // Campo livre convidaria a escrever "amarelo claro" para uma variante
+      // chamada "Amarelo", e o casamento falharia sem ninguém entender por quê.
+      const cores = contexto?.produto
+        ? await listarVariantesDoProduto(contexto.produto.id)
+            .then((vs) => coresDoProduto(vs))
+            .catch(() => [])
+        : [];
       setTurnos((t) => [
         ...t,
-        { pergunta: `Enviei a foto ${arquivo.name}`, foto: { arquivo, medida } },
+        { pergunta: `Enviei a foto ${arquivo.name}`, foto: { arquivo, medida, cores } },
       ]);
       return;
     }
@@ -1145,7 +1230,7 @@ export function ChatDaOperacao({
     }
   }
 
-  async function confirmarFoto(indice: number, comoCapa: boolean) {
+  async function confirmarFoto(indice: number, comoCapa: boolean, cor: string | null) {
     const alvo = turnos[indice];
     const produto = contexto?.produto;
     if (!alvo?.foto || !clienteId || !produto) return;
@@ -1157,16 +1242,50 @@ export function ChatDaOperacao({
         clienteId,
         produtoId: produto.id,
         file: alvo.foto.arquivo,
+        // A cor viaja para a COLUNA (migração 076). Ausente quando ela
+        // respondeu "não sei dizer" — e aí a foto fica guardada sem servir de
+        // capa de anúncio, que é o certo: cor errada é pior que cor nenhuma.
+        ...(cor ? { cor } : {}),
       });
       // A CAPA É UM SEGUNDO PASSO, e falhar nele não desfaz o upload: a foto
       // está lá, e dizer "não subiu" seria mentira. Por isso o catch separado.
-      let virouCapa = false;
+      //
+      // E O MERCADO LIVRE É UM TERCEIRO.
+      // ===================================================================
+      // Até 14/08/2026 este bloco parava na linha de cima e respondia "Ela é
+      // a capa agora". A promoção era só no nosso banco: o anúncio no ar
+      // continuava com a capa velha. A lojista tem 341 anúncios com capa fora
+      // do padrão e as fotos boas no celular — ela subiria a foto certa, leria
+      // que deu certo, conferiria no Mercado Livre e não encontraria nada.
+      //
+      // A ordem dos três passos é a ordem da reversibilidade: o upload não
+      // desfaz nada, a promoção daqui se desfaz num clique, e a escrita no
+      // marketplace muda o que o comprador vê. Cada um só acontece se o
+      // anterior deu certo, e o desfecho de cada um entra na frase.
+      let envio: EnvioAoML = { situacao: "nao-tentado", porque: "nao-pediu-capa" };
       if (comoCapa) {
+        let virouCapa = false;
         try {
           await promoverImagemACapa(produto.id, img.id);
           virouCapa = true;
         } catch (e) {
           console.error("[chat/foto] subiu mas não virou capa:", e);
+        }
+        if (!virouCapa) {
+          envio = { situacao: "nao-tentado", porque: "nao-virou-capa" };
+        } else if (!cor) {
+          // Sem cor a rota recusaria com 409. Não gastar a chamada é o certo:
+          // cada chamada ao ML renova o token dela.
+          envio = { situacao: "nao-tentado", porque: "sem-cor" };
+        } else {
+          envio = {
+            situacao: "respondeu",
+            resposta: await enviarCapaAoMercadoLivre({
+              clienteId,
+              produtoId: produto.id,
+              imagemId: img.id,
+            }),
+          };
         }
       }
       const m = alvo.foto.medida;
@@ -1177,13 +1296,27 @@ export function ChatDaOperacao({
                 ...turno,
                 foto: undefined,
                 importandoPlanilha: false,
-                texto:
-                  `Subi a foto para ${produto.nome} (${m.largura} × ${m.altura}).` +
-                  (comoCapa
-                    ? virouCapa
-                      ? " Ela é a capa agora."
-                      : " Subiu, mas não consegui marcá-la como capa — dá para fazer isso na tela de Imagens."
-                    : ""),
+                // A FRASE É DOMÍNIO, com teste. Ver `desfechoDaFoto`: a regra
+                // é que nenhuma frase afirme mudança no Mercado Livre sem
+                // anúncio confirmado, e que o silêncio sobre o marketplace
+                // também conte como afirmação.
+                texto: fraseDoDesfecho({
+                  produtoNome: produto.nome,
+                  largura: m.largura,
+                  altura: m.altura,
+                  envio,
+                }),
+                // A VOLTA nasce junto com a ida, no mesmo turno. Só quando o
+                // Mercado Livre confirmou troca e sabemos qual foto entrou.
+                ...(envio.situacao === "respondeu" && podeDesfazer(envio.resposta)
+                  ? {
+                      desfazerCapa: {
+                        produtoId: produto.id,
+                        fotoNoML: envio.resposta.fotoNoML,
+                        quantos: (envio.resposta.feitos ?? []).length,
+                      },
+                    }
+                  : {}),
               }
             : turno
         )
@@ -1202,6 +1335,38 @@ export function ChatDaOperacao({
         )
       );
     }
+  }
+
+  /**
+   * TIRA do Mercado Livre a foto que a troca acabou de pôr.
+   *
+   * A rota confere anúncio por anúncio e recusa deixar qualquer um sem foto.
+   * A frase vem do domínio pelo mesmo motivo da ida: é aqui que "desfiz" sobre
+   * nada desfeito nasceria, e essa é a pior mentira deste caminho — ela para
+   * de procurar.
+   */
+  async function desfazerTrocaDeCapa(indice: number) {
+    const alvo = turnos[indice];
+    if (!alvo?.desfazerCapa || !clienteId) return;
+    const { produtoId, fotoNoML } = alvo.desfazerCapa;
+    setTurnos((t) => t.map((turno, i) => (i === indice ? { ...turno, desfazendo: true } : turno)));
+    const resposta = await tirarFotoDoMercadoLivre({ clienteId, produtoId, fotoNoML });
+    setTurnos((t) =>
+      t.map((turno, i) =>
+        i === indice
+          ? {
+              ...turno,
+              desfazendo: false,
+              // O botão só sai quando a foto SAIU de algum anúncio. Se a
+              // remoção falhou, ela continua lá e a volta continua fazendo
+              // falta.
+              ...((resposta.feitos ?? []).length > 0 ? { desfazerCapa: undefined } : {}),
+              texto: `${turno.texto ?? ""}\n\n${fraseDoDesfazer(resposta)}`.trim(),
+            }
+          : turno
+      )
+    );
+    aoGravar?.();
   }
 
   async function confirmarCatalogo(indice: number) {
@@ -1283,6 +1448,16 @@ export function ChatDaOperacao({
                     : "") +
                   (r.semPeso > 0
                     ? ` ${r.semPeso} linha(s) vieram sem peso utilizável (vazio, zero ou texto) e ficaram de fora.`
+                    : "") +
+                  // O SKU É OUTRA COISA QUE ACONTECEU, e por isso é outra frase.
+                  //
+                  // Desde 19/08/2026 a importação também preenche o SKU quando o
+                  // código de barras alcança um `Código` único do ERP. Calar
+                  // isso faria "gravei o peso" descrever pela metade uma
+                  // gravação que mexeu na IDENTIDADE das variações — e
+                  // identidade é o campo mais caro de errar nesta base.
+                  (r.skusPreenchidos > 0
+                    ? ` E preenchi o SKU de ${r.skusPreenchidos} variação(ões) que estavam sem: o código de barras delas achou o código do seu ERP.`
                     : ""),
               }
             : turno
@@ -1304,14 +1479,18 @@ export function ChatDaOperacao({
     }
   }
 
-  async function confirmarPlanilha(indice: number, mapa: Mapeamento) {
+  async function confirmarPlanilha(
+    indice: number,
+    mapa: Mapeamento,
+    opcoes?: OpcoesDeImportacao
+  ) {
     const alvo = turnos[indice];
     if (!alvo?.planilha || !clienteId) return;
     setTurnos((t) =>
       t.map((turno, i) => (i === indice ? { ...turno, importandoPlanilha: true } : turno))
     );
     try {
-      const r = await importarCustos(clienteId, alvo.planilha, mapa);
+      const r = await importarCustos(clienteId, alvo.planilha, mapa, opcoes);
       setTurnos((t) =>
         t.map((turno, i) =>
           i === indice
@@ -1446,6 +1625,7 @@ export function ChatDaOperacao({
                   arquivo={t.foto.arquivo}
                   medida={t.foto.medida}
                   produto={contexto?.produto ?? null}
+                  cores={t.foto.cores}
                   ocupado={t.importandoPlanilha}
                   onCancelar={() =>
                     setTurnos((ts) =>
@@ -1454,7 +1634,7 @@ export function ChatDaOperacao({
                       )
                     )
                   }
-                  onConfirmar={(comoCapa) => void confirmarFoto(i, comoCapa)}
+                  onConfirmar={(comoCapa, cor) => void confirmarFoto(i, comoCapa, cor)}
                 />
               ) : t.catalogo ? (
                 /* O CATÁLOGO É O ÚNICO QUE CRIA — e a tela diz o verbo. Custo e
@@ -1525,7 +1705,17 @@ export function ChatDaOperacao({
                       )
                     )
                   }
-                  onConfirmar={(mapa) => void confirmarPlanilha(i, mapa)}
+                  onTrocarTabela={(aba, linha) =>
+                    setTurnos((ts) =>
+                      ts.map((turno, j) =>
+                        j === i && turno.planilha
+                          ? { ...turno, planilha: trocarTabela(turno.planilha, aba, linha) }
+                          : turno
+                      )
+                    )
+                  }
+                  clienteId={clienteId ?? undefined}
+                  onConfirmar={(mapa, opcoes) => void confirmarPlanilha(i, mapa, opcoes)}
                 />
                 )
               ) : t.custosImportados ? (
@@ -1556,6 +1746,24 @@ export function ChatDaOperacao({
                     </p>
                   )}
                   {t.texto && <Markdown texto={t.texto} />}
+                  {/* A VOLTA, no turno que fez a ida.
+                      Fica aqui porque é onde ela está quando percebe que a foto
+                      era da cor errada — e não numa frase que ela precisaria
+                      saber formular. Em 14/08/2026 uma foto de Havaianas
+                      amarelo virou capa de 10 anúncios azul-marinho e só o
+                      desenvolvedor tinha como voltar. */}
+                  {t.desfazerCapa && (
+                    <button
+                      type="button"
+                      onClick={() => void desfazerTrocaDeCapa(i)}
+                      disabled={t.desfazendo}
+                      className="rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5 hover:text-white disabled:opacity-50"
+                    >
+                      {t.desfazendo
+                        ? "Tirando…"
+                        : `Não era essa foto — tirar dos ${t.desfazerCapa.quantos} anúncio(s)`}
+                    </button>
+                  )}
                   {t.pendencias && <PainelDePendencias p={t.pendencias} />}
                   {t.preparacao && <PainelDaPreparacao p={t.preparacao} />}
                   {t.pricing && <PainelDePreco p={t.pricing} />}
@@ -1616,7 +1824,9 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.propostaDeAnuncio && <CartaoDeAnuncio p={t.propostaDeAnuncio} />}
+                  {t.propostaDeAnuncio && (
+                    <CartaoDeAnuncio p={t.propostaDeAnuncio} clienteId={clienteId} />
+                  )}
                   {t.escopo && t.propostaId && (
                     <CartaoDoLote
                       e={t.escopo}
@@ -1626,7 +1836,17 @@ export function ChatDaOperacao({
                       aoDescartar={() => descartar(i)}
                     />
                   )}
-                  {t.proposta && t.propostaId && (
+                  {/* A EXIGÊNCIA DO ID VALE PARA QUEM CARREGA BOTÃO.
+                      `pronta` é a única que grava, e ela só aparece com uma
+                      autorização persistida atrás — é a primitiva de 29/07.
+                      As outras (`recusada`, `sem_alvo`, `ambigua`,
+                      `falta_dado`) são RECADO: dizem por que não dá, ou
+                      perguntam qual produto. Não gravam nada, não têm botão, e
+                      exigir id delas foi o que calou o chat por treze dias —
+                      a lojista ditava "o custo do X é 28,40", o software
+                      entendia (medido: intencao `preencher`, campo `custo`,
+                      valor `28,40`) e a tela não mostrava NADA. */}
+                  {t.proposta && (t.propostaId || t.proposta.tipo !== "pronta") && (
                     <CartaoDaProposta
                       p={t.proposta}
                       desfecho={desfechoNaTela(t, agora)}
@@ -3010,9 +3230,121 @@ function CartaoDoCadastro({
  * Quando falta dado, NÃO existe botão. A pessoa lê o que falta e resolve; um
  * botão ali gastaria três minutos para devolver um anúncio com pendência.
  */
-function CartaoDeAnuncio({ p }: { p: PropostaDeAnuncio }) {
+/**
+ * O cartão do LOTE de anúncios — o que a pessoa lê antes de gastar a cota do mês.
+ *
+ * TRÊS ESTADOS, e nenhum deixa o botão ativo por engano:
+ *   parado      → mostra o escopo e oferece enfileirar
+ *   enfileirando→ botão travado, sem chance de clicar duas vezes
+ *   na fila     → vira registro, sem botão; o worker do servidor assume
+ *
+ * OS IDS VÊM DO SERVIDOR, prontos. O cartão não filtra nem reordena: se ele
+ * decidisse aqui quem entra, o número que o assistente falou na conversa e o
+ * número que vai para a fila poderiam divergir — e quem leu "12" veria 9.
+ *
+ * Enfileirar NÃO é gerar. O worker (`/api/otimizar/worker`, no cron) consome a
+ * fila e roda a esteira; a aba pode fechar. Por isso o texto do desfecho fala
+ * em fila, e não em anúncio pronto: prometer o anúncio aqui seria a mesma
+ * mentira que "preparei 50" quando foram 47.
+ */
+function CartaoDeAnuncioEmLote({
+  p,
+  clienteId,
+}: {
+  p: Extract<PropostaDeAnuncio, { tipo: "lote" }>;
+  clienteId: string;
+}) {
+  const [estado, setEstado] = useState<"parado" | "enfileirando" | "na_fila">("parado");
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enfileirar() {
+    if (estado !== "parado") return;
+    setEstado("enfileirando");
+    setErro(null);
+    try {
+      await enfileirarProdutos(clienteId, p.alvos.map((a) => a.produtoId));
+      setEstado("na_fila");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não consegui colocar na fila.");
+      setEstado("parado");
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-violet-400/25 bg-violet-500/[0.04] p-3">
+      <p className="text-sm text-zinc-200">{p.resumo}</p>
+
+      {/* OS NOMES, não os ids. Ninguém confere um uuid; um nome, sim. */}
+      <ul className="flex flex-wrap gap-1.5">
+        {p.alvos.slice(0, 8).map((a) => (
+          <li
+            key={a.produtoId}
+            className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-zinc-400"
+          >
+            {a.nome}
+          </li>
+        ))}
+        {p.alvos.length > 8 && (
+          <li className="px-1.5 py-0.5 text-[11px] text-zinc-500">
+            e mais {p.alvos.length - 8}
+          </li>
+        )}
+      </ul>
+
+      {/* O QUE FICOU DE FORA, com o motivo. É a metade da resposta que diz à
+          pessoa o que resolver depois — esconder isso faria o lote parecer
+          completo quando não é. */}
+      {p.travados.length > 0 && (
+        <ul className="space-y-0.5 border-t border-white/5 pt-2">
+          {p.travados.slice(0, 4).map((t) => (
+            <li key={t.motivo} className="text-[11px] text-zinc-500">
+              <span className="text-zinc-400">{t.quantos}</span> {t.motivo.toLowerCase()}
+              {t.exemplos.length > 0 && ` — ${t.exemplos.slice(0, 2).join(", ")}`}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {erro && (
+        <p className="flex items-start gap-2 text-xs text-amber-300">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+          {erro}
+        </p>
+      )}
+
+      {estado === "na_fila" ? (
+        <p className="flex items-center gap-1.5 text-xs text-emerald-300">
+          <CheckCircle2 size={13} />
+          {p.alvos.length} na fila. A IA processa no servidor — pode fechar a aba.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void enfileirar()}
+          disabled={estado === "enfileirando"}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
+        >
+          {estado === "enfileirando" ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Sparkles size={13} />
+          )}
+          {estado === "enfileirando"
+            ? "Colocando na fila…"
+            : `Preparar ${p.alvos.length} ${p.alvos.length === 1 ? "anúncio" : "anúncios"}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CartaoDeAnuncio({ p, clienteId }: { p: PropostaDeAnuncio; clienteId: string }) {
   if (p.tipo === "sem_alvo") {
     return <p className="text-sm text-zinc-300">{p.mensagem}</p>;
+  }
+
+  if (p.tipo === "lote") {
+    return <CartaoDeAnuncioEmLote p={p} clienteId={clienteId} />;
   }
 
   if (p.tipo === "falta_dado") {
@@ -3313,11 +3645,30 @@ function CartaoDaProposta({
  * esquecer um caso um erro de compilação, e não uma tela em branco.
  */
 function Resposta({ r, interpretacao }: { r: RespostaDaOperacao; interpretacao?: string }) {
-  // A linha de auditoria some quando repetiria a resposta. Em "fora do alcance"
-  // a frase É a interpretação do modelo, e "Entendi: <a mesma frase>" só ocupa
-  // espaço dizendo duas vezes a mesma coisa.
+  // A AUDITORIA SÓ APARECE QUANDO O SOFTWARE NÃO ENTREGOU.
+  //
+  // ===========================================================================
+  // MEDIDO NO USO REAL, 17/08/2026
+  // ===========================================================================
+  //
+  // A lojista perguntou "quais são as pendências", recebeu as três com o link
+  // de resolver cada uma — e a última linha da tela era "Entendi: Você quer um
+  // panorama do que está pendente na loja".
+  //
+  // A resposta estava certa e óbvia. A última coisa que ela lia era o software
+  // explicando a pergunta de volta para ela. Isso treina a lojista a pular
+  // texto — e o texto que ela vai pular junto é o que avisa que o anúncio no ar
+  // vai mudar.
+  //
+  // Quando a resposta é "não sei" ou "me diga mais", saber o que o modelo
+  // entendeu é a explicação do fracasso e ensina a reformular. Aí ela ganha o
+  // seu lugar. Nos outros casos, a resposta fala por si.
+  //
+  // A linha também some quando repetiria a resposta: em "fora do alcance" a
+  // frase É a interpretação, e dizê-la duas vezes é só espaço gasto.
+  const auditoriaExplica = r.tipo === "nao_sei" || r.tipo === "perguntar";
   const entendi =
-    interpretacao && interpretacao.trim() !== r.frase.trim() ? (
+    auditoriaExplica && interpretacao && interpretacao.trim() !== r.frase.trim() ? (
       <p className="text-[11px] text-zinc-600">Entendi: {interpretacao}</p>
     ) : null;
 

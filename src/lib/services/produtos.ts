@@ -15,6 +15,7 @@ const repo = criarRepositorio<Produto, ProdutoRow>({
   selecao: "*, clientes(empresa)",
   paraApp: produtoParaApp,
   paraBanco: produtoParaBanco,
+  rpcDeLote: "atualizar_produtos_em_lote",
 });
 
 export async function listarProdutos(): Promise<Produto[]> {

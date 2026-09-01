@@ -23,6 +23,9 @@ import {
   type ContextoAutorizado,
 } from "@/lib/auth/serverAuthorization";
 import { montarEstadoDaLoja, type ProdutoParaContar } from "@/modules/assistant/domain/estadoDaLoja";
+import { pendenciasDaMemoria } from "@/lib/client-portal/pendenciasDaMemoria";
+import { estadoDeOtimizacao } from "@/lib/client-portal/metrics";
+import type { AnuncioGeradoRegistro } from "@/lib/types";
 import type { ContextoDaPergunta } from "@/modules/assistant/domain/perguntaDaOperacao";
 import type { ProdutoAlvo } from "@/modules/assistant/domain/propostaDeCorrecao";
 
@@ -167,10 +170,58 @@ export async function contextoDoCopilotNoServidor(
   const admin = getSupabaseAdmin();
   const [catalogo, anuncios, canal, infracoes] = await Promise.all([
     medirCatalogo(clienteId),
-    lerTudoPaginado<{ produto_id: string | null; status: string }>("anúncios da loja", (de, ate) =>
+    // AS COLUNAS DO MUNDO DEPOIS DA PUBLICACAO.
+    //
+    // Isto lia `produto_id, status` — o bastante para contar quem tem anuncio,
+    // e cego para tudo que acontece DEPOIS que ele sobe. Com o estado assim, o
+    // servidor montava uma loja sem pendencia e sem "no ar sem IA", e o chat
+    // respondia "nada travado" a uma lojista com 70 pendencias e 2708 pecas
+    // paradas.
+    //
+    // Sao as colunas que `pendenciasDaConta` e `estadoDeOtimizacao` exigem, e
+    // nada alem: continua sem o JSONB da esteira, que e 76,6% do peso da linha.
+    lerTudoPaginado<{
+      produto_id: string | null;
+      status: string;
+      ml_item_id: string | null;
+      ml_permalink: string | null;
+      status_marketplace: string | null;
+      status_marketplace_em: string | null;
+      estoque_marketplace: number | null;
+      sub_status_marketplace: string[] | null;
+      foto_capa_max_size: string | null;
+      nota_diagnostico: number | null;
+      // `produto` NÃO É COLUNA — é o nome que vem do JOIN, e pedi-lo como
+      // coluna derrubava a rota inteira. Ver o bloco abaixo do `select`.
+      produtos: { nome: string | null } | null;
+      created_at: string;
+    }>("anúncios da loja", (de, ate) =>
       admin
         .from("anuncios_gerados")
-        .select("produto_id, status")
+        // ---- `produtos(nome)` É EMBUTIMENTO, e a linha abaixo já foi `produto`.
+        //
+        // MEDIDO EM 25/08/2026, com a rota respondendo 500 em TODO turno:
+        //
+        //   column anuncios_gerados.produto does not exist
+        //
+        // `anuncios_gerados` não tem coluna `produto`. O nome do produto sempre
+        // veio do JOIN — `mappers.ts` escreve `row.produtos?.nome ?? null` — e
+        // aqui ele foi pedido como se fosse coluna da própria tabela. O
+        // PostgREST recusa a leitura inteira, `lerTudoPaginado` lança, e o
+        // assistente morre antes de montar o contexto: nenhuma ferramenta roda,
+        // nenhum turno é gravado.
+        //
+        // Entrou na mescla de 24/08/2026 ("96 commits de lá, 100 daqui, 15
+        // conflitos"), e é por isso que `copilot_mensagens` para naquele dia: o
+        // chat não ficou ruim, ficou MORTO, e o silêncio parecia desuso.
+        //
+        // O embutimento custa um texto curto por linha e não traz o JSONB da
+        // esteira, que continua fora — o motivo da lista enxuta segue valendo.
+        .select(
+          "produto_id, status, ml_item_id, ml_permalink, status_marketplace, " +
+            "status_marketplace_em, estoque_marketplace, sub_status_marketplace, " +
+            "foto_capa_max_size, nota_diagnostico, produtos(nome), created_at"
+        )
         .eq("cliente_id", clienteId)
         .order("id", { ascending: true })
         .range(de, ate)
@@ -183,15 +234,81 @@ export async function contextoDoCopilotNoServidor(
       .maybeSingle(),
     // Leitura que falhou não vira "nenhuma infração": fica `null`, que a conta
     // trata como "não olhei" — e a tela não afirma zero.
-    lerTudoPaginado<{ related_item_id: string | null }>("infrações da loja", (de, ate) =>
+    // `filter_subgroup` E `motivo` ENTRAM porque a classificacao depende deles:
+    // `pendenciasDaConta` separa propriedade intelectual do resto por ai, e
+    // foto se conserta refotografando enquanto acusacao de falsificado nao.
+    //
+    // `remedio` NAO entra, e a omissao e deliberada: ele so alimenta o TEXTO do
+    // cartao, nunca o agrupamento (a chave e familia + tipo) nem o estoque. O
+    // servidor aqui consome so as tres contagens de `noAr`. Traze-lo exigiria
+    // duplicar a limpeza de HTML que vive privada em `infracoesMarketplace`, e
+    // uma regra em dois lugares e como este repositorio colecionou defeito.
+    lerTudoPaginado<{
+      related_item_id: string | null;
+      motivo: string | null;
+      filter_subgroup: string | null;
+    }>("infrações da loja", (de, ate) =>
       admin
         .from("infracoes_marketplace")
-        .select("related_item_id")
+        .select("related_item_id, motivo, filter_subgroup")
         .eq("cliente_id", clienteId)
         .order("id", { ascending: true })
         .range(de, ate)
     ).catch(() => null),
   ]);
+
+  // O MUNDO DEPOIS DA PUBLICACAO, pelas MESMAS funcoes que o navegador usa.
+  //
+  // `pendenciasDaMemoria` e `estadoDeOtimizacao` sao puras e ja sao a verdade
+  // desses dois numeros em Meus Produtos, Relatorios e na Visao geral. Conta-los
+  // aqui seria a quarta versao de uma regra que ja discordou de si mesma em tres
+  // telas no dia 03/08/2026.
+  const paraPendencia = anuncios.map((a) => ({
+    mlItemId: a.ml_item_id,
+    // Do JOIN, e com a MESMA expressão de `mappers.ts` — duas formas de ler o
+    // nome do produto divergiriam no dia em que uma mudasse.
+    produto: a.produtos?.nome ?? null,
+    mlPermalink: a.ml_permalink,
+    statusMarketplace: a.status_marketplace,
+    statusMarketplaceEm: a.status_marketplace_em,
+    estoqueMarketplace: a.estoque_marketplace,
+    subStatusMarketplace: a.sub_status_marketplace,
+    fotoCapaMaxSize: a.foto_capa_max_size,
+  }));
+  const mapaDeInfracoes: Record<string, { motivo: string; remedio: string; categoria: string }[]> =
+    {};
+  for (const l of infracoes ?? []) {
+    if (!l.related_item_id) continue;
+    (mapaDeInfracoes[l.related_item_id] ??= []).push({
+      categoria: l.filter_subgroup ?? "",
+      motivo: l.motivo ?? "",
+      remedio: "",
+    });
+  }
+  // So conta quando a leitura das infracoes CHEGOU: sem o mapa, o agrupamento
+  // devolveria menos pendencias do que existem, e numero baixo e pior que
+  // numero nenhum — ele parece medido.
+  const pend = infracoes === null ? null : pendenciasDaMemoria(paraPendencia, mapaDeInfracoes);
+  const noAr = pend
+    ? {
+        pendenciasAbertas: pend.grupos.length,
+        pecasParadas: pend.estoqueTravado,
+        noArSemOtimizacao: [
+          ...estadoDeOtimizacao(
+            anuncios.map((a) => ({
+              produtoId: a.produto_id,
+              // O banco devolve texto; o tipo do app e um enum fechado. O
+              // `estadoDeOtimizacao` so compara com "aprovado" e "publicado",
+              // entao um valor fora do enum cai em "Em revisao" — que e a
+              // leitura certa para status desconhecido.
+              status: a.status as AnuncioGeradoRegistro["status"],
+              notaDiagnostico: a.nota_diagnostico ?? 0,
+              criadoEm: a.created_at,
+            }))
+          ).values(),
+        ].filter((e) => e === "No ar, sem otimização").length,
+      }
+    : null;
 
   const loja = montarEstadoDaLoja(
     catalogo.produtos,
@@ -203,7 +320,8 @@ export async function contextoDoCopilotNoServidor(
       : {
           infracoes: infracoes.length,
           anuncios: new Set(infracoes.map((l) => l.related_item_id).filter(Boolean)).size,
-        }
+        },
+    noAr
   );
 
   const produtos: ProdutoAlvo[] = catalogo.produtos.map((p) => ({

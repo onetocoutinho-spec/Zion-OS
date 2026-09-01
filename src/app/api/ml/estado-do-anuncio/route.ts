@@ -102,6 +102,21 @@ export async function POST(request: Request) {
     // voltar como `under_review`, e é esse o estado que tem de ser gravado.
     return Response.json({ id: resultado.id, status: resultado.status });
   } catch (e) {
-    return respostaDeErro("ml/estado-do-anuncio", e, "Falha ao mudar o estado do anúncio.", 502);
+    // 422, NÃO 502 — a recusa do ML não é falha de gateway.
+    //
+    // MEDIDO EM 18/08/2026. Ao pausar `MLB7041100974` a tela recebeu
+    // "502 Bad gateway" em HTML do Cloudflare. A rota estava viva e o `catch`
+    // montava a mensagem CERTA — "ML recusou pausar o anúncio X: <motivo>".
+    // Só que num 5xx o Cloudflare descarta o corpo e serve a página dele: o
+    // motivo real da recusa era calculado e jogado fora na borda.
+    //
+    // 422 é o código honesto: a requisição chegou, foi entendida, e a operação
+    // foi recusada pelo marketplace. E atravessa a borda com o corpo intacto.
+    //
+    // O ENVELOPE É O DA MASTER (`respostaDeErro`, que registra o erro inteiro
+    // onde alguém pode lê-lo e só devolve o que é público). As duas coisas
+    // convivem porque o status é parâmetro dele — centralização e código
+    // honesto não competiam, só nunca tinham se encontrado.
+    return respostaDeErro("ml/estado-do-anuncio", e, "Falha ao mudar o estado do anúncio.", 422);
   }
 }

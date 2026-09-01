@@ -5,6 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { executarFerramenta, type ContextoDasFerramentas } from "./executarFerramenta";
 import type {
@@ -61,6 +62,11 @@ interface OpcoesDoContexto {
   anuncios?: Record<string, AnuncioJaGerado>;
   titulo?: { anuncioId: string; nome: string; tituloAtual: string } | null;
   gerado?: { titulo: string; justificativa: string } | null;
+  /**
+   * A cota do mês, para o LOTE. Ausente = porto não montado, que o domínio lê
+   * como `null` — "não li" — e por isso não corta. Ver `cotaRestante` no porto.
+   */
+  cota?: number | null;
 }
 
 function ctxAnuncio(
@@ -81,6 +87,7 @@ function ctxAnuncio(
         truncado: false,
       }),
       margem: async () => 5,
+      ...(o.cota === undefined ? {} : { cotaRestante: async () => o.cota ?? null }),
       anuncioParaTitulo: async () => o.titulo ?? null,
       gerarTitulo: async () => o.gerado ?? null,
     },
@@ -297,6 +304,128 @@ test("propor_anuncio e a preparação concordam sobre o que falta", async () => 
   const faltando =
     proposta.propostaDeAnuncio?.tipo === "falta_dado" ? proposta.propostaDeAnuncio.faltando : [];
   assert.deepEqual([...faltando], preparacao.preparacao?.produto?.bloqueiosParaGerar);
+});
+
+// ---------------------------------------------------------------------------
+// propor_anuncio EM LOTE — "prepare todos que estiverem prontos"
+// ---------------------------------------------------------------------------
+
+test("todosOsProntos seleciona no BACKEND — o modelo não manda a lista", async () => {
+  // A ferramenta não recebe ids; recebe a intenção. Se o modelo montasse a
+  // lista a partir de uma leitura anterior, o escopo já estaria velho.
+  const r = await rodar(
+    "propor_anuncio",
+    { todosOsProntos: true },
+    ctxAnuncio([produto(), produto({ id: "p2", nome: "Sandália Feminina Modare 7179" })])
+  );
+  assert.equal(r.propostaDeAnuncio?.tipo, "lote");
+  const alvos = r.propostaDeAnuncio?.tipo === "lote" ? r.propostaDeAnuncio.alvos : [];
+  assert.deepEqual(
+    alvos.map((a) => a.produtoId),
+    ["p1", "p2"]
+  );
+});
+
+test("o modelo recebe CONTAGENS, nunca a lista de ids", async () => {
+  // Uma lista de 47 uuids não ajuda ninguém a decidir, e é exatamente o tipo de
+  // coisa que ele acabaria escrevendo na resposta — o prompt proíbe id na tela.
+  const r = await rodar(
+    "propor_anuncio",
+    { todosOsProntos: true },
+    ctxAnuncio([produto(), produto({ id: "p2", nome: "Sandália Feminina Modare 7179" })])
+  );
+  const saida = r.saida as Record<string, unknown>;
+  assert.equal(saida.vaiPreparar, 2);
+  assert.equal(JSON.stringify(saida).includes("p1"), false);
+});
+
+test("o LOTE e a preparação concordam sobre quem está pronto", async () => {
+  // A invariante que justifica reusar `selecionarParaPreparar` em vez de
+  // escrever uma segunda régua: se o relatório diz "1 pode virar anúncio", o
+  // lote prepara exatamente aquele 1. Duas seleções divergiriam no dia em que
+  // uma mudasse, e a lojista veria o número encolher sem explicação.
+  const ctx = ctxAnuncio([produto(), produto({ id: "p2", quantidadeImagens: 0 })]);
+  const lote = await rodar("propor_anuncio", { todosOsProntos: true }, ctx);
+  const relatorio = await rodar("preparacao_de_anuncio", {}, ctx);
+  const alvos = lote.propostaDeAnuncio?.tipo === "lote" ? lote.propostaDeAnuncio.alvos : [];
+  assert.equal(alvos.length, (relatorio.saida as { podemVirarAnuncio: number }).podemVirarAnuncio);
+  assert.deepEqual(
+    alvos.map((a) => a.produtoId),
+    relatorio.preparacao?.selecao?.elegiveis.map((e) => e.produtoId)
+  );
+});
+
+test("a cota do mês corta o lote, e o corte volta no número", async () => {
+  const r = await rodar(
+    "propor_anuncio",
+    { todosOsProntos: true },
+    ctxAnuncio([produto(), produto({ id: "p2", nome: "Sandália Feminina Modare 7179" })], { cota: 1 })
+  );
+  const saida = r.saida as { vaiPreparar: number; foraPelaCota: number };
+  assert.equal(saida.vaiPreparar, 1);
+  assert.equal(saida.foraPelaCota, 1);
+});
+
+test("porto de cota ausente NÃO corta — ausência de leitura não é limite zero", async () => {
+  // As telas que montam o contexto à mão não carregam o porto. Tratar isso como
+  // "cota 0" apagaria o lote inteiro por uma ferramenta que ninguém montou.
+  const r = await rodar(
+    "propor_anuncio",
+    { todosOsProntos: true },
+    ctxAnuncio([produto(), produto({ id: "p2", nome: "Sandália Feminina Modare 7179" })])
+  );
+  const saida = r.saida as { vaiPreparar: number; cotaDesconhecida: boolean };
+  assert.equal(saida.vaiPreparar, 2);
+  assert.equal(saida.cotaDesconhecida, true);
+});
+
+test("o lote NÃO enfileira nada — quem dispara é o clique", async () => {
+  // A propriedade que separa este assistente de um botão caro. A saída diz isso
+  // ao modelo com todas as letras, porque ele já prometeu ação concluída antes.
+  const r = await rodar("propor_anuncio", { todosOsProntos: true }, ctxAnuncio([produto()]));
+  assert.match((r.saida as { aviso: string }).aviso, /Nada foi enfileirado ainda/);
+});
+
+test("instrução para o MODELO não se disfarça de conteúdo para a lojista", async () => {
+  // MEDIDO EM 25/08/2026, na primeira conversa real depois do conserto: a
+  // lojista pediu "prepare todos os anúncios que estiverem prontos" e leu, na
+  // resposta, o texto integral de um campo da saída:
+  //
+  //   Observação da ferramenta: "Para cada elegível, chame propor_anuncio
+  //   com o produtoId. Isso monta o cartão..."
+  //
+  // O campo se chamava `comoPreparar`. Nome neutro num objeto onde todo o
+  // resto É conteúdo se lê como conteúdo. A trava: instrução que nomeia uma
+  // ferramenta e manda chamá-la mora em `instrucaoInterna`, e o valor começa
+  // avisando — o nome sozinho é fácil de esquecer no próximo campo.
+  const fonte = readFileSync(new URL("./executarFerramenta.ts", import.meta.url), "utf8");
+  const nomes = FERRAMENTAS.map((f) => f.nome).join("|");
+  const imperativos = new RegExp(`([a-zA-Z]+):\\s*\\n?\\s*"[^"]*chame (?:${nomes})`, "g");
+  let achou = 0;
+  for (const [, chave] of fonte.matchAll(imperativos)) {
+    achou += 1;
+    assert.equal(
+      chave,
+      "instrucaoInterna",
+      `o campo \`${chave}\` manda o modelo chamar uma ferramenta e não se chama instrucaoInterna — ` +
+        `num objeto de saída isso se lê como recado para a lojista`
+    );
+  }
+  assert.ok(achou > 0, "nenhuma instrução encontrada: o regex parou de casar");
+  for (const [, valor] of fonte.matchAll(/instrucaoInterna:\s*\n?\s*"([^"]*)"/g)) {
+    assert.match(
+      valor,
+      /^NÃO MOSTRE ESTE TEXTO AO LOJISTA/,
+      "instrucaoInterna sem o aviso na frente: o nome da chave não chega ao modelo, o texto chega"
+    );
+  }
+});
+
+test("sem produto e sem lote, pede a ESCOLHA — não manda buscar um produto sem nome", async () => {
+  // O erro antigo era "use achar_produto antes", que mandava o modelo procurar
+  // um produto que ninguém tinha nomeado. O que falta aqui é a decisão dela.
+  const r = await rodar("propor_anuncio", {}, ctxAnuncio([produto()]));
+  assert.match((r.saida as { erro: string }).erro, /de qual produto/);
 });
 
 test("propor_anuncio avisa quando vai REFAZER um anúncio existente", async () => {

@@ -25,12 +25,18 @@ import { formatBRL } from "@/lib/format";
 import { listarAuditorias } from "@/lib/services/auditorias";
 import { listarProdutos } from "@/lib/services/produtos";
 import { listarTodasVariantes } from "@/lib/services/produtoVariantes";
+import { contarFotosPorProduto } from "@/lib/services/imagensProduto";
 import { criarExecucaoLote } from "@/lib/services/execucoesLote";
 import { criarAnuncioGerado } from "@/lib/services/anunciosGerados";
 import { rodarEsteira } from "@/lib/services/esteira";
 import { ROTULO_PRIORIDADE } from "@/lib/auditoria";
 import type { AnuncioGerado } from "@/lib/agentes/esteira";
-import type { AuditoriaAnuncio, PrioridadeAuditoria, Produto, ProdutoVariante } from "@/lib/types";
+import type {
+  AuditoriaAnuncio,
+  PrioridadeAuditoria,
+  Produto,
+  ProdutoVariante,
+} from "@/lib/types";
 
 const PESO: Record<PrioridadeAuditoria, number> = { critica: 0, alta: 1, media: 2, baixa: 3 };
 
@@ -119,6 +125,18 @@ export default function EsteiraLotePage() {
   const auditorias = auditoriasData ?? [];
   const { data: produtosData } = useLiveQuery(listarProdutos);
   const { data: variantesData } = useLiveQuery(listarTodasVariantes);
+  // A CONTAGEM de fotos por produto, não as fotos. `listarTodasImagens()` era
+  // `select *` sem filtro: ~4,8 MB nesta base, reexecutado a cada mudança na
+  // tabela, para virar um mapa de números. Ver `contarFotosPorProduto`.
+  //
+  // `tabelas` DECLARADO: sem isso a contagem re-executa a cada mudança em
+  // qualquer tabela — e `rodarLote` grava um anúncio e atualiza a auditoria por
+  // item. Um lote de 50 disparava ~100 releituras da tabela de imagens inteira
+  // durante a própria execução. O commit anterior cortou o peso da linha; este
+  // corta o número de idas.
+  const { data: fotosPorProduto } = useLiveQuery(contarFotosPorProduto, [], {
+    tabelas: ["imagens_produto"],
+  });
 
   const produtoPorId = useMemo(() => {
     const m = new Map<string, Produto>();
@@ -178,6 +196,19 @@ export default function EsteiraLotePage() {
           // grade do anúncio. Sem isto o lote publicaria SKU inventado em massa.
           variantes: vars,
           precoVenda: prod?.precoVenda ?? 0,
+          // Sem imagem o ML recusa o anúncio. Mas item de auditoria SEM PRODUTO
+          // casado é `null`, não 0: não há produto a que anexar foto, e cobrar
+          // uma foto de um produto que não existe é reprovar por nada.
+          //
+          // E CONTAGEM QUE NÃO CHEGOU TAMBÉM É `null`. `fotosPorProduto` é
+          // `null` no primeiro render e quando a leitura falha; `?? 0` ali
+          // transformaria "ainda não sei" em "não tem foto" para TODO item da
+          // fila, e o veredito reprovado seria gravado por `criarAnuncioGerado`.
+          // O mapa presente e sem a chave, esse sim, é zero de verdade.
+          fotosDoProduto:
+            fila[i].produtoId && fotosPorProduto
+              ? (fotosPorProduto.get(fila[i].produtoId!) ?? 0)
+              : null,
         });
         tipoFinal = r.tipo;
         const aprovadoA10 = r.anuncio.vereditoA10 === "aprovado" && r.anuncio.pendencias.length === 0;

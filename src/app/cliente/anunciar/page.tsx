@@ -46,9 +46,10 @@ import { montarContexto } from "@/lib/contexto";
 import {
   atributosPorId,
   briefingDosAtributos,
-  OBRIGATORIOS_CALCADO,
   resolverObrigatorios,
 } from "@/modules/publication/domain/atributosDoMarketplace";
+import { obrigatoriosDoProduto } from "@/modules/publication/domain/obrigatoriosDoProduto";
+import { obrigatoriosDaCategoria } from "@/lib/services/categoriaML";
 import { listarAtributosDoProduto } from "@/lib/services/produtoAtributos";
 import {
   listarAnunciosGeradosDoCliente,
@@ -62,6 +63,7 @@ import { quotaEsteira } from "@/lib/services/perfil";
 import { INTERMEDIARIOS, rodarCadeiaEsteira, type PassoCadeia } from "@/lib/services/cadeiaEsteira";
 import {
   montarJornada,
+  avisoDeProdutoJaNoAr,
   proximaAcao,
   etapaAtual,
   concluida,
@@ -134,9 +136,13 @@ function Jornada() {
     buscarCanal(clienteId, marketplace)
       .then((c) => vivo && setConectado(Boolean(c?.ativo)))
       .catch(() => vivo && setConectado(false));
+    // `null` é "não conseguimos ler", e ele TEM que chegar como null: o
+    // `quotaRestante: quota ?? 1` abaixo já decidiu não bloquear por algo que
+    // não se sabe, e mandar 0 aqui transformava falha de rede em cota
+    // esgotada — a parede comercial que ninguém pediu.
     quotaEsteira()
-      .then((q) => vivo && setQuota(q.restante))
-      .catch(() => vivo && setQuota(0));
+      .then((q) => vivo && setQuota(q ? q.restante : null))
+      .catch(() => vivo && setQuota(null));
     return () => {
       vivo = false;
     };
@@ -325,6 +331,17 @@ function Jornada() {
     conectado,
     // Enquanto a quota não chega, não se bloqueia por algo que não se sabe.
     quotaRestante: quota ?? 1,
+    // QUANTOS DESTE PRODUTO JÁ ESTÃO NO AR. Sai da mesma lista que já está
+    // carregada — nenhuma consulta nova. `undefined` enquanto ela não chegou,
+    // porque contar zero antes de ter contado é a afirmação falsa que este
+    // repositório passou o mês arrancando.
+    ...(anuncios && produtoId
+      ? {
+          anunciosNoArDoProduto: anuncios.filter(
+            (a) => a.produtoId === produtoId && a.mlItemId
+          ).length,
+        }
+      : {}),
   };
 
   const trilha = montarJornada(ctx);
@@ -362,6 +379,29 @@ function Jornada() {
       // campo no cadastro e antes só podiam ser adivinhados do NOME — agora há
       // valor medido, e medido vence adivinhado.
       const daFicha = await listarAtributosDoProduto(produto.id).catch(() => []);
+
+      // A CATEGORIA MEDIDA, quando ela existe (INC-011).
+      //
+      // `anuncios` já está em memória e cada linha traz `categoriaMl` — o
+      // `category_id` que o ML devolveu na importação. Não custa consulta
+      // nenhuma; o que custa uma requisição é a lista de obrigatórios daquela
+      // categoria, e ela é pública.
+      //
+      // Produto sem anúncio no ar não tem categoria medida e cai no palpite de
+      // calçado, que é exatamente o comportamento de antes. Falha de rede idem:
+      // `obrigatoriosDaCategoria` devolve null, não [].
+      // A decidida do produto vence a que veio do anúncio importado (079):
+      // produto de planilha nunca esteve no ar, e sem isto caía no palpite.
+      const categoriaMedida =
+        (produto.categoriaMl ?? "").trim() ||
+        ((anuncios ?? [])
+          .filter((a) => a.produtoId === produto.id)
+          .map((a) => (a.categoriaMl ?? "").trim())
+          .find(Boolean) ?? "");
+      const { exigencias, procedencia } = obrigatoriosDoProduto(
+        categoriaMedida,
+        categoriaMedida ? await obrigatoriosDaCategoria(clienteId, categoriaMedida) : null
+      );
       const atributos = briefingDosAtributos(
         resolverObrigatorios(
           {
@@ -371,9 +411,10 @@ function Jornada() {
             cores: [...new Set(variantes.map((v) => v.cor).filter(Boolean))],
             tamanhos: [...new Set(variantes.map((v) => v.tamanho).filter(Boolean))],
           },
-          OBRIGATORIOS_CALCADO,
+          exigencias,
           atributosPorId(daFicha)
-        )
+        ),
+        procedencia
       );
       const contexto = montarContexto({
         produto,
@@ -387,6 +428,9 @@ function Jornada() {
         briefing,
         variantes,
         precoVenda: produto.precoVenda,
+        // A MESMA contagem que já ia para o contexto. Ela agora também decide a
+        // pendência: sem imagem o ML recusa o anúncio.
+        fotosDoProduto: fotos.length,
         onPasso: setPassos,
         retomarDe: retomavel,
         onEtapaConcluida: (_, todas) => gravarProgresso(todas),
@@ -567,6 +611,19 @@ function Jornada() {
       {publicado && <AvisoPublicado resultado={publicado} />}
 
       <Trilha trilha={trilha} />
+
+      {/* A ESTEIRA CRIA — ela não melhora o que já está no ar.
+          Medido em 14/08/2026: 88 rascunhos nesta conta, e 86 nasceram DEPOIS
+          de o produto já estar no ar. Quem abre a esteira num produto
+          publicado quase sempre quer melhorar o que está vendendo, e o que sai
+          daqui é mais um anúncio. Avisa, não bloqueia: cor nova e kit são
+          motivos legítimos. */}
+      {avisoDeProdutoJaNoAr(ctx) && (
+        <p className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-3 text-sm leading-relaxed text-amber-200/90">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+          {avisoDeProdutoJaNoAr(ctx)}
+        </p>
+      )}
 
 
       {/* ── Passo 1: escolher o produto ─────────────────────────────────── */}

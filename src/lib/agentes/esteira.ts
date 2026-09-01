@@ -15,8 +15,11 @@ import {
   agentesDaEsteira,
 } from "./catalogo";
 import {
-  gradePublicavel,
+  // `gradePublicavel` saiu daqui em 27/08/2026: ela é, por definição,
+  // `pendenciasDaGrade(...).length === 0`, e o veredito passou a olhar a lista
+  // de pendências inteira — que inclui a foto, que a grade não conhece.
   pendenciasDaGrade,
+  sugestoesDaGrade,
   type VariacaoDoAnuncio,
 } from "../../modules/publication/domain/variacoesDoAnuncio";
 
@@ -34,7 +37,7 @@ export function montarSystemPromptEsteira(): string {
 LINHA DE PRODUÇÃO (agentes internos):
 ${etapas}
 
-CHECKLIST DE QUALIDADE (o A10 é a trava — só aprove com tudo ✅):
+CHECKLIST DE QUALIDADE (use para ESCREVER — ele não é veredito seu):
 ${checklist}
 
 IDENTIDADE DO PRODUTO NÃO SE ESCREVE — SE LÊ:
@@ -45,7 +48,7 @@ Você NÃO decide quais atributos são obrigatórios. Essa lista é do Mercado L
 
 O que você observar de útil e que MELHORARIA o anúncio (uma foto que falta, uma medida ausente, um dado que enriqueceria a ficha) vai em "sugestoes". Sugestão é conselho para o lojista, não trava.
 
-Preencha "notaDiagnostico" com a nota do A1 (0–100). Defina vereditoA10 = "aprovado" só se passar no checklist de QUALIDADE acima; senão "reprovado" com o motivo. Responda em português do Brasil.
+Preencha "notaDiagnostico" com a nota do A1 (0–100) — ela é informação para quem lê, não decisão. VOCÊ NÃO APROVA NEM REPROVA o anúncio: o que impede publicar é verificado no cadastro, sobre dado real, depois desta resposta. Use o checklist para ESCREVER bem, não para julgar. Responda em português do Brasil.
 
 ${REGRAS_MAE}`;
 }
@@ -140,8 +143,28 @@ export const ESQUEMA_ANUNCIO = {
       description:
         "O que MELHORARIA o anúncio (foto que falta, medida ausente, dado que enriqueceria a ficha). Conselho, nunca trava.",
     },
-    vereditoA10: { type: "string", enum: ["aprovado", "reprovado"] },
-    motivoVeredito: { type: "string" },
+    // `vereditoA10` e `motivoVeredito` NÃO estão aqui — 27/08/2026, e é a
+    // terceira vez que este arquivo aprende a mesma lição.
+    //
+    // `variacoes` saiu porque o modelo inventava SKU. `pendencias` saiu porque
+    // ele inventava obrigatoriedade. O veredito ficou — e virou o novo lugar
+    // por onde o bloqueio passava.
+    //
+    // MEDIDO sobre 411 anúncios do catálogo real: 307 reprovados, 299 deles
+    // (97%) com ZERO pendências. A lojista lia "reprovado" e não havia uma linha
+    // do que corrigir, porque publicar exige veredito aprovado E lista vazia.
+    //
+    // E a opinião não é estável. O MESMO produto, cinco execuções idênticas no
+    // mesmo dia: notas 34, 42, 45, 48, 48 — e um "reprovado" entre quatro
+    // "aprovados". Uma trava permanente sobre o produto do lojista não pode ser
+    // um número que oscila 14 pontos entre chamadas.
+    //
+    // O veredito agora é DERIVADO das pendências, em `comAGradeDoCadastro`:
+    // lista vazia aprova, lista cheia reprova, e o motivo é a própria lista. Um
+    // veredito que não pode discordar do que está escrito na tela.
+    //
+    // A leitura editorial do modelo não se perdeu: ela já vai em `sugestoes`, e
+    // sugestão não bloqueia. `notaDiagnostico` continua, como informação.
   },
   required: [
     "notaDiagnostico",
@@ -157,8 +180,6 @@ export const ESQUEMA_ANUNCIO = {
     "imagensSugeridas",
     "faq",
     "sugestoes",
-    "vereditoA10",
-    "motivoVeredito",
   ],
   additionalProperties: false,
 } as const;
@@ -196,7 +217,10 @@ export interface PerguntaFaq {
  * para sempre por uma exigência que ninguém faz (pendências). `AnuncioGerado`
  * abaixo é o resultado final, depois de o domínio pôr as duas no lugar.
  */
-export type AnuncioDaIA = Omit<AnuncioGerado, "variacoes" | "pendencias">;
+export type AnuncioDaIA = Omit<
+  AnuncioGerado,
+  "variacoes" | "pendencias" | "vereditoA10" | "motivoVeredito"
+>;
 
 export interface AnuncioGerado {
   notaDiagnostico: number;
@@ -267,22 +291,127 @@ export interface AnuncioGerado {
  * "Ano de lançamento", que não existe na categoria. Agora o que ele observa
  * vive em `sugestoes` e não bloqueia nada.
  */
+/**
+ * Os NOMES dos campos que faltam, a partir das pendências.
+ *
+ * As pendências têm a forma "⚠️ informação necessária: <campo> — <explicação>",
+ * e é o `<campo>` que serve de rótulo. Quando o formato não bate — porque
+ * alguém escreveu uma pendência de outro jeito —, a frase inteira entra: perder
+ * a informação seria pior que uma frase comprida.
+ *
+ * O TRAVESSÃO NÃO É O ÚNICO CORTE, e a pendência mais comum é justamente a que
+ * não o usa: a da grade vem de `variacoesDoAnuncio.ts`, que escreve "grade de
+ * variações do produto (cor, tamanho, SKU, EAN e estoque de cada uma)". Com só
+ * o travessão, a frase inteira virava "nome do campo" e ainda ganhava um ponto
+ * final duplicado — o texto antigo com um erro de pontuação novo. Parêntese e
+ * dois-pontos cortam pelo mesmo motivo que o travessão: dali para a frente é
+ * explicação, e quem lê o veredito numa listagem quer a lista dos campos.
+ *
+ * A pontuação final sai depois do corte porque o pedaço cortado pode terminar
+ * em ponto, e o rótulo recebe o seu no fim.
+ */
+function camposQueFaltam(pendencias: readonly string[]): string {
+  const campos = pendencias.map((p) => {
+    const semMarca = p.replace(/^⚠️\s*informação necessária:\s*/i, "");
+    const ateOCorte = semMarca.split(/[—(:]/)[0].trim().replace(/[.,;]+$/, "");
+    return ateOCorte || p;
+  });
+  const unicos = [...new Set(campos)];
+  return unicos.length === 1
+    ? `Falta: ${unicos[0]}.`
+    : `Faltam ${unicos.length}: ${unicos.join(", ")}.`;
+}
+
 export function comAGradeDoCadastro(
   daIA: AnuncioDaIA,
-  grade: VariacaoDoAnuncio[]
+  grade: VariacaoDoAnuncio[],
+  /**
+   * Quantas fotos o produto tem no cadastro — ou `null` quando NÃO HÁ PRODUTO.
+   *
+   * OBRIGATÓRIO DE PROPÓSITO, e não opcional com padrão. Três vezes seguidas,
+   * neste mesmo fluxo, um caminho recebeu menos contexto que o outro sem que
+   * nada quebrasse: o briefing de atributos, o rastro de custo e a contagem de
+   * fotos, todos passados por `/cliente/anunciar` e esquecidos pelo worker.
+   * Parâmetro obrigatório transforma esquecer em erro de compilação — é o mesmo
+   * motivo pelo qual `pendencias` saiu de `AnuncioDaIA`.
+   *
+   * `null` E `0` SÃO COISAS DIFERENTES, e tratá-los igual foi um defeito.
+   *
+   * `0` é "este produto não tem foto" — pendência, e das que travam. `null` é
+   * "não há produto a que anexar foto": é a tela `/esteira` da equipe, onde se
+   * roda um briefing digitado para experimentar o prompt, sem produto nenhum
+   * selecionado.
+   *
+   * Com os dois valendo 0, TODA execução daquela tela voltava reprovada com
+   * "este produto não tem nenhuma imagem cadastrada" — sobre um produto que não
+   * existe. Um sinal que aparece em 100% das vezes deixa de ser sinal.
+   *
+   * É a mesma distinção que este repositório paga caro para manter em
+   * `largura`/`altura` ("não medimos" não é "não tem") e em `margem`. Aqui ela
+   * estava colapsada no tipo, e o tipo é onde ela tinha que aparecer.
+   */
+  fotosDoProduto: number | null
 ): AnuncioGerado {
   const daGrade = pendenciasDaGrade(grade);
-  const publicavel = gradePublicavel(grade);
+  // `null` não é "sem foto": é "sem produto". Ver o parâmetro.
+  const semFoto = fotosDoProduto !== null && fotosDoProduto <= 0;
+  // A FOTO É TRAVA, E A PROVA DISSO JÁ ESTAVA NO REPOSITÓRIO.
+  //
+  // `api/ml/remover-foto` recusa apagar a última imagem de um anúncio, com a
+  // razão escrita: "anúncio sem foto o Mercado Livre não aceita". A mesma
+  // verdade nunca tinha chegado à criação — o sistema protegia a última foto de
+  // um anúncio no ar e aprovava um anúncio que nunca teve nenhuma.
+  //
+  // MEDIDO em 27/08/2026: dos 102 anúncios aprovados com zero pendências, 96
+  // não tinham foto alguma. "Pronto para publicar" era falso em 94% dos casos,
+  // e o lojista só descobriria no erro do ML.
+  //
+  // Ela entra como PENDÊNCIA, não como veredito: pendência é lista, tem texto,
+  // diz o que fazer e some quando resolvida. Foi por não ser assim que 244
+  // anúncios foram reprovados por foto sem uma linha do que corrigir — pelo
+  // modelo, que nem imagem recebe.
+  const pendencias = semFoto
+    ? [
+        "⚠️ informação necessária: foto — este produto não tem nenhuma imagem cadastrada, e o Mercado Livre exige pelo menos uma para publicar. Envie em Imagens.",
+        ...daGrade,
+      ]
+    : daGrade;
+  // O EAN sai da grade como CONSELHO, não como trava — ele não é obrigatório em
+  // nenhuma categoria medida, e o ML aceita o motivo no lugar do código. As
+  // sugestões do modelo continuam valendo; esta entra junto.
+  const conselhos = [...(daIA.sugestoes ?? []), ...sugestoesDaGrade(grade)];
+
+  // O VEREDITO É A LISTA DE PENDÊNCIAS, DITA EM UMA PALAVRA.
+  //
+  // Ele não é mais do modelo (ver o esquema). Aqui ele é DERIVADO: lista vazia
+  // aprova, lista cheia reprova. Não é uma segunda opinião sobre as pendências
+  // — é a mesma informação, e por construção não pode discordar do que a tela
+  // mostra.
+  //
+  // Era exatamente essa discordância o defeito: 299 anúncios "reprovados" com
+  // zero pendências, e nada escrito para a lojista corrigir. Publicar exige
+  // `veredito === "aprovado" && pendencias.length === 0`; com o veredito
+  // derivado, as duas condições viraram uma só, e nenhuma pode travar sozinha.
+  const publicavel = pendencias.length === 0;
   return {
     ...daIA,
     variacoes: grade,
-    pendencias: daGrade,
-    vereditoA10: publicavel ? daIA.vereditoA10 : "reprovado",
+    pendencias,
+    sugestoes: conselhos,
+    vereditoA10: publicavel ? "aprovado" : "reprovado",
+    // O motivo nomeia os CAMPOS, não repete os textos.
+    //
+    // A primeira versão concatenava as pendências inteiras. A da foto sozinha
+    // tem cerca de 180 caracteres, então um produto sem foto, sem preço e sem
+    // SKU produzia mais de 400 — gravados no JSONB de cada anúncio e truncados
+    // no meio de uma frase em qualquer listagem, onde o motivo aparece como
+    // resumo de uma linha.
+    //
+    // O detalhe continua tendo dono: é a lista de pendências, logo ali, e é ela
+    // que a tela do anúncio mostra. O motivo é o rótulo.
     motivoVeredito: publicavel
-      ? daIA.motivoVeredito
-      : [daIA.motivoVeredito, `Grade de variações incompleta: ${daGrade.join(" ")}`]
-          .filter(Boolean)
-          .join(" "),
+      ? "Sem pendências: a grade está completa, há preço e há foto cadastrada."
+      : `Não publica ainda. ${camposQueFaltam(pendencias)}`,
   };
 }
 

@@ -354,111 +354,19 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
   // override → marca → padrão BR e diz qual usou; rodar o A7 (Medidas) aqui
   // trocaria dado por palpite sobre coisa já sabida. A `fonte` viaja junto
   // justamente para o modelo não afirmar as três com a mesma confiança.
+  // AS CONTAGENS SAO A UNIAO DAS DUAS LINHAS DE TRABALHO — mescla de 24/08/2026.
   //
-  // De 22 para 23 em 22/08/2026: `vendas_da_loja`, LEITURA — o eixo de
-  // resultado comercial entra no chat (ver a matriz em primeiraAcao.test).
-  // Nenhuma das outras vinte e duas mudou de efeito.
-  // 26 / 15 / 9 desde 22/08/2026: comparar_lojas, meu_perfil_de_conteudo
-  // (leitura) e propor_tarefas (proposta). Ver a matriz em primeiraAcao.test.
-  // 27 / 15 / 10 com `propor_imagem` (070).
-  // 28 / 16 com `diagnostico_do_anuncio` (leitura).
+  // A `master` somou 13 ferramentas e a `feat/portal-da-lojista` somou 3.
+  // Nenhum nome colidiu, e NENHUM DOS DOIS LADOS mexeu no tipo `Efeito` nem em
+  // `EXECUCOES_REVERSIVEIS` — a fronteira de seguranca atravessou a mescla sem
+  // ser tocada, e continua com UMA execucao nomeada (`reativar_anuncio`).
   //
-  // De 28 para 29 em 24/08/2026: `anuncios_ativos`, LEITURA — 29 / 17.
-  //
-  // De 29 para 30, no mesmo dia: `anuncios_a_corrigir`, LEITURA — 30 / 18. Ela
-  // lê as MESMAS linhas de `anuncios_ativos` (um porto memoizado por turno) e
-  // responde a pergunta seguinte: dos que não estão no ar, o que fazer com
-  // cada motivo. Traz o campo `acao`, que inclui `capacidade_ausente` — a
-  // primeira leitura do catálogo que declara o que o Zion NÃO sabe fazer, em
-  // vez de calar. Nenhuma das outras vinte e nove mudou de efeito.
-  //
-  // A decisão nasceu de uma pergunta feita em produção: "quais são os anúncios
-  // ativos hoje?". O Copilot respondeu que não sabia, e estava certo — as 16
-  // leituras olhavam PRODUTO, nunca a loja inteira no marketplace. O dado
-  // estava guardado desde a 050/051 e ninguém o perguntava.
-  //
-  // Por que LEITURA e não proposta: ela não muda nada, não chama o ML e não
-  // custa modelo — lê `anuncios_gerados` com o tenant da sessão, paginada.
-  //
-  // Por que ela lê o BANCO e não o Mercado Livre ao vivo: são ~800 anúncios, e
-  // relê-los não cabe no orçamento de 45s do laço. O troco é a data, e a data
-  // vai na resposta: em 24/08/2026 os 489 ativos tinham sido medidos havia 10
-  // dias, e a ferramenta manda dizer isso. Nenhuma das outras vinte e oito
-  // mudou de efeito.
-  //
-  // De 30 para 31 em 24/08/2026: `diagnostico_de_agrupamento`, LEITURA — 31 / 19.
-  //
-  // A decisão nasceu de uma frase da lojista — "as variações da Papete Modare
-  // não estão agrupadas" — que aponta o lugar certo e nomeia a coisa errada.
-  // Medido: em calçado o ML NÃO aceita `variations[]`, então um anúncio por
-  // numeração é o formato dele. O defeito é a GRADE PARTIDA: 16 anúncios e 1
-  // no ar; 41 e 1 no Havaianas Slim. Quem procura outro número não acha a loja.
-  //
-  // Ela lê a MESMA varredura de `anuncios_ativos` e o catálogo do porto de
-  // análise, os dois memoizados por turno — nenhuma leitura nova. E declara o
-  // que não sabe: o vínculo de família do ML não é guardado em
-  // `anuncios_gerados` (conferido no banco), então ninguém aqui pode afirmar
-  // que o ML agrupou ou não. A conferência de referência repetida sai com a
-  // palavra "confira", nunca "duplicado": dois materiais do mesmo modelo é
-  // cadastro legítimo.
-  //
-  // De 31 para 32 em 24/08/2026: `o_que_eu_consigo`, LEITURA — 32 / 20.
-  //
-  // Ela não lê a loja: lê o REGISTRO DE HABILIDADES (`habilidades.ts`), que
-  // declara o que o Copilot faz e, o que nenhuma outra peça sabia dizer, o que
-  // ele NÃO faz — com o motivo medido e o que faltaria. Existe porque o
-  // catálogo sabe o que existe e não sabe o que está ausente: sem isso, "você
-  // consegue mudar o preço no ML?" é respondido pelo prompt, e prompt não é
-  // dado.
-  //
-  // Por que pode ser a PRIMEIRA ação: não toca banco de loja nenhum, não chama
-  // rede e não custa modelo — lê uma tabela declarativa em memória. O pior caso
-  // de um "obrigado" dispará-la é a lojista ler o que o assistente faz.
-  //
-  // Ela também é o ÚNICO ponto do catálogo que grava um sinal: quando o assunto
-  // é uma lacuna, o pedido vai para o journal (contexto `copilot-lacuna`). A
-  // checagem e o sinal são o mesmo movimento — é assim que a Zion descobre o
-  // que os operadores tentam fazer e o Zion ainda não faz.
-  //
-  // De 32 para 33 em 24/08/2026: `investigar`, RASCUNHO — 33 / 20 / 2 / 10 / 1.
-  //
-  // É a etapa 5 do Operador Universal, e a única peça do catálogo que muda o
-  // TEMPO de um pedido: um turno tem seis passos e 45 s, e "descobre o que
-  // está errado nessa loja" tem dez a vinte operações. Em vez de um turno
-  // maior (a plataforma mata a função, e um turno que morre perde o que
-  // descobriu), a investigação vira rascunho que atravessa turnos — o mesmo
-  // movimento de `copilot_cadastros`, com teto de 4 rodadas.
-  //
-  // RASCUNHO e não proposta: ela não autoriza nada, não tem alvo e não tem
-  // valor. Só LÊ e ANOTA — toda escrita continua passando por
-  // `copilot_propostas` e pelo clique. O poder de agir não mudou: segue 1.
-  //
-  // De 33 para 34 em 24/08/2026: `propor_titulo_no_anuncio`, PROPOSTA —
-  // 34 / 20 / 2 / 11 / 1. Etapa 7 do Operador Universal.
-  //
-  // É a PRIMEIRA escrita de conteúdo do projeto num anúncio que já está no ar:
-  // até aqui dava para criar, encerrar, pausar, reativar e trocar fotos, e
-  // corrigir um título errado exigia encerrar e republicar — perdendo
-  // histórico e relevância na busca.
-  //
-  // PROPOSTA e não ação, apesar de reversível: o que ela muda é o que o
-  // COMPRADOR vê. A régua de `executa` é reversibilidade E dano baixo no pior
-  // caso; aqui o pior caso é um título errado na vitrine, e o clique humano é
-  // barato perto disso. Risco `alto` (migração 072), que já exige que quem
-  // confirma seja quem pediu.
-  //
-  // E ela nasce com a trava que nenhuma escrita anterior tinha: depois de
-  // escrever, o servidor RELÊ o anúncio e compara. "200 OK" não é prova, e
-  // este caminho (`PUT /items/{id}`) nunca foi medido contra a API real —
-  // a releitura é o que torna seguro publicá-lo.
-  // De 34 para 35 em 24/08/2026: `saude_do_catalogo`, LEITURA — 35 / 21.
-  //
-  // NÃO é capacidade nova: `retratarCatalogo` calcula isto desde 02/08/2026.
-  // É ALCANCE — o retrato rodava dentro da importação, ia embora com a
-  // requisição, e a tabela dela não é lida por ferramenta nenhuma. A decisão
-  // por extenso está na matriz de T2, em `primeiraAcao.test.ts`.
-  assert.equal(FERRAMENTAS.length, 35);
-  assert.equal(FERRAMENTAS_DE_LEITURA.length, 21);
+  // Cada acrescimo tem a decisao escrita no historico do lado que o trouxe;
+  // repetir as dezesseis aqui faria deste comentario um changelog. O que esta
+  // linha guarda e o TAMANHO: uma 39a ferramenta reprova aqui e obriga alguem
+  // a assinar.
+  assert.equal(FERRAMENTAS.length, 38);
+  assert.equal(FERRAMENTAS_DE_LEITURA.length, 24);
   assert.equal(FERRAMENTAS_DE_PROPOSTA.length, 11);
   assert.equal(FERRAMENTAS_DE_RASCUNHO.length, 2);
   assert.equal(FERRAMENTAS_DE_ACAO.length, 1);
@@ -468,14 +376,11 @@ test("T16: nenhuma ferramenta de efeito foi RECLASSIFICADA", () => {
 });
 
 test("T17: o C1R continua intacto", () => {
-  // 11 desde 10/08/2026; 12 com `tabela_de_medidas`; 13 desde 22/08/2026 com
-  // `vendas_da_loja`; 18 desde 24/08/2026 com `anuncios_ativos` e
-  // `anuncios_a_corrigir` (ver a matriz em primeiraAcao.test). O que o C1R
-  // garante NÃO mudou e é o que a linha seguinte prova: toda ferramenta da
-  // primeira ação tem efeito `le`. O número trava o tamanho; o laço trava a
+  // 24 apos a mescla de 24/08/2026, e o numero nao e escrito a mao:
+  // `PRIMEIRA_ACAO` DERIVA de `efeito === "le"`, entao ele e o total de
+  // leituras da uniao. O numero trava o tamanho; o laco abaixo trava a
   // natureza.
-  // 21 desde 24/08/2026 com `saude_do_catalogo`.
-  assert.equal(PRIMEIRA_ACAO.length, 21);
+  assert.equal(PRIMEIRA_ACAO.length, 24);
   for (const nome of PRIMEIRA_ACAO) {
     assert.equal(FERRAMENTAS.find((f) => f.nome === nome)?.efeito, "le");
   }

@@ -11,11 +11,8 @@ import { useLiveQuery } from "@/lib/hooks";
 import { resumoVariante } from "@/lib/variantes";
 import { papelDaFotoNova } from "@/modules/catalog/domain/papelDaImagem";
 import { listarVariantesDoProduto } from "@/lib/services/produtoVariantes";
-import {
-  criarImagem,
-  excluirImagem,
-  listarImagensDoProduto,
-} from "@/lib/services/imagensProduto";
+import { criarImagem, listarImagensDoProduto } from "@/lib/services/imagensProduto";
+import { excluirImagemDoProduto } from "@/lib/services/storageImagens";
 import type { ImagemProduto, Produto } from "@/lib/types";
 
 export function AbaImagens({ produto }: { produto: Produto }) {
@@ -63,6 +60,15 @@ export function AbaImagens({ produto }: { produto: Produto }) {
       url: url.trim(),
       status,
       observacoes: "",
+      // Este caminho recebe uma URL COLADA, não um arquivo — não há o que
+      // medir sem ir buscar a imagem. O par nulo diz "não medimos"; zero diria
+      // "não tem", e as duas frases levam a decisões opostas sobre trocar a
+      // capa. Quem sobe arquivo (`uploadImagemProduto`) mede.
+      largura: null,
+      altura: null,
+      // URL colada não diz cor. Quem sobe ARQUIVO pelo portal escolhe a cor da
+      // lista do produto; aqui não há de onde tirar.
+      cor: null,
     });
     setUrl("");
   }
@@ -90,7 +96,9 @@ export function AbaImagens({ produto }: { produto: Produto }) {
               </div>
               <div className="flex items-center gap-2">
                 <Badge>{img.status}</Badge>
-                <button onClick={() => excluirImagem(img.id)} title="Excluir imagem"
+                {/* NÃO é `excluirImagem` direto: apagar a capa deixava o
+                    produto sem capa nenhuma, em silêncio. */}
+                <button onClick={() => void excluirImagemDoProduto(produto.id, img.id)} title="Excluir imagem"
                   className="flex h-7 w-7 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400">
                   <Trash2 size={13} />
                 </button>

@@ -116,7 +116,11 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
   // agora" deixou de ser obrigatório e virou atualização.
   const { data: gravados } = useLiveQuery(
     () => listarAnunciosGeradosDoCliente(clienteId),
-    [clienteId]
+    [clienteId],
+    // Lê `anuncios_gerados` e mais nada — `repo.listar` numa tabela só. Um
+    // custo gravado em `produtos` não muda esta lista, e recarregá-la por causa
+    // dele é o que fez a tela pedir 792 anúncios oito vezes num import.
+    { tabelas: ["anuncios_gerados"] }
   );
 
   // O QUE O ML JÁ APONTOU (migração 052).
@@ -132,7 +136,12 @@ export function PendenciasDaConta({ clienteId, cliente }: { clienteId: string; c
   // para quem só abre a tela, que é o caso normal.
   const { data: infracoes } = useLiveQuery(
     () => infracoesPorAnuncioDoCliente(clienteId),
-    [clienteId]
+    [clienteId],
+    // Lê só `infracoes_marketplace`, e essa tabela nem está publicada no
+    // Realtime — quem a atualiza é a sincronização com o ML, não a tela. Foi a
+    // consulta MAIS recarregada do import (16 leituras) por um dado que a
+    // importação de custos não toca.
+    { tabelas: ["infracoes_marketplace"] }
   );
 
   // A MONTAGEM MORA EM `pendenciasDaMemoria`, não aqui.

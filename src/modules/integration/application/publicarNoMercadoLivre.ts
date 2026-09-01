@@ -23,6 +23,7 @@ import {
 import {
   obrigatoriosAusentes,
   explicarAusentes,
+  doCadastroParaOPayload,
 } from "@/modules/integration/domain/exigenciasDoPayload";
 import { montarItensUserProducts } from "@/modules/integration/domain/mlUserProducts";
 import type { BundleUserProducts } from "@/modules/publication/domain/composicaoConteudo";
@@ -34,6 +35,8 @@ import { lerCanalServidor, atualizarRefreshTokenServidor, clienteDaCredencial } 
 import { conferirGuardasDaPublicacao } from "@/modules/integration/domain/guardasDaPublicacao";
 import { mensagemParaONavegador } from "@/lib/http/respostaDeErro";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { obrigatoriosDoCadastro } from "./cadastroParaOsObrigatorios";
+import { oQueOTextoAfirma } from "@/modules/publication/domain/composicaoConteudo";
 
 
 export interface PedidoDePublicacao {
@@ -223,6 +226,11 @@ export async function publicarNoMercadoLivre(
       }
 
       // go=false → valida sem publicar.
+      //
+      // E ELE NÃO CONFERE OS OBRIGATÓRIOS, porque o caminho real deste modelo
+      // também não confere — os itens são montados por `montarItensUserProducts`
+      // e ninguém verificou como os obrigatórios aparecem lá. O ensaio diz isso
+      // na resposta em vez de deixar quem conta supor que disse que sim.
       if (!corpo.go) {
         log("info", "dry", {
           modelo: "user_products",
@@ -231,6 +239,7 @@ export async function publicarNoMercadoLivre(
         });
         return resposta({
           dry: true,
+          obrigatoriosConferidos: false,
           modelo: "user_products",
           categoryId: categoria,
           tamanhos: bundle.guiaLinhas.map((l) => l.tamanho),
@@ -350,16 +359,6 @@ export async function publicarNoMercadoLivre(
     // Fluxo clássico (categorias que aceitam title + variations).
     log("info", "fluxo", { modelo: "classico", categoryId: payload.category_id ?? null });
 
-    // 4) go=false → valida credenciais + categoria, SEM publicar. (Sem refresh_token na resposta.)
-    if (!corpo.go) {
-      log("info", "dry", { modelo: "classico", categoryId: payload.category_id ?? null });
-      return resposta({
-        dry: true,
-        categoryId: payload.category_id ?? null,
-        sellerId: canal.sellerId ?? tokens.userId ?? null,
-      });
-    }
-
     if (!payload.category_id) {
       log("warn", "bloqueio", { status: "bloqueado", motivo: "sem_categoria" });
       return resposta(
@@ -381,10 +380,76 @@ export async function publicarNoMercadoLivre(
     // `montarItensUserProducts`, com outra forma, e eu não conferi como os
     // obrigatórios aparecem lá. Aplicar uma checagem que não verifiquei seria
     // repetir o defeito num lugar novo.
-    const ausentes = obrigatoriosAusentes(
-      payload,
-      await atributosObrigatorios(String(payload.category_id))
-    );
+    const exigencias = await atributosObrigatorios(String(payload.category_id));
+    let ausentes = obrigatoriosAusentes(payload, exigencias);
+    /** O que o SERVIDOR completou — o navegador não sabe disso. Ver o dry abaixo. */
+    let completadosPeloCadastro: string[] = [];
+    /** E o que veio do próprio título que vai ao ar. */
+    let completadosPeloTitulo: string[] = [];
+
+    // ---- ANTES DE RECUSAR, PERGUNTAR AO CADASTRO.
+    //
+    // Medido em 28/08/2026 nos 793 publicáveis da base real: 500 seriam
+    // recusados aqui, e em 497 a resposta estava no banco — respondida pela
+    // lojista em `produto_atributos`, e jogada fora porque o payload leva só o
+    // que o MODELO escreveu na ficha técnica.
+    //
+    // Recusar por um dado que o sistema já tem é o defeito do INC-009 ao
+    // contrário: em vez de deixar o ML recusar, recusávamos nós — pelo mesmo
+    // motivo inexistente. `doCadastroParaOPayload` só aceita o que ela
+    // respondeu; dedução pelo nome fica de fora, e não custou nada (os 497 vêm
+    // todos do cadastro).
+    if (ausentes.length > 0) {
+      const doCadastro = doCadastroParaOPayload(
+        ausentes,
+        await obrigatoriosDoCadastro(corpo.clienteId, registroId, exigencias)
+      );
+      if (doCadastro.length > 0) {
+        payload.attributes = [
+          ...((payload.attributes as Record<string, unknown>[] | undefined) ?? []),
+          ...doCadastro,
+        ];
+        completadosPeloCadastro = doCadastro.map((a) => a.id);
+        log("info", "cadastro", {
+          preenchidos: completadosPeloCadastro,
+          origem: "produto_atributos",
+        });
+        ausentes = obrigatoriosAusentes(payload, exigencias);
+      }
+    }
+
+    // ---- E O QUE O PRÓPRIO TÍTULO JÁ AFIRMA.
+    //
+    // Depois do cadastro, e só para o que ainda falta. `payload.title` é a
+    // string que VAI AO AR — não o nome do produto, que não é publicado.
+    //
+    // Medido em 28/08: 5 dos 12 anúncios recusados por gênero tinham a palavra
+    // no título que subiria ("Chinelo Slide Infantil Molekinha", "Chinelo
+    // Olympikus 921 unissex"). O anúncio ia com "Infantil" na linha mais
+    // visível que existe e o sistema o recusava dizendo não saber o gênero.
+    //
+    // Por isso NÃO é a dedução que `doCadastroParaOPayload` recusa: aquela lê o
+    // nome do CADASTRO, que ninguém publica, e afirma sob a conta da lojista o
+    // que ela não disse. Esta acrescenta ao campo estruturado o mesmo dito que
+    // já está na vitrine. Negar aqui seria publicar a afirmação e recusá-la.
+    if (ausentes.length > 0) {
+      const titulo = typeof payload.title === "string" ? payload.title : "";
+      const afirmados = oQueOTextoAfirma(titulo);
+      const podeAfirmar = new Map(afirmados.map((x) => [x.id, x.valorNome]));
+      const doTitulo = ausentes
+        .filter((a) => podeAfirmar.has(a.id))
+        .map((a) => ({ id: a.id, value_name: podeAfirmar.get(a.id)! }));
+      if (doTitulo.length > 0) {
+        payload.attributes = [
+          ...((payload.attributes as Record<string, unknown>[] | undefined) ?? []),
+          ...doTitulo,
+        ];
+        completadosPeloTitulo = doTitulo.map((a) => a.id);
+        log("info", "titulo", { preenchidos: completadosPeloTitulo, origem: "title" });
+        ausentes = obrigatoriosAusentes(payload, exigencias);
+      }
+    }
+
     if (ausentes.length > 0) {
       log("warn", "bloqueio", {
         status: "bloqueado",
@@ -397,7 +462,42 @@ export async function publicarNoMercadoLivre(
       );
     }
 
-    // 5) Publica de verdade.
+    // 5) go=false → O ENSAIO PARA AQUI, e não antes.
+    //
+    // Ele parava no passo 4, ANTES da conferência de obrigatórios logo acima —
+    // então validava credencial e categoria e devolvia `dry: true` para um
+    // anúncio que o ML recusaria por atributo faltando. Um ensaio que aprova o
+    // que o real reprova não é ensaio; é uma segunda opinião sobre outra
+    // pergunta.
+    //
+    // Isto importa porque o ensaio é a ÚNICA medição do passo 7 disponível
+    // enquanto não há conta ML de teste (guarda 3 do plano: "medido até o
+    // payload, não até o ar"). Parando aqui, ele atravessa tudo que decide a
+    // recusa e para na única linha que escreve — `criarItem`, abaixo.
+    //
+    // `obrigatoriosConferidos` vai na resposta porque o caminho User Products
+    // sai antes desta conferência e não pode alegar tê-la passado. Quem contar
+    // ensaios precisa saber qual pergunta cada um respondeu.
+    if (!corpo.go) {
+      log("info", "dry", { modelo: "classico", categoryId: payload.category_id });
+      return resposta({
+        dry: true,
+        obrigatoriosConferidos: true,
+        // O QUE O SERVIDOR COMPLETOU, porque a prévia da tela não sabe.
+        //
+        // `aprovacoes` e `PublicarAnuncio` mostram `montarPreviewML(registro)`,
+        // montado no navegador a partir da ficha. O servidor acrescenta o que
+        // veio de `produto_atributos` — 500 anúncios nesta base — e publica com
+        // isso. Sem esta lista, quem confere lê um anúncio sem gênero e vai
+        // "consertar" o que já está resolvido, ou aprova sem saber o que sobe.
+        completadosPeloCadastro,
+        completadosPeloTitulo,
+        categoryId: payload.category_id,
+        sellerId: canal.sellerId ?? tokens.userId ?? null,
+      });
+    }
+
+    // 6) Publica de verdade.
     const item = await criarItem(tokens.accessToken, payload);
     log("info", "resumo", { status: "ok", modelo: "classico", itemId: item.id });
     return resposta({

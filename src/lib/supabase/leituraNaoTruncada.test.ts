@@ -40,6 +40,36 @@ const RAIZ = join(process.cwd(), "src");
  * sozinho — todos os números abaixo foram medidos em produção em 10/08/2026.
  */
 const DISPENSADAS: Record<string, string> = {
+  // ---- O ensaio da capa lê UM produto: 41 variantes e 42 anúncios ----
+  //
+  // Os dois `eq(produto_id)`. O maior produto da base é o Chinelo Havaianas
+  // Top Liso, com 41 variantes e 42 anúncios — um por cor e tamanho. Cresce
+  // com a grade do produto, não com o catálogo, e a grade é limitada pelo que
+  // a fábrica fabrica.
+  //
+  // Medido em produção em 13/08/2026. Se um dia um produto passar de 1.000
+  // variantes, o recorte silencioso volta — e aí é paginar, não aumentar o
+  // número aqui.
+  "src/app/api/ml/ensaio-da-capa/route.ts::produto_variantes":
+    "eq(produto_id) — a grade de um produto. Máximo medido: 41 (13/08/2026).",
+  "src/app/api/ml/ensaio-da-capa/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+  // A rota que APLICA lê as mesmas duas coisas, do mesmo jeito e pelo mesmo
+  // motivo: ela recompõe o plano do estado de agora em vez de aceitá-lo do
+  // cliente. Mesmos números medidos.
+  "src/app/api/ml/aplicar-capa/route.ts::produto_variantes":
+    "eq(produto_id) — a grade de um produto. Máximo medido: 41 (13/08/2026).",
+  "src/app/api/ml/aplicar-capa/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+  // A rota que TIRA uma foto lê os anúncios do mesmo jeito e pelo mesmo
+  // motivo — precisa saber em quais o id aparece. Mesmo número medido.
+  "src/app/api/ml/remover-foto/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+  // A rota que promove a melhor foto lê só os MLBs de um produto, pelo mesmo
+  // `eq(produto_id)`. Mesmo número medido.
+  "src/app/api/ml/melhor-capa/route.ts::anuncios_gerados":
+    "eq(produto_id) — os anúncios de um produto. Máximo medido: 42 (13/08/2026).",
+
   // ---- Tabelas de medidas do CLIENTE: 14 medidas ----
   //
   // Uma por marca, e o catálogo tem menos de vinte marcas. Cresce com o
@@ -99,6 +129,28 @@ const DISPENSADAS: Record<string, string> = {
     "eq(cliente_id) — 72 linhas. A fila é drenada; ela não acumula catálogo.",
   "src/lib/services/canaisMarketplace.ts::canais_marketplace":
     "eq(marketplace) sob RLS — UMA linha por loja conectada. 1 na base.",
+
+  // ---- Os atributos que a lojista preencheu num produto ----
+  //
+  // `eq(produto_id)`: a ficha de UM produto, lida na publicação para preencher
+  // o obrigatório que o modelo esqueceu de escrever. Cresce com o que a
+  // categoria pergunta, não com o catálogo — e o que a categoria pergunta é
+  // limitado pelo próprio ML (a maior das seis categorias desta base exige 7).
+  //
+  // Medido em produção em 28/08/2026: 549 linhas no total, 72 produtos com
+  // atributos, MÁXIMO de 14 num produto.
+  "src/modules/integration/application/cadastroParaOsObrigatorios.ts::produto_atributos":
+    "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
+  // O ensaio congelado da proposta lê a mesma ficha, do mesmo jeito e pelo
+  // mesmo motivo: o bundle User Products precisa do gênero que a lojista
+  // respondeu. Mesmo número medido.
+  "src/lib/services/ensaioDaPublicacao.ts::produto_atributos":
+    "eq(produto_id) — a ficha de um produto. Máximo medido: 14 (28/08/2026).",
+  // As tabelas de medida da loja, lidas no ensaio congelado pelo mesmo motivo
+  // que `otimizar/worker` já as lia: uma por MARCA que a loja vende. Cresce com
+  // o mostruário, não com o catálogo.
+  "src/lib/services/ensaioDaPublicacao.ts::tabelas_medidas":
+    "eq(cliente_id) — 14 linhas na base, uma por marca (28/08/2026).",
 };
 
 function arquivosDeCodigo(dir: string, achados: string[] = []): string[] {

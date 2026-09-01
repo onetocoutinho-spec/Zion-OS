@@ -862,6 +862,70 @@ function desfechoDaGravacao(
  * A segunda existe para PROVAR a primeira. Se alguém trocar o porto por uma
  * leitura ampla, `foraDoEscopo` deixa de ser zero e o teste da fiação real acusa.
  */
+/**
+ * Leva ao Mercado Livre o texto que acabou de ser gravado aqui.
+ *
+ * Devolve `null` quando não há o que levar — proposta que não é de texto, ou
+ * anúncio que nunca foi publicado. `null` significa "não se aplica"; um objeto
+ * com `ok: false` significa "tentei e o ML recusou", e a mensagem tem de
+ * distinguir os dois: silêncio e recusa ensinam coisas opostas.
+ */
+async function entregarAoMarketplace(
+  p: { tipo: string; alvos: readonly string[]; clienteId: string },
+  request: Request
+): Promise<{ ok: boolean; detalhe: string } | null> {
+  if (p.tipo !== "titulo" && p.tipo !== "descricao") return null;
+
+  const admin = getSupabaseAdmin();
+  if (!admin) return null;
+  const { data } = await admin
+    .from("anuncios_gerados")
+    .select("ml_item_id, anuncio")
+    .eq("id", p.alvos[0])
+    .eq("cliente_id", p.clienteId)
+    .maybeSingle();
+  const linha = data as { ml_item_id?: string | null; anuncio?: Record<string, unknown> } | null;
+  const mlb = (linha?.ml_item_id ?? "").trim();
+  // Anúncio que nunca foi publicado não tem o que atualizar lá. Não é falha —
+  // o texto novo vai junto quando ele for ao ar.
+  if (!mlb) return null;
+
+  const texto =
+    p.tipo === "titulo"
+      ? { titulo: String(linha?.anuncio?.tituloOtimizado ?? "") }
+      : { descricao: String(linha?.anuncio?.descricaoCompleta ?? "") };
+
+  const url = new URL("/api/ml/otimizar-anuncio", request.url);
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // A MESMA sessão. Sem reencaminhar a autorização, a rota de escrita
+      // recusaria — e é assim que tem de ser: ela não confia em chamador
+      // nenhum, nem no de dentro de casa.
+      ...(request.headers.get("authorization")
+        ? { Authorization: request.headers.get("authorization")! }
+        : {}),
+      ...(request.headers.get("cookie") ? { cookie: request.headers.get("cookie")! } : {}),
+    },
+    body: JSON.stringify({ clienteId: p.clienteId, itemId: mlb, texto }),
+  });
+  const j = (await r.json().catch(() => ({}))) as {
+    aplicados?: { campo: string; ok: boolean }[];
+    nadaAFazer?: boolean;
+    motivo?: string;
+    erro?: string;
+  };
+  if (j.nadaAFazer) return { ok: false, detalhe: j.motivo ?? "Nada a mudar no anúncio." };
+  const confirmado = (j.aplicados ?? []).some((x) => x.ok);
+  return {
+    ok: r.ok && confirmado,
+    detalhe: confirmado ? "" : (j.erro ?? j.motivo ?? "o Mercado Livre não confirmou a troca"),
+  };
+}
+
+  // ---- A CONSEQUÊNCIA. Por último, e best-effort.
+
 async function calcularConsequencia(
   p: PropostaPersistida,
   afetados: number,
@@ -1282,6 +1346,28 @@ export async function POST(request: Request) {
     // um número que não pôde ser calculado.
     const consequencia = await calcularConsequencia(p, afetados, medidasAntes);
 
+    // ---- A ENTREGA AO MERCADO LIVRE. Depois da escrita, e best-effort.
+    //
+    // ===================================================================
+    // POR QUE ISTO VEM AQUI, E DEPOIS
+    // ===================================================================
+    //
+    // Até 19/08/2026 título e descrição terminavam no JSONB de
+    // `anuncios_gerados` — o NOSSO banco — e a mensagem dizia, corretamente,
+    // "o anúncio que já está no ar no Mercado Livre não muda com isso". Com
+    // 480 anúncios ativos, otimizar era ensaio.
+    //
+    // A entrega fica DEPOIS da escrita atômica e do rastro, e não dentro: o ML
+    // é rede, é lento e pode recusar por regra dele (título congelado por
+    // venda, anúncio de catálogo). Amarrar a gravação local ao sucesso remoto
+    // faria uma recusa do ML apagar um trabalho que já estava certo aqui.
+    //
+    // E o resultado é DITO nos dois lados. A regra é a de 03/08/2026: `200` do
+    // ML é "aceitei o pedido", não "troquei" — quem confirma é a releitura,
+    // dentro de `/api/ml/otimizar-anuncio`. Sem confirmação, a mensagem não
+    // afirma que mudou.
+    const noMarketplace = await entregarAoMarketplace(p, request).catch(() => null);
+
     const criado = depois as { produtoId?: string; nome?: string } | null;
     return Response.json({
       ok: true,
@@ -1291,10 +1377,75 @@ export async function POST(request: Request) {
         p.tipo === "cadastro"
           ? `Produto criado: ${criado?.nome ?? p.resumo}`
           : p.tipo === "titulo"
-            ? `Título trocado. ${p.resumo}`
+            ? // ONDE, e não só o quê.
+              //
+              // Dizia `"Título trocado."` e parava aí. `copilot_executar_titulo`
+              // (048) troca a chave `tituloOtimizado` DENTRO do JSONB de
+              // `anuncios_gerados` — o nosso banco. Nada vai ao Mercado Livre:
+              // o cliente do ML tem três operações de escrita em anúncio
+              // existente (encerrar, pausar/reativar, fotos) e NENHUMA toca
+              // título, descrição, ficha ou palavra-chave.
+              //
+              // Medido em 14/08/2026: a lojista tem 780 anúncios no ar. Para
+              // todos eles, "Título trocado" era lido como "meu anúncio mudou"
+              // e o anúncio continuava idêntico. O `preco` logo abaixo sempre
+              // nomeou o destino ("no seu catálogo"); o título calava, e o
+              // silêncio é lido como "no ML".
+              // ONDE, e a frase MUDOU em 19/08/2026 porque o destino mudou.
+              //
+              // Ela dizia "o anúncio que já está no ar não muda com isso" — e
+              // era verdade: não havia escrita de texto no ML. Agora há, e a
+              // mensagem passa a relatar os DOIS lados separadamente.
+              //
+              // As três saídas são diferentes de propósito:
+              //   confirmado  -> o ML releu e o título é o novo
+              //   recusado    -> tentamos e ele disse não, com o motivo dele
+              //   null        -> não havia anúncio no ar. Não é falha.
+              //
+              // Nunca se afirma que mudou lá sem a releitura ter confirmado. É
+              // a regra de 03/08/2026, quando alguém deu uma capa como trocada
+              // com base no `200` e ela era a antiga.
+              (noMarketplace === null
+                ? `Título trocado no anúncio preparado aqui. ${p.resumo} ` +
+                  `Este produto ainda não tem anúncio no ar — o texto vai junto quando for publicado.`
+                : noMarketplace.ok
+                  ? `Título trocado AQUI e NO ANÚNCIO NO AR. ${p.resumo}`
+                  : `Título trocado no anúncio preparado aqui. ${p.resumo} ` +
+                    `No Mercado Livre NÃO mudou: ${noMarketplace.detalhe}`)
             : p.tipo === "preco"
               ? `Preço aplicado no seu catálogo. ${p.resumo}`
-              : `Pronto. ${p.resumo}${ressalvaDoPreenchimento(afetados, elegiveis)}`,
+              : // DESCRIÇÃO E PALAVRAS-CHAVE têm o mesmo destino do título, e
+                // caíam no "Pronto." genérico — que não mente por afirmação,
+                // mente por omissão. `copilot_executar_texto_do_anuncio` (057)
+                // grava no JSONB de `anuncios_gerados`, e o Mercado Livre não
+                // recebe nada.
+                //
+                // Peso e custo NÃO entram aqui: eles mudam o catálogo dela de
+                // verdade, e "Pronto" já é a frase certa.
+                p.tipo === "descricao"
+                ? // DESCRIÇÃO agora CHEGA ao ML. A frase relata os dois lados,
+                  // pela mesma regra do título: sem releitura confirmando, não
+                  // se afirma que mudou lá.
+                  (noMarketplace === null
+                    ? `Pronto, no anúncio preparado aqui. ${p.resumo} ` +
+                      `Este produto ainda não tem anúncio no ar — o texto vai junto quando for publicado.`
+                    : noMarketplace.ok
+                      ? `Pronto — AQUI e NO ANÚNCIO NO AR. ${p.resumo}`
+                      : `Pronto, no anúncio preparado aqui. ${p.resumo} ` +
+                        `No Mercado Livre NÃO mudou: ${noMarketplace.detalhe}`) +
+                  ressalvaDoPreenchimento(afetados, elegiveis)
+                : p.tipo === "palavras_chave"
+                ? // PALAVRA-CHAVE continua só aqui, e a frase continua dizendo.
+                  //
+                  // O ML não tem campo de palavra-chave em anúncio existente: o
+                  // que existe é o título e a ficha, e é por eles que a busca
+                  // acha. Prometer entrega aqui seria a omissão que esta mesma
+                  // mensagem foi escrita para corrigir.
+                  `Pronto, no anúncio preparado aqui. ${p.resumo} ` +
+                  `O Mercado Livre não tem campo de palavra-chave em anúncio no ar — ` +
+                  `quem carrega isso para a busca é o título e a ficha.` +
+                  ressalvaDoPreenchimento(afetados, elegiveis)
+                : `Pronto. ${p.resumo}${ressalvaDoPreenchimento(afetados, elegiveis)}`,
       ...(p.tipo === "cadastro" && criado?.produtoId ? { produtoId: criado.produtoId } : {}),
     });
   } catch (e) {

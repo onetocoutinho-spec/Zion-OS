@@ -1,0 +1,141 @@
+# EXP-004 · RODADA 2 · provedor: gemini
+# base: 73 produtos · 684 variações · 12 marcas
+
+## F1 — "Quais tênis e chinelos da Actvitta estão sem peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","restricoes":["tênis","chinelo"],"relacao":"alternativa","interpretacao":"O operador quer saber quais tênis e chinelos da marca Actvitta estão sem peso."}
+criterio cru:     marca="Actvitta" estado=faltando restricoes=[tênis, chinelo] relacao=alternativa
+classificacao:    declaradas=[tênis] genericas=[] naoRepr=[chinelo]
+universo:         6 prod · 80 var   (esperado 6/80) OK
+comprovavel:      5 prod · 78 var   (esperado 5/78) OK
+nao classificado: 1 prod · 2 var
+desfecho:         4 (esperado 4) OK
+resposta:         5 produto(s), 78 variação(ões) sem peso. Você também pediu "chinelo". O catálogo não possui classificação confiável para esse termo, então ele NÃO foi usado para incluir nem excluir produtos. Resta(m) 1 produto(s), 2 variação(ões), não classificado(s) pela regra conhecida.
+
+## F2 — "Quais produtos da Havaianas estão sem peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"Produtos da marca Havaianas que estão sem peso."}
+criterio cru:     marca="Havaianas" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         5 prod · 64 var   (esperado 5/64) OK
+comprovavel:      5 prod · 64 var   (esperado 5/64) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         5 produto(s), 64 variação(ões) sem peso. 1 com ausência PARCIAL (ex.: Chinelo Havaianas Masculino Top Max Comfort Original — 9 de 18).
+
+## F3 — "Me mostra os chinelos que estão sem peso."
+bruto:            {"entendeu":true,"perguntar":"","marca":"","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador busca por chinelos que estão sem informação de peso."}
+criterio cru:     marca="" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         19 prod · 223 var   (esperado 19/223) OK
+comprovavel:      19 prod · 223 var   (esperado 19/223) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 4) DIVERGE
+resposta:         19 produto(s), 223 variação(ões) sem peso. 2 com ausência PARCIAL (ex.: Chinelo Havaianas Masculino Top Max Comfort Original — 9 de 18).
+
+## F4 — "Quais produtos da Molekinha estão sem peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"Molekinha","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador quer saber sobre produtos da marca Molekinha que estão sem peso."}
+criterio cru:     marca="Molekinha" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         0 prod · 0 var   (esperado 0/0) OK
+comprovavel:      0 prod · 0 var   (esperado 0/0) OK
+nao classificado: 0 prod · 0 var
+desfecho:         2 (esperado 2) OK
+resposta:         Nenhum produto atende a essa consulta.
+
+## F5 — "Me mostra os produtos sem peso da Vizzano."
+bruto:            {"entendeu":true,"perguntar":"","marca":"Vizzano","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador deseja ver os produtos da marca Vizzano que estão sem peso cadastrado."}
+criterio cru:     marca="Vizzano" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         1 prod · 3 var   (esperado 1/3) OK
+comprovavel:      1 prod · 3 var   (esperado 1/3) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         1 produto(s), 3 variação(ões) sem peso. 1 com ausência PARCIAL (ex.: Rasteira Feminina Vizzano 6371.1005 — 3 de 39).
+
+## F6 — "Quais produtos estão sem peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador quer saber quais produtos estão sem o peso cadastrado."}
+criterio cru:     marca="" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         19 prod · 223 var   (esperado 19/223) OK
+comprovavel:      19 prod · 223 var   (esperado 19/223) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         19 produto(s), 223 variação(ões) sem peso. 2 com ausência PARCIAL (ex.: Chinelo Havaianas Masculino Top Max Comfort Original — 9 de 18).
+
+## F7 — "Me mostra os Modare ortopédicos que estão sem peso."
+bruto:            {"entendeu":true,"perguntar":"","marca":"Modare","estadoDePeso":"faltando","restricoes":["ortopédico"],"relacao":"nao_se_aplica","interpretacao":"O operador busca por produtos da marca Modare, ortopédicos e que estão sem peso."}
+criterio cru:     marca="Modare" estado=faltando restricoes=[ortopédico] relacao=nao_se_aplica
+classificacao:    declaradas=[ortopédico] genericas=[] naoRepr=[]
+universo:         5 prod · 67 var   (esperado 5/67) OK
+comprovavel:      5 prod · 67 var   (esperado 5/67) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         5 produto(s), 67 variação(ões) sem peso.
+
+## F8 — "Quais são os chinelos da Moleca que estão sem peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"Moleca","estadoDePeso":"faltando","restricoes":["chinelo"],"relacao":"nao_se_aplica","interpretacao":"O operador quer saber quais chinelos da marca Moleca estão com o peso faltando."}
+criterio cru:     marca="Moleca" estado=faltando restricoes=[chinelo] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[chinelo]
+universo:         0 prod · 0 var   (esperado 0/0) OK
+comprovavel:      0 prod · 0 var   (esperado 0/0) OK
+nao classificado: 0 prod · 0 var
+desfecho:         2 (esperado 2) OK
+resposta:         Nenhum produto atende a essa consulta.
+
+## F9 — "Quais produtos da Actvitta estão faltando peso?"
+bruto:            {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador quer saber os produtos da marca Actvitta que estão com peso ausente."}
+criterio cru:     marca="Actvitta" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         6 prod · 80 var   (esperado 6/80) OK
+comprovavel:      6 prod · 80 var   (esperado 6/80) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         6 produto(s), 80 variação(ões) sem peso.
+
+## F9b — "Só os tênis da Actvitta que estão faltando peso."
+bruto:            {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"Entendi que você quer os tênis da marca Actvitta que estão faltando peso."}
+criterio cru:     marca="Actvitta" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         6 prod · 80 var   (esperado 6/80) OK
+comprovavel:      6 prod · 80 var   (esperado 5/78) DIVERGE
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         6 produto(s), 80 variação(ões) sem peso.
+
+## F10 — "Me mostra os produtos sem peso da Havaianas."
+bruto:            {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O operador busca produtos da marca Havaianas que estão sem o peso cadastrado."}
+criterio cru:     marca="Havaianas" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         5 prod · 64 var   (esperado 5/64) OK
+comprovavel:      5 prod · 64 var   (esperado 5/64) OK
+nao classificado: 0 prod · 0 var
+desfecho:         1 (esperado 1) OK
+resposta:         5 produto(s), 64 variação(ões) sem peso. 1 com ausência PARCIAL (ex.: Chinelo Havaianas Masculino Top Max Comfort Original — 9 de 18).
+
+## F10b — "Só os masculinos da Havaianas que estão sem peso."
+bruto:            {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","restricoes":["masculino"],"relacao":"nao_se_aplica","interpretacao":"Solicitação de produtos masculinos da marca Havaianas que estão sem peso."}
+criterio cru:     marca="Havaianas" estado=faltando restricoes=[masculino] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[masculino]
+universo:         5 prod · 64 var   (esperado 5/64) OK
+comprovavel:      5 prod · 64 var   (esperado 5/64) OK
+nao classificado: 0 prod · 0 var
+desfecho:         4 (esperado 4) OK
+resposta:         5 produto(s), 64 variação(ões) sem peso. 1 com ausência PARCIAL (ex.: Chinelo Havaianas Masculino Top Max Comfort Original — 9 de 18). Você também pediu "masculino". O catálogo não possui classificação confiável para esse termo, então ele NÃO foi usado para incluir nem excluir produtos.
+
+## C1 — "Quais produtos da Olympikus estão sem peso?"
+bruto:            {"entendeu":false,"perguntar":"A marca Olympikus não está no catálogo. Por favor, consulte uma das marcas disponíveis: Actvitta, Azaleia, Beira Rio, Havaianas, Ipanema, Modare, Moleca, Molekinha, Molekinho, Vizzano, Yvate, Zaxy.","marca":"","estadoDePeso":"faltando","restricoes":[],"relacao":"nao_se_aplica","interpretacao":"O usuário busca produtos da marca Olympikus que estão sem peso, mas a marca não está cadastrada."}
+criterio cru:     marca="" estado=faltando restricoes=[] relacao=nao_se_aplica
+classificacao:    declaradas=[] genericas=[] naoRepr=[]
+universo:         0 prod · 0 var   (esperado 0/0) OK
+comprovavel:      0 prod · 0 var   (esperado 0/0) OK
+nao classificado: 0 prod · 0 var
+desfecho:         3 (esperado 3) OK
+resposta:         Critério inválido: A marca Olympikus não está no catálogo. Por favor, consulte uma das marcas disponíveis: Actvitta, Azaleia, Beira Rio, Havaianas, Ipanema, Modare, Moleca, Molekinha, Molekinho, Vizzano, Yvate, Zaxy.
+
+# MÉTRICAS · RODADA 2
+M1 extração estrutural.......... 13/13   (limiar 13/13)
+M2 restrição real extraída...... 3/5   (limiar 5/5)
+M3 universo E comprovável....... 12/13   (limiar 13/13)
+M4 honestidade da fronteira..... 2/3   (limiar 3/3)
+M5 declarado filtra de fato..... 1/2   (limiar 2/2)
+M6 vazio como fato.............. 2/2   (limiar 2/2)
+M7 marca inválida não aproxima.. 1/1   (limiar 1/1)

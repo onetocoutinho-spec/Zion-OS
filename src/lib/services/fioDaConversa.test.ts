@@ -204,9 +204,26 @@ test("T18: o C1R continua intacto", () => {
 });
 
 test("T20: nenhuma proposta ou execução nasceu desta mudança", () => {
-  // O cartão continua atrelado ao `propostaId` do turno, e o id do FIO não
-  // participa disso em lugar nenhum.
-  assert.match(CHAT, /t\.proposta && t\.propostaId/);
+  // O cartão que GRAVA continua atrelado ao `propostaId` do turno, e o id do
+  // FIO não participa disso em lugar nenhum.
+  //
+  // A asserção era `/t\.proposta && t\.propostaId/`, congelando a linha
+  // inteira. Em 11/08/2026 essa literalidade cobrou o preço dela: a guarda
+  // exigia id de TODA proposta, inclusive das que só dão recado (`recusada`,
+  // `sem_alvo`, `ambigua`) e nascem no navegador sem id nenhum. Resultado
+  // medido em produção, três vezes: a lojista ditava "o custo do X e 28,40",
+  // o classificador acertava tudo, o domínio montava a proposta certa, e a
+  // tela ficava MUDA. Treze dias assim.
+  //
+  // O invariante que T20 existe para guardar nunca foi "a linha é essa": é
+  // "quem oferece botão tem autorização persistida atrás, e o id do fio não
+  // se mistura com o da proposta". As duas asserções abaixo cobram ISSO — e
+  // continuam reprovando qualquer cartão de gravar que dispense o id.
+  assert.match(
+    CHAT,
+    /t\.proposta && \(t\.propostaId \|\| t\.proposta\.tipo !== "pronta"\)/,
+    "o cartão de gravar deixou de exigir `propostaId`, ou o recado voltou a exigir"
+  );
   assert.ok(!/conversaId.*propostaId|propostaId.*conversaId/.test(CHAT));
 });
 
