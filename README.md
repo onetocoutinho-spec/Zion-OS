@@ -12,6 +12,8 @@ Por isso o app tem **dois formatos de conta** — não dois ambientes de uma ag�
 - **Conta de loja** (`/cliente/*`, papel `cliente`) — a loja opera a si mesma: importa a base, otimiza anúncios com IA, gera fotos, conecta o Mercado Livre, publica e acompanha as vendas. É **isolada** da casca de operador (o `AuthGate` redireciona).
 - **Conta de agência** (papel `agencia`) — a casca de carteira, que responde "quais lojas eu opero?": lista de lojas, esteira, auditoria em massa, produtos, pendências, vendas e relatórios. A agência alcança **só as lojas dela** (`clientes.agencia_id`), e quem decide isso é o servidor, não o navegador (`avaliarAcesso` em `src/lib/auth/serverAuthorization.ts` + RLS).
 
+**Os dois formatos se viram sozinhos.** A loja se cadastra pelo próprio app (`signUp` → `/api/loja/provisionar`) e convida a própria equipe; a agência traz operadores, põe lojas novas na carteira e dá acesso a quem trabalha nelas. A Zion não está no caminho de nenhum dos dois — ela só cria a linha em `agencias` quando um contrato de agência é assinado.
+
 O papel `equipe` é a **Zion como fornecedora do software**, não como agência: divide a casca de operador com a agência e vê a mais o grupo **Zion** do menu — agentes de IA, modelos de categoria, agências, usuários, configurações (`src/components/layout/nav.ts`). A decisão de rota por papel é pura e testável (`src/lib/auth/roteamentoPapel.ts`); a segurança real é o RLS + a autorização no servidor.
 
 > **Estado hoje:** existe **uma única conta pagante**, herdada da época em que a Zion operava como agência. A agência acabou; o que se vende é o software.
@@ -33,6 +35,11 @@ Produz o anúncio completo (título ≤60, descrição, ficha, medidas, variaç�
 - **Publicar** — **dry-run 100% local** e depois envio real. O payload é montado no navegador por um builder puro e sem segredo (`montarItemML`, em `src/modules/integration/domain/mlPayload.ts`), então quem opera a conta revê **o mesmo payload que vai subir** antes de subir — a equipe da lojista ou a da agência que atende aquela loja, nunca a Zion. O envio real vai para `/api/ml/publicar`, a única ponta que conhece o segredo do app ML e lê o `refresh_token` do canal (que nunca trafega pelo navegador). Suporta o modelo **User Products** (`mlUserProducts.ts`) exigido por categorias de calçado, com criação da guia de tamanhos: o bundle vai junto sempre que dá para montá-lo, e o servidor só o usa se a categoria prevista exigir esse modelo.
 - **Vendas** — puxa os pedidos pagos reais e calcula faturamento, lucro líquido (cruzando com os custos), taxas, ticket médio, mais vendidos (`/cliente/vendas` e `/vendas`).
 - **Vinculação** — exporta o CSV **SKU ↔ MLB** para a loja importar no ERP dela.
+
+**Entrada e acessos.** A loja **se cadastra sozinha** — `signUp` no navegador e `/api/loja/provisionar`, que cria a loja e o perfil com o papel decidido no servidor (plano Essencial, cota 30, idempotente). Dali em diante:
+- **Loja › Equipe** (`/cliente/equipe`) — a lojista convida quem trabalha com ela;
+- **Acessos** (`/acessos`) — a agência convida operadores para si e pessoas para as lojas da carteira, e vê quem tem acesso ao quê.
+Quem pode convidar quem é `decidirConvite` (`src/modules/onboarding/domain/quemPodeConvidar.ts`), **puro e testado**: a loja sai do perfil do autor e nunca do corpo da requisição; só `equipe` cria `equipe`; e o único caso em que o corpo escolhe a loja — a agência, que opera várias — é conferido no banco antes, negando por omissão.
 
 **Base de produtos.** Assistente de importação por planilha com **mapeamento de ERP** (presets Bling/Tiny/Magazord + ajuste manual). Produto pai × variações × anúncio; precificação pelo modelo Zion.
 
@@ -89,7 +96,7 @@ As `NEXT_PUBLIC_*` e o `ML_*`/`GEMINI_*` são lidos no **build/deploy** — ao a
 
 ## Banco de dados (Supabase)
 
-As migrações ficam em **`database/migrations/`** — hoje **76 arquivos**, de `001` a `075`. Uma tabela com as 76 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
+As migrações ficam em **`database/migrations/`** — hoje **78 arquivos**, de `001` a `077`. Uma tabela com as 78 linhas envelheceria a cada PR e ninguém a leria; o que vem abaixo é onde a verdade mora, a ordem que não perdoa e os marcos que explicam o produto de hoje.
 
 ### Quem manda: o ledger
 
@@ -134,6 +141,8 @@ Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingên
 | 059 · 061 · 062 | a credencial do ML sai do alcance do navegador e passa a ser cifrada em repouso |
 | 060 · 063 | a cota de IA é cobrada no servidor — por mês e por minuto |
 | 064–074 | a loja em operação: tarefas, perfil de conteúdo, versões de imagem, execuções de IA, investigações do Copilot |
+| 076 | **uma conta de marketplace pertence a uma loja só** — índice único parcial em `(marketplace, seller_id)`, e a recusa nomeia a loja que já tem a conta |
+| **077** | **a loja enxerga a própria equipe** — o `select` em `perfis` que faltava para convidar sem ser às cegas |
 
 ### O resto de `database/`
 
@@ -147,13 +156,15 @@ Rode em ordem numérica no SQL Editor. Duas coisas quebram se a ordem for ingên
 
 ### Depois das migrações: as contas
 
-**Auth → Users** cria o usuário; o acesso vem da linha correspondente em **`perfis`**, e a 054 impõe por `check` uma das três formas:
+O acesso é a linha em **`perfis`**, e a 054 impõe por `check` uma das três formas:
 
-| Papel | Exige | É |
-| --- | --- | --- |
-| `cliente` | `cliente_id`, sem `agencia_id` | conta de loja |
-| `agencia` | `agencia_id`, sem `cliente_id` | conta de agência (alcança as lojas com aquele `clientes.agencia_id`) |
-| `equipe` | nenhum dos dois | a Zion, fornecedora do software |
+| Papel | Exige | É | Quem cria |
+| --- | --- | --- | --- |
+| `cliente` | `cliente_id`, sem `agencia_id` | conta de loja | o próprio cadastro, a lojista, a agência que opera a loja, ou a Zion |
+| `agencia` | `agencia_id`, sem `cliente_id` | conta de agência (alcança as lojas com aquele `clientes.agencia_id`) | a própria agência, ou a Zion |
+| `equipe` | nenhum dos dois | a Zion, fornecedora do software | só a Zion |
+
+Nada disso é feito à mão no console. A primeira conta de uma loja nasce do **autocadastro**; as demais saem de `/api/usuarios`, que manda convite por e-mail (`inviteUserByEmail` → `/definir-senha`) e decide o vínculo no servidor. Criar a linha em **`agencias`** é o único passo que segue com a Zion — é evento de contrato, não de operação.
 
 Usuário sem perfil não entra — desde a 016 isso é o comportamento correto, não um defeito.
 
@@ -190,9 +201,9 @@ src/
     services/    # camada de dados (repositório → Supabase/localStorage)
     supabase/    # client + mappers + tipos das linhas
     types.ts, store.ts, format.ts, csv.ts, ...
-  modules/       # domínio por área (integration: mlPayload/mlUserProducts; publication; assistant…)
+  modules/       # domínio por área (integration: mlPayload/mlUserProducts; onboarding: quemPodeConvidar; publication; assistant…)
 database/
-  migrations/   # 001…074 (+ arquivadas/ 017–021, não aplicadas)
+  migrations/   # 001…077 (+ arquivadas/ 017–021, não aplicadas)
   checks/       # diagnóstico e backfill de perfis
   verificacoes/ # provas de alcance por papel
   staging/      # bootstrap de um banco de staging
@@ -219,3 +230,5 @@ O **SKU único** (código do ERP) atravessa ERP ↔ ML ↔ TikTok — é a chave
 - A proteção de rota no navegador é só experiência de UI. As camadas reais são a autorização no servidor (`src/lib/auth/serverAuthorization.ts`) e o RLS do Supabase — o que importa num produto multi-inquilino, onde a conta de agência e a conta de loja compartilham o mesmo banco.
 - No modo demo (sem Supabase) não há login nem realtime; a IA só roda com `OPENAI_API_KEY` (ou `ANTHROPIC_API_KEY`/`GEMINI_API_KEY`) no servidor.
 - A publicação no modelo **User Products** já vai junto no fluxo de publicar (o servidor a usa quando a categoria prevista exige); o teste de item real em produção é o próximo passo.
+- A agência cria lojas **novas** na carteira, mas não **reivindica** loja que já existe. É deliberado: deixá-la apontar para uma loja em operação poria a carteira alheia a um `update` de distância. Trazer uma loja self-service para uma agência exige o consentimento da loja, e isso ainda não existe.
+- Não há cobrança no código — nenhum provedor de pagamento, nenhum estado de assinatura. `clientes.limite_esteira_mes` (padrão 30) é a cota de IA, e a 006 já a descrevia como "a base de cobrança por plano"; a cobrança em si não foi construída.
