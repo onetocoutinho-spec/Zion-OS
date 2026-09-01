@@ -60,6 +60,15 @@ export interface AlvoDoConvite {
   agenciaId: string | null;
 }
 
+/**
+ * O que só o BANCO sabe, respondido antes de chamar. Ausente = não perguntaram,
+ * e não perguntar cai no mesmo lugar que "não": negar.
+ */
+export interface ContextoDoConvite {
+  /** A agência do autor opera a loja que o pedido nomeia? */
+  agenciaAlcancaALoja?: boolean;
+}
+
 export type DecisaoDeConvite =
   | { ok: true; alvo: AlvoDoConvite }
   | { ok: false; status: 403; motivo: string };
@@ -70,12 +79,17 @@ const NEGADO = "Sem permissão para criar este acesso.";
 /**
  * Decide o vínculo do convite. Puro.
  *
- * `equipe` segue com liberdade total — o comportamento anterior, byte a byte.
- * `cliente` só convida para a PRÓPRIA loja, e a loja vem do perfil.
+ * `equipe`   liberdade total — o comportamento anterior, byte a byte.
+ * `cliente`  só para a PRÓPRIA loja, e a loja vem do perfil.
+ * `agencia`  operadores para a PRÓPRIA agência (do perfil), e pessoas para as
+ *            lojas da carteira — a única passagem em que o corpo escolhe a
+ *            loja, porque a agência opera várias. A escolha é conferida no
+ *            banco antes de chegar aqui, e o padrão é negar.
  */
 export function decidirConvite(
   autor: AutorDoConvite,
-  pedido: PedidoDeConvite
+  pedido: PedidoDeConvite,
+  contexto?: ContextoDoConvite
 ): DecisaoDeConvite {
   // Só equipe cria equipe. Antes de qualquer outra regra, porque é a única
   // cujo erro não estraga dado — abre o banco inteiro.
@@ -109,7 +123,41 @@ export function decidirConvite(
     return { ok: true, alvo: { papel: "cliente", clienteId: autor.clienteId, agenciaId: null } };
   }
 
-  // `agencia` ainda não convida. É a próxima fatia, e falhar fechado enquanto
-  // isso é o comportamento que ela já tinha.
+  if (autor.papel === "agencia") {
+    // Perfil de agência sem agência é incompleto — `decidirRota` já o manda
+    // para "sem_acesso". Aqui a recusa é a mesma.
+    if (!autor.agenciaId) {
+      return { ok: false, status: 403, motivo: NEGADO };
+    }
+
+    // Um operador a mais na PRÓPRIA agência. A agência vem do perfil.
+    if (pedido.papel === "agencia") {
+      if (pedido.agenciaId && pedido.agenciaId !== autor.agenciaId) {
+        return { ok: false, status: 403, motivo: NEGADO };
+      }
+      if (pedido.clienteId) {
+        return { ok: false, status: 403, motivo: NEGADO };
+      }
+      return { ok: true, alvo: { papel: "agencia", clienteId: null, agenciaId: autor.agenciaId } };
+    }
+
+    // Alguém para uma LOJA da carteira. Aqui — e só aqui — o corpo escolhe a
+    // loja, porque a agência opera várias e precisa dizer qual. Mas a escolha
+    // não é autoridade: `contexto.agenciaAlcancaALoja` vem do BANCO, e o padrão
+    // é NEGAR. É o mesmo desenho de `avaliarAcesso`, que também não consegue
+    // consultar de dentro de uma função pura.
+    if (pedido.papel === "cliente") {
+      if (!pedido.clienteId) return { ok: false, status: 403, motivo: NEGADO };
+      if (pedido.agenciaId) return { ok: false, status: 403, motivo: NEGADO };
+      if (contexto?.agenciaAlcancaALoja !== true) {
+        return { ok: false, status: 403, motivo: NEGADO };
+      }
+      return { ok: true, alvo: { papel: "cliente", clienteId: pedido.clienteId, agenciaId: null } };
+    }
+
+    return { ok: false, status: 403, motivo: NEGADO };
+  }
+
+  // Papel que esta função não conhece não ganha permissão.
   return { ok: false, status: 403, motivo: NEGADO };
 }

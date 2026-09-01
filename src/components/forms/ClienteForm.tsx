@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, FormGrid, Input, Select, TextArea, ouInfoNecessaria } from "@/components/ui/form";
 import { CLIENTE_STATUS, MARKETPLACES, PLANOS, RISCOS } from "@/lib/constantes";
-import { atualizarCliente, criarCliente } from "@/lib/services/clientes";
+import { atualizarCliente, criarCliente, criarLojaDaAgencia } from "@/lib/services/clientes";
+import { meuPerfil } from "@/lib/services/perfil";
+import { useLiveQuery } from "@/lib/hooks";
 import type { Cliente, Marketplace } from "@/lib/types";
 
 export function ClienteForm({ inicial }: { inicial?: Cliente }) {
@@ -39,6 +41,8 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
     );
   }
 
+  const { data: perfil } = useLiveQuery(meuPerfil);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const novosErros: Record<string, string> = {};
@@ -61,10 +65,29 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
     if (inicial) {
       await atualizarCliente(inicial.id, dados);
       router.push(`/clientes/${inicial.id}`);
-    } else {
-      const criado = await criarCliente(dados);
-      router.push(`/clientes/${criado.id}`);
+      return;
     }
+
+    if (perfil?.papel === "agencia") {
+      // A agência não escreve em `clientes` pelo navegador — a 054 não lhe deu
+      // INSERT, de propósito. A loja nasce no servidor, com a `agencia_id`
+      // vinda do PERFIL, e o resto do formulário entra logo depois por UPDATE,
+      // que ela já pode fazer na própria loja (`agencia_edita_as_lojas`).
+      //
+      // Dois passos em vez de um para NÃO perder o que a pessoa digitou: a
+      // rota aceita só o nome, e descartar os outros campos em silêncio seria
+      // pior que a chamada a mais.
+      const id = await criarLojaDaAgencia(dados.empresa);
+      // `agenciaId` fica de fora: mandá-lo como `null` desvincularia a loja da
+      // carteira no instante seguinte ao de criá-la nela.
+      const { agenciaId: _ignorado, ...semVinculo } = dados;
+      await atualizarCliente(id, semVinculo);
+      router.push(`/clientes/${id}`);
+      return;
+    }
+
+    const criado = await criarCliente(dados);
+    router.push(`/clientes/${criado.id}`);
   }
 
   return (

@@ -12,6 +12,7 @@ import { decidirConvite, type AutorDoConvite } from "./quemPodeConvidar";
 const LOJA_A = "11111111-1111-4111-8111-111111111111";
 const LOJA_B = "22222222-2222-4222-8222-222222222222";
 const AGENCIA = "33333333-3333-4333-8333-333333333333";
+const OUTRA_AGENCIA = "44444444-4444-4444-8444-444444444444";
 
 const equipe: AutorDoConvite = { papel: "equipe", clienteId: null, agenciaId: null };
 const lojista: AutorDoConvite = { papel: "cliente", clienteId: LOJA_A, agenciaId: null };
@@ -72,16 +73,58 @@ test("lojista sem loja não convida ninguém", () => {
   assert.equal(decidirConvite(orfao, { papel: "cliente", clienteId: LOJA_A, agenciaId: null }).ok, false);
 });
 
-test("a agência ainda não convida — e falha FECHADA", () => {
-  // Enquanto a fatia dela não chega, o comportamento é o que ela já tinha.
-  // Falhar aberto aqui daria à agência o poder que ninguém desenhou.
-  for (const pedido of [
-    { papel: "cliente" as const, clienteId: LOJA_A, agenciaId: null },
-    { papel: "agencia" as const, clienteId: null, agenciaId: AGENCIA },
-    { papel: "equipe" as const, clienteId: null, agenciaId: null },
-  ]) {
-    assert.equal(decidirConvite(agencia, pedido).ok, false, `agência passou em ${pedido.papel}`);
-  }
+test("a agência traz um operador para a própria agência", () => {
+  const d = decidirConvite(agencia, { papel: "agencia", clienteId: null, agenciaId: AGENCIA });
+  assert.equal(d.ok, true);
+  assert.deepEqual(d.ok && d.alvo, { papel: "agencia", clienteId: null, agenciaId: AGENCIA });
+});
+
+test("a agência NÃO cria operador em OUTRA agência", () => {
+  const d = decidirConvite(agencia, { papel: "agencia", clienteId: null, agenciaId: OUTRA_AGENCIA });
+  assert.equal(d.ok, false);
+});
+
+test("a agência convida para uma loja da carteira — com o banco confirmando", () => {
+  const d = decidirConvite(
+    agencia,
+    { papel: "cliente", clienteId: LOJA_A, agenciaId: null },
+    { agenciaAlcancaALoja: true }
+  );
+  assert.equal(d.ok, true);
+  assert.deepEqual(d.ok && d.alvo, { papel: "cliente", clienteId: LOJA_A, agenciaId: null });
+});
+
+test("SEM a confirmação do banco, a agência não convida para loja nenhuma", () => {
+  // Este é o teste que importa. A agência é o único papel em que o corpo
+  // escolhe a loja — porque ela opera várias —, então a escolha PRECISA ser
+  // conferida fora daqui. Não perguntar tem que cair no mesmo lugar que "não".
+  const pedido = { papel: "cliente" as const, clienteId: LOJA_B, agenciaId: null };
+  assert.equal(decidirConvite(agencia, pedido).ok, false, "ausente virou permissão");
+  assert.equal(decidirConvite(agencia, pedido, {}).ok, false, "contexto vazio virou permissão");
+  assert.equal(
+    decidirConvite(agencia, pedido, { agenciaAlcancaALoja: false }).ok,
+    false,
+    "negativa do banco virou permissão"
+  );
+});
+
+test("a agência NÃO se promove a equipe", () => {
+  // A 054 é explícita: agência com papel `equipe` enxergaria as lojas de todos
+  // os outros assinantes. "Não seria um recurso, seria vazamento."
+  const d = decidirConvite(agencia, { papel: "equipe", clienteId: null, agenciaId: null });
+  assert.equal(d.ok, false);
+});
+
+test("agência sem agência não convida ninguém", () => {
+  const orfa: AutorDoConvite = { papel: "agencia", clienteId: null, agenciaId: null };
+  assert.equal(
+    decidirConvite(orfa, { papel: "agencia", clienteId: null, agenciaId: AGENCIA }).ok,
+    false
+  );
+  assert.equal(
+    decidirConvite(orfa, { papel: "cliente", clienteId: LOJA_A, agenciaId: null }, { agenciaAlcancaALoja: true }).ok,
+    false
+  );
 });
 
 test("papel desconhecido no autor não vira permissão", () => {
