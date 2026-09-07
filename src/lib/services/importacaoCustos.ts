@@ -39,7 +39,11 @@ import { autorAtual } from "../auth/autorAtual";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
-import { sincronizarPendenciasDeCusto } from "./custoPendencias";
+import {
+  sincronizarPendenciasDeCusto,
+  registrarProcedenciaDeCusto,
+  registrarProcedenciasDaImportacao,
+} from "./custoPendencias";
 import type { Produto, ProdutoVariante } from "../types";
 
 /**
@@ -589,6 +593,11 @@ export async function importarCustos(
   // tênis foi parar em outro modelo), e subir quebraria os casos legítimos. O
   // conserto é a PRECEDÊNCIA: quem casou por SKU já respondeu.
   const prodAtualizados: (Partial<Produto> & { id: string })[] = [];
+  // A PROCEDÊNCIA das linhas que casaram sem disputa (ver 087 e a rota
+  // /api/catalogo/custos/procedencia). Só entra aqui quem realmente recebeu
+  // `custo` nesta passada — não é o mesmo conjunto de `prodAtualizados`, que
+  // também recebe preço e estoque sozinhos.
+  const custosParaProcedencia: { produtoId: string; valor: number; valorAnterior: number | null }[] = [];
   let precosGravados = 0;
   const produtosComEstoque = new Set<string>();
   let desdeAPausa = 0;
@@ -648,6 +657,16 @@ export async function importarCustos(
 
     if (valores.preco > 0) precosGravados++;
     prodAtualizados.push({ id: p.id, ...camposDoProduto(valores, p) });
+    // `valores.custo > 0`, não "custo" em `camposDoProduto(...)": é a mesma
+    // condição que decide se `camposDoProduto` incluiu `custo` (ver a função),
+    // escrita aqui de novo porque o objeto retornado já foi espalhado acima.
+    if (valores.custo > 0) {
+      custosParaProcedencia.push({
+        produtoId: p.id,
+        valor: valores.custo,
+        valorAnterior: p.custo > 0 ? p.custo : null,
+      });
+    }
     if (valores.estoque >= 0) produtosComEstoque.add(p.id);
     if (porNome) usados.add(normNome(p.nome));
 
@@ -687,6 +706,13 @@ export async function importarCustos(
 
   if (varAtualizadas.length > 0) await atualizarVariantesBulk(varAtualizadas);
   if (prodAtualizados.length > 0) await atualizarProdutosBulk(prodAtualizados);
+
+  // A PROCEDÊNCIA de quem recebeu custo sem disputa (ver custosParaProcedencia
+  // acima) — depois da gravação, nunca antes: só se registra o que de fato
+  // foi escrito. AGUARDADO e nunca lança (ver o comentário da função): sem
+  // isto, todo custo importado nasceria "Confirmado / origem não registrada"
+  // na tela de Custos, mesmo tendo vindo de uma planilha nomeada.
+  await registrarProcedenciasDaImportacao(clienteId, custosParaProcedencia);
 
   // Conta LINHAS da planilha que não acharam produto — uma por linha.
   //
@@ -845,6 +871,25 @@ export async function definirCustoEscolhido(
     },
     journal
   );
+
+  // A PROCEDÊNCIA — depois da AIL, mesma ordem de sempre: só se registra o
+  // que já foi gravado. AGUARDADO e nunca lança (ver o comentário da função).
+  //
+  // DECISÃO: as duas portas que chegam aqui (a caixa de custo da
+  // Precificação e a caixa de resolver ambíguos pós-importação) viram
+  // `origem: "cliente", metodo: "cadastro_manual"` — a mesma classificação,
+  // porque em ambas é uma PESSOA afirmando um valor específico pela
+  // interface (digitando, ou escolhendo entre opções já apresentadas), nunca
+  // um casamento automático de planilha. `definirCustoEscolhido` não sabe por
+  // qual das duas caixas foi chamada — distinguir exigiria um parâmetro novo
+  // nas duas chamadoras, e a resposta seria a mesma classificação mesmo
+  // assim, então não valeria o acoplamento.
+  await registrarProcedenciaDeCusto({
+    clienteId,
+    produtoId,
+    valor: custo,
+    valorAnterior: produto.custo > 0 ? produto.custo : null,
+  });
 
   const variantes = (await listarTodasVariantes()).filter(
     (v) => v.clienteId === clienteId && v.produtoId === produtoId

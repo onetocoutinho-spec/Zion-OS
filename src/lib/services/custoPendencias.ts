@@ -40,6 +40,76 @@ export async function sincronizarPendenciasDeCusto(
   }
 }
 
+/**
+ * Registra a procedência de um custo definido FORA da tela de Custos — a
+ * caixa de custo da Precificação, ou a caixa de resolver ambíguos
+ * pós-importação (as duas chamam `definirCustoEscolhido`).
+ *
+ * NUNCA lança, mesma regra de `sincronizarPendenciasDeCusto`: o custo já foi
+ * gravado quando isto é chamado, e uma falha aqui não pode desfazer isso —
+ * só deixa a coluna "Fonte" sem este registro até a próxima edição.
+ */
+export async function registrarProcedenciaDeCusto(params: {
+  clienteId: string;
+  produtoId: string;
+  valor: number;
+  valorAnterior: number | null;
+}): Promise<void> {
+  try {
+    const resposta = await fetch("/api/catalogo/custos/procedencia", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+      body: JSON.stringify({
+        clienteId: params.clienteId,
+        registros: [
+          {
+            produtoId: params.produtoId,
+            valor: params.valor,
+            valorAnterior: params.valorAnterior,
+            origem: "cliente",
+            metodo: "cadastro_manual",
+          },
+        ],
+      }),
+    });
+    if (!resposta.ok) {
+      console.error("[custoPendencias] a rota recusou registrar a procedência do custo:", await resposta.text());
+    }
+  } catch (e) {
+    console.error("[custoPendencias] falha ao registrar a procedência do custo:", e);
+  }
+}
+
+/**
+ * O mesmo, em lote, para os produtos que uma importação de planilha gravou
+ * SEM disputa (a maioria de uma importação — os ambíguos vão por
+ * `sincronizarPendenciasDeCusto`, nunca por aqui).
+ */
+export async function registrarProcedenciasDaImportacao(
+  clienteId: string,
+  itens: readonly { produtoId: string; valor: number; valorAnterior: number | null }[]
+): Promise<void> {
+  if (itens.length === 0) return;
+  try {
+    const resposta = await fetch("/api/catalogo/custos/procedencia", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await cabecalhoAutenticacao()) },
+      body: JSON.stringify({
+        clienteId,
+        registros: itens.map((i) => ({ ...i, origem: "planilha", metodo: "importacao" })),
+      }),
+    });
+    if (!resposta.ok) {
+      console.error(
+        "[custoPendencias] a rota recusou registrar a procedência da importação:",
+        await resposta.text()
+      );
+    }
+  } catch (e) {
+    console.error("[custoPendencias] falha ao registrar a procedência da importação:", e);
+  }
+}
+
 /** As linhas da tabela de Custos da loja, já com estado e ordenação padrão. */
 export async function listarCustosDoCatalogo(clienteId: string): Promise<LinhaDeCusto[]> {
   const resposta = await fetch(`/api/catalogo/custos?clienteId=${encodeURIComponent(clienteId)}`, {
