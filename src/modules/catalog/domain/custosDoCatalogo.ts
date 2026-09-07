@@ -32,6 +32,8 @@ export interface LinhaDeCusto {
   nome: string;
   sku: string;
   custo: number;
+  /** Para a edição inline aplicar a mesma recusa de referência de modelo do resto do sistema. */
+  precoVenda: number;
   estado: EstadoDoCusto;
   /** De onde veio o `custo` de hoje. `procedenciaDesconhecida()` quando não há registro. */
   fonte: Procedencia;
@@ -61,6 +63,7 @@ export interface DadosDoProdutoParaLinha {
   nome: string;
   sku: string;
   custo: number;
+  precoVenda: number;
   /** Total de variações do produto (SKUs). */
   totalVariantes: number;
   /** A procedência mais recente registrada para o campo custo. Ausente = não registrada. */
@@ -78,6 +81,7 @@ export function montarLinhaDeCusto(p: DadosDoProdutoParaLinha): LinhaDeCusto {
     nome: p.nome,
     sku: p.sku,
     custo: p.custo,
+    precoVenda: p.precoVenda,
     estado,
     fonte,
     atualizadoEm: fonte.momento,

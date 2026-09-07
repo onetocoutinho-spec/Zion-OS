@@ -50,6 +50,7 @@ test("linha sem fonte registrada usa procedência desconhecida", () => {
     nome: "Chinelo X",
     sku: "SKU1",
     custo: 20,
+    precoVenda: 60,
     totalVariantes: 3,
   });
   assert.deepEqual(linha.fonte, procedenciaDesconhecida());
@@ -65,6 +66,7 @@ test("linha com fonte registrada carrega o momento como atualizadoEm", () => {
     nome: "Chinelo X",
     sku: "SKU1",
     custo: 20,
+    precoVenda: 60,
     totalVariantes: 3,
     fonte: FONTE,
   });
@@ -83,6 +85,7 @@ test("linha com pendência aberta carrega os candidatos e vira conflito", () => 
     nome: "Chinelo X",
     sku: "SKU1",
     custo: 0,
+    precoVenda: 0,
     totalVariantes: 2,
     pendenciaAberta: { candidatos },
   });
@@ -98,6 +101,7 @@ function linha(nome: string, estado: LinhaDeCusto["estado"]): LinhaDeCusto {
     nome,
     sku: "",
     custo: estado === "confirmado" ? 10 : 0,
+    precoVenda: 0,
     estado,
     fonte: procedenciaDesconhecida(),
     atualizadoEm: null,

@@ -92,6 +92,11 @@ export const AREAS: readonly AreaDoPortal[] = [
       // acervo, porque espera um arquivo do disco dela. 142 anuncios estavam
       // parados por capa fora do padrao, com a foto certa ja cadastrada.
       { href: "/cliente/capas", label: "Capas do fabricante" },
+      // Custos vem ANTES de Precificação, e responde outra pergunta: não é
+      // "qual a margem?", é "esse custo é confiável?" — a varredura do
+      // catálogo inteiro atrás de ausente/conflito/mudou. Precificação
+      // continua sendo onde o lucro e o preço ideal aparecem.
+      { href: "/cliente/custos", label: "Custos" },
       { href: "/cliente/precificacao", label: "Precificação" },
     ],
   },

@@ -20,6 +20,7 @@ import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serve
 import { respostaDeErro } from "@/lib/http/respostaDeErro";
 import { registrarProcedencia } from "@/lib/services/procedencia";
 import { margemZion } from "@/lib/services/importacaoProdutos";
+import { lerTudoPaginado } from "@/lib/supabase/paginado";
 import {
   candidatosValidos,
   montarLinhaDeCusto,
@@ -28,6 +29,33 @@ import {
   type LinhaDeCusto,
 } from "@/modules/catalog/domain/custosDoCatalogo";
 import type { MetodoDeEntrada, OrigemDoValor, Procedencia } from "@/modules/catalog/domain/procedenciaDeCampo";
+
+interface LinhaProduto {
+  id: string;
+  nome: string;
+  sku: string | null;
+  custo: number | null;
+  preco_venda: number | null;
+}
+
+interface LinhaVariante {
+  produto_id: string;
+}
+
+interface LinhaProcedencia {
+  entidade_id: string;
+  origem: string;
+  metodo: string;
+  ator: string | null;
+  evidencia_registro: string | null;
+  evidencia_id: string | null;
+  registrado_em: string;
+}
+
+interface LinhaPendencia {
+  produto_id: string;
+  candidatos: unknown;
+}
 
 export async function GET(request: Request) {
   const clienteId = new URL(request.url).searchParams.get("clienteId") ?? "";
@@ -48,65 +76,87 @@ export async function GET(request: Request) {
   const admin = getSupabaseAdmin();
 
   try {
-    const [produtosResp, variantesResp, procedenciaResp, pendenciasResp] = await Promise.all([
-      admin.from("produtos").select("id, nome, sku, custo").eq("cliente_id", clienteId).order("nome"),
-      admin.from("produto_variantes").select("produto_id").eq("cliente_id", clienteId),
-      admin
-        .from("procedencia_de_campo")
-        .select("entidade_id, origem, metodo, ator, evidencia_registro, evidencia_id, registrado_em")
-        .eq("cliente_id", clienteId)
-        .eq("campo", "custo")
-        .eq("entidade_tipo", "produto")
-        .order("registrado_em", { ascending: false }),
-      admin
-        .from("custo_pendencias")
-        .select("produto_id, candidatos")
-        .eq("cliente_id", clienteId)
-        .is("resolvido_em", null),
+    // QUATRO leituras do CATÁLOGO INTEIRO — é literalmente o que esta tela faz
+    // ("varrer o catálogo procurando..."). O PostgREST corta em 1.000 linhas
+    // sem avisar, e um catálogo de porte médio já passa disso em variantes ou
+    // em histórico de procedência. `lerTudoPaginado` é o helper único do
+    // repositório para isto — ver `leituraNaoTruncada.test.ts`.
+    const [produtos, variantes, procedencias, pendencias] = await Promise.all([
+      lerTudoPaginado<LinhaProduto>("produtos do catálogo", (de, ate) =>
+        admin
+          .from("produtos")
+          .select("id, nome, sku, custo, preco_venda")
+          .eq("cliente_id", clienteId)
+          .order("id", { ascending: true })
+          .range(de, ate)
+      ),
+      lerTudoPaginado<LinhaVariante>("variantes do catálogo", (de, ate) =>
+        admin
+          .from("produto_variantes")
+          .select("produto_id")
+          .eq("cliente_id", clienteId)
+          .order("id", { ascending: true })
+          .range(de, ate)
+      ),
+      lerTudoPaginado<LinhaProcedencia>("procedência de custo do catálogo", (de, ate) =>
+        admin
+          .from("procedencia_de_campo")
+          .select("entidade_id, origem, metodo, ator, evidencia_registro, evidencia_id, registrado_em")
+          .eq("cliente_id", clienteId)
+          .eq("campo", "custo")
+          .eq("entidade_tipo", "produto")
+          .order("registrado_em", { ascending: false })
+          .order("id", { ascending: true })
+          .range(de, ate)
+      ),
+      lerTudoPaginado<LinhaPendencia>("pendências de custo abertas", (de, ate) =>
+        admin
+          .from("custo_pendencias")
+          .select("produto_id, candidatos")
+          .eq("cliente_id", clienteId)
+          .is("resolvido_em", null)
+          .order("id", { ascending: true })
+          .range(de, ate)
+      ),
     ]);
-    if (produtosResp.error) throw new Error(produtosResp.error.message);
-    if (variantesResp.error) throw new Error(variantesResp.error.message);
-    if (procedenciaResp.error) throw new Error(procedenciaResp.error.message);
-    if (pendenciasResp.error) throw new Error(pendenciasResp.error.message);
 
     const totalVariantesPorProduto = new Map<string, number>();
-    for (const v of variantesResp.data ?? []) {
-      const id = v.produto_id as string;
-      totalVariantesPorProduto.set(id, (totalVariantesPorProduto.get(id) ?? 0) + 1);
+    for (const v of variantes) {
+      totalVariantesPorProduto.set(v.produto_id, (totalVariantesPorProduto.get(v.produto_id) ?? 0) + 1);
     }
 
     // Já ordenado por `registrado_em desc`: a PRIMEIRA linha de cada produto é
     // a mais recente. `procedencia_de_campo_campo_idx` (038) existe
     // exatamente para esta varredura.
     const fontePorProduto = new Map<string, Procedencia>();
-    for (const linha of procedenciaResp.data ?? []) {
-      const id = linha.entidade_id as string;
-      if (fontePorProduto.has(id)) continue;
-      fontePorProduto.set(id, {
+    for (const linha of procedencias) {
+      if (fontePorProduto.has(linha.entidade_id)) continue;
+      fontePorProduto.set(linha.entidade_id, {
         origem: linha.origem as OrigemDoValor,
         metodo: linha.metodo as MetodoDeEntrada,
-        ator: linha.ator as string | null,
-        momento: linha.registrado_em as string,
+        ator: linha.ator,
+        momento: linha.registrado_em,
         ...(linha.evidencia_registro && linha.evidencia_id
-          ? { evidencia: { registro: linha.evidencia_registro as string, id: linha.evidencia_id as string } }
+          ? { evidencia: { registro: linha.evidencia_registro, id: linha.evidencia_id } }
           : {}),
       });
     }
 
     const pendenciaPorProduto = new Map<string, { candidatos: ReturnType<typeof candidatosValidos> }>();
-    for (const p of pendenciasResp.data ?? []) {
-      pendenciaPorProduto.set(p.produto_id as string, { candidatos: candidatosValidos(p.candidatos) });
+    for (const p of pendencias) {
+      pendenciaPorProduto.set(p.produto_id, { candidatos: candidatosValidos(p.candidatos) });
     }
 
-    const linhas: LinhaDeCusto[] = (produtosResp.data ?? []).map((p) =>
+    const linhas: LinhaDeCusto[] = produtos.map((p) =>
       montarLinhaDeCusto({
-        produtoId: p.id as string,
-        nome: p.nome as string,
-        sku: (p.sku as string | null) ?? "",
+        produtoId: p.id,
+        nome: p.nome,
+        sku: p.sku ?? "",
         custo: Number(p.custo ?? 0),
-        totalVariantes: totalVariantesPorProduto.get(p.id as string) ?? 0,
-        fonte: fontePorProduto.get(p.id as string),
-        pendenciaAberta: pendenciaPorProduto.get(p.id as string) ?? null,
+        precoVenda: Number(p.preco_venda ?? 0),
+        totalVariantes: totalVariantesPorProduto.get(p.id) ?? 0,
+        fonte: fontePorProduto.get(p.id),
+        pendenciaAberta: pendenciaPorProduto.get(p.id) ?? null,
       })
     );
 

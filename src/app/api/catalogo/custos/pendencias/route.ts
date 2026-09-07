@@ -19,7 +19,13 @@
 import { getSupabaseAdmin, adminConfigurado } from "@/lib/supabase/admin";
 import { exigirAcessoAoCliente, respostaErroAutorizacao } from "@/lib/auth/serverAuthorization";
 import { respostaDeErro } from "@/lib/http/respostaDeErro";
+import { lerTudoPorIds } from "@/lib/supabase/paginado";
 import type { CandidatoDeCusto } from "@/modules/catalog/domain/custosDoCatalogo";
+
+interface LinhaAberta {
+  id: string;
+  produto_id: string;
+}
 
 interface ItemAmbiguo {
   produtoId: string;
@@ -78,20 +84,27 @@ export async function POST(request: Request) {
     // Uma pendência aberta por produto: lê as que já existem para decidir
     // insert (produto sem pendência aberta) vs. update (já havia uma — a nova
     // importação trouxe candidatos mais recentes para a MESMA disputa).
-    const { data: abertas, error: erroLeitura } = await admin
-      .from("custo_pendencias")
-      .select("id, produto_id")
-      .eq("cliente_id", clienteId)
-      .in(
-        "produto_id",
-        itens.map((i) => i.produtoId)
-      )
-      .is("resolvido_em", null);
-    if (erroLeitura) throw new Error(erroLeitura.message);
+    //
+    // PAGINADO POR IDS: uma importação grande pode trazer mais ambíguos do que
+    // cabe numa página ou numa URL `in(...)` só — `lerTudoPorIds` é o helper
+    // único do repositório para isto (ver `leituraNaoTruncada.test.ts`).
+    const abertas = await lerTudoPorIds<LinhaAberta>(
+      "pendências abertas para os ambíguos desta importação",
+      itens.map((i) => i.produtoId),
+      (lote, de, ate) =>
+        admin
+          .from("custo_pendencias")
+          .select("id, produto_id")
+          .eq("cliente_id", clienteId)
+          .in("produto_id", lote)
+          .is("resolvido_em", null)
+          .order("id", { ascending: true })
+          .range(de, ate)
+    );
 
     const idAbertaPorProduto = new Map<string, string>();
-    for (const linha of abertas ?? []) {
-      idAbertaPorProduto.set(linha.produto_id as string, linha.id as string);
+    for (const linha of abertas) {
+      idAbertaPorProduto.set(linha.produto_id, linha.id);
     }
 
     let gravados = 0;

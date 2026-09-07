@@ -100,6 +100,10 @@ const TONE_MAP: Record<string, Tone> = {
   // v1.9 — anúncios gerados pela esteira
   Rascunho: "gray",
   Rejeitado: "red",
+  // Custos da loja (087) — estado de confiança do custo de um produto
+  Ausente: "yellow",
+  Confirmado: "green",
+  "Em conflito": "red",
 };
 
 export function toneFor(status: string): Tone {
