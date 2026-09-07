@@ -134,7 +134,8 @@ begin
   if exists (select 1 from pg_proc where proname = 'cliente_do_usuario') then
     execute $p$
       create policy custo_pendencias_leitura on public.custo_pendencias
-        for select using (cliente_id = public.cliente_do_usuario());
+        for select to authenticated
+        using (cliente_id = public.cliente_do_usuario());
     $p$;
   else
     raise notice 'cliente_do_usuario() ausente: RLS ligado sem politicas (nega tudo).';
@@ -149,12 +150,22 @@ end $$;
 
 do $$
 declare
-  v_anon boolean;
+  v_roles_leitura name[];
   v_auth_insert boolean;
 begin
-  select has_table_privilege('anon', 'public.custo_pendencias', 'select') into v_anon;
-  if v_anon then
-    raise exception 'MIGRACAO 087: anon consegue ler custo_pendencias.';
+  -- NÃO testar `has_table_privilege('anon', ...)`: neste projeto (como em
+  -- qualquer Supabase padrão) `anon`/`authenticated` recebem GRANT amplo em
+  -- toda tabela do schema `public` por convenção da plataforma — quem protege
+  -- de verdade é a RLS, não o GRANT. A primeira versão desta prova testava o
+  -- GRANT e falhava em QUALQUER tabela do projeto, inclusive `procedencia_de_campo`
+  -- (038) — testava a camada errada. O que importa é a policy não incluir
+  -- `anon`/`public` entre as roles.
+  select roles into v_roles_leitura
+    from pg_policies
+   where schemaname = 'public' and tablename = 'custo_pendencias' and policyname = 'custo_pendencias_leitura';
+
+  if v_roles_leitura is null or 'anon' = any(v_roles_leitura) or 'public' = any(v_roles_leitura) then
+    raise exception 'MIGRACAO 087: a policy de leitura precisa ser restrita a authenticated (achou: %).', v_roles_leitura;
   end if;
 
   -- RLS ligado + zero policy de insert para authenticated = escrita negada.
@@ -166,7 +177,7 @@ begin
     raise exception 'MIGRACAO 087: existe policy de INSERT — o desenho exige escrita so por service_role.';
   end if;
 
-  raise notice '087 conferida: RLS ligado, so leitura por tenant, nenhuma policy de escrita.';
+  raise notice '087 conferida: leitura restrita a authenticated por tenant, nenhuma policy de escrita.';
 end $$;
 
 -- ------------------------------------------------------------
@@ -190,5 +201,5 @@ end $$;
 -- ★ Auto-registro (convenção ≥024):
 insert into public.migracoes_aplicadas (numero, nome, aplicada_em, observacao)
 values ('087', '087-a-pendencia-de-custo-nao-se-perde', now(),
-        'Tabela custo_pendencias: disputas de custo (2+ fontes) sobrevivem a sessao de importacao. Resolvida vira historico (valor_escolhido + descartados), nunca e apagada. RLS: leitura por tenant, escrita so service_role.')
+        'Tabela custo_pendencias: disputas de custo (2+ fontes) sobrevivem a sessao de importacao. Resolvida vira historico (valor_escolhido + descartados), nunca e apagada. RLS: leitura por tenant (to authenticated), escrita so service_role.')
 on conflict (numero) do nothing;
