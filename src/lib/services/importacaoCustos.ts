@@ -39,6 +39,7 @@ import { autorAtual } from "../auth/autorAtual";
 import { listarProdutosDoCliente, atualizarProdutosBulk } from "./produtos";
 import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes";
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
+import { sincronizarPendenciasDeCusto } from "./custoPendencias";
 import type { Produto, ProdutoVariante } from "../types";
 
 /**
@@ -716,6 +717,27 @@ export async function importarCustos(
       if (nome) chaves.push(normNome(nome));
     }
     if (chaves.length > 0 && !chaves.some((c) => usados.has(c))) naoEncontrados++;
+  }
+
+  // A DISPUTA NÃO PODE SE PERDER SE NINGUÉM RESOLVER NA HORA (087).
+  //
+  // Antes disto, `detalhesAmbiguos` só existia dentro desta resposta — se a
+  // lojista fechasse a tela de importação sem decidir na caixa de ambíguos, a
+  // informação de que dois números discordavam sumia, e o produto ficava sem
+  // custo sem nenhum rastro de por quê. Gravar aqui é o que deixa a tela de
+  // Custos da loja mostrar o conflito depois, em qualquer sessão.
+  //
+  // AGUARDADO, mas nunca lança (ver o comentário da função): quem chama
+  // `importarCustos` espera terminar já com a disputa gravada — se a pessoa
+  // for direto da importação para a tela de Custos, o conflito precisa estar
+  // lá. Uma falha ao registrar vira log, não exceção: a importação já gravou
+  // o que dava para gravar, e isso não pode ser desfeito por um problema de
+  // rede num registro secundário.
+  if (ambiguos.size > 0) {
+    await sincronizarPendenciasDeCusto(
+      clienteId,
+      [...ambiguos.entries()].map(([produtoId, v]) => ({ produtoId, candidatos: v.candidatos }))
+    );
   }
 
   const avisos: string[] = [];
