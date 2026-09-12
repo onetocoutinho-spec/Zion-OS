@@ -256,3 +256,67 @@ test("leitura sem falha não acusa ninguém", async () => {
   assert.equal(r.falhaDaLeituraFoiNossa, false);
   assert.equal(r.erroDoMultiget, "");
 });
+
+// ===========================================================================
+// O SKU DA VARIAÇÃO SÓ VEM COM `include_attributes=all`
+// ===========================================================================
+//
+// MEDIDO EM 2026-08-18, contra a conta real da lojista.
+//
+// Sete anúncios de grade, 96 variações, e o SKU chegava vazio em todas as 96.
+// Eu escrevi que "o SKU não existe no Mercado Livre" — três vezes, cada uma
+// olhando um campo diferente. Ela mandou o print do painel dela: `00895337`,
+// preenchido, na variação 37 BR do Actvitta Sorano.
+//
+// O ML respondia 200, com o array `variations` inteiro, e
+// `variations[].attributes` VAZIO. Pedir `attributes` na lista de campos traz
+// os atributos DO ITEM; os da VARIAÇÃO — onde moram SELLER_SKU e GTIN — só vêm
+// com `include_attributes=all`. Sem o parâmetro o ML não recusa e não avisa:
+// entrega o silêncio com cara de resposta.
+//
+// Com o parâmetro: 96 de 96. Sem ele: 0 de 96. 83 variações da base ficaram
+// sem SKU por causa disso, e foram semanas atribuídas a "ela não cadastrou".
+//
+// Este teste não protege uma string de URL. Protege a diferença entre o
+// catálogo dela estar incompleto e o nosso leitor estar surdo.
+test("o multiget pede include_attributes=all — sem ele a variação vem sem SKU", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    urls.push(String(url));
+    if (String(url).includes("/items/search")) {
+      return new Response(JSON.stringify({ results: ["MLB1"], paging: { total: 1 } }), {
+        status: 200,
+      });
+    }
+    return new Response(
+      JSON.stringify([
+        {
+          code: 200,
+          body: {
+            ...item("MLB1"),
+            variations: [
+              {
+                price: 10,
+                available_quantity: 1,
+                attribute_combinations: [{ id: "SIZE", value_name: "37 BR" }],
+                attributes: [{ id: "SELLER_SKU", value_name: "00895337" }],
+              },
+            ],
+          },
+        },
+      ]),
+      { status: 200 }
+    );
+  }) as typeof fetch;
+
+  const leitura = await buscarAnunciosDoVendedor("tok", "vend1");
+
+  const multiget = urls.find((u) => u.includes("/items?ids="));
+  assert.ok(multiget, "a leitura precisa chamar o multiget");
+  assert.ok(
+    multiget.includes("include_attributes=all"),
+    `sem include_attributes=all o ML devolve variations[].attributes vazio — url: ${multiget}`
+  );
+  // E o SKU precisa chegar até quem lê, não só até a resposta HTTP.
+  assert.equal(leitura.anuncios[0]?.variacoes[0]?.sku, "00895337");
+});

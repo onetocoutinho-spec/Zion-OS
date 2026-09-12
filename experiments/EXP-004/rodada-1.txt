@@ -1,0 +1,141 @@
+# EXP-004 · rodada 1 · provedor: gemini
+# base: 73 produtos · 684 variações · 12 marcas
+
+## F1 — "Quais tênis e chinelos da Actvitta estão sem peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","qualificadores":["tênis","chinelo"],"interpretacao":"O operador quer saber sobre tênis e chinelos da marca Actvitta que estão sem peso."}
+marca:        "Actvitta" (válida)
+estado:       faltando
+qualificad.:  [tênis, chinelo] → declarados=[tênis] naoRepr=[chinelo]
+conjunto:     5 produtos · 78 variações sem peso · 0 parcial(is)
+esperado:     6 produtos · 80 variações
+desfecho:     4 (esperado 4) OK
+conjunto ok:  NAO
+
+## F2 — "Quais produtos da Havaianas estão sem peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","qualificadores":["produto"],"interpretacao":"O usuário quer saber sobre produtos da marca Havaianas que estão sem peso."}
+marca:        "Havaianas" (válida)
+estado:       faltando
+qualificad.:  [produto] → declarados=[] naoRepr=[produto]
+conjunto:     5 produtos · 64 variações sem peso · 1 parcial(is)
+esperado:     5 produtos · 64 variações
+desfecho:     4 (esperado 1) DIVERGE
+conjunto ok:  SIM
+
+## F3 — "Me mostra os chinelos que estão sem peso."
+bruto:        {"entendeu":true,"perguntar":"","marca":"","estadoDePeso":"faltando","qualificadores":["chinelo"],"interpretacao":"O operador quer ver os chinelos que estão sem peso."}
+marca:        "" (válida)
+estado:       faltando
+qualificad.:  [chinelo] → declarados=[] naoRepr=[chinelo]
+conjunto:     19 produtos · 223 variações sem peso · 2 parcial(is)
+esperado:     19 produtos · 223 variações
+desfecho:     4 (esperado 4) OK
+conjunto ok:  SIM
+
+## F4 — "Quais produtos da Molekinha estão sem peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"Molekinha","estadoDePeso":"faltando","qualificadores":[],"interpretacao":"Entendi que você quer saber sobre produtos da marca Molekinha que estão sem peso."}
+marca:        "Molekinha" (válida)
+estado:       faltando
+qualificad.:  [] → declarados=[] naoRepr=[]
+conjunto:     0 produtos · 0 variações sem peso · 0 parcial(is)
+esperado:     0 produtos · 0 variações
+desfecho:     2 (esperado 2) OK
+conjunto ok:  SIM
+
+## F5 — "Me mostra os produtos sem peso da Vizzano."
+bruto:        {"entendeu":true,"perguntar":"","marca":"Vizzano","estadoDePeso":"faltando","qualificadores":[],"interpretacao":"O operador quer produtos da marca Vizzano que estão sem peso."}
+marca:        "Vizzano" (válida)
+estado:       faltando
+qualificad.:  [] → declarados=[] naoRepr=[]
+conjunto:     1 produtos · 3 variações sem peso · 1 parcial(is)
+esperado:     1 produtos · 3 variações
+desfecho:     1 (esperado 1) OK
+conjunto ok:  SIM
+
+## F6 — "Quais produtos estão sem peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"","estadoDePeso":"faltando","qualificadores":[],"interpretacao":"O operador quer saber quais produtos estão sem peso."}
+marca:        "" (válida)
+estado:       faltando
+qualificad.:  [] → declarados=[] naoRepr=[]
+conjunto:     19 produtos · 223 variações sem peso · 2 parcial(is)
+esperado:     19 produtos · 223 variações
+desfecho:     1 (esperado 1) OK
+conjunto ok:  SIM
+
+## F7 — "Me mostra os Modare ortopédicos que estão sem peso."
+bruto:        {"entendeu":true,"perguntar":"","marca":"Modare","estadoDePeso":"faltando","qualificadores":["ortopédico"],"interpretacao":"O operador busca produtos da marca Modare, ortopédicos e que estão com o peso faltando."}
+marca:        "Modare" (válida)
+estado:       faltando
+qualificad.:  [ortopédico] → declarados=[ortopédico] naoRepr=[]
+conjunto:     5 produtos · 67 variações sem peso · 0 parcial(is)
+esperado:     5 produtos · 67 variações
+desfecho:     1 (esperado 1) OK
+conjunto ok:  SIM
+
+## F8 — "Quais são os chinelos da Moleca que estão sem peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"Moleca","estadoDePeso":"faltando","qualificadores":["chinelo"],"interpretacao":"O operador busca chinelos da marca Moleca que não possuem peso cadastrado."}
+marca:        "Moleca" (válida)
+estado:       faltando
+qualificad.:  [chinelo] → declarados=[] naoRepr=[chinelo]
+conjunto:     0 produtos · 0 variações sem peso · 0 parcial(is)
+esperado:     0 produtos · 0 variações
+desfecho:     2 (esperado 2) OK
+conjunto ok:  SIM
+
+## F9 — "Quais produtos da Actvitta estão faltando peso?"
+bruto:        {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","qualificadores":["produto"],"interpretacao":"O operador quer saber quais produtos da Actvitta estão com peso faltando."}
+marca:        "Actvitta" (válida)
+estado:       faltando
+qualificad.:  [produto] → declarados=[] naoRepr=[produto]
+conjunto:     6 produtos · 80 variações sem peso · 0 parcial(is)
+esperado:     6 produtos · 80 variações
+desfecho:     4 (esperado 1) DIVERGE
+conjunto ok:  SIM
+
+## F9b — "Só os tênis da Actvitta que estão faltando peso."
+bruto:        {"entendeu":true,"perguntar":"","marca":"Actvitta","estadoDePeso":"faltando","qualificadores":["tênis"],"interpretacao":"O usuário quer tênis da marca Actvitta que estão sem informação de peso."}
+marca:        "Actvitta" (válida)
+estado:       faltando
+qualificad.:  [tênis] → declarados=[tênis] naoRepr=[]
+conjunto:     5 produtos · 78 variações sem peso · 0 parcial(is)
+esperado:     5 produtos · 78 variações
+desfecho:     1 (esperado 1) OK
+conjunto ok:  SIM
+
+## F10 — "Me mostra os produtos sem peso da Havaianas."
+bruto:        {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","qualificadores":[],"interpretacao":"O operador quer ver produtos da marca Havaianas que estão sem peso."}
+marca:        "Havaianas" (válida)
+estado:       faltando
+qualificad.:  [] → declarados=[] naoRepr=[]
+conjunto:     5 produtos · 64 variações sem peso · 1 parcial(is)
+esperado:     5 produtos · 64 variações
+desfecho:     1 (esperado 1) OK
+conjunto ok:  SIM
+
+## F10b — "Só os masculinos da Havaianas que estão sem peso."
+bruto:        {"entendeu":true,"perguntar":"","marca":"Havaianas","estadoDePeso":"faltando","qualificadores":["masculino"],"interpretacao":"O usuário busca por produtos masculinos da marca Havaianas que estão sem peso."}
+marca:        "Havaianas" (válida)
+estado:       faltando
+qualificad.:  [masculino] → declarados=[] naoRepr=[masculino]
+conjunto:     5 produtos · 64 variações sem peso · 1 parcial(is)
+esperado:     5 produtos · 64 variações
+desfecho:     4 (esperado 4) OK
+conjunto ok:  SIM
+
+## C1 — "Quais produtos da Olympikus estão sem peso?"
+bruto:        {"entendeu":false,"perguntar":"A marca Olympikus não existe no catálogo.","marca":"","estadoDePeso":"faltando","qualificadores":[],"interpretacao":"O operador busca produtos da marca Olympikus que estão sem peso."}
+marca:        "" (válida)
+estado:       faltando
+qualificad.:  [] → declarados=[] naoRepr=[]
+conjunto:     0 produtos · 0 variações sem peso · 0 parcial(is)
+esperado:     0 produtos · 0 variações
+desfecho:     3 (esperado 3) OK
+conjunto ok:  SIM
+
+# MÉTRICAS
+M1 extração estrutural.......... 13/13   (limiar 13/13)
+M2 qualificador extraído........ 5/5   (limiar 5/5)
+M3 conjunto == oráculo.......... 12/13   (limiar 13/13)
+M4 honestidade da fronteira..... 2/3   (limiar 3/3)
+M5 declarado filtra de fato..... 2/2   (limiar 2/2)
+M6 vazio como fato.............. 2/2   (limiar 2/2)
+M7 marca inválida não aproxima.. 1/1   (limiar 1/1)

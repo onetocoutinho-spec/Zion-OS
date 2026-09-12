@@ -75,26 +75,54 @@ test("medidasDaMarca devolve a grade da marca conhecida", () => {
 });
 
 test("medidasDaMarca normaliza acento, caixa e pontuação da marca", () => {
-  const alvo = TABELAS_MARCA["beira rio"];
-  assert.equal(medidasDaMarca("Beira-Rio"), alvo);
-  assert.equal(medidasDaMarca("  BEIRA   RIO  "), alvo);
-  assert.equal(medidasDaMarca("Azaléia"), TABELAS_MARCA["azaleia"]);
+  // `deepEqual` e não `equal`: desde 28/08 a função devolve uma CÓPIA. Entregar
+  // o objeto do módulo convidava um `tabela["46"] = 30.7` no chamador a valer
+  // para todas as marcas pelo resto do processo.
+  assert.deepEqual(medidasDaMarca("Beira-Rio"), TABELAS_MARCA["beira rio"]);
+  assert.deepEqual(medidasDaMarca("  BEIRA   RIO  "), TABELAS_MARCA["beira rio"]);
+  assert.deepEqual(medidasDaMarca("Azaléia"), TABELAS_MARCA["azaleia"]);
 });
 
-test("medidasDaMarca cai na grade de referência BR (33–45) para marca desconhecida", () => {
+test("o retorno é CÓPIA — escrever nele não contamina o módulo", () => {
+  const primeira = medidasDaMarca("Modare");
+  primeira["46"] = 99;
+  assert.equal(medidasDaMarca("Modare")["46"], undefined, "a escrita vazou para o módulo");
+});
+
+// A REFERÊNCIA DEIXOU DE SER SÓ A METADE ADULTA — 28/08/2026.
+//
+// O corte em 33 vinha de `bdaa5c3` (09/07), e o commit diz por quê: "marca sem
+// tabela (Vizzano/Moleca/Actvitta) usa grade padrão BR ADULTO". As três são
+// marcas adultas — o corte foi ajustado ao catálogo daquele dia, não a uma
+// regra sobre infantil ser desconhecível.
+//
+// Hoje quem cai na referência inclui Cartago, Klin, Rider, Pegada, Zaxynina e
+// Grendene Kids, que são infantis. Medido no catálogo do T1: a metade adulta
+// tornava 11 anúncios impublicáveis por "nenhuma variação com tamanho
+// publicável", com a resposta parada na outra metade da MESMA fonte.
+//
+// O que este teste guarda agora é o que sempre importou: a referência é o
+// `PADRAO_BR` inteiro e nada além dele, e marca CONHECIDA continua sozinha com
+// a tabela dela.
+test("medidasDaMarca cai na grade de referência BR INTEIRA para marca desconhecida", () => {
   const ref = medidasDaMarca("Marca Que Nao Existe");
-  const chaves = Object.keys(ref);
-  assert.equal(chaves.length, 13);
-  assert.equal(chaves[0], "33");
-  assert.equal(chaves.at(-1), "45");
-  assert.equal(ref["33"], PADRAO_BR["33"]);
+  assert.deepEqual(ref, PADRAO_BR, "a referência deixou de ser exatamente o padrão BR");
+  assert.equal(ref["21"], PADRAO_BR["21"], "o infantil voltou a ficar de fora");
   assert.equal(ref["45"], PADRAO_BR["45"]);
-  // Não devolve a PADRAO_BR inteira: o infantil fica de fora.
-  assert.equal(ref["21"], undefined);
+});
+
+test("MARCA CONHECIDA NÃO É MISTURADA com a referência", () => {
+  // É o cuidado que sobrou do corte, e o único que era doutrina: completar a
+  // grade de uma marca com a genérica é misturar grades, e a diferença entre a
+  // Modare (22,3 em 34) e o padrão (22,5) é o milímetro que este módulo se
+  // recusa a inventar.
+  const modare = medidasDaMarca("Modare");
+  assert.equal(modare["34"], 22.3);
+  assert.equal(modare["21"], undefined, "a referência vazou para dentro de uma marca conhecida");
 });
 
 test("medidasDaMarca trata marca vazia como desconhecida, sem lançar", () => {
-  assert.equal(Object.keys(medidasDaMarca("")).length, 13);
+  assert.deepEqual(medidasDaMarca(""), PADRAO_BR);
 });
 
 // ---- montarTabelaMedidas (consumida por contexto.ts e produtos/page.tsx) ----
@@ -154,7 +182,9 @@ test("montarTabelaMedidas: marca desconhecida com numeração de calçado usa o 
   assert.equal(r.fonte, "padrao");
   assert.equal(r.confiavel, false);
   assert.equal(r.oficial, false);
-  assert.ok(r.tabela.startsWith("Numeração\tComprimento do pé\n33\t21,5 cm"));
+  // Começa em 21 desde 28/08: a referência é o PADRAO_BR inteiro, não a metade
+  // adulta. Ver o comentário do teste `... BR INTEIRA` acima.
+  assert.ok(r.tabela.startsWith("Numeração\tComprimento do pé\n21\t14,0 cm"));
 });
 
 test("montarTabelaMedidas: numeração que não é de calçado devolve tabela vazia", () => {

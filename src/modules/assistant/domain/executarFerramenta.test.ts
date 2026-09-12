@@ -90,13 +90,42 @@ test("achar_produto avisa quando não bate nada", async () => {
 
 test("achar_produto devolve o TOTAL, não só a fatia mostrada", async () => {
   // "achei 8" com 43 batendo seria mentira por omissão.
+  //
+  // MODIFICADA EM 17/08/2026, com o motivo escrito: o campo passou a se chamar
+  // `candidatos` quando o casamento é AMBÍGUO, porque nesse caso ele não
+  // carrega mais `id` — ver a prova de baixo. A propriedade guardada aqui não
+  // mudou: o total é o real, a fatia é a mostrada, e a diferença aparece.
   const muitos = Array.from({ length: 12 }, (_, i) => ({ ...PAPETE_A, id: `x${i}` }));
   const { saida } = await rodar("achar_produto", { termos: "papete" }, {
     ...ctx,
     produtos: muitos,
-  }) as { saida: { total: number; achados: unknown[] } };
+  }) as { saida: { total: number; candidatos: unknown[] } };
   assert.equal(saida.total, 12);
-  assert.equal(saida.achados.length, 8);
+  assert.equal(saida.candidatos.length, 8);
+});
+
+test("ambiguidade não entrega id — o modelo não CONSEGUE escolher errado", async () => {
+  // A trava, provada pelo comportamento e não pela fonte: com mais de um
+  // casamento, nenhum `id` sai da ferramenta. Sem id, `propor_gravacao` não
+  // tem alvo — e gravar peso ou custo no produto errado é pior que não gravar.
+  const muitos = Array.from({ length: 3 }, (_, i) => ({ ...PAPETE_A, id: `x${i}` }));
+  const { saida } = await rodar("achar_produto", { termos: "papete" }, {
+    ...ctx,
+    produtos: muitos,
+  }) as { saida: { casamento?: string; candidatos: { id?: string }[] } };
+  assert.equal(saida.casamento, "ambiguo");
+  assert.ok(
+    saida.candidatos.every((c) => c.id === undefined),
+    "a ambiguidade voltou a entregar o id do produto"
+  );
+  // E o caso ÚNICO continua entregando, senão a ferramenta vira inútil.
+  const um = await rodar("achar_produto", { termos: PAPETE_A.nome }, ctx) as {
+    saida: { achados?: { id?: string }[] };
+  };
+  assert.ok(
+    (um.saida.achados ?? []).every((a) => typeof a.id === "string"),
+    "o casamento único parou de entregar o id"
+  );
 });
 
 test("propor_gravacao monta o cartão a partir do produtoId, não de texto", async () => {

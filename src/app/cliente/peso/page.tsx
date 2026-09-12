@@ -34,6 +34,11 @@ import {
   situacaoDePeso,
 } from "@/modules/catalog/domain/familiaDeProduto";
 import { resolverConsulta, type ResultadoConsulta } from "@/modules/catalog/domain/consultaDePeso";
+import {
+  pesosACompletar,
+  fraseDoCompletar,
+  porValor,
+} from "@/modules/catalog/domain/completarPeso";
 import { interpretarConsulta, registrarUso } from "@/lib/services/consultaPeso";
 import { formatBRL } from "@/lib/format";
 import { useSearchParams } from "next/navigation";
@@ -53,6 +58,15 @@ function PesoDosProdutosInterno() {
     () => listarProdutosComPeso(clienteId),
     [clienteId]
   );
+
+  // O QUE DÁ PARA COMPLETAR SEM PERGUNTAR NADA.
+  //
+  // Medido em 17/08/2026: das 444 variações sem peso, 200 estão em produtos
+  // cujas IRMÃS já foram pesadas e concordam num valor. Pedir que ela digite
+  // isso é pedir que responda de novo o que já respondeu — e são 24 formulários.
+  const aCompletar = useMemo(() => pesosACompletar(produtos ?? []), [produtos]);
+  const [completando, setCompletando] = useState(false);
+  const [verLista, setVerLista] = useState(false);
 
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [soPendentes, setSoPendentes] = useState(false);
@@ -164,12 +178,93 @@ function PesoDosProdutosInterno() {
     }
   }
 
+  /**
+   * Aplica, produto a produto, o peso que o próprio produto já tem.
+   *
+   * Agrupado POR VALOR: 24 produtos com sete pesos distintos são sete
+   * gravações, não vinte e quatro. Cada gravação a menos é uma rajada a menos
+   * de eventos do Realtime — foi ela que derrubou esta conta hoje.
+   *
+   * Sequencial de propósito, pelo mesmo motivo.
+   */
+  async function completarConhecidos() {
+    if (aCompletar.length === 0 || completando) return;
+    setCompletando(true);
+    setMsg(null);
+    let variantes = 0;
+    let produtosFeitos = 0;
+    try {
+      for (const grupo of porValor(aCompletar)) {
+        const r = await definirPesoDosProdutos(clienteId, grupo.produtoIds, {
+          pesoGramas: grupo.gramas,
+          // Zero NÃO apaga medida existente — ver `definirPesoDosProdutos`.
+          // Aqui só o peso é conhecido; altura, largura e comprimento
+          // continuam sendo dela.
+          alturaCm: 0,
+          larguraCm: 0,
+          comprimentoCm: 0,
+        });
+        variantes += r.variantes;
+        produtosFeitos += r.produtos;
+      }
+      setMsg(`${produtosFeitos} produto(s) e ${variantes} variação(ões) com peso.`);
+      reload();
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Não foi possível completar agora.");
+    } finally {
+      setCompletando(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
         titulo="Peso e caixa"
         subtitulo="O frete do Mercado Livre é cobrado por peso. Sem ele, o preço mínimo não sai."
       />
+
+      {/* ── O QUE SE COMPLETA SEM PERGUNTAR NADA ─────────────────────────
+          Aparece só quando existe. Não é estimativa: cada produto recebe o
+          peso que as próprias irmãs já têm, e a lista mostra quais e quanto
+          antes de qualquer gravação. */}
+      {aCompletar.length > 0 && (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4">
+          <p className="text-sm text-white/80">{fraseDoCompletar(aCompletar)}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button onClick={() => void completarConhecidos()} disabled={completando}>
+              {completando ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Scale size={14} />
+              )}
+              {completando ? "Completando…" : "Completar com o peso que já tenho"}
+            </Button>
+            <button
+              onClick={() => setVerLista((v) => !v)}
+              className="text-xs text-white/50 underline-offset-2 hover:underline [@media(pointer:coarse)]:min-h-11"
+            >
+              {verLista ? "Esconder a lista" : `Ver os ${aCompletar.length} produtos`}
+            </button>
+          </div>
+          {verLista && (
+            <ul className="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs text-white/60">
+              {aCompletar.map((c) => (
+                <li key={c.produtoId} className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate" title={c.nome}>
+                    {c.nome}
+                  </span>
+                  <span className="text-white/40">
+                    {c.jaTem} já {c.jaTem === 1 ? "tem" : "têm"}
+                  </span>
+                  <span className="font-medium text-emerald-300">
+                    {c.gramas} g → {c.faltando} var.
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* ── Onde a pessoa está ──────────────────────────────────────────── */}
       <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">

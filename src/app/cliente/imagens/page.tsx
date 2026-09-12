@@ -33,14 +33,23 @@ import {
   atualizarImagem,
   excluirImagem,
 } from "@/lib/services/imagensProduto";
-import { promoverImagemACapa, uploadImagemProduto } from "@/lib/services/storageImagens";
+import {
+  excluirImagemDoProduto,
+  promoverImagemACapa,
+  uploadImagemProduto,
+} from "@/lib/services/storageImagens";
 import { gerarImagemProduto, salvarImagemGerada, type TipoGeracao } from "@/lib/services/imagemIA";
 import { supabaseConfigurado } from "@/lib/supabase/client";
 import type { ImagemProduto, Produto } from "@/lib/types";
 import {
   casarPastaComProduto,
-  lerCaminhoDaFoto,
+  nivelDoProdutoPorProfundidade,
+  pastasDoCaminho,
+  type Casamento,
 } from "@/modules/catalog/domain/casarPastaComProduto";
+import { conferirEnvioRepetido } from "@/modules/catalog/domain/envioDeFotoRepetido";
+import { avisoDaPastaEscolhida } from "@/modules/catalog/domain/pastaEscolhidaErrada";
+import { fotosPorProdutoECor } from "@/lib/services/imagensProduto";
 
 function norm(s: string): string {
   return s
@@ -179,7 +188,9 @@ function ModoUmProduto({ clienteId, produtos }: { clienteId: string; produtos: P
   async function remover(img: ImagemProduto) {
     setImgBusy(img.id);
     try {
-      await excluirImagem(img.id);
+      // NÃO é `excluirImagem` direto: apagar a capa deixava o produto sem capa
+      // nenhuma, em silêncio. Ver `excluirImagemDoProduto`.
+      await excluirImagemDoProduto(img.produtoId, img.id);
       reload();
     } finally {
       setImgBusy(null);
@@ -561,29 +572,102 @@ function EstudioIA({
 
 // ---------- Modo: em massa (pasta produto/cor) ----------
 
-interface GrupoMassa {
+// `Casamento` vem do domínio em vez de ser redigitado aqui: esta cópia existiu,
+// e quando `via` ganhou "referencia" foi ela que reprovou no typecheck. Um tipo
+// duplicado não avisa que envelheceu — ele só discorda.
+interface GrupoMassa extends Casamento {
   chave: string;
   pastaProduto: string;
   cor: string;
   arquivos: File[];
-  produtoId: string | null;
-  /** 0 a 1. A tela mostra: um casamento de 35% não é igual a um de 100%. */
-  confianca: number;
-  via: "codigo" | "nome" | null;
 }
 
 function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produto[] }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [grupos, setGrupos] = useState<GrupoMassa[]>([]);
+  /**
+   * A pasta que a pessoa escolheu, para a tela DIZER qual é.
+   *
+   * Sem isto, "1 pastas · 54 fotos" não distingue a pasta certa da errada — e o
+   * seletor do Chrome abre DENTRO da última usada, então errar o nível é o
+   * desfecho comum, não a exceção.
+   */
+  const [pastaEscolhida, setPastaEscolhida] = useState("");
+  /**
+   * A pasta da tentativa ANTERIOR.
+   *
+   * O seletor do Chrome reabre onde a pessoa parou e escolhe a pasta em que
+   * está, não a que aparece destacada — e foi assim que quatro de cinco
+   * tentativas mandaram a mesma pasta de cor, sem a tela dizer que eram a mesma.
+   */
+  const [pastaAnterior, setPastaAnterior] = useState("");
+  /**
+   * A profundidade MAIS FUNDA entre os arquivos escolhidos, e não uma por arquivo.
+   *
+   * A versão anterior guardava `number[]` — um número por ARQUIVO. Com a pasta
+   * Fotos inteira são ~11 mil entradas presas no estado, e o `.every()` do
+   * diagnóstico rodava sobre todas A CADA RENDER — e esta tela re-renderiza a
+   * cada troca de produto num `<select>`, que existe um por grupo.
+   *
+   * O diagnóstico só pergunta se TODOS são rasos. O máximo responde isso em
+   * O(1), calculado uma vez.
+   */
+  const [profundidadeMaxima, setProfundidadeMaxima] = useState(0);
+  /**
+   * Quantas fotos cada par produto+cor JÁ tem. Vazio até a primeira seleção.
+   *
+   * Sem isto a tela não tem como avisar que o envio duplica — e reenviar é o
+   * caso comum: a primeira tentativa falhou, a aba fechou no meio, a pessoa não
+   * teve certeza.
+   */
+  const [jaExistem, setJaExistem] = useState<Map<string, number>>(new Map());
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState<{ feito: number; total: number } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   function aoEscolherPasta(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
+
+    // QUAL NÍVEL DE PASTA É O PRODUTO — decidido pelo catálogo.
+    //
+    // A pasta que chegou de uma loja real tem TIPO/Produto/Cor, e parte dela
+    // tem um nível a mais. Contar do começo põe "CHINELO" no lugar do produto;
+    // contar do fim quebra a pasta de dois níveis. Nenhuma regra fixa serve
+    // para as duas formas — então o catálogo decide, por profundidade.
+    //
+    // Medido em 27/08/2026: o nível do tipo casa com 1 de 20 nomes, o do
+    // produto com 427 de 457. Não é ambiguidade.
+    const caminhos = files.map((f) => f.webkitRelativePath || f.name);
+    const nivelPorProfundidade = nivelDoProdutoPorProfundidade(
+      caminhos.map(pastasDoCaminho),
+      produtos
+    );
+
+    // O primeiro segmento do caminho relativo É a pasta escolhida.
+    const escolhida = (caminhos[0] ?? "").split("/")[0] ?? "";
+    setPastaAnterior(pastaEscolhida);
+    setPastaEscolhida(escolhida);
+    // A profundidade é o que separa "pasta de cor" (folha, sem subpasta) de
+    // "pasta de produto sem cor" (que é legítima e casa). Guardamos a MAIS
+    // funda: é ela que o diagnóstico pergunta, e um número não pesa.
+    setProfundidadeMaxima(
+      caminhos.reduce((maior, c) => Math.max(maior, pastasDoCaminho(c).length), 0)
+    );
+    // `.catch` explícito: sem ele, uma falha de rede aqui vira rejeição não
+    // tratada e o aviso de foto repetida some sem dizer. Mapa vazio é o
+    // desfecho certo — a tela segue, e o pior caso é não avisar.
+    void fotosPorProdutoECor(clienteId)
+      .then(setJaExistem)
+      .catch(() => setJaExistem(new Map()));
+
     const mapa = new Map<string, GrupoMassa>();
     for (const f of files) {
-      const { pastaProduto, cor } = lerCaminhoDaFoto(f.webkitRelativePath || f.name);
+      const meio = pastasDoCaminho(f.webkitRelativePath || f.name);
+      const i = nivelPorProfundidade.get(meio.length) ?? 0;
+      const { pastaProduto, cor } =
+        meio.length > 0
+          ? { pastaProduto: meio[i] || "(raiz)", cor: meio[i + 1] ?? "" }
+          : { pastaProduto: "(raiz)", cor: "" };
       const chave = `${pastaProduto}||${cor}`;
       if (!mapa.has(chave)) {
         mapa.set(chave, {
@@ -601,7 +685,33 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
   }
 
   const totalArquivos = grupos.reduce((s, g) => s + g.arquivos.length, 0);
+
+  // O QUE JÁ FOI ENVIADO — modules/catalog/domain/envioDeFotoRepetido.
+  // Avisa, nunca bloqueia: mandar foto nova para produto que já tem é o caso
+  // normal; mandar a MESMA cor de novo é a duplicata.
+  const repetido = conferirEnvioRepetido(
+    grupos.map((g) => ({
+      produtoId: g.produtoId,
+      rotulo: g.pastaProduto,
+      cor: g.cor,
+      fotos: g.arquivos.length,
+    })),
+    jaExistem
+  );
   const semCasar = grupos.filter((g) => !g.produtoId).length;
+
+  // O SELETOR DE PASTAS MANDOU A PASTA ERRADA QUATRO VEZES EM CINCO.
+  //
+  // Sem este aviso a tela mostra "1 pasta · 54 fotos · 1 sem produto" — que é
+  // verdade e não explica nada. Ver `modules/catalog/domain/pastaEscolhidaErrada`.
+  const avisoDaEscolha = avisoDaPastaEscolhida({
+    pastaEscolhida,
+    profundidadeMaxima,
+    arquivos: totalArquivos,
+    grupos: grupos.length,
+    semProduto: semCasar,
+    pastaAnterior,
+  });
 
   async function confirmar() {
     const validos = grupos.filter((g) => g.produtoId);
@@ -641,9 +751,27 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
 
   return (
     <Card title="Enviar por pasta (produto / cor)">
-      <p className="mb-3 text-sm text-zinc-400">
+      <p className="mb-2 text-sm text-zinc-400">
         Escolha uma pasta organizada como <span className="text-zinc-300">Produto → Cor → fotos</span>.
         Casamos cada pasta com o produto da sua base; revise antes de confirmar.
+      </p>
+
+      {/*
+        O QUE DECIDE O RESULTADO É O NOME DA PASTA, E ISSO NÃO ERA DITO.
+
+        Medido na base real de uma loja (1003 produtos, 26/08/2026):
+
+            pasta com o código do produto        casou 99,1%
+            pasta com a referência do fabricante casou 10,8%  (antes desta versão)
+
+        A pessoa só descobria a diferença depois de escolher a pasta e ver a
+        coluna de "não casou" — ou seja, depois de organizar as fotos. Dizer
+        antes custa duas linhas.
+      */}
+      <p className="mb-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-400">
+        Se o nome da pasta tiver <span className="text-zinc-200">o código do produto</span> — o do
+        seu ERP ou a referência do fabricante —, o casamento é exato. Só pelo nome funciona, mas
+        erra mais: confira as porcentagens antes de confirmar.
       </p>
 
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-200 hover:border-white/20">
@@ -653,6 +781,16 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
           type="file"
           multiple
           className="hidden"
+          // ESCOLHER A MESMA PASTA DE NOVO PRECISA DISPARAR O EVENTO.
+          //
+          // `change` só dispara quando o valor MUDA. Sem limpar antes de abrir,
+          // reescolher a mesma pasta não faz nada — e a tela fica mostrando a
+          // seleção anterior como se fosse a nova. Em 27/08/2026 isso custou
+          // duas tentativas: a pessoa selecionou outra pasta, viu os mesmos 54
+          // arquivos, e não tinha como saber qual das duas estava na tela.
+          onClick={(e) => {
+            (e.target as HTMLInputElement).value = "";
+          }}
           onChange={aoEscolherPasta}
           {...({ webkitdirectory: "", directory: "" } as unknown as React.InputHTMLAttributes<HTMLInputElement>)}
         />
@@ -661,10 +799,27 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
       {grupos.length > 0 && (
         <>
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+            {/* O NOME DA PASTA, antes dos números. "1 pastas · 54 fotos" não
+                distingue a escolha certa da errada; o nome distingue. */}
+            {pastaEscolhida && (
+              <span className="text-xs text-zinc-400">
+                de <span className="text-zinc-200">{pastaEscolhida}</span>
+              </span>
+            )}
             <Pill tone="violet">{grupos.length} pastas</Pill>
             <Pill tone="gray">{totalArquivos} fotos</Pill>
             {semCasar > 0 && <Pill tone="yellow">{semCasar} sem produto</Pill>}
           </div>
+
+          {/* O DIAGNÓSTICO DA ESCOLHA vem ANTES da lista, porque é o que decide
+              se vale olhar a lista. Amarelo e não vermelho: enviar assim é
+              possível, escolhendo o produto à mão logo abaixo. */}
+          {avisoDaEscolha && (
+            <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
+              <AlertTriangle size={14} className="mt-px shrink-0" />
+              <span>{avisoDaEscolha.texto}</span>
+            </p>
+          )}
 
           <div className="mt-3 max-h-96 space-y-1.5 overflow-y-auto">
             {grupos.map((g, idx) => (
@@ -704,6 +859,14 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                 {g.produtoId ? (
                   <span className="flex items-center gap-1.5">
                     {g.via === "codigo" && <Pill tone="violet">código</Pill>}
+                    {g.via === "referencia" && <Pill tone="violet">referência</Pill>}
+                    {/* A referência se repetia entre produtos do mesmo modelo e
+                        o nome escolheu entre eles. É identidade — os dois sinais
+                        concordaram —, mas a etiqueta diz os dois de propósito:
+                        quem confere precisa saber que houve um desempate. */}
+                    {g.via === "referencia+nome" && (
+                      <Pill tone="violet">referência + nome</Pill>
+                    )}
                     {g.via === "nome" && (
                       // Casamento por nome é parecença, e parecença erra. O
                       // número existe para a pessoa olhar duas vezes os fracos
@@ -730,8 +893,26 @@ function ModoMassa({ clienteId, produtos }: { clienteId: string; produtos: Produ
                   : "Enviando…"
                 : "Confirmar envio"}
             </Button>
-            {semCasar > 0 && (
-              <span className="text-xs text-amber-400">Pastas sem produto serão ignoradas.</span>
+            {/* NENHUM CASOU É OUTRA FRASE.
+                "Pastas sem produto serão ignoradas" sugere que ALGUMA vai — e
+                quando nenhuma casa o botão fica desabilitado, o clique não faz
+                nada e a tela não diz por quê. Em 27/08/2026 isso custou uma
+                tentativa: o grupo era uma pasta de COR, o botão estava morto, e
+                não havia como saber. */}
+            {repetido.repetido && (
+              <span className="text-xs text-amber-400">{repetido.texto}</span>
+            )}
+            {grupos.length > 0 && grupos.every((g) => !g.produtoId) ? (
+              <span className="text-xs text-amber-400">
+                Nenhuma pasta casou com um produto — não há o que enviar. Escolha o produto
+                em cada linha acima, ou selecione a pasta de um nível acima.
+              </span>
+            ) : (
+              semCasar > 0 && (
+                <span className="text-xs text-amber-400">
+                  {semCasar} pasta(s) sem produto serão ignoradas.
+                </span>
+              )
             )}
           </div>
         </>

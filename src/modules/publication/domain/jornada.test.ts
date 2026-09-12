@@ -13,6 +13,7 @@ import {
   montarJornada,
   proximaAcao,
   concluida,
+  avisoDeProdutoJaNoAr,
   type ContextoJornada,
   type AnuncioNaJornada,
 } from "./jornada.ts";
@@ -219,4 +220,68 @@ test("a ação da etapa de fotos é um verbo e não vem bloqueada", () => {
 test("a etapa de fotos explica POR QUE existe — não é capricho estético", () => {
   const fotos = montarJornada(semNada).find((p) => p.etapa === "fotos")!;
   assert.match(fotos.descricao, /Mercado Livre|exige/i);
+});
+
+// ===========================================================================
+// A ESTEIRA CRIA — ela não melhora o que já está no ar
+// ===========================================================================
+//
+// MEDIDO EM 14/08/2026: 88 rascunhos nesta conta, e **86 nasceram DEPOIS de o
+// produto já estar no ar**. Nenhum é rascunho antigo que ficou para trás. A
+// esteira olhava só o rascunho aberto e não sabia que o PRODUTO já tinha
+// quarenta anúncios vendendo.
+
+test("produto já no ar: a esteira AVISA que vai criar mais um", () => {
+  const t = avisoDeProdutoJaNoAr({
+    ...semNada,
+    temProduto: true,
+    quantidadeFotos: 3,
+    anunciosNoArDoProduto: 40,
+  });
+  assert.match(t ?? "", /já tem 40 anúncios no ar/);
+  assert.match(t ?? "", /um anúncio A MAIS/i);
+  // E diz para onde ir: aviso sem saída ensina a lojista a ignorar aviso.
+  assert.match(t ?? "", /assistente/);
+});
+
+test("um anúncio no ar fala no SINGULAR", () => {
+  const t = avisoDeProdutoJaNoAr({ ...semNada, temProduto: true, anunciosNoArDoProduto: 1 });
+  assert.match(t ?? "", /já tem 1 anúncio no ar/);
+});
+
+test("NÃO avisa o que não foi contado", () => {
+  // Afirmar "nenhum no ar" sem ter contado é exatamente o defeito que este
+  // repositório passou o mês arrancando. Sem número, sem frase.
+  assert.equal(avisoDeProdutoJaNoAr({ ...semNada, temProduto: true }), null);
+  assert.equal(
+    avisoDeProdutoJaNoAr({ ...semNada, temProduto: true, anunciosNoArDoProduto: 0 }),
+    null
+  );
+});
+
+test("depois de publicar, o aviso SAI — ela acabou de fazer o que ele explicava", () => {
+  const anuncio: AnuncioNaJornada = {
+    status: "publicado",
+    vereditoA10: "aprovado",
+    qtdPendencias: 0,
+    mlItemId: "MLB123",
+    mlPermalink: null,
+  };
+  assert.equal(
+    avisoDeProdutoJaNoAr({ ...semNada, temProduto: true, anuncio, anunciosNoArDoProduto: 40 }),
+    null
+  );
+});
+
+test("o aviso NÃO bloqueia — criar mais um é legítimo", () => {
+  // Cor nova, kit, tamanho que faltava. O software informa; quem decide é ela.
+  const ctx: ContextoJornada = {
+    ...semNada,
+    temProduto: true,
+    quantidadeFotos: 3,
+    anunciosNoArDoProduto: 40,
+  };
+  const acao = proximaAcao(ctx);
+  assert.ok(acao, "a jornada parou de ter próxima ação");
+  assert.equal(acao.habilitada, true, "o aviso virou bloqueio");
 });

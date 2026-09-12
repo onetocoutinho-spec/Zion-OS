@@ -26,6 +26,11 @@ import {
   type Proposta,
 } from "./propostaDeCorrecao";
 import { lacunasDoProduto } from "../../catalog/domain/lacunasDoProduto";
+import {
+  varrerCatalogo,
+  fraseDaVarredura,
+} from "../../catalog/domain/duplicatasDoCatalogo";
+import { montarPropostaDeCodigo, type PropostaDeCodigo } from "./propostaDeCodigo";
 import { situacaoDePeso } from "../../catalog/domain/familiaDeProduto";
 import {
   classificar,
@@ -43,6 +48,7 @@ import {
 } from "./escopoDoLote";
 import {
   montarPropostaDeAnuncio,
+  montarPropostaDeAnuncioEmLote,
   type ProdutoParaAnunciar,
   type PropostaDeAnuncio,
 } from "./propostaDeAnuncio";
@@ -75,6 +81,40 @@ import {
   type ConjuntoApresentado,
 } from "./referenciasDaConversa";
 import type { Precondicao } from "./propostaPersistida";
+import type { ResumoDePendencias } from "../../integration/domain/pendenciasDaConta";
+import type { DiagnosticoDasFotos } from "../../catalog/domain/fotosDoProduto";
+
+/**
+ * O resumo mais o QUANDO da leitura.
+ *
+ * Escrito aqui em vez de importado de `lib/client-portal`: o domínio não
+ * desce para a camada de aplicação. `lidoEm` viaja junto porque um retrato de
+ * três dias atrás respondido como se fosse de agora é pior que nenhum.
+ */
+type ResumoDaConta = ResumoDePendencias & {
+  lidos: number;
+  lidoEm: string | null;
+};
+
+/**
+ * Quantos grupos de pendência da conta cabem numa resposta.
+ *
+ * Medido em 11/08/2026: 460 anúncios com infração se agrupam em bem menos que
+ * isso por produto, mas o recorte existe para o dia em que não se agruparem —
+ * e ele vem acompanhado de `gruposOmitidos`, porque cortar em silêncio é o que
+ * transforma "mostrei 20" em "só existem 20".
+ */
+const LIMITE_DE_GRUPOS = 20;
+
+/**
+ * Quantos MLBs de cada grupo viajam na resposta.
+ *
+ * Eles não são ilustração: `reativar_anuncio` age por MLB, então esta lista é
+ * o que o modelo tem em mãos para agir. Três era pouco demais para grupos de
+ * 26 — e o perigo não é a lista curta, é ela não se declarar curta. Por isso
+ * `mlbsOmitidos` viaja ao lado.
+ */
+const MLBS_POR_GRUPO = 3;
 import type { PedidoCongelado } from "./propostaDePublicacao";
 import type { VendasNoServidor } from "@/lib/services/vendasNoServidor";
 import type { ComparacaoDeLojas } from "@/lib/services/comparacaoDeLojas";
@@ -150,6 +190,9 @@ import {
   type Preparacao,
   type ProdutoParaPreparar,
 } from "../../publication/domain/preparacaoDoAnuncio";
+// O TIPO, não a lista: quem monta os obrigatórios é a leitura do servidor, e
+// aqui eles só viajam de carona no item do catálogo. Ver INC-011.
+import type { ExigenciaDaCategoria } from "../../publication/domain/atributosDoMarketplace";
 
 export interface ContextoDasFerramentas {
   pergunta: ContextoDaPergunta;
@@ -313,19 +356,68 @@ export interface ContextoDoPreco {
   }>;
 }
 
+/**
+ * Um produto do catálogo, com o anúncio que já existe e o que a CATEGORIA dele
+ * exige.
+ *
+ * `obrigatorios` entrou em 25/08 pelo INC-011: até então estes caminhos
+ * passavam a lista de calçado à mão, e ela vale para uma das seis categorias da
+ * conta. Ausente é "não sei" — quem decide cai no padrão de calçado, que é o
+ * comportamento de antes. Nunca chega vazia: `obrigatoriosDoProduto` trata o
+ * `[]` de um ML mudo como desconhecimento, não como "não exige nada".
+ */
+export interface ItemDoCatalogo {
+  produto: ProdutoParaPreparar;
+  anuncio: AnuncioJaGerado | null;
+  obrigatorios?: readonly ExigenciaDaCategoria[];
+}
+
 export interface ContextoDoAnuncio {
+  /**
+   * O QUE O MERCADO LIVRE DISSE — infração, pausa, revisão, bloqueio.
+   *
+   * `null` quando nenhum anúncio tem leitura gravada. "Não lemos" e "não há"
+   * são respostas diferentes, e só a segunda autoriza dizer que a conta está
+   * limpa — a mesma distinção que o caminho barato já faz na contagem.
+   *
+   * Opcional porque as telas que montam este contexto à mão não o carregam;
+   * ausente, a ferramenta diz que não alcança em vez de dizer que não há.
+   */
+  pendenciasDaConta?: () => Promise<ResumoDaConta | null>;
+  /**
+   * O diagnóstico das fotos de UM produto — lido do NOSSO banco.
+   *
+   * Opcional pela mesma razão da porta acima: ausente, a ferramenta diz que
+   * não alcança, em vez de dizer que está tudo bem. E não fala com o Mercado
+   * Livre de propósito — cada chamada de lá renova o refresh_token da lojista.
+   */
+  fotosDoProduto?: (
+    produtoId: string,
+    nome: string
+  ) => Promise<DiagnosticoDasFotos>;
   /** Um produto, com o anúncio que já existir para ele. */
-  doProduto: (
-    produtoId: string
-  ) => Promise<{ produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null } | null>;
+  doProduto: (produtoId: string) => Promise<ItemDoCatalogo | null>;
   /** O catálogo, para o lote. Quem seleciona é o backend, nunca o modelo. */
   catalogo: () => Promise<{
-    itens: readonly { produto: ProdutoParaPreparar; anuncio: AnuncioJaGerado | null }[];
+    itens: readonly ItemDoCatalogo[];
     totalNoCatalogo: number;
     truncado: boolean;
   }>;
   /** A margem do lojista, para o pricing saber contra o que calcular. */
   margem: () => Promise<number>;
+  /**
+   * Quantas otimizações ainda cabem no mês — para o LOTE não propor o que a
+   * cota não paga.
+   *
+   * `null` = não consegui ler. É a mesma resposta honesta de `quotaEsteira`, e
+   * quem consome decide: `montarPropostaDeAnuncioEmLote` NÃO corta nesse caso e
+   * diz que não leu (fail-open, como `estadoDaCota`). Zero é diferente de
+   * `null` — zero é "acabou", e aí o lote nem se propõe.
+   *
+   * Opcional porque as telas que montam este contexto à mão não a carregam;
+   * ausente, cai no mesmo caminho de `null`.
+   */
+  cotaRestante?: () => Promise<number | null>;
   /**
    * Roda o agente de TÍTULO — o mesmo A3 do catálogo de agentes.
    *
@@ -516,6 +608,16 @@ export interface ResultadoDaFerramenta {
    */
   acao?: { tipo: "reativar"; mlb: string };
   proposta?: Proposta;
+  /**
+   * A proposta de CÓDIGO — SKU ou EAN — de UMA variação.
+   *
+   * Separada de `proposta` porque o alvo é outro: `Proposta` aponta para um
+   * produto e carrega `valor: number`; um código aponta para uma VARIAÇÃO e é
+   * texto. Enfiar os dois no mesmo tipo faria o cartão e a gravação decidirem
+   * por `campo` a cada linha — e foi decidir por campo, no lugar errado, que
+   * quase gravou o mesmo SKU em 24 variações.
+   */
+  propostaDeCodigo?: PropostaDeCodigo;
   /**
    * O escopo de um LOTE, quando a proposta atinge mais de um alvo.
    *
@@ -777,6 +879,95 @@ export async function executarFerramenta(
       };
     }
 
+    // CUIDADO AO INSERIR CASOS AQUI: `proximo_passo` cai por fallthrough em
+    // `estado_da_loja`, logo abaixo. Escrevi este case entre os dois e o
+    // fallthrough passou a trazer `proximo_passo` para cá — uma ferramenta
+    // verificada hoje viraria leitora de infrações, calada. Só não passou
+    // porque o `nome === "proximo_passo"` de lá virou comparação impossível e
+    // o compilador reclamou.
+    case "pendencias_da_conta": {
+      const porta = ctx.anuncio?.pendenciasDaConta;
+      if (!porta) {
+        return { saida: { erro: "Não alcanço o que o Mercado Livre disse nesta tela." } };
+      }
+      const r = await porta();
+      // `null` é "ninguém leu o ML ainda" — diferente de "está tudo certo". A
+      // segunda frase, dita sobre a primeira situação, é a mentira mais cara
+      // que este software pode contar sobre uma conta com 1.066 infrações.
+      if (!r) {
+        return {
+          saida: {
+            lido: false,
+            frase:
+              "Ainda não li os anúncios desta conta no Mercado Livre. Abra Meus Produtos → Importar → \"Anúncios do Mercado Livre\" para eu passar a saber.",
+          },
+        };
+      }
+      const filtro = texto(args, "tipo");
+      const grupos = filtro ? r.grupos.filter((g) => g.tipo === filtro) : r.grupos;
+      return {
+        saida: {
+          lido: true,
+          lidoEm: r.lidoEm,
+          anunciosLidos: r.lidos,
+          // Os TOTAIS vêm inteiros mesmo quando a lista é recortada: mostrar
+          // 20 de 535 é útil, dizer que são 20 é mentira. É a regra que
+          // `pendenciasDaConta` já aplica, e ela não pode morrer na borda.
+          totaisPorTipo: r.totais,
+          estoqueTravado: r.estoqueTravado,
+          grupos: grupos.slice(0, LIMITE_DE_GRUPOS).map((g) => ({
+            produto: g.familia,
+            tipo: g.tipo,
+            gravidade: g.gravidade,
+            // O NOME DO CAMPO É O ROTULO, e aqui ele já custou uma resposta.
+            //
+            // Nasceu `quantos`, e na primeira pergunta em produção (11/08/2026)
+            // o modelo escreveu "Infrações: 40" para o Chinelo Havaianas Top
+            // Liso. O 40 estava certo — são 40 ANÚNCIOS com infração — mas as
+            // infrações dele são 97. Somando a coluna, ele anunciou "419
+            // infrações" numa conta que tem 1.066.
+            //
+            // É a mesma lição que `contar` aprendeu antes: número sem
+            // significado ao lado é convite à leitura errada, e o modelo lê o
+            // nome do campo como se fosse a definição.
+            anunciosAfetados: g.quantos,
+            estoqueParado: g.estoque,
+            oQueFazer: g.oQueFazer,
+            porque: g.porque,
+            exemplos: g.exemplos.slice(0, MLBS_POR_GRUPO),
+            // O RECORTE SE DECLARA, aqui mais que em qualquer outro lugar.
+            //
+            // Medido em produção em 11/08/2026: perguntado pelos pausados, o
+            // modelo listou os 9 grupos certos e ofereceu "quer que eu reative
+            // algum grupo específico, ou todos?" — tendo em mãos 3 MLBs de um
+            // grupo de 26. Aceitar "todos" reativaria 3 e a frase seguinte
+            // diria que o grupo voltou ao ar.
+            //
+            // `reativar_anuncio` age SEM clique. Um recorte calado aqui não
+            // vira um número errado na tela: vira anúncio que ela pensa que
+            // está vendendo e não está.
+            // Contra o TAMANHO DO GRUPO, não contra `exemplos` — o domínio já
+            // recorta os exemplos antes de chegarem aqui, e subtrair sobre o
+            // que já veio cortado esconderia justamente o que sobrou.
+            mlbsOmitidos: Math.max(
+              0,
+              g.quantos - Math.min(g.exemplos.length, MLBS_POR_GRUPO)
+            ),
+          })),
+          gruposOmitidos: Math.max(0, grupos.length - LIMITE_DE_GRUPOS),
+          significado:
+            "`anunciosAfetados` conta ANÚNCIOS com esta pendência, NUNCA infrações — " +
+            "um anúncio pode acumular várias. Se a lojista perguntar quantas infrações, " +
+            "use `contar` com assunto `infracao`; somar esta coluna dá outro número.",
+          comoResponder:
+            "`oQueFazer` e `porque` são a palavra do Mercado Livre, já limpa de HTML — use como estão, não reescreva. " +
+            "Se aparecer `propriedade-intelectual`, avise que editar e republicar conta como reincidência e pode custar a conta, e NÃO proponha edição. " +
+            "`exemplos` traz SÓ ALGUNS MLBs do grupo e `mlbsOmitidos` diz quantos ficaram de fora: nunca ofereça reativar \"o grupo todo\" " +
+            "com base nesta lista — você não tem os códigos dos que faltam. Diga quantos consegue e mande ela abrir a tela de Anúncios para o resto.",
+        },
+      };
+    }
+
     case "proximo_passo":
     case "estado_da_loja": {
       const r = responder(
@@ -841,6 +1032,64 @@ export async function executarFerramenta(
       return { saida: { nadaImpede: r.tipo === "nada_travado", frase: r.frase } };
     }
 
+    case "fotos_do_produto": {
+      const porta = ctx.anuncio?.fotosDoProduto;
+      if (!porta) {
+        return { saida: { erro: "Não alcanço as fotos dos anúncios nesta tela." } };
+      }
+      // O PRODUTO SAI DO CONTEXTO OU DE UM NOME — nunca de um palpite.
+      //
+      // Responder sobre o produto errado aqui manda a lojista fotografar o que
+      // já está certo, ou dizer que está tudo bem sobre o que o ML está
+      // cobrando. Duas escolhas ruins; por isso a ambiguidade vira pergunta.
+      const termo = texto(args, "produto").trim().toLowerCase();
+      let alvo = ctx.produtoAberto ?? null;
+      if (termo) {
+        const achados = ctx.produtos.filter((p) => p.nome.toLowerCase().includes(termo));
+        if (achados.length === 0) {
+          return { saida: { erro: `Não achei produto com "${texto(args, "produto")}" no nome.` } };
+        }
+        if (achados.length > 1) {
+          return {
+            saida: {
+              ambiguo: true,
+              // Nomes, e não ids: é por nome que ela desempata.
+              candidatos: achados.slice(0, 5).map((p) => p.nome),
+              frase: `"${texto(args, "produto")}" casou com ${achados.length} produtos. De qual você fala?`,
+            },
+          };
+        }
+        alvo = { id: achados[0].id, nome: achados[0].nome };
+      }
+      if (!alvo) {
+        return {
+          saida: {
+            erro:
+              "Não sei de qual produto você fala. Abra o produto ou me diga o nome dele — " +
+              "responder sobre o errado manda fotografar o que já está certo.",
+          },
+        };
+      }
+      const d = await porta(alvo.id, alvo.nome);
+      return {
+        saida: {
+          produto: alvo.nome,
+          anuncios: d.anuncios,
+          capasForaDoPadrao: d.foraDoPadrao,
+          // NUNCA somado às reprovadas: "não medimos" e "está ruim" são
+          // respostas diferentes, e só a segunda manda alguém trabalhar.
+          capasQueNaoMedi: d.semMedida,
+          fotosNoCadastroQueServem: d.fotosQueServem,
+          coresComFotoPronta: d.coresProntas,
+          veredicto: d.veredicto,
+          frase: d.frase,
+          significado:
+            "capasForaDoPadrao conta anúncios cuja CAPA o Mercado Livre reprova (não quadrada ou menor que 1200). " +
+            "capasQueNaoMedi são anúncios cuja capa ainda não foi lida — NÃO são capas ruins.",
+        },
+      };
+    }
+
     case "achar_produto": {
       const termo = texto(args, "termo") || texto(args, "termos");
       const campo = (texto(args, "tipo") || "auto") as CampoDeBusca;
@@ -862,6 +1111,51 @@ export async function executarFerramenta(
       // ---- Caminho em memoria: nome e marca, como sempre foi ----
       const termos = (texto(args, "termos") || termo).split(/\s+/).filter(Boolean);
       const achados = candidatos(termos, ctx.produtos);
+
+      // AMBIGUIDADE NÃO ENTREGA `id` — a diferença entre pedir e impedir.
+      //
+      // =====================================================================
+      // MEDIDO EM 17/08/2026, comparando os dois caminhos do chat
+      // =====================================================================
+      //
+      // Este ramo devolvia os ids de TODOS os candidatos, acompanhados de um
+      // aviso em texto: "pergunte ao lojista qual, sem escolher". Ou seja,
+      // entregava as chaves e pedia para não usar.
+      //
+      // O caminho local, no mesmo caso, devolve `ambigua` e PARA: sem alvo
+      // único não existe proposta. A garantia é do código.
+      //
+      // A diferença aparece na única coisa que importa: qual produto recebe o
+      // peso ou o custo que a lojista ditou. Gravar no produto errado é pior
+      // que não gravar, e "o modelo foi instruído a perguntar" não é uma
+      // trava — é uma esperança. `propor_gravacao` recebe `produtoId` pronto e
+      // não tem como saber se ele veio de um casamento único ou de um palpite.
+      //
+      // Sem `id`, o modelo NÃO CONSEGUE seguir para a proposta. Ele tem que
+      // perguntar, ela responde com o nome, e a segunda busca resolve — que é
+      // exatamente o fluxo que o aviso já pedia, agora sem depender de
+      // obediência.
+      //
+      // É a mesma decisão que `fotos_do_produto` já tomava desde hoje de
+      // manhã: "nomes, e não ids — é por nome que ela desempata".
+      if (achados.length > 1) {
+        return {
+          saida: {
+            total: achados.length,
+            casamento: "ambiguo",
+            // Sem `id`, de propósito. Ver o comentário acima.
+            candidatos: achados.slice(0, 8).map((p) => ({
+              nome: p.nome,
+              marca: p.marca,
+              variacoes: p.quantidadeVariantes,
+            })),
+            aviso:
+              "Mais de um produto bate. Pergunte ao lojista qual — eu não te dou o id " +
+              "enquanto houver dúvida, então não há como seguir sem a resposta dele.",
+          },
+        };
+      }
+
       return {
         saida: {
           total: achados.length,
@@ -872,9 +1166,6 @@ export async function executarFerramenta(
             variacoes: p.quantidadeVariantes,
           })),
           ...(achados.length === 0 ? { aviso: "Nenhum produto bate com esses termos." } : {}),
-          ...(achados.length > 1
-            ? { aviso: "Mais de um produto bate. Pergunte ao lojista qual, sem escolher." }
-            : {}),
         },
       };
     }
@@ -1016,6 +1307,60 @@ export async function executarFerramenta(
         };
       }
 
+      // ---- CÓDIGO (SKU / EAN) — caminho PRÓPRIO, e o motivo está no domínio.
+      //
+      // Peso e custo são do produto; SKU e EAN identificam UMA unidade. Passar
+      // um código pelo caminho do peso o gravaria nas 24 variações do Zaxy Air —
+      // fabricando o defeito mais grave que a varredura acusa.
+      if (campo === "sku" || campo === "ean") {
+        if (!ctx.analise) {
+          return {
+            saida: {
+              montada: false,
+              motivo: "Não consigo ler as variações por aqui agora, e sem elas eu não gravo código nenhum.",
+            },
+          };
+        }
+        const produtoId = ids(args)[0] ?? "";
+        const alvo = await ctx.analise.produto(produtoId);
+        if (!alvo) {
+          return {
+            saida: { montada: false, motivo: "Não achei esse produto. Use achar_produto antes." },
+          };
+        }
+        const { produtos: todos } = await ctx.analise.catalogo();
+        const paraDominio = (p: typeof alvo) => ({
+          id: p.id,
+          nome: p.nome,
+          variantes: p.variantes.map((v) => ({
+            id: v.id,
+            sku: v.sku,
+            ean: v.ean,
+            cor: v.cor,
+            tamanho: v.tamanho,
+          })),
+        });
+        const pc = montarPropostaDeCodigo({
+          produto: paraDominio(alvo),
+          campo,
+          valor: texto(args, "valor"),
+          cor: texto(args, "cor"),
+          tamanho: texto(args, "tamanho"),
+          catalogo: todos.map(paraDominio),
+        });
+        return {
+          propostaDeCodigo: pc,
+          // O modelo recebe o RESUMO ou o MOTIVO — nunca o objeto. Quem executa
+          // é o clique, como em toda proposta desta ferramenta.
+          saida:
+            pc.tipo === "pronta"
+              ? { montada: true, resumo: pc.resumo, substitui: pc.anterior || null }
+              : pc.tipo === "ambigua"
+                ? { montada: false, motivo: pc.mensagem, variacoes: pc.candidatos }
+                : { montada: false, motivo: pc.mensagem },
+        };
+      }
+
       // ---- INDIVIDUAL — o caminho de antes, intacto ----
       const proposta = montarProposta(
         {
@@ -1048,6 +1393,78 @@ export async function executarFerramenta(
 
     case "propor_anuncio": {
       const id = texto(args, "produtoId");
+
+      // ---- O LOTE: "prepare todos que estiverem prontos" ----
+      //
+      // QUEM SELECIONA É O BACKEND, e a seleção é a MESMA que
+      // `preparacao_de_anuncio` relata — `avaliarPreparacao` +
+      // `selecionarParaPreparar`, sobre o catálogo lido com o tenant da sessão.
+      // Uma segunda régua aqui divergiria da primeira no dia em que uma
+      // mudasse, e a lojista veria "12 prontos" virar 9 na fila.
+      //
+      // O modelo não manda a lista. Ele diz que o pedido foi "todos"; os ids
+      // saem daqui.
+      if (args.todosOsProntos === true && !id) {
+        const a = ctx.anuncio;
+        if (!a) {
+          return { saida: { erro: "A preparação de anúncio não está disponível nesta tela." } };
+        }
+        const margemMinima = await a.margem();
+        const { itens, totalNoCatalogo } = await a.catalogo();
+        const selecao = selecionarParaPreparar(
+          itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, opcoesDaPreparacao(i, margemMinima))),
+          totalNoCatalogo
+        );
+        // Porto ausente cai em `null` — que é "não li", e não corta. Ver o
+        // comentário do porto e `estadoDaCota`.
+        const cotaRestante = a.cotaRestante ? await a.cotaRestante() : null;
+        const proposta = montarPropostaDeAnuncioEmLote(selecao, { cotaRestante });
+        // Não há lote a propor — e o motivo vai inteiro, porque é a resposta.
+        if (proposta.tipo !== "lote") {
+          return {
+            propostaDeAnuncio: proposta,
+            saida: {
+              pronto: false,
+              frase: proposta.tipo === "sem_alvo" ? proposta.mensagem : "",
+            },
+          };
+        }
+        return {
+          propostaDeAnuncio: proposta,
+          // O modelo recebe as CONTAGENS e os motivos — nunca a lista de ids.
+          // Uma lista de 47 ids não ajuda ninguém a decidir, e é o tipo de coisa
+          // que ele acabaria escrevendo na resposta.
+          saida: {
+            vaiPreparar: proposta.alvos.length,
+            analisados: proposta.analisados,
+            jaTinhamAnuncio: proposta.jaPreparados,
+            foraPelaCota: proposta.foraPelaCota,
+            cotaDesconhecida: proposta.cotaDesconhecida,
+            travados: proposta.travados.map((t) => ({
+              motivo: t.motivo,
+              quantos: t.quantos,
+              exemplos: t.exemplos,
+            })),
+            frase: proposta.resumo,
+            aviso:
+              "Nada foi enfileirado ainda. O cartão tem o botão; quem dispara é o lojista. Repasse a frase inteira — as ressalvas são o conteúdo.",
+          },
+        };
+      }
+
+      // SEM ALVO NENHUM não é "produto não encontrado".
+      //
+      // O erro abaixo diz "use achar_produto antes", que manda o modelo buscar
+      // um produto que ele nunca nomeou. Quando não veio nem id nem o lote, o
+      // que falta é a ESCOLHA, e quem escolhe é o lojista.
+      if (!id) {
+        return {
+          saida: {
+            erro: "Não sei o que preparar. Pergunte ao lojista de qual produto se trata, ou use todosOsProntos=true se ele pediu todos.",
+          },
+        };
+      }
+
       // O SERVIDOR primeiro. `paraAnunciar` vinha do corpo da requisição — a
       // tela montava e mandava —, e quem manda o corpo escolhia o que a
       // proposta acreditava. Com o porto de anúncio, os dados vêm do banco com
@@ -1092,6 +1509,65 @@ export async function executarFerramenta(
 
     case "pendencias":
       return analisarPendencias(args, ctx);
+
+    // A VARREDURA de repetidos e faltantes.
+    //
+    // Usa o MESMO porto de `pendencias` (`analise.catalogo`) porque a pergunta
+    // é sobre o mesmo catálogo. Sem o porto ela DIZ que não olhou, em vez de
+    // devolver listas vazias — vazio sem ter olhado é a afirmação de ausência
+    // que este repositório passou o mês arrancando.
+    case "duplicatas_e_faltantes": {
+      if (!ctx.analise) {
+        return {
+          saida: {
+            erro: "Não consigo varrer o catálogo por aqui agora — a análise não está disponível nesta tela.",
+          },
+        };
+      }
+      const { produtos, totalNoCatalogo, truncado } = await ctx.analise.catalogo();
+      const v = varrerCatalogo(
+        produtos.map((p) => ({
+          id: p.id,
+          nome: p.nome,
+          variantes: p.variantes.map((x) => ({
+            id: x.id,
+            sku: x.sku,
+            ean: x.ean,
+            cor: x.cor,
+            tamanho: x.tamanho,
+          })),
+        }))
+      );
+      return {
+        saida: {
+          frase: fraseDaVarredura(v),
+          varridos: { produtos: v.produtosVarridos, variantes: v.variantesVarridas },
+          // TRUNCADO É DITO. Uma varredura parcial que se apresenta como
+          // completa é pior que não varrer: ela autoriza "não há mais nada".
+          truncado: truncado ? { sim: true, totalNoCatalogo } : { sim: false },
+          gravidade: {
+            mesmoEanSkusDiferentes: v.eansRepetidos.filter((r) => r.skusDivergentes).length,
+            mesmoEanProdutosDiferentes: v.eansRepetidos.filter(
+              (r) => r.entreProdutos && !r.skusDivergentes
+            ).length,
+            corTamanhoRepetido: v.corTamanhoRepetido.length,
+            skusRepetidos: v.skusRepetidos.length,
+          },
+          linhasAMais: v.linhasAMais,
+          semSku: v.totalSemSku,
+          semEan: v.totalSemEan,
+          // Amostras curtas: o chat não é lugar de 143 linhas.
+          exemplosGraves: v.eansRepetidos
+            .filter((r) => r.skusDivergentes || r.entreProdutos)
+            .slice(0, 5)
+            .map((r) => ({
+              ean: r.valor,
+              onde: r.ondes.map((o) => `${o.produto} · ${o.cor} ${o.tamanho} · SKU ${o.sku || "—"}`),
+            })),
+          faltandoPorProduto: v.faltando.slice(0, 8),
+        },
+      };
+    }
 
     case "meus_custos": {
       if (!ctx.preco?.configuracao) {
@@ -1622,7 +2098,7 @@ async function avaliarAnuncio(
     if (!item) {
       return { saida: { erro: "Não achei esse produto no seu catálogo. Use achar_produto antes." } };
     }
-    const p = avaliarPreparacao(item.produto, item.anuncio, { margemMinima });
+    const p = avaliarPreparacao(item.produto, item.anuncio, opcoesDaPreparacao(item, margemMinima));
     return {
       preparacao: { produto: p },
       saida: {
@@ -1653,7 +2129,9 @@ async function avaliarAnuncio(
 
   // ---- O CATÁLOGO ----
   const { itens, totalNoCatalogo, truncado } = await a.catalogo();
-  const preparacoes = itens.map((i) => avaliarPreparacao(i.produto, i.anuncio, { margemMinima }));
+  const preparacoes = itens.map((i) =>
+    avaliarPreparacao(i.produto, i.anuncio, opcoesDaPreparacao(i, margemMinima))
+  );
   const selecao = selecionarParaPreparar(preparacoes, totalNoCatalogo);
 
   return {
@@ -1678,8 +2156,19 @@ async function avaliarAnuncio(
             aviso: `Analisei ${selecao.analisados} de ${totalNoCatalogo} produtos. Diga isso — não afirme que olhou o catálogo inteiro.`,
           }
         : {}),
-      comoPreparar:
-        "Para cada elegível, chame propor_anuncio com o produtoId. Isso monta o cartão; quem dispara a geração é o lojista, clicando.",
+      // ---- INSTRUÇÃO PARA O MODELO, e ela VAZOU PARA A TELA em 25/08/2026.
+      //
+      // Chamava-se `comoPreparar` e dizia "Para cada elegível, chame
+      // propor_anuncio com o produtoId". O modelo imprimiu o texto inteiro na
+      // resposta, para a lojista, como "Observação da ferramenta: ...". Nome de
+      // campo neutro num objeto de saída se lê como conteúdo — e o resto desta
+      // saída É conteúdo.
+      //
+      // Duas mudanças, e as duas por causa daquele vazamento: a chave diz o que
+      // é, e o valor começa avisando. O conteúdo também estava velho — mandava
+      // uma chamada por produto, e o lote passou a existir no mesmo dia.
+      instrucaoInterna:
+        "NÃO MOSTRE ESTE TEXTO AO LOJISTA — é instrução para você. Para preparar TODOS os elegíveis, chame propor_anuncio com todosOsProntos=true e sem produtoId. Para um só, com o produtoId dele. Em qualquer caso a ferramenta monta o cartão; quem dispara é o clique da lojista.",
     },
   };
 }
@@ -2686,16 +3175,27 @@ function lista(args: Record<string, unknown>, chave: string): string[] {
 }
 
 /**
+ * As opções da preparação para ESTE item: a lista da categoria dele quando ela
+ * é conhecida, e nada quando não é — e aí `avaliarPreparacao` usa o padrão.
+ *
+ * Existe para os três chamadores não repetirem o mesmo `...(x ? {} : {})` e
+ * divergirem no dia em que um deles esquecer.
+ */
+function opcoesDaPreparacao(
+  item: { obrigatorios?: readonly ExigenciaDaCategoria[] },
+  margemMinima: number
+) {
+  return { margemMinima, ...(item.obrigatorios ? { obrigatorios: item.obrigatorios } : {}) };
+}
+
+/**
  * O produto do servidor, na forma que `montarPropostaDeAnuncio` espera.
  *
  * A conversão vive aqui e não no orquestrador porque é uma ponte entre dois
  * tipos que existem por razões diferentes — e `dadosDoProduto` já sabe extrair
  * cores e tamanhos da grade real.
  */
-function paraAnunciarDoServidor(item: {
-  produto: ProdutoParaPreparar;
-  anuncio: AnuncioJaGerado | null;
-}): ProdutoParaAnunciar {
+function paraAnunciarDoServidor(item: ItemDoCatalogo): ProdutoParaAnunciar {
   const { produto, anuncio } = item;
   return {
     id: produto.id,
@@ -2709,6 +3209,7 @@ function paraAnunciarDoServidor(item: {
     },
     dados: dadosDoProduto(produto),
     jaTemAnuncio: Boolean(anuncio),
+    ...(item.obrigatorios ? { obrigatorios: item.obrigatorios } : {}),
   };
 }
 

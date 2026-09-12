@@ -35,10 +35,11 @@ import {
   decidirProvisionamento,
   validarPedidoDeLoja,
 } from "@/modules/onboarding/domain/criacaoDeLoja";
+// Plano e cota de quem entra sozinho: vêm do vocabulário do produto, nunca do
+// corpo da requisição. Eram dois literais aqui dentro, e "Essencial" acabou
+// fora de `PLANOS` sem ninguém perceber.
+import { PLANO_INICIAL, LIMITE_ESTEIRA_INICIAL } from "@/lib/constantes";
 
-/** Plano e limite de quem entra sozinho. Não vêm do corpo — vêm daqui. */
-const PLANO_INICIAL = "Essencial";
-const LIMITE_ESTEIRA_INICIAL = 30;
 
 export async function POST(request: Request) {
   // 1) Sessão válida — sem perfil, que é o estado normal de quem chega aqui.

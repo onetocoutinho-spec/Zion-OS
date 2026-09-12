@@ -27,6 +27,29 @@
 :root {
   --background: #08080d;
   --foreground: #e4e4e7;
+
+  /* O POPUP DO <select> É DESENHADO PELO SISTEMA, NÃO PELO CSS.
+   *
+   * Reportado em 17/08/2026, na conferência da planilha: a caixa fechada
+   * aparece escura (Tailwind pinta), mas ao abrir, o Windows desenha a lista
+   * com fundo BRANCO e herda a cor clara do texto — as opções ficam cinza-claro
+   * sobre branco e somem. A lojista não conseguia ler o que estava escolhendo,
+   * e a escolha ali decide para onde vai dinheiro.
+   *
+   * Nenhuma classe resolve: `<option>` não aceita estilo de forma confiável em
+   * nenhum navegador. `color-scheme` existe exatamente para isto — declara ao
+   * sistema em que tema os controles nativos devem ser desenhados.
+   *
+   * Vai no `:root` e não em cada campo porque são 14 `<select>` espalhados por
+   * 12 arquivos, e o próximo nasceria com o mesmo defeito. De quebra, arruma
+   * barra de rolagem, seletor de data e caixa de arquivo, que têm o mesmo
+   * problema pelo mesmo motivo.
+   *
+   * Seguro para o app inteiro: ele é escuro em toda parte — `--background` é
+   * #08080d e o `body` acima usa esse valor sem alternativa clara.
+   */
+  color-scheme: dark;
+
   /*
    * AS SUPERFÍCIES DO PRODUTO — três valores que estavam copiados à mão em
    * 50+ arquivos (`bg-[#0e0e16]` em 24, `bg-[#12121c]` em 27, `bg-[#0b0b12]`
@@ -278,3 +301,26 @@ button:disabled,
     text-align: left;
   }
 }
+
+/* ===========================================================================
+   A LISTA DO <select> É BRANCA POR PADRÃO, E O TEMA É ESCURO
+   ===========================================================================
+
+   O `<select>` fechado herda o estilo da página; a LISTA que abre é desenhada
+   pelo navegador, e as `<option>` voltam ao branco do sistema. Num tema escuro
+   isso dá texto claro sobre fundo branco — ilegível.
+
+   Medido em 27/08/2026, quando a lista de categorias do Mercado Livre abriu sem
+   dar para ler: 43 `<option>` no projeto sem cor própria, contra 3 que
+   lembraram de pôr. Um a um, o conserto rotaria — o 44º nasceria errado.
+
+   Por isso a regra mora aqui, uma vez. Nada de classe em cada `<option>`.
+
+   Vale para Chrome, Edge e Firefox. O Safari do macOS desenha o popup pelo
+   sistema e ignora isto — lá a lista continua clara, e é limitação do
+   navegador, não descuido. */
+select option {
+  background-color: var(--surface-input);
+  color: var(--color-zinc-200, #e4e4e7);
+}
+

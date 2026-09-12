@@ -9,6 +9,13 @@
 // Modare = números oficiais do cliente; demais = referência (confirmar no
 // modelo). Vizzano/Moleca/Actvitta ainda pendentes → caem no padrão BR.
 
+//
+// E ACIMA DE TODAS, desde 28/08/2026, a tabela que a LOJISTA mantém em
+// `/cliente/medidas` — ver `comAsDaLoja`. Esta lista é o que o software sabe;
+// a dela é o que a loja sabe, e a loja é quem vende o sapato.
+
+import { normalizarTamanho } from "../../publication/domain/normalizarTamanho";
+
 /** Padrão BR: numeração → comprimento do pé (cm). Referência de fallback. */
 export const PADRAO_BR: Record<string, number> = {
   // Infantil
@@ -190,13 +197,30 @@ export const MODELOS_PADRAO: {
   linhas: linhasDe(tab),
 }));
 
-/** Grade adulto de referência (padrão BR) para marcas ainda sem tabela. */
-const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
-  Object.entries(PADRAO_BR).filter(([k]) => {
-    const n = Number(k);
-    return n >= 33 && n <= 45;
-  })
-);
+/**
+ * Grade de referência (padrão BR) para marcas ainda sem tabela — INTEIRA.
+ *
+ * ===========================================================================
+ * O CORTE EM 33 SAIU EM 28/08/2026
+ * ===========================================================================
+ *
+ * Era `n >= 33 && n <= 45` — a metade ADULTA do `PADRAO_BR`, sem razão escrita.
+ * O efeito, medido no catálogo do percurso T1: produto INFANTIL de marca que
+ * este arquivo não conhece (Cartago, Olympikus, Zaxynina, Klin, Rider, Pegada,
+ * Under Armour, Grendene Kids) caía na grade adulta, não achava a numeração 19
+ * a 32, e a publicação era recusada por "nenhuma variação com tamanho
+ * publicável".
+ *
+ * Recusar ali não protegia ninguém: a fonte da resposta é a MESMA — `PADRAO_BR`,
+ * dos guias da Chinelaria — e ela cobre 21 a 45. Usar metade dela para marca
+ * desconhecida e chamar a outra metade de desconhecida era arbitrário.
+ *
+ * O que NÃO mudou, e é o cuidado que importa: marca CONHECIDA continua usando a
+ * tabela dela, inteira e sozinha. Completar a grade de uma marca com a
+ * referência genérica é misturar grades — e a diferença entre a Modare (22,3 em
+ * 34) e o padrão (22,5) é o milímetro que este módulo se recusa a inventar.
+ */
+const PADRAO_REFERENCIA: Record<string, number> = { ...PADRAO_BR };
 
 /**
  * Mapa ESTRUTURADO numeração → comprimento do pé (cm) de uma marca — a
@@ -206,9 +230,134 @@ const PADRAO_REFERENCIA: Record<string, number> = Object.fromEntries(
  * As chaves seguem o formato canônico do `normalizarTamanho` (pares "33/34"
  * ou individuais "38"), então o join com as variações é direto.
  */
-export function medidasDaMarca(marca: string): Record<string, number> {
+export function medidasDaMarca(
+  marca: string,
+  /**
+   * As tabelas que A LOJISTA mantém em `/cliente/medidas`. Ver `comAsDaLoja`.
+   */
+  daLoja: readonly TabelaDaLoja[] = []
+): Record<string, number> {
   const key = normalizarMarca(marca ?? "");
-  return TABELAS_MARCA[key] ?? PADRAO_REFERENCIA;
+  return comAsDaLoja(TABELAS_MARCA[key] ?? PADRAO_REFERENCIA, marca, daLoja);
+}
+
+/** Uma tabela como o cadastro dela guarda: rótulo do tamanho + "24,5 cm". */
+export interface TabelaDaLoja {
+  marca: string;
+  linhas: readonly { rotulo: string; valor: string }[];
+}
+
+/**
+ * A TABELA DA LOJISTA COMPLETA A NOSSA — medido em 28/08/2026.
+ *
+ * ===========================================================================
+ * O QUE ESTAVA ACONTECENDO
+ * ===========================================================================
+ *
+ * `medidasDaMarca` lia só `TABELAS_MARCA`, a lista embutida aqui. A lojista tem
+ * um editor de tabelas em `/cliente/medidas`, tem 14 tabelas gravadas em
+ * `tabelas_medidas`, e NENHUMA delas chegava à publicação: elas alimentavam o
+ * briefing dos agentes e mais nada.
+ *
+ * O efeito, nos 674 anúncios de calçado publicáveis desta base: 30 recusados
+ * por "nenhuma variação com tamanho publicável + medida da marca" — todos por
+ * tamanho FORA da faixa da tabela embutida.
+ *
+ *     Molekinho  19 a 24   a tabela embutida começa em 25/26  (bebê)
+ *     Ipanema    25 e 26   começa em 33/34                    (infantil)
+ *     Yvate      41 a 43   termina em 40
+ *     Beira Rio  41        termina em 40
+ *     Modare     33        começa em 34
+ *
+ * Nenhuma dessas medidas está no software, e NÃO É PARA ESTAR: centímetro de
+ * calçado é o que a compradora usa para decidir o pé, e inventar aqui é a
+ * mesma falta que `medidaDoTamanho` recusa quando escolhe entre 35 e 36.
+ *
+ * O que dá para fazer — e é o que faltava — é deixar a resposta dela chegar. Com
+ * isto, a lojista abre a tabela da Molekinho, acrescenta 19 a 24, e publica. Sem
+ * isto, ela edita a tabela, salva, e nada muda: a parede não tem maçaneta.
+ *
+ * ===========================================================================
+ * COMPLETA, NÃO SUBSTITUI
+ * ===========================================================================
+ *
+ * A dela entra por cima da nossa, rótulo a rótulo — acrescenta o que falta e
+ * corrige o que ela discorda. Substituir apagaria os tamanhos que ela não
+ * repetiu na dela, e sumir com tamanho publicável não é o que alguém quer ao
+ * editar uma tabela.
+ *
+ * Rótulo ilegível ou valor sem número é IGNORADO, não vira zero: zero seria um
+ * pé de 0 cm no anúncio.
+ */
+export function comAsDaLoja(
+  base: Record<string, number>,
+  marca: string,
+  daLoja: readonly TabelaDaLoja[]
+): Record<string, number> {
+  const key = normalizarMarca(marca ?? "");
+  // CÓPIA SEMPRE. `base` é `TABELAS_MARCA[key]` ou `PADRAO_REFERENCIA` — objetos
+  // do módulo, vivos pelo processo inteiro. Devolvê-los direto convida um
+  // `tabela["46"] = 30.7` no chamador a valer para todas as marcas dali em
+  // diante, e o sintoma seria uma medida aparecendo em anúncio que nada tem a
+  // ver. São 6 a 25 chaves: copiar não é custo.
+  if (!key || daLoja.length === 0) return { ...base };
+
+  const juntas = { ...base };
+  // A PRIMEIRA RESPOSTA DELA VENCE, e o desempate precisa ser dito.
+  //
+  // `TabelaMedida.marca` e livre e o editor permite varias tabelas da mesma
+  // marca. Sobrescrevendo, quem vencia era a ULTIMA — e a ordem vem do banco,
+  // sem `order by`: o anuncio publicaria um comprimento hoje e outro amanha sem
+  // ninguem ter editado nada. `fichaDoCadastro` decidiu o mesmo para o mesmo
+  // tipo de dado; duas politicas para uma pergunta so e como as duas divergem.
+  const postos = new Set();
+  let mudou = false;
+  for (const t of daLoja) {
+    if (normalizarMarca(t.marca ?? "") !== key) continue;
+    for (const l of t.linhas ?? []) {
+      const rotulo = normalizarTamanho(l.rotulo);
+      if (!rotulo.ok || postos.has(rotulo.valor)) continue;
+      const cm = cmDaLinha(l.valor);
+      if (cm === undefined) continue;
+      juntas[rotulo.valor] = cm;
+      postos.add(rotulo.valor);
+      mudou = true;
+    }
+  }
+  return mudou ? juntas : { ...base };
+}
+
+/**
+ * A faixa em que um comprimento de pe humano cabe, em centimetros.
+ *
+ * O menor calcado infantil brasileiro fica perto de 9 cm; o maior adulto, perto
+ * de 33. Os limites sao largos de proposito: recusar uma medida legitima seria
+ * travar publicacao, e este modulo existe para nao fazer isso.
+ */
+const CM_MINIMO = 5;
+const CM_MAXIMO = 40;
+
+/**
+ * "24,5 cm" → 24.5. `undefined` fora da faixa de um pe — e nunca zero.
+ *
+ * O EDITOR DELA E TEXTO LIVRE ("uma por linha, no formato rotulo = valor") e a
+ * importacao de planilha ADIVINHA a coluna do valor. Uma linha colada como
+ * `34 = 34 - 22,3 cm`, ou uma planilha cuja coluna escolhida e a da numeracao,
+ * faz o primeiro numero ser 34 — e 34 cm iria para a guia de tamanhos do ML
+ * como comprimento do pe. `0,223 m` viraria 0,223 cm.
+ *
+ * Este e o modulo que se recusa a escolher entre 35 e 36 porque isso "inventa
+ * 0,7 cm". Aceitar 34 cm calado e a mesma falta, uma ordem de grandeza maior.
+ *
+ * Fora da faixa, a linha e IGNORADA e o tamanho continua sem medida — entao a
+ * recusa do bundle nomeia o rotulo e ela ve qual linha corrigir. Silencio aqui
+ * seria pior que a recusa la.
+ */
+function cmDaLinha(valor: string | undefined | null): number | undefined {
+  const m = /(\d+(?:[.,]\d+)?)/.exec(String(valor ?? ""));
+  if (!m) return undefined;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) && n >= CM_MINIMO && n <= CM_MAXIMO ? n : undefined;
 }
 
 /**

@@ -18,6 +18,9 @@
 // descoberta arqueológica depois.
 
 import { definirPesoDosProdutos } from "./pesoDeProduto";
+import { atualizarVariantesBulk } from "./produtoVariantes";
+import type { ProdutoVariante } from "@/lib/types";
+import type { PropostaDeCodigo } from "@/modules/assistant/domain/propostaDeCodigo";
 import { atualizarProduto } from "./produtos";
 import type { Proposta } from "../../modules/assistant/domain/propostaDeCorrecao";
 
@@ -36,6 +39,42 @@ export interface ResultadoDaCorrecao {
  * de pedaços seria abrir a chance de gravar algo diferente do que a pessoa leu
  * na tela, que é o único jeito de a confirmação virar teatro.
  */
+/**
+ * Grava o CÓDIGO — SKU ou EAN — na variação que a lojista confirmou.
+ *
+ * Escreve por `varianteId`, nunca por produto. O alvo veio do domínio, que já
+ * provou que ele é ÚNICO: `montarPropostaDeCodigo` recusa quando duas variações
+ * batem, porque o código identifica uma unidade e escolher uma seria sortear em
+ * cima de identidade.
+ *
+ * As travas de duplicidade ficam LÁ, na montagem, e não aqui — de propósito. O
+ * que a pessoa leu no cartão é o que grava; refazer a checagem no momento da
+ * escrita poderia gravar coisa diferente da que ela confirmou, e a confirmação
+ * viraria teatro. O envelhecimento entre montar e clicar é problema das
+ * precondições da Proposal, que já existem.
+ */
+export async function executarPropostaDeCodigo(
+  proposta: Extract<PropostaDeCodigo, { tipo: "pronta" }>
+): Promise<ResultadoDaCorrecao> {
+  const campo = proposta.campo;
+  const rotulo = campo === "sku" ? "SKU" : "código de barras";
+  await atualizarVariantesBulk([
+    { id: proposta.variante.id, [campo]: proposta.valor } as Partial<ProdutoVariante> & {
+      id: string;
+    },
+  ]);
+  const onde = `${proposta.produto.nome} · ${proposta.variante.cor} ${proposta.variante.tamanho}`;
+  return {
+    ok: true,
+    mensagem: proposta.anterior
+      ? `Pronto. O ${rotulo} de ${onde} passou de ${proposta.anterior} para ${proposta.valor}.`
+      : `Pronto. ${rotulo} ${proposta.valor} gravado em ${onde}.`,
+    // `atualizarVariantesBulk` é a mesma escrita cega que o peso usa. Dizer o
+    // contrário aqui plantaria uma proveniência que não existe.
+    cegoParaAIL: true,
+  };
+}
+
 export async function executarProposta(
   clienteId: string,
   proposta: Extract<Proposta, { tipo: "pronta" }>

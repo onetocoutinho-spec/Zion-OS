@@ -76,9 +76,34 @@ export function AvisoDeVersao() {
     // É um `fetch` de 30 bytes, não uma recarga de perfil — o defeito do
     // AuthGate foi refazer trabalho pesado no foco, não olhar para o foco.
     document.addEventListener("visibilitychange", conferir);
+
+    // ===================================================================
+    // A QUINTA VEZ — 26/08/2026, e a primeira que GRAVOU DADO
+    // ===================================================================
+    //
+    // `visibilitychange` só dispara quando a aba fica OCULTA: outra aba
+    // selecionada, ou janela minimizada. TROCAR DE JANELA NÃO DISPARA — o
+    // navegador continua "visible" com a janela atrás de outra.
+    //
+    // Foi exatamente o caso: o app numa janela, o terminal em outra, a aba
+    // aberta desde antes do deploy. O detector conferiu UMA vez, no
+    // carregamento, quando servidor e pacote ainda concordavam — e nunca mais.
+    // No meio disso uma importação de 1003 produtos entrou com o pacote velho
+    // e gravou 7224 variações com PESO ZERO, porque o campo de peso só existia
+    // no pacote novo.
+    //
+    // `focus` pega a volta para a janela, que é o gesto que a pessoa faz de
+    // fato. O intervalo pega quem nunca sai: uma hora de tela aberta sem trocar
+    // de janela também atravessa deploy. Os dois passam pela mesma trava de um
+    // minuto — o gatilho mudou, a frequência não.
+    window.addEventListener("focus", conferir);
+    const relogio = setInterval(conferir, ESPERA_ENTRE_CONSULTAS_MS * 5);
+
     return () => {
       vivo = false;
       document.removeEventListener("visibilitychange", conferir);
+      window.removeEventListener("focus", conferir);
+      clearInterval(relogio);
     };
   }, []);
 

@@ -115,7 +115,7 @@ test("CALÇADO NÃO DEGRADOU — a saída é a mesma de sempre", () => {
 });
 
 test("o briefing de móvel não cita calçado, e nomeia o que falta", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(SOFA, OBRIGATORIOS_MOVEL));
+  const b = briefingDosAtributos(resolverObrigatorios(SOFA, OBRIGATORIOS_MOVEL), "categoria");
   assert.ok(!/calçad/i.test(b.replace(/NÃO invente exigências[\s\S]*/, "")),
     "o briefing de um sofá falou de calçado");
   assert.match(b, /Material/);

@@ -1,11 +1,28 @@
-// Importação de custos em massa (planilha CSV/Excel).
+// Importação de custos E PREÇOS em massa (planilha CSV/Excel).
 //
 // Casa cada linha por:
 //   1) SKU  → variação e/ou SKU pai/codErp;
 //   2) NOME do produto → exato (normalizado) e, se não achar, o mais parecido
 //      por sobreposição de palavras.
-// Atualiza o custo e recalcula margem e preço mínimo (modelo Zion). Quando casa
-// por nome, propaga o custo para todas as variações do produto.
+// Grava custo e/ou preço de venda, cada um só quando a coluna veio, e propaga
+// para as variações do produto.
+//
+// ===========================================================================
+// O PREÇO ENTROU EM 26/08/2026, E A MARGEM CONTINUA SAINDO VAZIA
+// ===========================================================================
+//
+// O cabeçalho dizia "recalcula margem e preço mínimo (modelo Zion)". Medido: os
+// dois saem SEMPRE `null`. `margemZion` e `precoMinimoZion` usam `TAXAS_PADRAO`,
+// cuja `embalagem` é `null` — sem embalagem não há frete estimável, sem frete
+// não há lucro, sem lucro não há margem.
+//
+// Não é teoria: na base de produção, 72 produtos, 72 com custo, ZERO com margem
+// e ZERO com preço mínimo gravados. As colunas nunca receberam valor por aqui.
+//
+// Isto NÃO é um defeito consertado neste commit — a tela de precificação calcula
+// os dois ao vivo, com o peso do produto, e é ela que a lojista lê. O que muda é
+// o cabeçalho parar de prometer o que não entrega. Ver o teste que registra a
+// medição em `importacaoCustos.test.ts`.
 
 import type { PlanilhaLida } from "../planilha";
 import {
@@ -24,8 +41,93 @@ import { listarTodasVariantes, atualizarVariantesBulk } from "./produtoVariantes
 import { margemZion, precoMinimoZion } from "./importacaoProdutos";
 import type { Produto, ProdutoVariante } from "../types";
 
+/**
+ * O que uma linha da planilha traz. Zero quer dizer "a coluna não veio, ou não
+ * era número" — e nunca "o valor é zero", porque custo zero e preço zero não
+ * existem num catálogo e gravá-los apagaria o que já estava certo.
+ */
+export interface NumerosDaLinha {
+  custo: number;
+  preco: number;
+  /**
+   * Quantidade. `-1` = a coluna não veio.
+   *
+   * ZERO É UM VALOR LEGÍTIMO AQUI, e é o que separa estoque de dinheiro.
+   * Custo zero e preço zero não existem num catálogo; estoque zero existe o
+   * tempo todo, e é justamente o que a lojista precisa gravar quando esgota.
+   * Por isso a ausência não pode ser marcada com 0 — ela é `-1`.
+   */
+  estoque: number;
+}
+
+/** O que dizer "a coluna não veio" para cada número. */
+export const SEM_VALOR: NumerosDaLinha = { custo: 0, preco: 0, estoque: -1 };
+
+/**
+ * O que gravar num PRODUTO a partir de uma linha da planilha.
+ *
+ * ===========================================================================
+ * ZERO NÃO APAGA
+ * ===========================================================================
+ *
+ * Zero aqui quer dizer "a coluna não veio", nunca "o valor é zero". Uma
+ * planilha só de preço não pode zerar o custo que já estava certo, e o
+ * contrário também não — por isso cada campo entra SÓ quando tem valor, e o
+ * update vai parcial.
+ *
+ * ===========================================================================
+ * A MARGEM SEMPRE, PORQUE ELA DEPENDE DOS DOIS
+ * ===========================================================================
+ *
+ * Enquanto só o custo entrava por aqui, `margemZion(custo, p.precoVenda)`
+ * bastava. Com o preço entrando, uma planilha só de preço muda a margem de todo
+ * produto que já tinha custo — e deixar a margem velha seria a tela mostrando
+ * um número que a própria importação acabou de desmentir.
+ *
+ * `?? undefined`: margem desconhecida SOME do registro em vez de virar 0, que o
+ * resto do sistema leria como "sem margem nenhuma".
+ */
+export function camposDoProduto(
+  valores: NumerosDaLinha,
+  atual: { custo: number; precoVenda: number }
+): Partial<Produto> {
+  // O ESTOQUE DO PRODUTO NÃO ENTRA AQUI, e a ausência é decisão.
+  //
+  // Ele é a SOMA das variações, não um valor próprio — a planilha traz o saldo
+  // de cada SKU. Gravar aqui o número de uma linha faria o produto afirmar o
+  // estoque de UMA variação como se fosse o dele. A soma é feita depois, quando
+  // já se sabe o que cada variação ficou valendo.
+  const custoEfetivo = valores.custo > 0 ? valores.custo : atual.custo;
+  const precoEfetivo = valores.preco > 0 ? valores.preco : atual.precoVenda;
+  return {
+    ...(valores.custo > 0
+      ? {
+          custo: valores.custo,
+          precoMinimo: precoMinimoZion(valores.custo) ?? undefined,
+          confiancaCusto: "alta" as const,
+        }
+      : {}),
+    ...(valores.preco > 0 ? { precoVenda: valores.preco } : {}),
+    margem: margemZion(custoEfetivo, precoEfetivo) ?? undefined,
+  };
+}
+
+/** O mesmo para a VARIAÇÃO, que guarda `precoBase` no lugar de `precoVenda`. */
+export function camposDaVariante(valores: NumerosDaLinha): Partial<ProdutoVariante> {
+  return {
+    ...(valores.custo > 0 ? { custo: valores.custo } : {}),
+    ...(valores.preco > 0 ? { precoBase: valores.preco } : {}),
+    // `>= 0` e não `> 0`: zero é "esgotou", e esgotou é informação.
+    ...(valores.estoque >= 0 ? { estoque: valores.estoque } : {}),
+  };
+}
+
 export interface ResultadoCustos {
   produtos: number;
+  /** Quantos produtos receberam PREÇO DE VENDA (subconjunto de `produtos`). */
+  precos: number;
+  /** Quantos produtos tiveram o ESTOQUE recalculado (subconjunto de `produtos`). */
+  estoques: number;
   variantes: number;
   /** Linhas da planilha que não casaram com nenhum produto. */
   naoEncontrados: number;
@@ -50,6 +152,15 @@ export interface AmbiguidadeCusto {
   /** Custos distintos que reivindicaram este produto, com a linha de origem. */
   candidatos: { custo: number; origem: string }[];
 }
+
+/**
+ * De quantos em quantos produtos a importação devolve o fio ao navegador.
+ *
+ * Vinte e cinco porque o casamento por nome custa ~5,7 ms por produto no caso
+ * medido: são ~140 ms entre pausas, abaixo do limite em que a aba parece presa.
+ * Pausar a cada um multiplicaria as idas ao agendador sem ganho perceptível.
+ */
+const PRODUTOS_ENTRE_PAUSAS = 25;
 
 const norm = (s: string) => s.trim().toLowerCase();
 /** Remove zeros à esquerda (Excel dropa "01003335" → "1003335"). */
@@ -133,7 +244,7 @@ export function mesmaIdentidade(a: string, b: string): boolean {
 
 interface EntradaNome {
   palavras: Set<string>;
-  custo: number;
+  valores: NumerosDaLinha;
   /** O nome como veio, para a comparação de identidade. */
   original: string;
 }
@@ -223,10 +334,27 @@ export function alcancePorNome(
   return alcance;
 }
 
+/** O que a lojista decidiu na conferência, além do mapa de colunas. */
+export interface OpcoesDeImportacao {
+  /**
+   * Quantos dígitos o SKU do catálogo tem A MAIS que o código da planilha.
+   *
+   * Só entra quando ela CONFIRMOU o padrão na tela — ver
+   * `modules/catalog/domain/casamentoPorPrefixo`. Ausente é o comportamento de
+   * sempre: SKU casa por igualdade e mais nada.
+   *
+   * Não é default e não pode virar: "tira os dois últimos dígitos" é a
+   * convenção do ERP dela, não uma verdade sobre SKUs, e aplicá-la sozinho num
+   * catálogo de outro formato gravaria custo errado em silêncio.
+   */
+  sufixoDoSku?: number;
+}
+
 export async function importarCustos(
   clienteId: string,
   planilha: PlanilhaLida,
-  mapa?: Mapeamento
+  mapa?: Mapeamento,
+  opcoes?: OpcoesDeImportacao
 ): Promise<ResultadoCustos> {
   const { headers, linhas } = planilha;
   const mapeamento = mapa ?? sugerirMapeamento(headers);
@@ -234,36 +362,66 @@ export async function importarCustos(
   const hNome = colunaDoPapel(mapeamento, "nome");
   const hEan = colunaDoPapel(mapeamento, "ean");
   const hCusto = colunaDoPapel(mapeamento, "custo");
-  if (!hCusto || (!hSku && !hNome && !hEan)) {
+  // O PREÇO DE VENDA, QUE A TELA JÁ OFERECIA E NINGUÉM LIA.
+  //
+  // `PAPEIS` sempre teve "precoVenda" e `ConferirPlanilha` sempre mostrou
+  // "Preço de venda" no seletor. Esta função lia só o custo — quem mapeasse a
+  // coluna de preço via a planilha ser aceita e o preço sumir, calado.
+  //
+  // Isso importa porque o preço trava a publicação: medido em 26/08/2026, os
+  // 1003 produtos de uma base recém-importada estavam com `preco_venda = 0`, e
+  // o Mercado Livre não aceita anúncio sem preço. A exportação de derivações do
+  // ERP não tem coluna de preço nenhuma — ele vem em outro relatório, e é por
+  // esta porta que ele entra.
+  const hPreco = colunaDoPapel(mapeamento, "precoVenda");
+  // O ESTOQUE ENTRA PELA MESMA PORTA — 27/08/2026.
+  //
+  // O Mercado Livre não aceita anúncio com quantidade zero, e a exportação de
+  // derivações do ERP veio com as 7224 linhas zeradas. O saldo vem em outro
+  // relatório, e ele casa com o mesmo SKU que o custo e o preço já casam.
+  const hEstoque = colunaDoPapel(mapeamento, "estoque");
+  if ((!hCusto && !hPreco && !hEstoque) || (!hSku && !hNome && !hEan)) {
     return {
       produtos: 0,
+      precos: 0,
+      estoques: 0,
       variantes: 0,
       naoEncontrados: 0,
       linhasCsv: linhas.length,
       ambiguos: 0,
       detalhesAmbiguos: [],
-      aviso: "A planilha precisa da coluna 'custo' e de 'sku', 'ean' e/ou 'nome/produto'.",
+      aviso:
+        "A planilha precisa de 'custo', 'preço de venda' e/ou 'estoque', e de 'sku', 'ean' e/ou 'nome/produto'.",
     };
   }
 
-  const porSku = new Map<string, number>();
-  const porEan = new Map<string, number>();
-  const porNomeExato = new Map<string, { custo: number; original: string }[]>();
+  const porSku = new Map<string, NumerosDaLinha>();
+  const porEan = new Map<string, NumerosDaLinha>();
+  const porNomeExato = new Map<string, { valores: NumerosDaLinha; original: string }[]>();
   const entradasNome: EntradaNome[] = [];
   for (const row of linhas) {
-    const custo = parseNumeroCusto(row[hCusto] ?? "");
-    if (custo <= 0) continue;
+    // Custo e preço viajam JUNTOS a partir daqui. Vieram da mesma linha, e
+    // separá-los abriria a porta para o custo de um produto encontrar o preço
+    // de outro.
+    const custo = hCusto ? parseNumeroCusto(row[hCusto] ?? "") : 0;
+    const preco = hPreco ? parseNumeroCusto(row[hPreco] ?? "") : 0;
+    // Zero é saldo legítimo, então a ausência precisa de outro sinal: célula
+    // vazia (ou não numérica) vira -1, e -1 quer dizer "não veio".
+    const bruto = hEstoque ? (row[hEstoque] ?? "").trim() : "";
+    const estoque = bruto === "" ? -1 : Math.max(0, Math.trunc(parseNumeroCusto(bruto)));
+    if (custo <= 0 && preco <= 0 && estoque < 0) continue;
+    const valores: NumerosDaLinha = { custo, preco, estoque };
     if (hSku) {
       const sku = norm(row[hSku] ?? "");
       if (sku) {
-        porSku.set(sku, custo);
+        porSku.set(sku, valores);
         const z = semZeros(sku);
-        if (z && z !== sku) porSku.set(z, custo);
+        if (z && z !== sku) porSku.set(z, valores);
       }
     }
     if (hEan) {
       const ean = (row[hEan] ?? "").replace(/\D/g, "");
-      if (ean) porEan.set(ean, custo);
+      if (ean) porEan.set(ean, valores);
     }
     if (hNome) {
       const nome = (row[hNome] ?? "").trim();
@@ -283,17 +441,17 @@ export async function importarCustos(
         // preço velho e o novo.
         const chave = normNome(nome);
         const jaVistos = porNomeExato.get(chave) ?? [];
-        jaVistos.push({ custo, original: nome });
+        jaVistos.push({ valores, original: nome });
         porNomeExato.set(chave, jaVistos);
-        entradasNome.push({ palavras: palavras(nome), custo, original: nome });
+        entradasNome.push({ palavras: palavras(nome), valores, original: nome });
       }
     }
   }
   if (porSku.size === 0 && porEan.size === 0 && porNomeExato.size === 0) {
     return {
-      produtos: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, ambiguos: 0,
+      produtos: 0, precos: 0, estoques: 0, variantes: 0, naoEncontrados: 0, linhasCsv: linhas.length, ambiguos: 0,
       detalhesAmbiguos: [],
-      aviso: "Nenhum custo válido na planilha. Confira se a coluna de custo tem números.",
+      aviso: "Nenhum número válido na planilha. Confira se a coluna de custo ou de preço tem números.",
     };
   }
 
@@ -311,7 +469,7 @@ export async function importarCustos(
   // por causa de um campo que nem se queria alterar.
   const varAtualizadas: (Partial<ProdutoVariante> & { id: string })[] = [];
   const idVarCasada = new Set<string>();
-  const custosPorProduto = new Map<string, number[]>();
+  const custosPorProduto = new Map<string, NumerosDaLinha[]>();
   const usados = new Set<string>();
   /** Produtos que casaram com mais de um custo — não se escolhe por conta própria. */
   const ambiguos = new Map<string, { produto: string; candidatos: { custo: number; origem: string }[] }>();
@@ -321,6 +479,26 @@ export async function importarCustos(
     const skuV = norm(v.sku);
     let c = porSku.get(skuV) ?? porSku.get(semZeros(skuV));
     if (c != null) usados.add(skuV);
+
+    // O CÓDIGO DA PLANILHA É O SKU SEM O TAMANHO — só quando ela confirmou.
+    //
+    // O LINX identifica o item por código de 6 dígitos ("006427"); o SKU da
+    // variação aqui é esse código mais o número do calçado ("00642743"). Sem
+    // isto, 26 de 26 códigos existiam no arquivo e nenhum casava.
+    //
+    // `usados.add(raiz)` e não `skuV`: quem conta `naoEncontrados` olha a chave
+    // da LINHA da planilha, que é a raiz. Marcar o SKU da variação deixaria a
+    // linha contada como "sem produto" depois de ter gravado — um relatório que
+    // se contradiz treina a pessoa a ignorar o relatório.
+    const sufixo = opcoes?.sufixoDoSku;
+    if (c == null && sufixo && skuV.length > sufixo && /^\d+$/.test(skuV.slice(-sufixo))) {
+      const raiz = skuV.slice(0, -sufixo);
+      const porRaiz = porSku.get(raiz) ?? porSku.get(semZeros(raiz));
+      if (porRaiz != null) {
+        c = porRaiz;
+        usados.add(raiz);
+      }
+    }
     if (c == null && v.ean) {
       const ean = v.ean.replace(/\D/g, "");
       c = porEan.get(ean);
@@ -328,7 +506,9 @@ export async function importarCustos(
     }
     if (c == null) continue;
     idVarCasada.add(v.id);
-    varAtualizadas.push({ id: v.id, custo: c });
+    // SÓ o que veio. Uma planilha só de preço não pode zerar o custo que já
+    // estava lá, e vice-versa — zero aqui quer dizer "a coluna não veio".
+    varAtualizadas.push({ id: v.id, ...camposDaVariante(c) });
     const arr = custosPorProduto.get(v.produtoId) ?? [];
     arr.push(c);
     custosPorProduto.set(v.produtoId, arr);
@@ -340,84 +520,168 @@ export async function importarCustos(
    * mesmo produto com custos diferentes: aí não há resposta certa, e chutar
    * uma seria gravar custo errado sem avisar.
    */
-  function custoPorNome(nomeProduto: string, produtoId: string): number | null {
+  function valoresPorNome(nomeProduto: string, produtoId: string): NumerosDaLinha | null {
     const exatos = porNomeExato.get(normNome(nomeProduto));
     if (exatos && exatos.length > 0) {
-      const distintos = [...new Map(exatos.map((e) => [e.custo, e])).values()];
+      // Distintos pelo PAR: duas linhas com o mesmo custo e preços diferentes
+      // também são um conflito, e gravar uma delas seria escolher no escuro.
+      const distintos = [
+        ...new Map(exatos.map((e) => [`${e.valores.custo}|${e.valores.preco}`, e])).values(),
+      ];
       // Nome IDÊNTICO com custos diferentes é conflito, e recusar aqui é a
       // mesma decisão que o caminho aproximado já tomava logo abaixo.
       if (distintos.length > 1) {
         ambiguos.set(produtoId, {
           produto: nomeProduto,
-          candidatos: distintos.map((d) => ({ custo: d.custo, origem: d.original })),
+          candidatos: distintos.map((d) => ({ custo: d.valores.custo, origem: d.original })),
         });
         return null;
       }
-      return distintos[0].custo;
+      return distintos[0].valores;
     }
 
     const candidatos = entradasNome.filter((e) => mesmaIdentidade(e.original, nomeProduto));
     if (candidatos.length === 0) return null;
 
-    const custos = new Set(candidatos.map((c) => c.custo));
+    const custos = new Set(candidatos.map((c) => `${c.valores.custo}|${c.valores.preco}`));
     if (custos.size > 1) {
       // Duas linhas brigando pelo mesmo produto. Guarda QUAIS, para a tela
       // poder mostrar e a pessoa decidir — recusar em silêncio só empurra o
       // problema para um lugar onde ninguém o vê.
-      const vistos = new Set<number>();
+      const vistos = new Set<string>();
       const distintos: { custo: number; origem: string }[] = [];
       for (const c of candidatos) {
-        if (vistos.has(c.custo)) continue;
-        vistos.add(c.custo);
-        distintos.push({ custo: c.custo, origem: c.original });
+        const chave = `${c.valores.custo}|${c.valores.preco}`;
+        if (vistos.has(chave)) continue;
+        vistos.add(chave);
+        distintos.push({ custo: c.valores.custo, origem: c.original });
       }
       ambiguos.set(produtoId, { produto: nomeProduto, candidatos: distintos });
       return null;
     }
-    return candidatos[0].custo;
+    return candidatos[0].valores;
   }
 
-  // 2) Produtos: SKU/codErp → NOME → menor custo das variações.
+  // 2) Produtos: SKU/codErp → VARIAÇÕES casadas por SKU → NOME.
+  //
+  // ===========================================================================
+  // A ORDEM MUDOU EM 17/08/2026, E O MOTIVO É UM NÚMERO ERRADO NA BASE REAL
+  // ===========================================================================
+  //
+  // O nome vinha ANTES das variações. Isso põe o sinal FRACO na frente do
+  // FORTE: SKU é identidade exata, nome é semelhança de 85%.
+  //
+  // O que aconteceu, medido na conta dela ao importar o `TABELA CUSTOS LINX`:
+  //
+  //   · "Chinelo Havaianas Masculino Top Max Comfort Original" tem 18 variações
+  //     nos códigos 006426/006427 (28,79), 006428 (36,01), 010100 (32,99) e
+  //     010101 (92,58);
+  //   · o nome casou, com 85,7%, com OUTRO item do arquivo — "CHINELO DEDO
+  //     MASCULINO HAVAIANAS TOP MAX COMFORT I", código 010810, custo 34,03;
+  //   · as 18 variações ficaram com 34,03, um valor que não é de nenhuma delas.
+  //
+  // Foi o ÚNICO dos 29 produtos gravados que divergiu do LINX. Os outros 28
+  // bateram exatamente — o que mostra que o problema não é o casamento por
+  // nome existir, é ele decidir quando já existe resposta melhor.
+  //
+  // Baixar o limiar de 85% não é o conserto (foi com 83% que o custo de um
+  // tênis foi parar em outro modelo), e subir quebraria os casos legítimos. O
+  // conserto é a PRECEDÊNCIA: quem casou por SKU já respondeu.
   const prodAtualizados: (Partial<Produto> & { id: string })[] = [];
+  let precosGravados = 0;
+  const produtosComEstoque = new Set<string>();
+  let desdeAPausa = 0;
   for (const p of produtos) {
-    let custo = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
-    if (custo != null) usados.add(norm(p.sku));
-    if (custo == null && p.codErp) {
-      custo = porSku.get(norm(p.codErp)) ?? porSku.get(semZeros(norm(p.codErp)));
-      if (custo != null) usados.add(norm(p.codErp));
+    // CEDER O FIO — 27/08/2026.
+    //
+    // O casamento por NOME é O(n × m): cada produto sem código varre a planilha
+    // inteira chamando `mesmaIdentidade`. Medido com os arquivos reais — 1003
+    // produtos contra 1505 linhas — são 1,5 MILHÃO de comparações e 5,7
+    // segundos de laço SÍNCRONO.
+    //
+    // No navegador isso congela a aba: o fio principal não desenha, não responde
+    // ao clique, e o Chrome oferece "fechar a página". Quem recarrega nesse
+    // intervalo interrompe a importação no meio — foi o que deixou 661 variações
+    // gravadas e 182 produtos sem nada, duas vezes seguidas.
+    //
+    // A pausa não acelera nada: ela devolve o controle ao navegador de tempos em
+    // tempos, e a aba continua viva enquanto a conta roda. Trabalho longo que
+    // não cede o fio é trabalho que a pessoa não consegue esperar.
+    if (++desdeAPausa >= PRODUTOS_ENTRE_PAUSAS) {
+      desdeAPausa = 0;
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    let valores = porSku.get(norm(p.sku)) ?? porSku.get(semZeros(norm(p.sku)));
+    if (valores != null) usados.add(norm(p.sku));
+    if (valores == null && p.codErp) {
+      valores = porSku.get(norm(p.codErp)) ?? porSku.get(semZeros(norm(p.codErp)));
+      if (valores != null) usados.add(norm(p.codErp));
+    }
+    // AS VARIAÇÕES QUE JÁ CASARAM POR SKU/EAN — antes do nome.
+    //
+    // `Math.min` continua sendo o resumo do produto, como sempre foi: a coluna
+    // é um retrato, e o preço mínimo tem que caber no item mais barato.
+    if (valores == null) {
+      const cs = custosPorProduto.get(p.id);
+      // O PAR INTEIRO da variação mais barata, não o menor custo com o menor
+      // preço. `Math.min` continua sendo o resumo do custo — o preço mínimo tem
+      // que caber no item mais barato —, e o preço vem da MESMA linha, porque
+      // misturar linhas é como o custo de um produto acha o preço de outro.
+      if (cs && cs.length > 0) {
+        const comCusto = cs.filter((c) => c.custo > 0);
+        valores =
+          comCusto.length > 0
+            ? comCusto.reduce((a, b) => (b.custo < a.custo ? b : a))
+            : cs.reduce((a, b) => (b.preco < a.preco ? b : a));
+      }
     }
     let porNome = false;
-    if (custo == null && hNome) {
-      const c = custoPorNome(p.nome, p.id);
+    if (valores == null && hNome) {
+      const c = valoresPorNome(p.nome, p.id);
       if (c != null) {
-        custo = c;
+        valores = c;
         porNome = true;
       }
     }
-    if (custo == null) {
-      const cs = custosPorProduto.get(p.id);
-      if (cs && cs.length > 0) custo = Math.min(...cs);
-    }
-    if (custo == null || custo <= 0) continue;
+    if (valores == null || (valores.custo <= 0 && valores.preco <= 0 && valores.estoque < 0)) continue;
 
-    prodAtualizados.push({
-      id: p.id,
-      custo,
-      // ?? undefined: margem desconhecida some do registro em vez de virar 0,
-      // que o resto do sistema leria como "sem margem nenhuma".
-      margem: margemZion(custo, p.precoVenda) ?? undefined,
-      precoMinimo: precoMinimoZion(custo) ?? undefined,
-      confiancaCusto: "alta",
-    });
+    if (valores.preco > 0) precosGravados++;
+    prodAtualizados.push({ id: p.id, ...camposDoProduto(valores, p) });
+    if (valores.estoque >= 0) produtosComEstoque.add(p.id);
     if (porNome) usados.add(normNome(p.nome));
 
-    // Propaga o custo para as variações ainda não casadas por SKU.
+    // Propaga para as variações ainda não casadas por SKU — os dois números,
+    // cada um só quando veio.
     for (const v of varsPorProduto.get(p.id) ?? []) {
       if (!idVarCasada.has(v.id)) {
         idVarCasada.add(v.id);
-        varAtualizadas.push({ id: v.id, custo });
+        varAtualizadas.push({ id: v.id, ...camposDaVariante(valores) });
       }
     }
+  }
+
+  // O ESTOQUE DO PRODUTO É A SOMA DAS VARIAÇÕES, RECALCULADA AQUI.
+  //
+  // É a única diferença real entre estoque e dinheiro nesta importação. Custo e
+  // preço do produto são um RESUMO (o menor custo, o preço da mesma linha);
+  // estoque é uma CONTA — 3 do 35 mais 2 do 36 são 5, e nenhum dos dois é o
+  // número do produto.
+  //
+  // A soma usa o valor NOVO onde a planilha o trouxe e o que já estava nas
+  // outras. Só entra nos produtos que receberam algum estoque: recalcular quem
+  // a planilha não tocou seria reescrever, com o mesmo número, uma linha que
+  // ninguém pediu para mudar.
+  const novoEstoqueDaVariante = new Map<string, number>();
+  for (const v of varAtualizadas) {
+    if (typeof v.estoque === "number") novoEstoqueDaVariante.set(v.id, v.estoque);
+  }
+  for (const id of produtosComEstoque) {
+    const soma = (varsPorProduto.get(id) ?? []).reduce(
+      (t, v) => t + (novoEstoqueDaVariante.get(v.id) ?? v.estoque ?? 0),
+      0
+    );
+    const linha = prodAtualizados.find((x) => x.id === id);
+    if (linha) linha.estoque = soma;
   }
 
   if (varAtualizadas.length > 0) await atualizarVariantesBulk(varAtualizadas);
@@ -433,7 +697,11 @@ export async function importarCustos(
   let naoEncontrados = 0;
   for (const row of linhas) {
     const custo = hCusto ? parseNumeroCusto(row[hCusto] ?? "") : 0;
-    if (custo <= 0) continue; // linha sem custo não é "produto não encontrado"
+    const preco = hPreco ? parseNumeroCusto(row[hPreco] ?? "") : 0;
+    const temEstoque = hEstoque ? (row[hEstoque] ?? "").trim() !== "" : false;
+    // Linha sem número nenhum não é "produto não encontrado" — ela não pediu
+    // nada. Com preço e sem custo, pediu. Com estoque zero, também pediu.
+    if (custo <= 0 && preco <= 0 && !temEstoque) continue;
     const chaves: string[] = [];
     if (hSku) {
       const sku = norm(row[hSku] ?? "");
@@ -465,6 +733,8 @@ export async function importarCustos(
 
   return {
     produtos: prodAtualizados.length,
+    precos: precosGravados,
+    estoques: produtosComEstoque.size,
     variantes: varAtualizadas.length,
     naoEncontrados,
     linhasCsv: linhas.length,

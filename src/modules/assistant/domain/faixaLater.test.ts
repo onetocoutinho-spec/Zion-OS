@@ -146,14 +146,14 @@ test("23/08/2026 — só o ChatGPT: a tabela roteia por provedor, e a OpenAI vem
 test("24/08/2026 — classificar uma frase tem linha própria: gpt-5-mini, com o gpt-5 de RESERVA", () => {
   // A única linha em que a reserva é mais FORTE que o principal: cair por
   // sobrecarga não pode piorar a classificação que decide a resposta inteira.
-  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  const so: AmbienteDoModelo = { OPENAI_API_KEY: "o" };
   assert.deepEqual(rotaDoModelo("classificacao", so), { principal: "gpt-5-mini", reserva: "gpt-5" });
   assert.deepEqual(
-    rotaDoModelo("classificacao", { ...so, OPENAI_MODELO_CLASSIFICACAO: "gpt-5-nano" } as NodeJS.ProcessEnv),
+    rotaDoModelo("classificacao", { ...so, OPENAI_MODELO_CLASSIFICACAO: "gpt-5-nano" }),
     { principal: "gpt-5-nano", reserva: "gpt-5" }
   );
   // O caminho Anthropic é legado e NÃO muda: classificação cai na linha estruturada.
-  const cl = { ANTHROPIC_API_KEY: "a" } as NodeJS.ProcessEnv;
+  const cl: AmbienteDoModelo = { ANTHROPIC_API_KEY: "a" };
   assert.deepEqual(rotaDoModelo("classificacao", cl), rotaDoModelo("estruturada", cl));
 });
 
@@ -165,7 +165,7 @@ test("o TRABALHO PESADO não desce de modelo junto com o chat — a régua é ou
   // erro é visível e corrigível na próxima fala; na esteira ele ENTRA NO
   // CADASTRO em escala — um título ruim vira 40 anúncios ruins, e a lojista
   // descobre semanas depois pela venda que não veio.
-  const so = { OPENAI_API_KEY: "o" } as NodeJS.ProcessEnv;
+  const so: AmbienteDoModelo = { OPENAI_API_KEY: "o" };
   assert.equal(rotaDoModelo("estruturada", so).principal, "gpt-5");
   assert.notEqual(
     rotaDoModelo("estruturada", so).principal,

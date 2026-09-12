@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AvisoDeVersao } from "@/components/layout/AvisoDeVersao";
+import { FaixaDeAmbiente } from "@/components/layout/FaixaDeAmbiente";
 import { AuthGate } from "@/components/auth/AuthGate";
 
 const geistSans = Geist({
@@ -35,6 +36,11 @@ export default function RootLayout({
         {/* FORA do AuthGate de propósito: uma aba velha precisa avisar mesmo
             na tela de login e mesmo quando o perfil falhou — são justamente os
             estados em que o pacote antigo pode estar causando o problema. */}
+        {/* Antes de tudo, inclusive do login: em 26/08/2026 a conta real foi
+            operada por engano achando-se que era o ambiente de teste, e nada
+            na tela dizia o contrário. A faixa responde "onde estou" sem que
+            ninguem precise perguntar. */}
+        <FaixaDeAmbiente />
         <AvisoDeVersao />
         <AuthGate>
           <AppShell>{children}</AppShell>

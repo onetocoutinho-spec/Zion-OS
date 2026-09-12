@@ -21,6 +21,9 @@ import type {
   ProdutoParaPreparar,
 } from "../../modules/publication/domain/preparacaoDoAnuncio";
 import type { VarianteDaBase } from "../../modules/publication/domain/variacoesDoAnuncio";
+import { obrigatoriosDoProduto } from "../../modules/publication/domain/obrigatoriosDoProduto";
+import type { ExigenciaDaCategoria } from "../../modules/publication/domain/atributosDoMarketplace";
+import { recorteDaCategoria } from "../marketplaces/mercadolivre";
 
 /**
  * Quantos produtos atravessam numa varredura de lote.
@@ -58,6 +61,7 @@ interface LinhaDeVariante {
 
 interface LinhaDeAnuncio {
   produto_id: string | null;
+  categoria_ml?: string | null;
   status: string;
   veredito_a10: string | null;
   qtd_pendencias: number | null;
@@ -68,6 +72,14 @@ interface LinhaDeAnuncio {
 export interface ProdutoComAnuncio {
   produto: ProdutoParaPreparar;
   anuncio: AnuncioJaGerado | null;
+  /**
+   * O que a CATEGORIA deste produto exige — presente só quando ela é conhecida.
+   *
+   * Ausente significa "não sei", e quem decide continua caindo no padrão de
+   * calçado. Nunca vem lista vazia: `obrigatoriosDoProduto` trata o `[]` de um
+   * ML que não respondeu como desconhecimento, não como "não exige nada".
+   */
+  obrigatorios?: readonly ExigenciaDaCategoria[];
 }
 
 export interface CatalogoParaPreparar {
@@ -149,6 +161,54 @@ function montar(
 }
 
 /** O anúncio mais recente de cada produto. É o estado que a preparação consulta. */
+/**
+ * produto → `category_id` medido. O PRIMEIRO não vazio, não o mais recente.
+ *
+ * A distinção importa: as linhas vêm ordenadas por `created_at desc`, e um
+ * anúncio recém-gerado pela esteira ainda não foi ao ar — nasce sem
+ * `categoria_ml`. Usar o mais recente perderia a categoria justamente nos
+ * produtos que já têm anúncio vendendo.
+ */
+function categoriasPorProduto(linhas: readonly LinhaDeAnuncio[]): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const l of linhas) {
+    const produto = (l.produto_id ?? "").trim();
+    const categoria = (l.categoria_ml ?? "").trim();
+    if (produto && categoria && !mapa.has(produto)) mapa.set(produto, categoria);
+  }
+  return mapa;
+}
+
+/**
+ * As exigências de cada produto — UMA ida ao ML por categoria DISTINTA.
+ *
+ * O catálogo desta conta tem 300 produtos e SEIS categorias (AUD-007). Pedir
+ * por produto seriam 300 requisições num turno de chat; `recorteDaCategoria`
+ * pede as distintas em paralelo, e `catalogo` já roda uma vez por turno.
+ *
+ * Só entra no mapa quem tem categoria E lista. O resto fica de fora, e o
+ * consumidor cai no padrão de calçado — exatamente o comportamento de antes.
+ */
+async function obrigatoriosPorProduto(
+  linhas: readonly LinhaDeAnuncio[]
+): Promise<Map<string, readonly ExigenciaDaCategoria[]>> {
+  const porProduto = categoriasPorProduto(linhas);
+  const distintas = [...new Set(porProduto.values())];
+  const saida = new Map<string, readonly ExigenciaDaCategoria[]>();
+  if (distintas.length === 0) return saida;
+  // Falha de rede não derruba a preparação: `recorteDaCategoria` engole o erro
+  // e devolve listas vazias, que viram "não sei" logo abaixo.
+  const { obrigatorios } = await recorteDaCategoria(distintas).catch(() => ({
+    foraDaFicha: {},
+    obrigatorios: {} as Record<string, ExigenciaDaCategoria[]>,
+  }));
+  for (const [produto, categoria] of porProduto) {
+    const decidido = obrigatoriosDoProduto(categoria, obrigatorios[categoria]);
+    if (decidido.procedencia === "categoria") saida.set(produto, decidido.exigencias);
+  }
+  return saida;
+}
+
 function anuncioMaisRecente(linhas: readonly LinhaDeAnuncio[]): Map<string, AnuncioJaGerado> {
   const mapa = new Map<string, AnuncioJaGerado>();
   for (const a of linhas) {
@@ -164,7 +224,11 @@ function anuncioMaisRecente(linhas: readonly LinhaDeAnuncio[]): Map<string, Anun
 }
 
 const CAMPOS_VARIANTE = "id, produto_id, sku, ean, cor, tamanho, estoque, preco_base, peso, altura, largura, comprimento";
-const CAMPOS_ANUNCIO = "produto_id, status, veredito_a10, qtd_pendencias, ml_item_id, created_at";
+// `categoria_ml` entrou em 25/08 pelo INC-011: é o `category_id` que o ML
+// devolveu na importação, e sem ele a preparação cobrava a lista de calçado de
+// 118 anúncios que não são calçado.
+const CAMPOS_ANUNCIO =
+  "produto_id, status, veredito_a10, qtd_pendencias, ml_item_id, created_at, categoria_ml";
 
 /** Um produto só, para "prepare a Modare 7178.102" e para o drill-down. */
 export async function produtoParaPreparar(
@@ -182,7 +246,7 @@ export async function produtoParaPreparar(
   // Produto de outro tenant é indistinguível de inexistente.
   if (!p) return null;
 
-  const [variantes, imagens, atributos, anuncios] = await Promise.all([
+  const [variantes, imagens, atributos, anuncios, comCategoria] = await Promise.all([
     admin.from("produto_variantes").select(CAMPOS_VARIANTE).eq("cliente_id", clienteId).eq("produto_id", produtoId),
     admin.from("imagens_produto").select("produto_id").eq("produto_id", produtoId),
     admin
@@ -197,9 +261,24 @@ export async function produtoParaPreparar(
       .eq("produto_id", produtoId)
       .order("created_at", { ascending: false })
       .limit(1),
+    // A CATEGORIA, numa leitura própria e não no `.limit(1)` acima.
+    //
+    // O anúncio mais recente pode ser um rascunho que a esteira acabou de
+    // gravar, e rascunho nasce sem `categoria_ml`. Perguntar pelo primeiro que
+    // TEM categoria é o que encontra o anúncio que já está no ar.
+    admin
+      .from("anuncios_gerados")
+      .select("produto_id, categoria_ml")
+      .eq("cliente_id", clienteId)
+      .eq("produto_id", produtoId)
+      .not("categoria_ml", "is", null)
+      .limit(1),
   ]);
 
   const linhasDeVariante = (variantes.data ?? []) as LinhaDeVariante[];
+  const porCategoria = await obrigatoriosPorProduto(
+    (comCategoria.data ?? []) as LinhaDeAnuncio[]
+  );
   return {
     produto: montar(
       p,
@@ -210,6 +289,7 @@ export async function produtoParaPreparar(
     // UM produto: no maximo 41 variantes medidas, e `.limit(1)` no anuncio.
     // Nao pagina porque nao ha o que paginar.
     anuncio: anuncioMaisRecente((anuncios.data ?? []) as LinhaDeAnuncio[]).get(produtoId) ?? null,
+    ...(porCategoria.has(produtoId) ? { obrigatorios: porCategoria.get(produtoId) } : {}),
   };
 }
 
@@ -305,6 +385,7 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
     contagemDeImagens.set(i.produto_id, (contagemDeImagens.get(i.produto_id) ?? 0) + 1);
   }
   const porAnuncio = anuncioMaisRecente(anuncios);
+  const porCategoria = await obrigatoriosPorProduto(anuncios);
 
   return {
     itens: produtos.map((p) => ({
@@ -315,6 +396,7 @@ export async function catalogoParaPreparar(clienteId: string): Promise<CatalogoP
         atributosPorProduto.get(p.id)
       ),
       anuncio: porAnuncio.get(p.id) ?? null,
+      ...(porCategoria.has(p.id) ? { obrigatorios: porCategoria.get(p.id) } : {}),
     })),
     totalNoCatalogo: count ?? produtos.length,
     truncado: (count ?? 0) > produtos.length,

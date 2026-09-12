@@ -21,8 +21,13 @@ import {
   mesmaIdentidade,
   pontuarNomes,
   definirCustoEscolhido,
+  camposDoProduto,
+  camposDaVariante,
+  SEM_VALOR,
+  type NumerosDaLinha,
 } from "./importacaoCustos.ts";
 import { buscarProduto } from "./produtos.ts";
+import { margemZion, precoMinimoZion } from "./importacaoProdutos.ts";
 import type {
   Decision,
   DecisionJournal,
@@ -201,3 +206,121 @@ test("Journal que LANÇA não interrompe a gravação do custo", async () => {
   const depois = await buscarProduto("prd-01");
   assert.equal(depois?.custo, 43.21);
 });
+
+// ---------------------------------------------------------------------------
+// Custo E PREÇO — o que a planilha grava, e o que ela NÃO pode apagar
+// ---------------------------------------------------------------------------
+//
+// A coluna "Preço de venda" sempre apareceu no seletor da tela e sempre foi
+// jogada fora. Passou a ser gravada em 26/08/2026, porque preço zero trava a
+// publicação: o Mercado Livre não aceita anúncio sem preço, e os 1003 produtos
+// de uma base recém-importada estavam todos em zero.
+
+const ATUAL = { custo: 10, precoVenda: 30 };
+
+/** Um valor de linha completo, para os testes não repetirem os três campos. */
+const v = (p: Partial<NumerosDaLinha>): NumerosDaLinha => ({ ...SEM_VALOR, ...p });
+
+test("planilha com os dois grava os dois", () => {
+  const c = camposDoProduto(v({ custo: 12, preco: 40 }), ATUAL);
+  assert.equal(c.custo, 12);
+  assert.equal(c.precoVenda, 40);
+  assert.equal(c.confiancaCusto, "alta");
+});
+
+test("planilha só de PREÇO não apaga o custo que já estava certo", () => {
+  // Zero quer dizer "a coluna não veio". Gravar `custo: 0` destruiria o custo
+  // do produto — e custo errado é pior que custo ausente, porque a tela passa a
+  // mostrar margem com confiança.
+  const c = camposDoProduto(v({ custo: 0, preco: 49.9 }), ATUAL);
+  assert.equal("custo" in c, false);
+  assert.equal("precoMinimo" in c, false);
+  assert.equal("confiancaCusto" in c, false);
+  assert.equal(c.precoVenda, 49.9);
+});
+
+test("planilha só de CUSTO não apaga o preço", () => {
+  const c = camposDoProduto(v({ custo: 15, preco: 0 }), ATUAL);
+  assert.equal("precoVenda" in c, false);
+  assert.equal(c.custo, 15);
+});
+
+test("a margem sai do par EFETIVO — o novo quando veio, o antigo quando não", () => {
+  // Uma planilha só de preço muda a margem de todo produto que já tinha custo.
+  // Deixar a margem velha seria a tela mostrar um número que a própria
+  // importação acabou de desmentir.
+  // `?? undefined` na expectativa porque é o que a função faz: margem
+  // desconhecida SOME do registro em vez de virar `null`, que o update parcial
+  // gravaria como "apague o que estava lá".
+  assert.equal(camposDoProduto(v({ custo: 0, preco: 60 }), ATUAL).margem, margemZion(10, 60) ?? undefined);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 0 }), ATUAL).margem, margemZion(25, 30) ?? undefined);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 60 }), ATUAL).margem, margemZion(25, 60) ?? undefined);
+});
+
+test("HOJE a margem sai SEMPRE indefinida, e isso é do modelo — não desta função", () => {
+  // `margemZion` usa `TAXAS_PADRAO`, cuja `embalagem` é `null`. Sem embalagem
+  // não há frete estimável, sem frete não há lucro, e sem lucro não há margem.
+  // O mesmo vale para `precoMinimoZion`.
+  //
+  // Não é teoria: medido na base de produção em 26/08/2026 — 72 produtos, 72
+  // com custo, ZERO com margem e ZERO com preço mínimo gravados. As duas
+  // colunas nunca receberam valor por esta porta.
+  //
+  // Fica registrado aqui para que a descoberta não se perca, e para que o dia
+  // em que o modelo passar a receber a embalagem este teste fique vermelho e
+  // alguém releia a decisão em vez de herdá-la.
+  assert.equal(margemZion(10, 30), null);
+  assert.equal(precoMinimoZion(10), null);
+  assert.equal(camposDoProduto(v({ custo: 25, preco: 60 }), ATUAL).margem, undefined);
+});
+
+test("sem número nenhum, nada de custo nem de preço entra", () => {
+  const c = camposDoProduto(v({ custo: 0, preco: 0 }), ATUAL);
+  assert.equal("custo" in c, false);
+  assert.equal("precoVenda" in c, false);
+});
+
+test("a variação guarda precoBase, não precoVenda", () => {
+  const campos = camposDaVariante(v({ custo: 12, preco: 40 }));
+  assert.equal(campos.custo, 12);
+  assert.equal(campos.precoBase, 40);
+  assert.equal("precoVenda" in campos, false);
+});
+
+test("a variação também não é apagada por zero", () => {
+  assert.deepEqual(camposDaVariante(v({ custo: 0, preco: 40 })), { precoBase: 40 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12, preco: 0 })), { custo: 12 });
+  assert.deepEqual(camposDaVariante(v({ custo: 0, preco: 0 })), {});
+});
+
+// ---------------------------------------------------------------------------
+// Estoque — o único dos três em que ZERO é resposta
+// ---------------------------------------------------------------------------
+
+test("estoque zero GRAVA — esgotou é informação", () => {
+  // Custo zero e preço zero não existem num catálogo, e por isso são tratados
+  // como ausência. Estoque zero existe o tempo todo, e é justamente o que a
+  // lojista precisa gravar quando o produto esgota. Confundir os dois deixaria
+  // esgotado como se fosse "não informou".
+  assert.equal(camposDaVariante(v({ estoque: 0 })).estoque, 0);
+});
+
+test("estoque ausente é -1, e -1 não grava nada", () => {
+  assert.equal(SEM_VALOR.estoque, -1);
+  assert.equal("estoque" in camposDaVariante(v({})), false);
+});
+
+test("o PRODUTO não recebe estoque de uma linha — ele é a soma das variações", () => {
+  // 3 do tamanho 35 e 2 do 36 são 5, e nenhum dos dois é o número do produto.
+  // A soma é feita depois, quando já se sabe o que cada variação ficou valendo.
+  assert.equal("estoque" in camposDoProduto(v({ estoque: 7 }), ATUAL), false);
+});
+
+test("estoque não apaga custo nem preço, e vice-versa", () => {
+  assert.deepEqual(camposDaVariante(v({ estoque: 4 })), { estoque: 4 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12 })), { custo: 12 });
+  assert.deepEqual(camposDaVariante(v({ custo: 12, preco: 40, estoque: 0 })), {
+    custo: 12, precoBase: 40, estoque: 0,
+  });
+});
+

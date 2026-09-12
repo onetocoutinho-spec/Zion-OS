@@ -95,44 +95,22 @@ export async function carregarPerfil(): Promise<CargaPerfil> {
   };
 }
 
-// ---- Leituras do Portal (via funções portal_* do banco) ----
-
-export interface PortalResumo {
-  cliente: string | null;
-  proximaAcao: string | null;
-  totalProdutos: number;
-  emProducao: number;
-  aprovados: number;
-  publicados: number;
-}
-
-export interface PortalAcao {
-  tarefa: string;
-  proxima_acao: string;
-  status: string;
-  prazo: string | null;
-}
-
-export interface PortalAnuncio {
-  titulo: string;
-  status: string;
-  criado_em: string;
-}
-
-export async function portalResumo(): Promise<PortalResumo | null> {
-  const { data } = await getSupabase().rpc("portal_resumo");
-  return (data as PortalResumo) ?? null;
-}
-
-export async function portalProximasAcoes(): Promise<PortalAcao[]> {
-  const { data } = await getSupabase().rpc("portal_proximas_acoes");
-  return (data as PortalAcao[]) ?? [];
-}
-
-export async function portalAnuncios(): Promise<PortalAnuncio[]> {
-  const { data } = await getSupabase().rpc("portal_anuncios");
-  return (data as PortalAnuncio[]) ?? [];
-}
+// ---- AS TRÊS LEITURAS DO PORTAL SAÍRAM DAQUI — migração 077, INC-012 ----
+//
+// `portalResumo`, `portalProximasAcoes` e `portalAnuncios` liam as funções
+// `portal_*` da migração 005. Duas nunca tiveram chamador; a terceira
+// alimentava a seção "Recados" da home do portal, que lê `tarefas` — tabela
+// que SÓ a equipe da Zion preenchia, e a agência não existe mais.
+//
+// Em produção as três funções já tinham sido removidas SEM MIGRAÇÃO, e os
+// wrappers desestruturavam só `data`: a falha virava lista vazia, e a seção
+// nunca aparecia. Sem erro na tela, sem uma linha no log. Só apareceu quando o
+// staging foi reconstruído do repositório e os dois bancos puderam ser
+// comparados.
+//
+// O conserto do `error` engolido continua valendo e tem sentinela viva
+// (`rpcNaoEngoleErro.test.ts`): ele nunca foi sobre estas três funções, e sim
+// sobre a próxima que sumir. O que sai aqui é só o que lia uma tabela morta.
 
 // ---- Cota mensal da esteira (self-service) ----
 
@@ -142,15 +120,47 @@ export interface QuotaEsteira {
   restante: number;
 }
 
-export async function quotaEsteira(clienteId?: string | null): Promise<QuotaEsteira> {
+/**
+ * A cota do mês — ou `null` quando NÃO CONSEGUIMOS LER.
+ *
+ * ===========================================================================
+ * O DEFEITO QUE ESTA ASSINATURA CONSERTA — medido em 17/08/2026
+ * ===========================================================================
+ *
+ * O `catch` devolvia `{limite:0, usado:0, restante:0}`. A tela de otimização
+ * calculava `semCota = Boolean(quota) && restante <= 0`, e um objeto verdadeiro
+ * com restante zero dava `true`: uma falha de rede mostrava "você usou todas as
+ * otimizações do seu plano este mês", **bloqueava o botão Gerar** e mandava a
+ * lojista falar com a Zion.
+ *
+ * Falha de leitura virava parede comercial. `null` é a única resposta honesta
+ * quando não se leu, e quem consome decide — ver `estadoDaCota`, que é
+ * fail-open de propósito.
+ *
+ * ===========================================================================
+ * O `clienteId` VEIO DA OUTRA PONTA, NA MESCLA DE 24/08/2026
+ * ===========================================================================
+ *
+ * Ele é a sobrecarga da 064: agência e equipe operam a cota de OUTRA loja, e
+ * `argumentoDaLoja` decide entre a chamada com loja e a de sempre.
+ *
+ * As duas convivem porque respondem a perguntas diferentes — uma é a ENTRADA
+ * (de qual loja é a cota), a outra é a honestidade da SAÍDA. Ficar com um lado
+ * só apagaria um conserto que tem teste vivo e domínio construído em cima.
+ */
+export async function quotaEsteira(clienteId?: string | null): Promise<QuotaEsteira | null> {
   if (!supabaseConfigurado) return { limite: 30, usado: 0, restante: 30 };
   try {
     // Com loja em operação (agência/equipe), a sobrecarga da 064; senão a de sempre.
-    const { data } = await getSupabase().rpc("quota_esteira", argumentoDaLoja(clienteId));
-    const limite = Number((data as { limite?: number })?.limite ?? 0);
-    const usado = Number((data as { usado?: number })?.usado ?? 0);
+    const { data, error } = await getSupabase().rpc("quota_esteira", argumentoDaLoja(clienteId));
+    // `error` sem exceção também é falha: o Supabase devolve o erro no objeto,
+    // e ignorá-lo era a metade silenciosa do mesmo defeito.
+    if (error) return null;
+    const limite = Number((data as { limite?: number })?.limite ?? NaN);
+    const usado = Number((data as { usado?: number })?.usado ?? NaN);
+    if (!Number.isFinite(limite) || !Number.isFinite(usado)) return null;
     return { limite, usado, restante: Math.max(0, limite - usado) };
   } catch {
-    return { limite: 0, usado: 0, restante: 0 };
+    return null;
   }
 }

@@ -213,10 +213,10 @@ test("a saída obriga a resposta a dizer a lacuna e a idade da leitura", () => {
   const exec = readFileSync(new URL("../../assistant/domain/executarFerramenta.ts", import.meta.url), "utf8");
   const fn = /async function listarFilaDeCorrecao[\s\S]*?\n\}/.exec(exec);
   assert.ok(fn, "não achei `listarFilaDeCorrecao`");
-  assert.match(fn[0], /capacidade_ausente.*NÃO resolvo isso hoje/s);
-  assert.match(fn[0], /nunca_reativar.*reincidência/s);
+  assert.match(fn[0], /capacidade_ausente[\s\S]*NÃO resolvo isso hoje/);
+  assert.match(fn[0], /nunca_reativar[\s\S]*reincidência/);
   assert.match(fn[0], /lidoHaDias/);
-  assert.match(fn[0], /semMotivoDeclarado.*não invente causa/s);
+  assert.match(fn[0], /semMotivoDeclarado[\s\S]*não invente causa/);
 });
 
 test("`deleted` é motivo CONHECIDO — e nunca vira 'reativar'", () => {

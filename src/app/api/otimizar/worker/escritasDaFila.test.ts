@@ -66,9 +66,13 @@ test("TODA escrita na fila captura o retorno — nenhuma pode ser descartada", (
 test("cada retorno capturado tem um caminho de log — capturar e ignorar é pior", () => {
   // Guardar em `{ error }` e não olhar seria trocar um defeito invisível por
   // um defeito invisível com mais código.
-  const nomes = [...SEM_COMENTARIOS.matchAll(/const \{ error: (\w+) \} = await admin/g)].map(
-    (m) => m[1]
-  );
+  // O `[^}]*` existe porque a trava do lote passou a pedir `data` junto:
+  // `const { data: travadosRaw, error: erroTravar }`. A regex antiga só via a
+  // forma `{ error: x }`, e teria tirado da conta justamente a escrita mais
+  // perigosa das cinco — sem falhar, que é o pior jeito de uma sentinela errar.
+  const nomes = [
+    ...SEM_COMENTARIOS.matchAll(/const \{[^}]*\berror: (\w+)[^}]*\} = await admin/g),
+  ].map((m) => m[1]);
   assert.ok(nomes.length >= 5, `esperava ao menos 5 capturas nomeadas, achei ${nomes.length}`);
   for (const n of nomes) {
     assert.match(
@@ -95,15 +99,42 @@ test("trava do lote que falha PARA o ciclo — avisar não bastaria", () => {
   // Seguir depois de uma trava recusada seria processar um lote destravado
   // SABENDO disso. Com até quatro execuções sobrepostas, é o caminho direto
   // para o anúncio duplicado — e por conta própria, sem nada externo falhar.
-  const i = SEM_COMENTARIOS.indexOf("const { error: erroTravar }");
+  //
+  // ESTE TESTE MUDOU DE LADO EM 27/08/2026, na metade do `continue`.
+  //
+  // Ele proibia `continue` no bloco inteiro, e a razão escrita era: "`continue`
+  // reselecionaria os mesmos itens e giraria até o orçamento acabar". Era
+  // verdade enquanto a trava era um UPDATE sem condição de status: nada tirava
+  // o item de `pendente`, e a volta seguinte pegava o mesmo.
+  //
+  // Com o compare-and-swap, PERDER a disputa passou a ser um caso distinto de
+  // falhar: o item saiu de `pendente` porque OUTRA execução o tomou, e a volta
+  // seguinte seleciona linhas diferentes. Medido em 27/08 contra o staging —
+  // 5 rodadas × 8 simultâneas, 35 perdas, 0 itens com mais de um dono. Ali
+  // `continue` é a resposta certa, e `break` jogaria fora o resto dos 250s.
+  //
+  // Os dois caminhos continuam separados, e é isso que se prova aqui:
+  //     erro de banco na trava -> break    (não sabemos o estado)
+  //     perdemos a disputa     -> continue (sabemos: o item é de outro)
+  const i = SEM_COMENTARIOS.indexOf("error: erroTravar");
   assert.ok(i > 0, "a trava do lote deixou de capturar o retorno");
   const bloco = SEM_COMENTARIOS.slice(i, SEM_COMENTARIOS.indexOf("const res = await Promise.all", i));
-  assert.match(bloco, /if \(erroTravar\)/);
-  assert.match(bloco, /\bbreak;/, "a trava voltou a só avisar: o lote destravado seria processado");
-  assert.ok(
-    !/\bcontinue;/.test(bloco),
-    "`continue` reselecionaria os mesmos itens e giraria até o orçamento acabar"
+
+  const iErro = bloco.indexOf("if (erroTravar)");
+  assert.ok(iErro >= 0, "o erro da trava deixou de ser testado");
+  const caminhoDeErro = bloco.slice(iErro, bloco.indexOf("\n    }", iErro));
+  assert.match(
+    caminhoDeErro,
+    /\bbreak;/,
+    "a trava voltou a só avisar: o lote destravado seria processado"
   );
+  assert.ok(
+    !/\bcontinue;/.test(caminhoDeErro),
+    "`continue` num erro de banco reselecionaria sem saber o que aconteceu"
+  );
+
+  // E o caminho da perda existe, separado — perda não é falha.
+  assert.match(bloco, /travados\.length === 0/, "o caso `não travei nada` sumiu");
 });
 
 // ---------------------------------------------------------------------------

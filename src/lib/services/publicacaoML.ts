@@ -5,7 +5,12 @@
 // segredo do APP ML) levando o refresh_token do canal do cliente.
 
 import { montarItemML } from "../../modules/integration/domain/mlPayload";
-import { montarBundleUserProducts } from "../../modules/publication/domain/composicaoConteudo";
+import {
+  montarBundleUserProducts,
+  fichaDoCadastro,
+} from "../../modules/publication/domain/composicaoConteudo";
+import { listarAtributosDoProduto } from "./produtoAtributos";
+import { listarTabelasDoCliente } from "./tabelasMedidasCliente";
 import { irmaosDaFamilia } from "../../modules/publication/domain/irmaosDaFamilia";
 import { buscarCanal } from "./canaisMarketplace";
 import { cabecalhoAutenticacao } from "../supabase/sessao";
@@ -18,7 +23,7 @@ import {
 } from "./anunciosGerados";
 import { urlsDoProduto } from "./storageImagens";
 import { autorAtual } from "../auth/autorAtual";
-import type { AnuncioGeradoRegistro } from "../types";
+import type { AnuncioGeradoRegistro, TabelaMedida } from "../types";
 import {
   capturarDecisao,
   type CapturaDeDecisao,
@@ -214,6 +219,47 @@ async function executarPublicacao(
       pictures = [];
     }
   }
+  // O QUE A LOJISTA RESPONDEU NO CADASTRO, para o bundle abaixo.
+  //
+  // Medido em 28/08/2026: `montarBundleUserProducts` recusava 408 dos 674
+  // publicáveis de calçado por "gênero ausente na ficha técnica" — e o gênero
+  // estava em `produto_atributos`, respondido por ela. A ficha é escrita pelo
+  // modelo, que a traz em 159 de 400.
+  //
+  // Falha de leitura segue sem o cadastro: o bundle volta a recusar como
+  // recusava, e a recusa é a mensagem que já existia. Enriquecimento não pode
+  // inventar um modo novo de falhar.
+  let doCadastro: Map<string, string> | undefined;
+  if (registro.produtoId) {
+    try {
+      doCadastro = fichaDoCadastro(await listarAtributosDoProduto(registro.produtoId));
+    } catch {
+      doCadastro = undefined;
+    }
+  }
+
+  // E AS TABELAS DE MEDIDA DELA, pelo mesmo motivo e com a mesma regra.
+  //
+  // Guardada por `produtoId` como a de cima: sem produto nao ha bundle. O que
+  // NAO da para evitar daqui e a categoria — quem decide se este anuncio vai
+  // pelo modelo User Products e o servidor, depois de prever a categoria com o
+  // token que o navegador nao tem. Entao os 119 classicos desta base ainda
+  // pagam as duas leituras; evita-las exigiria a categoria aqui, e ela nao esta
+  // aqui.
+  //
+  // `medidasDaMarca` lia so a lista embutida no software. Medido em 28/08: 30
+  // dos 674 recusados por tamanho FORA da faixa dessa lista — Molekinho 19 a
+  // 24, Ipanema 25 e 26, Yvate 41 a 43. As medidas nao estao no software e nao
+  // e para estarem; o que faltava era a resposta dela chegar ate aqui.
+  let tabelasDaLoja: TabelaMedida[] = [];
+  if (registro.produtoId) {
+    try {
+      tabelasDaLoja = await listarTabelasDoCliente(registro.clienteId);
+    } catch {
+      tabelasDaLoja = [];
+    }
+  }
+
   const payload = montarPreviewML(registro, { ...opcoes, pictures });
   if (!go) {
     // A simulação também precisa avisar: é justamente onde dá para corrigir
@@ -221,6 +267,8 @@ async function executarPublicacao(
     const previa = montarBundleUserProducts(registro.anuncio, {
       pictures,
       tipoAnuncio: opcoes.tipoAnuncio,
+      doCadastro,
+      tabelasDaLoja,
     });
     return { dry: true, payload, ...(previa.ok && previa.avisos ? { avisos: previa.avisos } : {}) };
   }
@@ -231,6 +279,8 @@ async function executarPublicacao(
   const bundleUP = montarBundleUserProducts(registro.anuncio, {
     pictures,
     tipoAnuncio: opcoes.tipoAnuncio,
+    doCadastro,
+    tabelasDaLoja,
   });
   const userProducts = bundleUP.ok ? bundleUP.bundle : undefined;
   const avisosDoBundle = bundleUP.ok ? bundleUP.avisos : undefined;

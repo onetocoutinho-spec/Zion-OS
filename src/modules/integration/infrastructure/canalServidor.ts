@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { contaEmOutraLoja } from "@/modules/integration/domain/contaEmOutraLoja";
 
 /**
  * O cliente que alcança a credencial. É o admin (service_role), porque é o
@@ -85,7 +86,15 @@ export async function salvarRefreshTokenServidor(
     p_token: refreshToken,
     p_seller_id: extra.sellerId ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // A conta já é de outra loja (076) é a única recusa daqui que a PESSOA
+    // resolve sozinha — e `respostaDeErro` só deixa passar mensagem de uma
+    // classe declarada. Sem esta linha a frase morreria no log do servidor e
+    // a tela diria "Falha ao conectar", que não ajuda ninguém.
+    const daOutraLoja = contaEmOutraLoja(error);
+    if (daOutraLoja) throw daOutraLoja;
+    throw new Error(error.message);
+  }
 }
 
 /** Persiste o refresh_token ROTACIONADO pelo ML após uma chamada. Cifra no banco. */

@@ -51,6 +51,47 @@ export interface ContextoJornada {
   conectado: boolean;
   /** Otimizações restantes no plano. */
   quotaRestante: number;
+  /**
+   * Quantos anúncios DESTE PRODUTO já estão no ar no marketplace.
+   *
+   * ===========================================================================
+   * MEDIDO EM 14/08/2026
+   * ===========================================================================
+   *
+   * 88 rascunhos existem nesta conta. **86 deles nasceram DEPOIS de o produto
+   * já estar no ar** — e nenhum é rascunho antigo que ficou para trás. A
+   * esteira olhava só o rascunho aberto (`anuncio.mlItemId`) e não fazia ideia
+   * de que o PRODUTO já tinha quarenta anúncios vendendo.
+   *
+   * Não vira bloqueio: criar um anúncio a mais é legítimo — cor nova, kit,
+   * tamanho que faltava. Vira AVISO, porque a lojista que abre a esteira num
+   * produto já publicado quase sempre quer MELHORAR o que está no ar, e a
+   * esteira não melhora nada do que está no ar: ela cria mais um.
+   *
+   * Ausente (`undefined`) quando ainda não sabemos — e aí o aviso não aparece,
+   * porque afirmar "nenhum no ar" sem ter contado é o defeito que este
+   * repositório passou o mês arrancando.
+   */
+  anunciosNoArDoProduto?: number;
+}
+
+/**
+ * O aviso de que a esteira vai CRIAR, não melhorar.
+ *
+ * `null` quando não há o que avisar: produto sem anúncio no ar, contagem
+ * desconhecida, ou a jornada já terminada.
+ */
+export function avisoDeProdutoJaNoAr(ctx: ContextoJornada): string | null {
+  const n = ctx.anunciosNoArDoProduto;
+  if (typeof n !== "number" || n <= 0) return null;
+  // Depois de publicado, o aviso é ruído: ela acabou de fazer o que o aviso
+  // tentava explicar.
+  if (ctx.anuncio?.mlItemId) return null;
+  return (
+    `Este produto já tem ${n} ${n === 1 ? "anúncio" : "anúncios"} no ar. ` +
+    "O que sai daqui é um anúncio A MAIS — não muda os que já estão vendendo. " +
+    "Para mexer nos que existem, use o assistente."
+  );
 }
 
 const DESCRICOES: Record<EtapaJornada, { titulo: string; descricao: string }> = {

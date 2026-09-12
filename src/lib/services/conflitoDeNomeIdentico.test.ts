@@ -45,9 +45,19 @@ test("o mapa de nome exato guarda TODOS os custos, não o último", () => {
     /const porNomeExato = new Map<string, number>\(\)/,
     "`porNomeExato` voltou a ser Map<string, number>: o segundo custo sobrescreve o primeiro em silêncio"
   );
+  // PADRÃO AFROUXADO EM 26/08/2026, COM O MOTIVO ESCRITO.
+  //
+  // Ele prendia a FORMA do valor (`{ custo: number; original: string }`), e não
+  // a propriedade. Quando a importação passou a carregar custo E preço juntos,
+  // o valor virou `{ valores: NumerosDaLinha; original: string }` e esta prova
+  // ficou vermelha sem que nada do que ela guarda tivesse mudado.
+  //
+  // A propriedade é: o valor do mapa é uma LISTA. É isso que impede o segundo
+  // custo de sobrescrever o primeiro em silêncio, e é só isso que interessa
+  // aqui — o que a lista carrega é assunto de quem a lê.
   assert.match(
     FONTE,
-    /const porNomeExato = new Map<string,\s*\{ custo: number; original: string \}\[\]>/,
+    /const porNomeExato = new Map<string,\s*\{[^}]*\}\[\]>/,
     "`porNomeExato` deixou de guardar a lista de candidatos"
   );
 });

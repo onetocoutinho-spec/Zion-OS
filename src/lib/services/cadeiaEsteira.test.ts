@@ -11,6 +11,16 @@ import assert from "node:assert/strict";
 
 import { rodarCadeiaEsteira, INTERMEDIARIOS } from "./cadeiaEsteira.ts";
 
+/**
+ * O produto tem foto.
+ *
+ * `fotosDoProduto` passou a ser obrigatório em 27/08/2026 — produto sem imagem
+ * não publica, porque o ML exige ao menos uma. Estes testes são sobre a CADEIA
+ * de agentes, não sobre a foto, então passam 1 para tirá-la do caminho. A regra
+ * da foto é provada em `agentes/esteira.test.ts`.
+ */
+const COM_FOTO = 1;
+
 interface Chamada {
   url: string;
   entrada: string;
@@ -55,7 +65,7 @@ test("sem retomada, roda todos os agentes", async () => {
   const chamadas: Chamada[] = [];
   const restaurar = instalarFetchFalso(chamadas);
   try {
-    const r = await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing" });
+    const r = await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing", fotosDoProduto: COM_FOTO });
     assert.equal(r.tipo, "IA");
     assert.deepEqual(
       chamadas.filter((c) => c.url.includes("executar")).map((c) => c.agente),
@@ -74,7 +84,7 @@ test("etapa retomada NÃO gasta chamada de IA", async () => {
       codigo,
       markdown: `guardado de ${codigo}`,
     }));
-    await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing", retomarDe: guardadas });
+    await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing", fotosDoProduto: COM_FOTO, retomarDe: guardadas });
     const executados = chamadas.filter((c) => c.url.includes("executar")).map((c) => c.agente);
     assert.deepEqual(executados, INTERMEDIARIOS.slice(4));
   } finally {
@@ -92,7 +102,7 @@ test("o agente seguinte lê o texto guardado, não um buraco", async () => {
       codigo,
       markdown: `guardado de ${codigo}`,
     }));
-    await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing", retomarDe: guardadas });
+    await rodarCadeiaEsteira({ produto: "Tênis", briefing: "briefing", fotosDoProduto: COM_FOTO, retomarDe: guardadas });
     const primeiroQueRodou = chamadas.find((c) => c.url.includes("executar"))!;
     assert.equal(primeiroQueRodou.agente, INTERMEDIARIOS[4]);
     for (const g of guardadas) {
@@ -115,7 +125,7 @@ test("retomada fora de ordem é ignorada — a esteira refaz", async () => {
   try {
     await rodarCadeiaEsteira({
       produto: "Tênis",
-      briefing: "briefing",
+      briefing: "briefing", fotosDoProduto: COM_FOTO,
       retomarDe: [
         { codigo: INTERMEDIARIOS[0], markdown: "ok" },
         { codigo: INTERMEDIARIOS[5], markdown: "fora de lugar" },
@@ -136,7 +146,7 @@ test("onEtapaConcluida avisa cada entrega, incluindo as reaproveitadas", async (
     const avisos: string[][] = [];
     await rodarCadeiaEsteira({
       produto: "Tênis",
-      briefing: "briefing",
+      briefing: "briefing", fotosDoProduto: COM_FOTO,
       retomarDe: [{ codigo: INTERMEDIARIOS[0], markdown: "guardado" }],
       onEtapaConcluida: (_, todas) => avisos.push(todas.map((e) => e.codigo)),
     });
@@ -169,7 +179,7 @@ test("erro no meio preserva as entregas já avisadas", async () => {
     await assert.rejects(
       rodarCadeiaEsteira({
         produto: "Tênis",
-        briefing: "briefing",
+        briefing: "briefing", fotosDoProduto: COM_FOTO,
         onEtapaConcluida: (e) => avisadas.push(e.codigo),
       }),
       /estourou o tempo/

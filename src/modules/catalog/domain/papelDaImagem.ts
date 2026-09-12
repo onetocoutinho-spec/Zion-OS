@@ -34,6 +34,7 @@
 // "esta é a capa". É o padrão invertido, e ele sobreviveu porque nada media.
 
 import type { TipoImagem } from "../../../lib/types";
+import { LADO_MINIMO_DA_CAPA } from "../../integration/domain/capaForaDoPadrao";
 
 /** O bastante para decidir. Aceita qualquer registro que declare o papel. */
 export interface ImagemExistente {
@@ -73,4 +74,59 @@ export function papelDaFotoNova(
  */
 export function capaAtual<T extends ImagemExistente>(existentes: readonly T[]): T | null {
   return existentes.find((i) => i.tipoImagem === "Principal") ?? null;
+}
+
+/** O bastante para escolher a sucessora: quem é, que papel tem, e o tamanho. */
+export interface ImagemComTamanho extends ImagemExistente {
+  id: string;
+  largura?: number | null;
+  altura?: number | null;
+}
+
+/**
+ * QUEM VIRA CAPA QUANDO A CAPA É APAGADA.
+ *
+ * ===========================================================================
+ * MEDIDO EM 14/08/2026
+ * ===========================================================================
+ *
+ * `Chinelo Havaianas Top Liso` era o único dos 80 produtos SEM foto Principal.
+ * Não foi acidente de importação: as duas telas que apagam foto chamavam
+ * `excluirImagem` direto, e nenhuma das duas olhava se a foto apagada era a
+ * capa. Apagar a capa deixava o produto sem capa — em silêncio.
+ *
+ * O custo é o de sempre neste repositório: nada avisa. `urlsDoProduto` põe a
+ * Principal primeiro, e sem Principal a capa do anúncio vira a primeira foto
+ * que a consulta devolver — sorteio.
+ *
+ * A ordem da escolha é a regra que o próprio software já declara para a
+ * lojista na hora do upload: serve de capa quem é quadrada e tem
+ * `LADO_MINIMO_DA_CAPA` de lado. Depois disso, a maior. Empate desfaz pela
+ * ordem da lista, para a escolha ser previsível entre duas chamadas.
+ *
+ * Devolve `null` quando não há o que fazer — a foto apagada não era a capa,
+ * ou não sobrou nenhuma. Produto sem foto nenhuma é um estado legítimo; o que
+ * não é legítimo é produto COM fotos e SEM capa.
+ */
+export function sucessoraDaCapa<T extends ImagemComTamanho>(
+  existentes: readonly T[],
+  idApagada: string
+): T | null {
+  const apagada = existentes.find((i) => i.id === idApagada);
+  if (!apagada || apagada.tipoImagem !== "Principal") return null;
+
+  const restantes = existentes.filter((i) => i.id !== idApagada);
+  if (restantes.length === 0) return null;
+
+  const serveDeCapa = (i: T) =>
+    !!i.largura && !!i.altura && i.largura === i.altura && i.largura >= LADO_MINIMO_DA_CAPA;
+  const area = (i: T) => (i.largura ?? 0) * (i.altura ?? 0);
+
+  // `sort` do JS é estável, então o empate cai na ordem da lista sozinho.
+  return [...restantes].sort((a, b) => {
+    const sa = serveDeCapa(a) ? 1 : 0;
+    const sb = serveDeCapa(b) ? 1 : 0;
+    if (sa !== sb) return sb - sa;
+    return area(b) - area(a);
+  })[0];
 }

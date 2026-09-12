@@ -276,7 +276,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           grupos={grupos}
           perfilCarregado={perfil !== null || !supabaseConfigurado}
           nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
-          podeAdicionarLoja={perfil?.papel !== "agencia"}
+          podeAdicionarLoja
         />
       </aside>
 
@@ -293,7 +293,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onNavigate={() => setMobileOpen(false)}
               perfilCarregado={perfil !== null || !supabaseConfigurado}
               nomeDaAgencia={supabaseConfigurado ? nomeDaAgencia : "Zion"}
-              podeAdicionarLoja={perfil?.papel !== "agencia"}
+              podeAdicionarLoja
             />
           </aside>
         </div>

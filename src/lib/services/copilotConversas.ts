@@ -24,6 +24,20 @@ export interface TurnoGravado {
   ferramentas: readonly string[];
   tokens: number;
   /**
+   * QUAL ESPECIALISTA o classificador escolheu neste turno.
+   *
+   * Sem isto não dá para separar as duas causas de uma ferramenta que nunca
+   * dispara: ela não estava na mesa (roteamento) ou estava e o modelo não a
+   * escolheu (descrição). São consertos opostos, e adivinhar qual é foi o
+   * método que inchou este sistema.
+   *
+   * Medido em 25/08/2026: das 38 ferramentas, 9 tinham ZERO chamadas em 93
+   * turnos. Para uma delas (`propor_anuncio`) a causa saiu da tabela de
+   * roteamento lida à mão; para as outras não havia como saber, porque o
+   * especialista do turno não era gravado em lugar nenhum.
+   */
+  especialista?: string | null;
+  /**
    * O que ESTA resposta apresentou — os ids e a ordem em que apareceram.
    *
    * É o que permite "o segundo" virar um id. Sem isto, a referência teria que
@@ -143,12 +157,16 @@ export async function gravarTurno(
           texto: turno.resposta,
           ferramentas: turno.ferramentas,
           tokens: turno.tokens,
-          // `falas` entra DENTRO de metadata (jsonb), ao lado das referências:
-          // não é coluna nova, e quem lê metadata para "o segundo" segue lendo
-          // as mesmas chaves.
+          // `falas` e `especialista` entram DENTRO de metadata (jsonb), ao lado
+          // das referências: não são colunas novas, e quem lê metadata para "o
+          // segundo" segue lendo as mesmas chaves.
           metadata:
-            turno.metadata || turno.falas
-              ? { ...(turno.metadata ?? {}), ...(turno.falas ? { falas: turno.falas } : {}) }
+            turno.metadata || turno.falas || turno.especialista
+              ? {
+                  ...(turno.metadata ?? {}),
+                  ...(turno.falas ? { falas: turno.falas } : {}),
+                  ...(turno.especialista ? { especialista: turno.especialista } : {}),
+                }
               : null,
         },
       ]);

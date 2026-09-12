@@ -10,6 +10,7 @@ import {
   explicar,
   ARQUIVO_DA_CLASSIFICACAO,
 } from "./classificacaoDaAgencia.mjs";
+import { oQueNaoRegistra, explicarLedger } from "./ledgerDaMigracao.mjs";
 
 /** Os arquivos que ENTRARAM no commit (staged), não os que estão soltos. */
 function arquivosDoCommit() {
@@ -43,6 +44,18 @@ const migracoes = arquivos
 
 if (migracoes.length === 0) process.exit(0);
 
+/** O par `{ nome, sql }` de cada migração do commit — lido do índice, uma vez só. */
+const noCommit = migracoes.map((nome) => ({ nome, sql: conteudoNoIndice(nome) }));
+
+// O LEDGER PRIMEIRO: é a conferência mais barata e não depende de ler mais
+// nada do disco. A regra da 043 — cada migração registra a própria linha — era
+// conteúdo de arquivo sem ninguém conferir o conteúdo, e furou nas 071 a 074.
+const semLedger = oQueNaoRegistra(noCommit);
+if (semLedger.length > 0) {
+  console.error(explicarLedger(semLedger));
+  process.exit(1);
+}
+
 // A classificação também vem do índice: se ela foi editada no mesmo commit, é
 // a versão nova que vale.
 const daVarredura = arquivos.includes(ARQUIVO_DA_CLASSIFICACAO)
@@ -59,10 +72,7 @@ if (!daVarredura) {
   process.exit(1);
 }
 
-const pendentes = oQueFaltaClassificar(
-  migracoes.map((nome) => ({ nome, sql: conteudoNoIndice(nome) })),
-  daVarredura
-);
+const pendentes = oQueFaltaClassificar(noCommit, daVarredura);
 
 if (pendentes.length > 0) {
   console.error(explicar(pendentes));

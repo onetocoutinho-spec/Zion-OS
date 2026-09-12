@@ -70,9 +70,12 @@ interface DefinicaoDeEspecialista {
 
 export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>> = {
   catalogo: {
-    quando: "pendências, o que falta, o que travou, peso, custo, foto, medidas, preencher um dado, resolver o que der",
-    ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas", "diagnostico_de_agrupamento"],
-    instrucao: "Foque no cadastro: o que falta, por quê, e o que você prepara sozinho. Números só de ferramenta.",
+    quando: "pendências, o que falta, o que travou, peso, custo, foto, medidas, preencher um dado, resolver o que der, SKU repetido, código duplicado, variação sem código, faltando derivação, anota isso, cria as tarefas, me lembra de",
+    ferramentas: ["o_que_impede", "pendencias", "tabela_de_medidas", "procedencia", "propor_gravacao", "preparar_resolucao", "propor_tarefas", "diagnostico_de_agrupamento", "duplicatas_e_faltantes"],
+    // `propor_tarefas` estava na mesa e não na instrução — e o que sobra de um
+    // diagnóstico com 70 pendências é uma lista que ninguém anotou. Zero
+    // chamadas em 93 turnos.
+    instrucao: "Foque no cadastro: o que falta, por quê, e o que você prepara sozinho. Números só de ferramenta. Quando ele aceitar um plano, ou pedir para anotar, use propor_tarefas — o que você não registrar se perde no fim da conversa.",
   },
   preco: {
     quando: "preço, margem, lucro, prejuízo, por quanto vender, custos do lojista, simular um preço",
@@ -80,24 +83,61 @@ export const DEFINICOES: Readonly<Record<Especialista, DefinicaoDeEspecialista>>
     instrucao: "Foque no preço: a decomposição vem do motor financeiro, você só apresenta. Confira os custos do lojista antes de julgar uma margem.",
   },
   conteudo: {
-    quando: "título, descrição, palavras-chave, SEO, texto do anúncio, deixar mais curto, mais premium, melhorar o anúncio, corrigir o título do anúncio que está no ar",
+    // "PREPARAR O ANÚNCIO" ENTROU AQUI EM 25/08/2026, e a ausência dela apagava
+    // a ação central do produto.
+    //
+    // MEDIDO em `copilot_mensagens`, 93 turnos entre 31/07 e 24/08:
+    // `propor_anuncio` — a única ferramenta que de fato prepara o anúncio — foi
+    // chamada ZERO vezes, estando implementada e alcançável. `preparacao_de_
+    // anuncio`, que só relata o estado, foi chamada 13.
+    //
+    // A causa era o roteamento, não o modelo. `propor_anuncio` vive só neste
+    // especialista, e este `quando` não tinha uma palavra sobre preparar ou
+    // gerar anúncio — falava de título, descrição e SEO. "prepara o anúncio
+    // desse" caía em `publicacao`, que leva a ferramenta de LEITURA e não
+    // levava a de ação. O modelo não ignorou a ferramenta: ela não estava na
+    // mesa. Ele lia o estado e respondia — um pedido de ação atendido com
+    // relatório.
+    //
+    // O teste "TODA ferramenta é alcançável por algum especialista" passava o
+    // tempo todo: alcançável ela era. Alcançável não é roteável, e é a segunda
+    // que decide se a lojista consegue o que pediu.
+    quando: "título, descrição, palavras-chave, SEO, texto do anúncio, deixar mais curto, mais premium, melhorar o anúncio, corrigir o título do anúncio que está no ar, aplica esse título no anúncio, preparar o anúncio, gerar o anúncio, prepara esse, faz o anúncio dele, monta o anúncio, pode fazer, qual é o nosso tom, que palavras eu proibi, como a gente escreve",
     ferramentas: ["preparacao_de_anuncio", "diagnostico_do_anuncio", "propor_titulo", "propor_titulo_no_anuncio", "propor_descricao", "propor_palavras_chave", "propor_anuncio", "meu_perfil_de_conteudo"],
-    instrucao: "Foque no texto do anúncio. Respeite o perfil de conteúdo da loja. 'Otimiza esse anúncio' começa por diagnostico_do_anuncio — título só se o eixo for exposição. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
+    // "RESPEITE O PERFIL" NÃO É "LEIA O PERFIL" — 25/08/2026.
+    //
+    // A instrução mandava respeitar o perfil de conteúdo da loja e não dizia
+    // como obtê-lo. `meu_perfil_de_conteudo` está na mesa deste especialista e
+    // teve ZERO chamadas em 93 turnos: um modelo mandado respeitar algo que
+    // ninguém mandou buscar respeita o vazio, e escreve no tom genérico.
+    // Palavra proibida cadastrada em Configurações não chegava a ser
+    // consultada — o título saía com ela e a recusa vinha depois.
+    instrucao: "Foque no texto do anúncio. Antes de escrever ou julgar texto, leia o perfil da loja com meu_perfil_de_conteudo — tom, público e palavras proibidas moram lá, e escrever sem consultá-lo é adivinhar o tom dela. 'Otimiza esse anúncio' começa por diagnostico_do_anuncio — título só se o eixo for exposição. Título do que está PUBLICADO é propor_titulo_no_anuncio; propor_titulo muda só o catálogo do Zion. Ajuste pedido sobre um texto já proposto vai em `instrucao`.",
   },
   imagem: {
-    quando: "foto, imagem, capa, infográfico, gerar imagem, não gostei da imagem, fundo branco, produto maior",
-    ferramentas: ["propor_imagem", "preparacao_de_anuncio"],
+    quando: "foto, imagem, capa, infográfico, gerar imagem, não gostei da imagem, fundo branco, produto maior, preciso fotografar este produto, a foto serve, a capa está boa",
+    ferramentas: ["propor_imagem", "preparacao_de_anuncio", "fotos_do_produto"],
     instrucao: "Foque na imagem. 'Não gostei' de uma versão vira propor_imagem com paiVersaoId e o feedback dele. Nunca descreva uma imagem que não foi gerada.",
   },
   vendas: {
-    quando: "vendas, faturamento, quanto vendi, por que caíram, o que vende mais, comparar períodos",
-    ferramentas: ["vendas_da_loja", "diagnostico_do_anuncio", "pendencias", "pricing", "propor_tarefas", "anuncios_ativos", "diagnostico_de_agrupamento"],
-    instrucao: "Foque nas vendas: três blocos — o que os números mostram, o que isso sugere (como hipótese), o que você não sabe. Proponha tarefas quando ele aceitar um plano.",
+    // "por que apareço pouco" e "está no ar e não vende" SÃO perguntas de
+    // venda, e a resposta delas é a saúde do anúncio — a nota do ML decide a
+    // exposição na busca. `saude_do_catalogo` respondia isso e vivia só em
+    // `publicacao`, cujo `quando` fala de publicar e reativar. Nenhuma frase
+    // real chegava nela: zero chamadas em 93 turnos.
+    quando: "vendas, faturamento, quanto vendi, por que caíram, o que vende mais, comparar períodos, por que apareço pouco, meus anúncios não vendem, está no ar e não vende, como estão meus anúncios",
+    ferramentas: ["vendas_da_loja", "diagnostico_do_anuncio", "pendencias", "pricing", "propor_tarefas", "anuncios_ativos", "diagnostico_de_agrupamento", "saude_do_catalogo"],
+    instrucao: "Foque nas vendas: três blocos — o que os números mostram, o que isso sugere (como hipótese), o que você não sabe. Quando a pergunta for POR QUE vende pouco, saude_do_catalogo separa quem não é visto (nota baixa, sem descrição) de quem é visto e não converte. Proponha tarefas com propor_tarefas quando ele aceitar um plano — a lista dele só existe se você a criar.",
   },
   publicacao: {
-    quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou, quais anúncios estão ativos, o que está parado, o que preciso corrigir, as variações não estão agrupadas",
-    ferramentas: ["preparacao_de_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio", "saude_do_catalogo"],
-    instrucao: "Foque em colocar no ar. Publicar é proposta com ensaio; reativar tem trava de posse e de infração. Nunca afirme que está no ar sem a palavra do Mercado Livre.",
+    quando: "publicar, subir o anúncio, colocar no ar, reativar, pausado, infração, Mercado Livre recusou, quais anúncios estão ativos, o que está parado, o que preciso corrigir, as variações não estão agrupadas, quais anúncios estão incompletos, clássico ou premium, saúde dos anúncios",
+    // `propor_anuncio` entra aqui em 25/08/2026 pelo mesmo motivo que entrou no
+    // `quando` do conteúdo: quem diz "quero subir esse" e ainda não tem anúncio
+    // preparado precisa PREPARAR primeiro, e este especialista só tinha a
+    // leitura. Sem ela, o passo seguinte era um beco: `preparacao_de_anuncio`
+    // dizia o que falta e nenhuma ferramenta na mesa resolvia.
+    ferramentas: ["preparacao_de_anuncio", "propor_anuncio", "propor_publicacao", "reativar_anuncio", "o_que_impede", "anuncios_ativos", "anuncios_a_corrigir", "diagnostico_de_agrupamento", "propor_titulo_no_anuncio", "saude_do_catalogo", "pendencias_da_conta"],
+    instrucao: "Foque em colocar no ar. Publicar é proposta com ensaio; reativar tem trava de posse e de infração. Nunca afirme que está no ar sem a palavra do Mercado Livre. Se o produto ainda não tem anúncio preparado, o passo é propor_anuncio antes de publicar — não pare no relatório do que falta. Para o estado do que JÁ está no ar (nota do ML, sem descrição, no ar sem vender, clássico x premium), a leitura é saude_do_catalogo. Corrigir o título do que está publicado é propor_titulo_no_anuncio: ela lê o título que o comprador vê agora e mostra ao lado do novo.",
   },
   cadastro: {
     quando: "cadastrar produto novo, criar produto, importar, adicionar variação, esse produto já existe?",

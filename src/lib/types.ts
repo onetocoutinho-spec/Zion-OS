@@ -98,6 +98,14 @@ export interface Produto {
   // ---- v1.7: modelagem marketplace (produto pai) ----
   tipoProduto?: TipoProduto;
   categoriaMarketplaceSugerida?: string;
+  /**
+   * Id da categoria do Mercado Livre DECIDIDA para este produto ("MLB273770").
+   *
+   * Diferente de `categoriaMarketplaceSugerida`, que é rótulo em texto livre:
+   * uma publica, a outra explica. Vazio = ninguém decidiu, e aí os obrigatórios
+   * cobrados são um palpite — ver `obrigatoriosDoProduto`.
+   */
+  categoriaMl?: string;
   descricaoBase?: string;
   beneficios?: string;
   cuidados?: string;
@@ -174,7 +182,18 @@ export interface ProdutoVariante {
 }
 
 export type TipoAtributo = "texto" | "numero" | "lista" | "booleano";
-export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA";
+/**
+ * De onde veio a resposta deste atributo.
+ *
+ * `Importação` entrou em 28/08/2026 e é a que uma LOJA NOVA alcança sozinha: a
+ * importação da planilha lê gênero e tipo das palavras-chave do ERP e os PROPÕE
+ * aqui. As outras vêm da equipe, do template, do marketplace ou do modelo.
+ *
+ * A origem é o que mantém proposta e resposta distinguíveis. O que a lojista
+ * respondeu à mão fica `Manual`; o que a importação deduziu fica `Importação`, e
+ * ela corrige por cima.
+ */
+export type OrigemAtributo = "Manual" | "Template" | "Marketplace" | "IA" | "Importação";
 
 /** Atributo dinâmico do produto (ficha técnica flexível por categoria). */
 export interface ProdutoAtributo {
@@ -271,6 +290,29 @@ export interface ImagemProduto {
   url: string;
   status: ImagemStatus;
   observacoes: string;
+  /**
+   * Dimensão em pixels, medida NO UPLOAD (migração 075).
+   *
+   * `null` = não medimos, nunca "não tem". As fotos anteriores a 11/08/2026
+   * nasceram sem medida, e tratá-las como zero faria toda a base parecer
+   * inválida.
+   *
+   * Medir aqui, no arquivo que a lojista escolheu, também evita a armadilha do
+   * CDN: a `url` guardada aponta para a variante de 500px do Mercado Livre, e
+   * medi-la diria "nenhuma foto serve" sobre originais de 1200.
+   */
+  largura: number | null;
+  altura: number | null;
+  /**
+   * A cor desta foto, na MESMA string de `produto_variantes.cor` (migração 076).
+   *
+   * `null` = não sabemos de que cor é — NUNCA "serve para todas". Os anúncios
+   * desta base são um por cor e tamanho, e usar foto de cor desconhecida numa
+   * variante colorida troca uma infração de foto por uma de "o anúncio não
+   * corresponde ao produto" — a categoria com que o ML já pausou 25 anúncios
+   * desta conta.
+   */
+  cor: string | null;
 }
 
 export type AreaAgente =

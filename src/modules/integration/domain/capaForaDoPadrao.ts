@@ -30,6 +30,32 @@
 /** O mínimo que o ML pede para a capa render zoom e não perder exposição. */
 export const LADO_MINIMO_DA_CAPA = 1200;
 
+/**
+ * A fronteira entre capa QUE PRECISA DE CONSERTO e capa já consertada.
+ *
+ * ===========================================================================
+ * POR QUE NÃO É `LADO_MINIMO_DA_CAPA` — medido em 20/08/2026
+ * ===========================================================================
+ *
+ * `aplicar-capa` ganhou uma trava para pular anúncio cuja capa já está boa, e
+ * ela comparava com 1200. Nunca disparou, e o efeito foi acumulativo: cada
+ * rodada empilhava outra cópia da mesma foto nos anúncios já certos. Quatro
+ * anúncios do Papete Marrom foram de 4 fotos para 7.
+ *
+ * A causa: mandamos 1200x1200 e o ML SERVE `991x1200` — ele recorta a borda
+ * branca lateral que o quadrado acrescenta. Então a nossa própria capa correta
+ * nunca alcança 1200 no menor lado.
+ *
+ * 1200 é o IDEAL — o tamanho em que o ML rende zoom. Não é o que separa capa
+ * boa de capa ruim: as travadas desta conta têm `492x245` e `465x189` (menor
+ * lado 245 e 189); as consertadas têm 991. A fronteira real está entre esses
+ * dois grupos, e 500 é o mínimo que o próprio ML exige para aceitar a imagem.
+ *
+ * Confundir o ideal com o mínimo fez a trava nunca fechar. São dois números com
+ * papéis diferentes, e agora cada um tem nome.
+ */
+export const LADO_ACEITAVEL_DA_CAPA = 500;
+
 export interface CapaMedida {
   largura: number;
   altura: number;

@@ -6,7 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Field, FormGrid, Input, Select, TextArea, ouInfoNecessaria } from "@/components/ui/form";
 import { CLIENTE_STATUS, MARKETPLACES, PLANOS, RISCOS } from "@/lib/constantes";
-import { atualizarCliente, criarCliente } from "@/lib/services/clientes";
+import { atualizarCliente, criarCliente, criarLojaDaAgencia } from "@/lib/services/clientes";
+import { meuPerfil } from "@/lib/services/perfil";
+import { useLiveQuery } from "@/lib/hooks";
 import type { Cliente, Marketplace } from "@/lib/types";
 
 export function ClienteForm({ inicial }: { inicial?: Cliente }) {
@@ -26,6 +28,16 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
     observacoes: inicial?.observacoes ?? "",
   });
 
+  // O plano que a loja TEM entra na lista mesmo que não esteja no vocabulário.
+  //
+  // Um `<select>` com `value` que não casa com opção nenhuma não mostra nada, e
+  // salvar grava o que está aparecendo — reescrevendo em silêncio o plano de
+  // quem veio de fora da lista. Foi o que aconteceu com "Essencial", que agora
+  // está em `PLANOS`; isto guarda o PRÓXIMO valor que aparecer antes da lista.
+  const planosComOAtual = PLANOS.includes(form.plano as (typeof PLANOS)[number])
+    ? [...PLANOS]
+    : [form.plano, ...PLANOS];
+
   function set<K extends keyof typeof form>(campo: K, valor: (typeof form)[K]) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
@@ -38,6 +50,8 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
         : [...form.marketplaces, m]
     );
   }
+
+  const { data: perfil } = useLiveQuery(meuPerfil);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,10 +75,29 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
     if (inicial) {
       await atualizarCliente(inicial.id, dados);
       router.push(`/clientes/${inicial.id}`);
-    } else {
-      const criado = await criarCliente(dados);
-      router.push(`/clientes/${criado.id}`);
+      return;
     }
+
+    if (perfil?.papel === "agencia") {
+      // A agência não escreve em `clientes` pelo navegador — a 054 não lhe deu
+      // INSERT, de propósito. A loja nasce no servidor, com a `agencia_id`
+      // vinda do PERFIL, e o resto do formulário entra logo depois por UPDATE,
+      // que ela já pode fazer na própria loja (`agencia_edita_as_lojas`).
+      //
+      // Dois passos em vez de um para NÃO perder o que a pessoa digitou: a
+      // rota aceita só o nome, e descartar os outros campos em silêncio seria
+      // pior que a chamada a mais.
+      const id = await criarLojaDaAgencia(dados.empresa);
+      // `agenciaId` fica de fora: mandá-lo como `null` desvincularia a loja da
+      // carteira no instante seguinte ao de criá-la nela.
+      const { agenciaId: _ignorado, ...semVinculo } = dados;
+      await atualizarCliente(id, semVinculo);
+      router.push(`/clientes/${id}`);
+      return;
+    }
+
+    const criado = await criarCliente(dados);
+    router.push(`/clientes/${criado.id}`);
   }
 
   return (
@@ -81,7 +114,7 @@ export function ClienteForm({ inicial }: { inicial?: Cliente }) {
             <Input value={form.segmento} onChange={(e) => set("segmento", e.target.value)} placeholder="Ex.: Eletrônicos / Áudio" />
           </Field>
           <Field label="Plano contratado">
-            <Select options={PLANOS} value={form.plano} onChange={(e) => set("plano", e.target.value)} />
+            <Select options={planosComOAtual} value={form.plano} onChange={(e) => set("plano", e.target.value)} />
           </Field>
           <Field label="Status">
             <Select options={CLIENTE_STATUS} value={form.status} onChange={(e) => set("status", e.target.value as Cliente["status"])} />

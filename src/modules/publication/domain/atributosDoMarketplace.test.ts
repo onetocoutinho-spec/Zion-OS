@@ -96,7 +96,7 @@ test("produto sem grade não tem cor nem tamanho", () => {
 });
 
 test("o briefing PROÍBE as exigências que o A10 inventava", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO));
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO), "categoria");
   for (const inventado of ["antiderrapante", "vegano", "materiais reciclados", "altura do solado"]) {
     assert.ok(b.includes(inventado), `${inventado} deveria ser proibido explicitamente`);
   }
@@ -104,14 +104,14 @@ test("o briefing PROÍBE as exigências que o A10 inventava", () => {
 });
 
 test("o briefing diz o que JÁ está resolvido, para não ser recobrado", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO));
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO), "categoria");
   assert.match(b, /Marca: Havaianas \(já resolvido pelo cadastro\)/);
   assert.match(b, /Gênero: Masculino \(já resolvido pelo nome do produto\)/);
   assert.match(b, /Todos resolvidos/);
 });
 
 test("o que falta é nomeado, e só ele pode virar pendência", () => {
-  const b = briefingDosAtributos(resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" }), OBRIGATORIOS_CALCADO));
+  const b = briefingDosAtributos(resolverObrigatorios(produto({ nome: "Chinelo Havaianas Slim Liso" }), OBRIGATORIOS_CALCADO), "categoria");
   assert.match(b, /Gênero: FALTA/);
   assert.match(b, /Só Gênero pode\(m\) virar pendência/);
 });
@@ -182,7 +182,8 @@ test("D6: o briefing DIZ de onde veio — a origem muda o que o modelo faz", () 
   // O que veio do ML é o que a própria lojista informou lá, e não se questiona.
   // O que veio do nome é leitura nossa, e pode estar errada.
   const texto = briefingDosAtributos(
-    resolverObrigatorios(SEM_NADA, OBRIGATORIOS_CALCADO, new Map([["FOOTWEAR_TYPE", "Papetes"]]))
+    resolverObrigatorios(SEM_NADA, OBRIGATORIOS_CALCADO, new Map([["FOOTWEAR_TYPE", "Papetes"]])),
+    "categoria"
   );
   assert.match(texto, /Tipo de calçado: Papetes \(já resolvido pelo Mercado Livre\)/);
 });
@@ -223,3 +224,32 @@ test("valor vazio não entra, e o primeiro vence o repetido", () => {
   assert.ok(!mapa.has("GENDER"));
   assert.equal(mapa.get("BRAND"), "Modare");
 });
+
+// ---------------------------------------------------------------------------
+// A procedência da lista — dizer "medido" quando foi palpite é o INC-011
+// ---------------------------------------------------------------------------
+
+test("lista medida na categoria: o briefing afirma a medição", () => {
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO), "categoria");
+  assert.match(b, /medidos na API da categoria/);
+  assert.doesNotMatch(b, /suposição/);
+});
+
+test("lista por palpite: o briefing DIZ que é palpite", () => {
+  // Produto recém-importado não tem categoria, e `obrigatoriosDoProduto` cai
+  // no calçado. Medido em 26/08/2026: 1003 de 1003 produtos de uma base real
+  // entrariam assim — 50 deles são bolsa, meia ou kit.
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO), "palpite");
+  assert.doesNotMatch(b, /medidos na API da categoria/);
+  assert.match(b, /ainda não foi definida/);
+  assert.match(b, /por suposição/);
+});
+
+test("no palpite, a proibição de inventar continua — só a certeza cai", () => {
+  // "NÃO invente exigências fora desta lista" era dito como se a lista fosse a
+  // verdade do ML. Sem a medição ela continua valendo como teto, não como fato.
+  const b = briefingDosAtributos(resolverObrigatorios(produto(), OBRIGATORIOS_CALCADO), "palpite");
+  assert.match(b, /não são atributos do Mercado Livre/);
+  assert.match(b, /se este produto não for calçado, ela não se aplica/);
+});
+
